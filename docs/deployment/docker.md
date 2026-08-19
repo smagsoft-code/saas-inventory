@@ -34,8 +34,43 @@ manager), never hardcoded in the compose files.
 - Prod: only `caddy` is published externally. `postgres` and `redis` are never exposed publicly,
   per [SECURITY.md](../../SECURITY.md).
 
+## Deployment architecture
+
+```mermaid
+flowchart TB
+    Internet(("Internet"))
+
+    subgraph Host["Docker host"]
+        Caddy["caddy\n(reverse proxy, TLS termination)\nports 80/443 published"]
+
+        subgraph Internal["Internal Docker network — no published ports"]
+            Web["web (Next.js)\nbuilt from infrastructure/docker/web.Dockerfile"]
+            Api["api (NestJS)\nbuilt from infrastructure/docker/api.Dockerfile"]
+            Postgres[("postgres")]
+            Redis[("redis")]
+        end
+    end
+
+    N8N["n8n\n(separate infrastructure,\nnot in this compose file)"]
+
+    Internet --> Caddy
+    Caddy -- "/*" --> Web
+    Caddy -- "/api/*" --> Api
+    Api --> Postgres
+    Api --> Redis
+    Api -- "webhook" --> N8N
+```
+
+Only `caddy` is reachable from outside the Docker host. `web` and `api` are reachable only via
+Caddy; `postgres` and `redis` are reachable only from `api`, never published and never reachable
+from `web` or the internet, per [multi-tenancy.md](../architecture/multi-tenancy.md) and
+[SECURITY.md](../../SECURITY.md) — the frontend has no path to the database that doesn't go
+through the API.
+
 ## Status
 
-This is infrastructure scaffolding only — no application secrets exist yet, and the images have
-not been built/run as part of this phase (see the project's validation notes for why). Building
-and running these are exercised in the Infrastructure phase (FASE 2 of the roadmap).
+This is infrastructure scaffolding. `docker-compose.dev.yml`/`docker-compose.prod.yml` and the
+Dockerfiles have not been run end-to-end (no Docker runtime is available in this environment) —
+the API's own build/boot was validated directly with Node during Prompt 00 (see its final report),
+but the containerized path itself is exercised in the Infrastructure phase (FASE 2 of the
+[roadmap](../roadmap/roadmap.md)).

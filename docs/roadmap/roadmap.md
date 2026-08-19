@@ -3,9 +3,11 @@
 High-level phase plan for the SaaS Inventory project. Phases are executed in order; each phase is
 driven by its own prompt/spec and is only started once the prior phase is complete and reviewed.
 
-- **FASE 0 — Project Foundation** — monorepo scaffolding, tooling, governance docs. *(in progress)*
-- **FASE 1 — Architecture** — formal architecture definition and ADRs.
-- **FASE 2 — Infrastructure** — Docker, reverse proxy, environments.
+- **FASE 0 — Project Foundation** — monorepo scaffolding, tooling, governance docs. *(done)*
+- **FASE 1 — Architecture** — formal architecture definition and ADRs. *(done — see
+  [docs/architecture/](../architecture/), [docs/decisions/](../decisions/),
+  [docs/security/threat-model.md](../security/threat-model.md))*
+- **FASE 2 — Infrastructure** — Docker, reverse proxy, environments. *(next)*
 - **FASE 3 — Database** — schema design, Drizzle setup, migrations strategy.
 - **FASE 4 — Authentication & Authorization** — auth, sessions, roles.
 - **FASE 5 — Tenant Administration** — tenant lifecycle and isolation.
@@ -22,4 +24,9 @@ driven by its own prompt/spec and is only started once the prior phase is comple
 - **FASE 16 — Production Deployment** — production rollout.
 - **FASE 17 — MVP Release** — public MVP release.
 
-No phase beyond FASE 0 has been started.
+No phase beyond FASE 1 has been started. FASE 1 produced architecture documentation and ADRs only —
+no business tables, endpoints, or functionality. Several implementation-level decisions were
+deliberately left open (RLS activation timing, web session-transport mechanism, product
+attribute/variant modeling, demo reset mechanism, and others) and are marked `PENDING DECISION` in
+their respective documents, to be resolved when the relevant phase (FASE 2 onward) actually builds
+that part of the system.

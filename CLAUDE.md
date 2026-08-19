@@ -30,6 +30,11 @@ Next.js (Web) / future Mobile
 Web and mobile clients never access PostgreSQL directly. All business operations go through the
 REST API. The backend is the only component with database credentials.
 
+Detailed design lives in [docs/architecture/](docs/architecture/) (start at
+[system-overview.md](docs/architecture/system-overview.md)), with the reasoning behind each major
+choice recorded in [docs/decisions/](docs/decisions/). This section (§7.2–§7.9) states the binding
+rules; those documents explain the *why* and the parts still open (`PENDING DECISION`).
+
 ## 7.3 Multi-tenancy
 
 - All data belonging to a company must be isolated by tenant.
