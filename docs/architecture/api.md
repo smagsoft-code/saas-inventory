@@ -1,8 +1,11 @@
 # API Architecture
 
 Related: [ADR-0005](../decisions/0005-rest-api.md). The API is the single contract for the web
-app, future mobile apps, and any future integration — see
-[system-overview.md](system-overview.md).
+app, the Flutter mobile app ([ADR-0025](../decisions/0025-flutter-for-mobile.md),
+[mobile.md](mobile.md)), and any future integration — see
+[system-overview.md](system-overview.md). Mobile is not a special case: it authenticates and calls
+`/api/v1` exactly like the web app, per [mobile.md#backend-as-the-sole-authority](mobile.md#backend-as-the-sole-authority)
+— nothing in this document is web-specific.
 
 ## Versioning
 

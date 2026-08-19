@@ -31,9 +31,11 @@ Three separate mechanisms for three separate concerns:
    which even an approval request is rejected outright). Tenant-configurable per this prompt's
    explicit instruction not to assume identical commercial rules across tenants.
 3. **Workflow** — `price_approvals`, linked to the specific `order_item_id` requesting an exception,
-   `PENDING`/`APPROVED`/`REJECTED`/`CANCELLED`, with a partial unique index
-   (`UNIQUE (tenant_id, order_item_id) WHERE status = 'PENDING'`) preventing a duplicate open request
-   for the same line by construction. Order confirmation is gated on no `PENDING` approvals remaining.
+   `pending`/`approved`/`rejected`/`cancelled` (lowercase, per the enum-value naming convention closed
+   in Prompt 02-D — see [database.md#conventions](../architecture/database.md#conventions)), with a
+   partial unique index (`UNIQUE (tenant_id, order_item_id) WHERE status = 'pending'`) preventing a
+   duplicate open request for the same line by construction. Order confirmation is gated on no
+   `pending` approvals remaining.
 
 Full schema:
 [database.md#pricing-history-tenant-policy-and-exceptional-discount-approval](../architecture/database.md#pricing-history-tenant-policy-and-exceptional-discount-approval).

@@ -43,7 +43,12 @@ sequenceDiagram
 **Refresh tokens** are tracked server-side (so a specific session can be revoked — e.g. on
 password change or "log out everywhere") and rotated on use (a used refresh token is invalidated
 immediately, so a stolen-then-reused refresh token is detectable). Exact revocation storage
-(Redis vs. a Postgres table) is an implementation choice for FASE 4.
+(Redis vs. a Postgres table) is an implementation choice for FASE 4. These issuance/rotation/
+revocation rules are transport-independent and apply unchanged to the Flutter mobile app — see
+[mobile.md#auth-on-mobile](mobile.md#auth-on-mobile) for mobile's specific transport/storage answer
+(bearer token in OS-level secure storage), which does not reopen or change
+[frontend.md](frontend.md#authentication-and-route-protection)'s still-pending web
+cookie-vs-bearer decision.
 
 ## Authorization: RBAC + permissions
 
@@ -67,6 +72,19 @@ location, or hold no location restrictions at all. See
 [database.md#location-scoped-authorization](database.md#location-scoped-authorization) and
 [ADR-0024](../decisions/0024-location-scoped-authorization.md). This is a business-authorization
 control, not a tenant-isolation one — it never permits crossing into another tenant's data.
+
+**Concrete permission codes for the Prompt 02-A/02-B surface** (transfers, exceptional-discount
+approval, attribute/category configuration, Excel import, location assignment) are enumerated in
+[database.md's RBAC section](database.md#new-permission-codes-for-prompt-02-a02-b-capabilities-prompt-02-d) —
+closed in Prompt 02-D so no critical operation ships without a defined authorization checkpoint.
+
+**Field-level authorization (Prompt 02-D)** — route-level permission checks are not always enough:
+`cost` and `min_price` need to be withheld from an authenticated caller who lacks the specific
+permission for them, even though that caller is otherwise authorized to view the product. See
+[ADR-0028](../decisions/0028-field-level-price-authorization.md) for the two-layer mechanism (a
+permission-aware repository query projection, plus an allow-list response DTO) — deliberately not "the
+frontend just doesn't show it," per this document's existing rule that authorization is enforced
+server-side.
 
 ## Tenant isolation
 
@@ -134,6 +152,16 @@ files are stored in object storage (S3-compatible — see `.env.example`'s `S3_*
 Prompt 00), never on the API container's local filesystem, and served from a separate
 domain/subdomain or via signed URLs where appropriate, so a malicious uploaded file cannot execute
 in the context of the main application origin.
+
+**Excel import (Prompt 02-B)** extends this same rule to a new file type, with two additions specific
+to spreadsheet files: the extension allow-list accepts `.xlsx` only — never legacy `.xls`, and
+critically never macro-enabled `.xlsm`, closing off macro execution as an attack vector structurally
+rather than by scanning for malicious macro content; and the parser reads cell **values** only, never
+evaluating formulas as live/executable. The generated downloadable error report
+([database.md#excel-import-pipeline](database.md#excel-import-pipeline)) sanitizes any user-supplied
+cell content it echoes back (neutralizing a leading `=`/`+`/`-`/`@`) before writing it into a new
+spreadsheet, closing the classic CSV/Excel formula-injection path where a malicious input value, once
+echoed into a file an administrator later opens, executes a formula in *their* spreadsheet application.
 
 ## Secrets management
 

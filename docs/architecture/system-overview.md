@@ -17,7 +17,8 @@ shape of the system; each other document goes deeper into one concern.
 | [modules.md](modules.md) | Bounded contexts, module boundaries, dependencies |
 | [backend.md](backend.md) | NestJS modular-monolith internal architecture |
 | [frontend.md](frontend.md) | Next.js application architecture |
-| [database.md](database.md) | PostgreSQL conventions (conceptual, pre-schema) |
+| [mobile.md](mobile.md) | Flutter mobile application architecture |
+| [database.md](database.md) | PostgreSQL logical data model, multi-tenant isolation strategy |
 | [api.md](api.md) | REST API contract conventions |
 | [events.md](events.md) | Outbox pattern, event catalog, n8n integration |
 | [security.md](security.md) | Security architecture |

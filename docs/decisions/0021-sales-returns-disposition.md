@@ -10,7 +10,7 @@ Prompt 02 designed `orders`/`order_items` as a forward-only sale flow with no re
 requires modeling returns linked to the original sale (so "quantity sold" vs. "quantity returned" is
 always answerable precisely) and, critically, requires that returned stock is **not** automatically
 sellable again — it must go through an inspection step that decides restock / quarantine / damaged /
-scrap, and only `RESTOCK` should make the stock available for sale.
+scrap, and only `restock` should make the stock available for sale.
 
 ## Decision
 
@@ -21,8 +21,8 @@ introduced: a disposition decision writes a `RETURN`-type movement (already in t
 at a `disposition_location_id`. Whether that stock becomes sellable again is controlled entirely by
 whether that destination location is flagged `is_sellable` — a new boolean added to `locations`
 ([database.md#inventory-warehouses-locations-balance-ledger](../architecture/database.md#inventory-warehouses-locations-balance-ledger)).
-`RESTOCK` points at a normal, sellable location; `QUARANTINE`/`DAMAGED`/`SCRAP` point at a
-non-sellable one. Full schema:
+`restock` points at a normal, sellable location; `quarantine`/`damaged`/`scrap` point at a
+non-sellable one (lowercase, per the enum-value naming convention closed in Prompt 02-D). Full schema:
 [database.md#sales-returns-and-disposition](../architecture/database.md#sales-returns-and-disposition).
 
 ## Alternatives considered

@@ -1,17 +1,26 @@
 # Database Architecture
 
-**Status: design complete (Prompt 02, extended by Prompt 02-A).** This document is the logical data
-model and multi-tenant isolation strategy PostgreSQL will implement in Prompt 03 (migrations,
-constraints, indexes, RLS policies). It supersedes the conceptual placeholder written in Prompt 01.
-Prompt 02-A audited and extended the Prompt 02 design to cover multi-location transfers, in-transit
-stock, sales returns/disposition, the shopping cart, invoice/sales-note document selection, external
-invoicing, three-tier pricing with negotiated-discount approval, and QR-displayed reference pricing —
-see the entries added to [§Discrepancies](#discrepancies-found-and-how-they-were-resolved) below for
-what specifically changed from the Prompt 02 version. Nothing described here is implemented yet — no
-migration exists, `apps/`/`packages/` are unchanged. Related: architecture
-[system-overview.md](system-overview.md), [multi-tenancy.md](multi-tenancy.md),
-[security.md](security.md), [modules.md](modules.md), [events.md](events.md),
-[../security/threat-model.md](../security/threat-model.md),
+**Status: design complete (Prompt 02, extended by Prompt 02-A/02-B, corrected by Prompt 02-D
+post-audit).** This document is the logical data model and multi-tenant isolation strategy PostgreSQL
+will implement in Prompt 03 (migrations, constraints, indexes, RLS policies). It supersedes the
+conceptual placeholder written in Prompt 01. Prompt 02-A audited and extended the Prompt 02 design to
+cover multi-location transfers, in-transit stock, sales returns/disposition, the shopping cart,
+invoice/sales-note document selection, external invoicing, three-tier pricing with negotiated-discount
+approval, and QR-displayed reference pricing. Prompt 02-B closes the dynamic, per-tenant/per-category
+product attribute system (governing the `attributes` JSONB columns Prompt 02 introduced but left
+ungoverned) and the staged Excel import/inventory-onboarding pipeline. Prompt 02-C audited the whole
+design for cross-phase consistency (no CRITICAL findings; 3 HIGH, 5 MEDIUM, 3 LOW). Prompt 02-D closes
+the required fixes: a single lowercase enum/status-value convention across every table (previously
+split by phase-of-authorship — see [§Conventions](#conventions)), the concrete permission catalog for
+every Prompt 02-A/02-B capability (see [§RBAC](#rbac-roles-permissions)), field-level authorization for
+`cost`/`min_price` ([ADR-0028](../decisions/0028-field-level-price-authorization.md)), the corrected
+`INITIAL_STOCK`-vs-`ADJUSTMENT_IN` mapping, and the Import Worker's separation from the Event Processor
+([ADR-0029](../decisions/0029-import-worker-separation.md)) — see the entries added to
+[§Discrepancies](#discrepancies-found-and-how-they-were-resolved) below for what specifically changed
+at each phase. Nothing described here is implemented yet — no migration exists, `apps/`/`packages/`
+are unchanged. Related: architecture [system-overview.md](system-overview.md),
+[multi-tenancy.md](multi-tenancy.md), [security.md](security.md), [modules.md](modules.md),
+[events.md](events.md), [mobile.md](mobile.md), [../security/threat-model.md](../security/threat-model.md),
 and ADRs [0002](../decisions/0002-postgresql.md), [0003](../decisions/0003-single-database-multi-tenant.md),
 [0004](../decisions/0004-tenant-isolation-strategy.md), [0008](../decisions/0008-drizzle-orm.md),
 [0009](../decisions/0009-rbac-permissions.md), [0010](../decisions/0010-outbox-pattern.md),
@@ -24,7 +33,12 @@ and ADRs [0002](../decisions/0002-postgresql.md), [0003](../decisions/0003-singl
 [0021](../decisions/0021-sales-returns-disposition.md),
 [0022](../decisions/0022-pricing-tiers-and-discount-approval.md),
 [0023](../decisions/0023-document-type-and-external-invoicing.md),
-[0024](../decisions/0024-location-scoped-authorization.md).
+[0024](../decisions/0024-location-scoped-authorization.md),
+[0025](../decisions/0025-flutter-for-mobile.md),
+[0026](../decisions/0026-dynamic-attribute-system.md),
+[0027](../decisions/0027-staged-excel-import-pipeline.md),
+[0028](../decisions/0028-field-level-price-authorization.md),
+[0029](../decisions/0029-import-worker-separation.md).
 
 ## Contents
 
@@ -38,27 +52,29 @@ and ADRs [0002](../decisions/0002-postgresql.md), [0003](../decisions/0003-singl
 8. [Core: tenants, users, platform admins](#core-tenants-users-platform-admins)
 9. [RBAC: roles, permissions](#rbac-roles-permissions)
 10. [Catalog: products, variants, attributes](#catalog-products-variants-attributes)
-11. [QR codes](#qr-codes)
-12. [Inventory: warehouses, locations, balance, ledger](#inventory-warehouses-locations-balance-ledger)
-13. [Location-scoped authorization](#location-scoped-authorization)
-14. [Inventory transfers and in-transit stock](#inventory-transfers-and-in-transit-stock)
-15. [Concurrency strategy](#concurrency-strategy)
-16. [Customers and suppliers](#customers-and-suppliers)
-17. [Cart](#cart)
-18. [Orders (conceptual — SALES not built yet)](#orders-conceptual--sales-not-built-yet)
-19. [Pricing: history, tenant policy, and exceptional-discount approval](#pricing-history-tenant-policy-and-exceptional-discount-approval)
-20. [Sales returns and disposition](#sales-returns-and-disposition)
-21. [Audit log vs. domain events vs. application logs](#audit-log-vs-domain-events-vs-application-logs)
-22. [Outbox](#outbox)
-23. [Idempotency](#idempotency)
-24. [Soft delete policy](#soft-delete-policy)
-25. [Timestamps](#timestamps)
-26. [Indexes](#indexes)
-27. [Constraints](#constraints)
-28. [Migration strategy](#migration-strategy)
-29. [Seed and demo tenant](#seed-and-demo-tenant)
-30. [ER diagrams](#er-diagrams)
-31. [Open decisions carried forward](#open-decisions-carried-forward)
+11. [Dynamic attributes: governance for the catalog JSONB](#dynamic-attributes-governance-for-the-catalog-jsonb)
+12. [QR codes](#qr-codes)
+13. [Inventory: warehouses, locations, balance, ledger](#inventory-warehouses-locations-balance-ledger)
+14. [Location-scoped authorization](#location-scoped-authorization)
+15. [Inventory transfers and in-transit stock](#inventory-transfers-and-in-transit-stock)
+16. [Concurrency strategy](#concurrency-strategy)
+17. [Excel import pipeline](#excel-import-pipeline)
+18. [Customers and suppliers](#customers-and-suppliers)
+19. [Cart](#cart)
+20. [Orders (conceptual — SALES not built yet)](#orders-conceptual--sales-not-built-yet)
+21. [Pricing: history, tenant policy, and exceptional-discount approval](#pricing-history-tenant-policy-and-exceptional-discount-approval)
+22. [Sales returns and disposition](#sales-returns-and-disposition)
+23. [Audit log vs. domain events vs. application logs](#audit-log-vs-domain-events-vs-application-logs)
+24. [Outbox](#outbox)
+25. [Idempotency](#idempotency)
+26. [Soft delete policy](#soft-delete-policy)
+27. [Timestamps](#timestamps)
+28. [Indexes](#indexes)
+29. [Constraints](#constraints)
+30. [Migration strategy](#migration-strategy)
+31. [Seed and demo tenant](#seed-and-demo-tenant)
+32. [ER diagrams](#er-diagrams)
+33. [Open decisions carried forward](#open-decisions-carried-forward)
 
 ---
 
@@ -74,8 +90,19 @@ Per the mandatory process, these are not overwritten silently — each is resolv
 | 4 | The Prompt 01 version of this document (superseded by this rewrite; see git history at commit `8f93f6c`) left UUIDv4-vs-v7, the product/variant model, and RLS timing as `PENDING DECISION`. | All three are closed by this document; see [§Identifiers](#identifiers-uuidv7), [§Catalog](#catalog-products-variants-attributes), [§Row-Level Security](#row-level-security), and their ADRs. |
 | 5 (Prompt 02-A) | Prompt 02's `product_variants` had a single `price` column. Prompt 02-A's requirement for a negotiable price (maximum/reference, base, minimum, with exceptional-discount approval below the floor) cannot be expressed with one column. | `price` is replaced by three columns — `max_price`, `base_price`, `min_price` — with `CHECK (min_price <= base_price AND base_price <= max_price)`. This is not a silent overwrite: it is recorded here, in [ADR-0022](../decisions/0022-pricing-tiers-and-discount-approval.md), and reflected everywhere `price` was previously referenced (this document, [ADR-0017](../decisions/0017-product-variant-attribute-model.md)'s scope is unaffected — the hybrid relational+JSONB *model* decision doesn't change, only this one column). No migration exists yet, so this is a design revision, not a schema migration. |
 | 6 (Prompt 02-A) | Prompt 02's `modules.md` SALES description ("a customer builds a cart, which becomes an order") implied a cart but never modeled it, and had no PURCHASING-adjacent concept for inbound transfers, returns, or price negotiation at all — none of that was in scope for Prompt 02. | All are genuinely new functional scope this prompt introduces, backed by an explicit prompt requirement, not invented ahead of one: [§Inventory transfers](#inventory-transfers-and-in-transit-stock), [§Cart](#cart), [§Sales returns](#sales-returns-and-disposition), and [§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval). Each has an ADR. `modules.md` is updated to reflect the additions under their existing owning modules (INVENTORY, SALES) — no new bounded context is introduced. |
+| 7 (Prompt 02-B) | An audit for this prompt found that Prompt 02's `products.attributes`/`product_variants.attributes` JSONB columns had **no governance mechanism** — [ADR-0017](../decisions/0017-product-variant-attribute-model.md) correctly decided JSONB *over* EAV for the flexible bag, but never specified how a JSONB key is validated against a known attribute, a data type, a required/optional rule, or a closed value set. Nothing was silently wrong (ADR-0017's model decision holds), but "JSONB accepts whatever the caller sends" is not a complete design for a catalog spanning unrelated industries with real validation needs. | Closed by [§Dynamic attributes](#dynamic-attributes-governance-for-the-catalog-jsonb) and [ADR-0026](../decisions/0026-dynamic-attribute-system.md): `attribute_definitions` + `attribute_options` + `category_attributes` become the metadata that validates the JSONB at write time. This **extends** ADR-0017, it does not reopen or reverse it — JSONB remains the storage mechanism, no EAV row-per-value table is introduced. |
+| 8 (Prompt 02-B) | This prompt requires that a bulk inventory import be traceable as distinct from an ordinary stock receipt (`RECEIPT`) — the existing `inventory_movements.movement_type` catalog (`RECEIPT, SALE, RETURN, ADJUSTMENT_IN, ADJUSTMENT_OUT, TRANSFER_OUT, TRANSFER_IN, RESERVATION, RESERVATION_RELEASE, COMMITMENT, COMMITMENT_RELEASE`, fixed in Prompt 02) has no value for this. | One new value, `INITIAL_STOCK`, is added to the `CHECK` list — see [§Inventory](#inventory-warehouses-locations-balance-ledger) and [ADR-0027](../decisions/0027-staged-excel-import-pipeline.md). This is an additive change to a `CHECK (col IN (...))` list, which [§Conventions](#conventions) already established as the easy, normal-migration path for exactly this kind of extension — not a redesign of the ledger. |
+| 9 (Prompt 02-D) | The 02-C audit (H1) found that every status/enum column introduced in Prompt 02-A/02-B used `MAYÚSCULA` while every column from Prompt 02 itself (and the platform-catalog `permissions`/`measurement_units` tables) used lowercase — an unintentional drift by phase-of-authorship, not a deliberate second convention, visible even within one table (`orders.status` lowercase vs. `orders.document_type`/`invoice_status` uppercase). | Every 02-A/02-B enum value converted to lowercase — see [§Conventions](#conventions). `inventory_movements.movement_type` (uppercase since Prompt 02 itself, unrelated to the 02-A/02-B drift) is a deliberate, documented, out-of-scope exception, not touched — rewriting a Prompt 02 foundational column for a cosmetic reason is not what this correction pass is for. |
+| 10 (Prompt 02-D) | The 02-C audit (H2) found that no concrete `permissions.code` rows were ever enumerated for any Prompt 02-A/02-B capability (price approval, transfers, attribute management, import, location assignment) — the RBAC mechanism was sound but its content was incomplete. | Closed by [§RBAC's new permission codes subsection](#new-permission-codes-for-prompt-02-a02-b-capabilities-prompt-02-d) — 14 new codes, grouped per capability, not fragmented. |
+| 11 (Prompt 02-D) | The 02-C audit (H3) found that `cost`/`min_price` visibility for the *authenticated* path (Web and Mobile) was never designed — only the unauthenticated QR resolver's column-level `GRANT` protected them. | Closed by [ADR-0028](../decisions/0028-field-level-price-authorization.md): a two-layer query-projection + allow-list-DTO mechanism, gated by two new permissions (`pricing.floor.view`, `pricing.cost.view`). |
+| 12 (Prompt 02-D) | The 02-C audit (M1) found `import_jobs.duplicate_handling_mode = 'update_catalog_and_inventory'` used `INITIAL_STOCK` for an **existing** SKU's inventory adjustment, contradicting `INITIAL_STOCK`'s own stated definition ("stock digitized before onboarding"). | Analyzed, not merged (per this prompt's explicit instruction) — see [§Excel import pipeline](#excel-import-pipeline): `create`-action rows keep `INITIAL_STOCK`; `update`-action rows under `update_catalog_and_inventory` now use `ADJUSTMENT_IN` (an existing, unmodified movement type). |
+| 13 (Prompt 02-D) | The 02-C audit (M4) found the import pipeline's background-job execution model didn't state whether it shared a process with the Event Processor or ran separately. | Resolved: separate Import Worker process, same claiming mechanism, no new queue technology — see [ADR-0029](../decisions/0029-import-worker-separation.md). |
 
-No other contradiction between this design and the accepted architecture was found.
+No other contradiction between this design and the accepted architecture was found. Two items from the
+02-C audit were evaluated and **explicitly not changed**, with reasoning recorded in place rather than
+here: M2 (`inventory_transfers.status` — no `rejected` state added; see the Prompt 02-D note in
+[§Inventory transfers](#inventory-transfers-and-in-transit-stock)) and M3/M5 (both confirmed still
+correctly POST-MVP; see [§Open decisions](#open-decisions-carried-forward)).
 
 ---
 
@@ -132,6 +159,13 @@ These apply to every table unless a section below states an explicit exception.
 | `product_images` | Tenant | CATALOG | yes | yes |
 | `product_serials` | Tenant | CATALOG | yes | yes |
 | `product_lots` | Tenant | CATALOG | yes | yes |
+| `attribute_definitions` | Tenant | CATALOG (see [ADR-0026](../decisions/0026-dynamic-attribute-system.md)) | yes | yes |
+| `attribute_options` | Tenant | CATALOG | yes | yes |
+| `category_attributes` | Tenant | CATALOG | yes | yes |
+| `measurement_units` | Platform (catalog) | CATALOG | no | no |
+| `import_mapping_templates` | Tenant | IMPORT (see [ADR-0027](../decisions/0027-staged-excel-import-pipeline.md) and [modules.md#import-prompt-02-b](modules.md#import-prompt-02-b)) | yes | yes |
+| `import_jobs` | Tenant | IMPORT | yes | yes |
+| `import_job_rows` | Tenant | IMPORT | yes | yes |
 | `qr_codes` | Tenant (row-owned), globally unique `code` | QR | yes | yes, plus a narrow public-read policy (see [§QR codes](#qr-codes)) |
 | `warehouses` | Tenant | INVENTORY | yes | yes |
 | `locations` | Tenant | INVENTORY | yes | yes |
@@ -169,7 +203,11 @@ comparing to a tenant context. These three tables have no tenant dimension to fi
 by **role and grant**, not by policy: only `app_platform` (and `app_migrator` for schema) can touch
 `tenants`/`platform_admins` at all; `permissions` is readable by every role (it's a public catalog
 used to render the RBAC checklist UI) but writable only by `app_migrator` (it changes via migration,
-not application code — see [§RBAC](#rbac-roles-permissions)).
+not application code — see [§RBAC](#rbac-roles-permissions)). **Prompt 02-B adds `measurement_units`
+to this same group** — a small, fixed, platform-owned catalog (`kg`, `cm`, `cc`, ...), readable by
+every role, writable only by `app_migrator`, for the identical reason `permissions` is: letting tenants
+invent arbitrary unit strings would break the numeric-search value `attribute_definitions.unit_id`
+exists to preserve — see [§Dynamic attributes](#dynamic-attributes-governance-for-the-catalog-jsonb).
 
 ---
 
@@ -258,7 +296,13 @@ other FK introduced in [§Location-scoped authorization](#location-scoped-author
 [§Inventory transfers](#inventory-transfers-and-in-transit-stock), [§Cart](#cart),
 [§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval), and
 [§Sales returns](#sales-returns-and-disposition) — this was verified per-table while writing those
-sections, not assumed.
+sections, not assumed. **Prompt 02-B** adds the same verification for
+`attribute_options.attribute_definition_id`, `category_attributes.category_id`/
+`.attribute_definition_id`, `import_jobs.default_location_id`/`.mapping_template_id`,
+`import_job_rows.import_job_id`/`.matched_product_variant_id` — every one composite. The one plain FK
+Prompt 02-B introduces, `attribute_definitions.unit_id → measurement_units.id`, is the same
+documented platform-catalog exception as `role_permissions.permission_code`, since
+`measurement_units` has no `tenant_id` to compose against.
 
 **Exceptions (documented, not accidental):**
 
@@ -592,6 +636,51 @@ Both join tables are **hard-deleted** on unassignment (removing a role from a us
 from a role, is not something that needs a tombstone row — the *fact* that it changed is what
 `audit_log` records, per [§Soft delete policy](#soft-delete-policy)).
 
+### New permission codes for Prompt 02-A/02-B capabilities (Prompt 02-D)
+
+The RBAC *mechanism* above (fixed platform catalog, tenant-toggleable role assignment, no tenant-
+invented codes) was fully designed in Prompt 02 and unchanged since. What Prompt 02-A/02-B never did
+was enumerate the concrete `permissions.code` rows their new capabilities need — closing that gap,
+per the 02-C audit's H2 finding, using the existing `module.action` (or, where a capability has a
+distinct sub-resource, `module.resource.action`) naming pattern already established by
+`products.view`/`inventory.adjust`. These are **catalog content** (migration-inserted rows, exactly
+like the existing two examples), not a mechanism change — no ADR is needed for this table, the same
+way none was needed when `products.view` was originally named.
+
+**Grouped deliberately, not fragmented per capability**, per this prompt's explicit instruction: the
+full attribute-governance surface (definitions, options, category assignment) is one permission, since
+in practice one role (Administrator) configures all three together; the multi-step Excel import
+workflow (upload/map/validate/preview/commit) is one permission, since one authorized user drives the
+whole pipeline end to end.
+
+| Code | Capacidad | Alcance | Riesgo | Observación |
+| --- | --- | --- | --- | --- |
+| `catalog.attributes.manage` | Crear/editar/desactivar `attribute_definitions`, `attribute_options`, `category_attributes` | Configuración | Medio | Agrupa las tres tablas de gobernanza de atributos — ver [§Dynamic attributes](#dynamic-attributes-governance-for-the-catalog-jsonb) |
+| `catalog.qr.manage` | Generar/revocar `qr_codes` de producto o ubicación | Configuración | Bajo | — |
+| `pricing.policy.manage` | Configurar `tenant_price_policies` (umbral de aprobación, piso de descuento) | Configuración / Sensible | Alto | Gobierna el rango de negociación de **todo** el tenant, no una venta — ver [§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval) |
+| `pricing.floor.view` | Ver `product_variants.min_price` | Sensible | Medio | Necesario para negociar (el vendedor debe conocer su piso) — separado de `pricing.cost.view` porque un vendedor típicamente sí necesita esto |
+| `pricing.cost.view` | Ver `product_variants.cost` | Sensible | Alto | Dato de margen — típicamente restringido a Administrador/Supervisor, no al Vendedor base. Ver [ADR-0028](../decisions/0028-field-level-price-authorization.md) |
+| `pricing.discount.request` | Solicitar una excepción de descuento por debajo de `min_price` | Operativo | Medio | Crea una fila `price_approvals` — rol Vendedor típico |
+| `pricing.discount.approve` | Aprobar/rechazar una solicitud de excepción de descuento | Sensible | Alto | Por convención de negocio nunca el mismo usuario que solicitó (no forzado por el schema) |
+| `inventory.transfers.request` | Crear una transferencia (`draft`) | Operativo | Bajo | — |
+| `inventory.transfers.approve` | Aprobar una transferencia (autoriza la reserva de stock) | Sensible | Alto | — |
+| `inventory.transfers.dispatch` | Despachar una transferencia (decrementa físico en origen) | Operativo / Sensible | Alto | Combinado con autorización por ubicación ([ADR-0024](../decisions/0024-location-scoped-authorization.md)) sobre `source_location_id` |
+| `inventory.transfers.receive` | Registrar recepción total o parcial de una transferencia | Operativo / Sensible | Alto | Combinado con autorización por ubicación sobre `destination_location_id` |
+| `inventory.returns.manage` | Recibir una devolución e inspeccionar/disponer (`restock`/`quarantine`/`damaged`/`scrap`) | Operativo / Sensible | Alto | Afecta disponibilidad de stock — ver [§Sales returns](#sales-returns-and-disposition) |
+| `import.execute` | Ejecutar el pipeline de importación completo (upload → mapping → validate → preview → commit) mientras `duplicate_handling_mode` sea `update_catalog_only`, `skip_existing`, o `reject_on_duplicate` | Operativo | Medio | Nunca escribe inventario por sí solo — agrupa upload/mapeo/validación/preview/confirmación como un único flujo, no cinco permisos |
+| `import.inventory` | Adicional a `import.execute` — requerido cuando `duplicate_handling_mode = 'update_catalog_and_inventory'` | Sensible | Alto | Separa explícitamente "actualizar catálogo" de "tocar inventario" — ver [§Excel import pipeline](#excel-import-pipeline) y M1 arriba |
+| `core.users.locations.manage` | Asignar/quitar restricciones de ubicación a un usuario (`user_location_assignments`) | Configuración | Alto | Administrador únicamente, por convención de negocio |
+
+**No mobile-specific permission codes exist, or are needed.** Per
+[mobile.md#backend-as-the-sole-authority](mobile.md#backend-as-the-sole-authority), Flutter calls the
+identical permission-gated `/api/v1` endpoints web does — the same code above governs both clients.
+Inventing a parallel "mobile" permission dimension would contradict the "no duplicated business rules
+between Web and Mobile" rule this document already commits to.
+
+**Read/history access** (e.g. "see this tenant's past import jobs") is not given its own new
+permission — it rides on whatever general catalog/reporting view permission already gates that kind of
+list, consistent with not fragmenting capabilities the existing model already covers.
+
 ---
 
 ## Catalog: products, variants, attributes
@@ -757,7 +846,220 @@ product_lots
 §7.7](../../CLAUDE.md#77-database), indexes are added for real query patterns, and "filter products by
 an arbitrary attribute" isn't a built endpoint yet. The column is designed to support that index
 cheaply the moment such a query pattern exists (Prompt 03+ adds it when the CATALOG module actually
-implements attribute filtering).
+implements attribute filtering). Which JSONB keys are even valid, and how they're validated, is
+answered next.
+
+---
+
+## Dynamic attributes: governance for the catalog JSONB
+
+**Prompt 02-B.** Full record: [ADR-0026](../decisions/0026-dynamic-attribute-system.md). This closes
+[discrepancy #7](#discrepancies-found-and-how-they-were-resolved): `products.attributes`/
+`product_variants.attributes` are not a free-form bag — every key that can legally appear in them is
+governed by a tenant-owned, per-category-assignable metadata layer. **JSONB remains the storage.** No
+`attribute_values` row-per-value table is introduced — that would be EAV, which
+[ADR-0017](../decisions/0017-product-variant-attribute-model.md) already rejected with reasoning that
+still holds; this section adds *metadata that validates* the JSONB, not a second storage mechanism
+alongside it.
+
+### Why the catalog is dynamic per tenant, not just per column
+
+A tenant selling furniture, one selling motorcycles, and one selling clothing have almost no attribute
+overlap (`material`/`alto`/`ancho` vs. `cilindraje`/`año`/`combustible` vs. `talla`/`color`). Prompt 02
+already committed to JSONB specifically so a new attribute for a new category is a *data* change, not a
+migration — this section is what makes that JSONB actually **structured** rather than merely flexible:
+every key is traceable to a definition with a real data type, an optional unit, and (for closed sets) a
+controlled list of values, and every category can require a different subset of a tenant's attributes.
+
+```
+attribute_definitions
+  id                    uuid PK
+  tenant_id             uuid NOT NULL FK -> tenants(id), UNIQUE (tenant_id, id)
+  code                  text NOT NULL          -- stable JSONB key, e.g. 'cilindraje', 'color'
+  name                  text NOT NULL          -- display label, e.g. 'Cilindraje'
+  description           text NULL
+  data_type             text NOT NULL CHECK IN ('text','number','decimal','boolean','date','datetime','select','multi_select')
+  applies_to            text NOT NULL CHECK IN ('product','variant')
+  unit_id               uuid NULL FK -> measurement_units(id)   -- plain FK, platform-catalog exception, see below
+  is_required_default   boolean NOT NULL DEFAULT false
+  min_value             numeric NULL           -- number/decimal only
+  max_value             numeric NULL           -- number/decimal only
+  status                text NOT NULL CHECK IN ('active','inactive'), DEFAULT 'active'
+  display_order         integer NOT NULL DEFAULT 0
+  created_at            timestamptz NOT NULL DEFAULT now()
+  updated_at            timestamptz NOT NULL DEFAULT now()
+  deleted_at            timestamptz NULL
+
+  UNIQUE (tenant_id, code)
+  CHECK (min_value IS NULL OR max_value IS NULL OR min_value <= max_value)
+  CHECK (data_type IN ('number','decimal') OR (min_value IS NULL AND max_value IS NULL))
+  CHECK (data_type IN ('number','decimal') OR unit_id IS NULL)
+```
+
+```
+attribute_options                      -- the controlled value catalog for select / multi_select
+  id                        uuid PK
+  tenant_id                 uuid NOT NULL FK -> tenants(id), UNIQUE (tenant_id, id)
+  attribute_definition_id   uuid NOT NULL FK -> attribute_definitions(tenant_id, id)
+  code                      text NOT NULL      -- stable value key, e.g. 'black'
+  label                     text NOT NULL      -- display: 'Negro'
+  display_order             integer NOT NULL DEFAULT 0
+  status                    text NOT NULL CHECK IN ('active','inactive'), DEFAULT 'active'
+  created_at                timestamptz NOT NULL DEFAULT now()
+  updated_at                timestamptz NOT NULL DEFAULT now()
+
+  UNIQUE (tenant_id, attribute_definition_id, code)
+```
+
+```
+category_attributes                   -- which attributes apply to which category, and whether required there
+  tenant_id                  uuid NOT NULL
+  category_id                 uuid NOT NULL
+  attribute_definition_id      uuid NOT NULL
+  is_required                   boolean NULL    -- override; NULL = inherit attribute_definitions.is_required_default
+  display_order                  integer NOT NULL DEFAULT 0
+  created_at                       timestamptz NOT NULL DEFAULT now()
+
+  PK (category_id, attribute_definition_id)
+  FK (tenant_id, category_id) -> categories(tenant_id, id)
+  FK (tenant_id, attribute_definition_id) -> attribute_definitions(tenant_id, id)
+```
+
+**Reuse without duplication, tenant-isolated (per this prompt's explicit requirement).** An attribute
+like "Color" is defined **once per tenant** in `attribute_definitions`, then attached to as many
+categories as that tenant needs via `category_attributes` — Furniture, Motorcycles, and Clothing can
+all reuse the same `color` definition (and its `attribute_options` catalog: Black/White/Red/Blue) rather
+than each category getting its own copy. There is no platform-global attribute catalog shared *across*
+tenants — every `attribute_definitions` row is tenant-owned, isolated exactly like every other
+tenant-scoped table in this document (RLS, composite FKs, no exception). "Reusable across categories"
+and "isolated across tenants" are two different axes, both satisfied: reuse happens *within* a tenant,
+across that tenant's own categories.
+
+**No category-tree inheritance — a deliberate, documented decision, not an oversight.** `categories`
+already self-references (`parent_category_id`, per [§Catalog](#catalog-products-variants-attributes)),
+which raises the question of whether a parent category's attributes should automatically apply to its
+children (e.g. "Vehículos" → "Motocicletas"). **This design does not implement that.** Each category's
+effective attribute set is exactly what's directly assigned to it in `category_attributes` — nothing
+implicit from an ancestor. Reasoning: the reuse goal from the paragraph above is already satisfied by
+attaching the *same* `attribute_definition` to both the parent and child category directly (two rows in
+`category_attributes`, one `attribute_definitions` row) — tree inheritance would only additionally save
+that one extra join-table row, at the cost of a materially more complex "what does this category
+actually require" query (walking the ancestor chain, resolving `is_required` overrides that might
+disagree at different tree levels) for every product-edit form and every Excel-import validation pass.
+Per this prompt's explicit permission not to build inheritance if it adds unneeded complexity, it isn't
+built — flagged in [§Open decisions](#open-decisions-carried-forward) as revisitable if a concrete need
+appears.
+
+**"Required" is a category-relationship property, not an attribute-intrinsic one.** The same `color`
+attribute can be required for Clothing and merely optional for Furniture — `attribute_definitions`
+carries only a *default* (`is_required_default`, used when an attribute is attached to a category
+without an explicit override, and shown as the starting value in the tenant's configuration UI);
+`category_attributes.is_required` overrides it per category when set. `applies_to` (`product` vs.
+`variant`), by contrast, is **not** overridable per category — whether "Color" differentiates a SKU
+(variant-level) or is merely descriptive (product-level) is treated as intrinsic to how a tenant defines
+that attribute, kept single-valued so the same JSONB key always means the same structural thing across
+every category that uses it (a query, an import mapping, or a report reading `color` never has to
+special-case which category it came from to know where to look for it).
+
+### Data types
+
+`text`, `number`, `decimal`, `boolean`, `date`, `datetime`, `select`, `multi_select` — the eight this
+prompt lists as the minimum. `currency`, `url`, `color`, and `measurement` were evaluated and **not**
+added as distinct types:
+
+- **`currency`** — a tenant-defined attribute is never itself a price (prices are the dedicated
+  `max_price`/`base_price`/`min_price` columns, [§Catalog](#catalog-products-variants-attributes) and
+  [§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval)); a genuinely dynamic
+  monetary attribute (rare) is representable as `decimal` with a currency-dimensioned unit if that ever
+  comes up, not a new top-level type.
+- **`url`** — representable as `text` with application-layer format validation; a distinct DB-level
+  type would add a case to every switch statement in the codebase for a validation rule, not a
+  structural difference in storage or querying.
+- **`color`** — this prompt's own example ("Color: Negro/Blanco/Rojo/Azul") is a **closed catalog**,
+  i.e. exactly what `select` already is. A free-form color picker (arbitrary hex values) is a `text`
+  attribute if a tenant ever wants one — no new type needed either way.
+- **`measurement`** — this is what `number`/`decimal` **plus `unit_id`** already is (see below), not a
+  separate type; adding one would just be `number` with extra ceremony.
+
+Each type's validation rule (checked by application code, see [§Validation](#validation-jsonb-what-the-database-checks-vs-what-the-backend-checks) below):
+`number`/`decimal` — numeric, within `min_value`/`max_value` when set; `boolean` — strictly `true`/
+`false`; `date`/`datetime` — parses as a valid date/timestamp; `select` — the value's code exists in
+that attribute's active `attribute_options`; `multi_select` — a JSON array where every element's code
+exists in that attribute's active `attribute_options`; `text` — any string (the least constrained type,
+deliberately, for the fields that don't need more).
+
+### Units — attached to the definition, never to the value
+
+Directly answering this prompt's question: **the unit belongs to the attribute definition, not to each
+individual value.** `attribute_definitions.unit_id` fixes, once, what unit *every* value of that
+attribute is in — a tenant's `cilindraje` attribute is always in `cc`, full stop. The JSONB value is
+therefore always the bare numeric magnitude (`"cilindraje": 250`), never a unit-suffixed string
+(`"250 cc"`) — exactly what this prompt asks to avoid, since a mixed-format text value can't be
+compared/searched numerically. If a value carried its own unit instead, two rows for the same attribute
+could legitimately disagree on unit (`300` vs. `0.3` for the same physical quantity in different units),
+which would silently break every numeric range query and every cross-row comparison — fixing the unit
+at the definition eliminates that failure mode structurally rather than requiring every reader to
+normalize units at query time.
+
+```
+measurement_units                     -- platform-scoped, migration-managed data — same shape as `permissions`
+  id           uuid PK
+  code         text NOT NULL, UNIQUE   -- 'kg', 'cm', 'm', 'cc', 'w', 'l', ...
+  label        text NOT NULL           -- 'Kilogramos'
+  dimension    text NOT NULL           -- 'weight', 'length', 'volume', 'displacement', 'power', ... — grouping only
+  created_at   timestamptz NOT NULL DEFAULT now()
+```
+
+Platform-scoped (like `measurement_units`' sibling `permissions`), not tenant-defined: letting a tenant
+invent an arbitrary unit string would reintroduce exactly the "is this the same unit?" ambiguity fixing
+the unit at the definition was meant to eliminate. `dimension` is a grouping label only (not enforced by
+a constraint) — its purpose is letting a future UI warn if someone tries to set a `length`-dimensioned
+unit on an attribute clearly measuring `weight`; it is not a hard compatibility rule in this design.
+
+### Validation (JSONB): what the database checks vs. what the backend checks
+
+Directly answering this prompt's explicit split requirement:
+
+| Check | Layer | Why |
+| --- | --- | --- |
+| `attributes` is a valid JSON object | **Database** | `NOT NULL DEFAULT '{}'::jsonb` on the column already guarantees this structurally — there's no way to store a non-object without the application explicitly trying to, which a `jsonb_typeof` `CHECK` closes as a backstop if ever needed. |
+| Every real, indexed catalog column (`price`, `quantity`, `status`, ...) | **Database** | Already covered by the typed columns' own `CHECK`/`NOT NULL` constraints — unchanged, unrelated to JSONB. |
+| A JSONB key corresponds to an active `attribute_definitions.code` for this tenant | **Backend** | Requires resolving `tenant_id` + `code` against `attribute_definitions` — a lookup a `CHECK` constraint cannot perform without a trigger, and (per the same judgment call already made for `product_images`' variant-product consistency and the price-approval floor check) this is a data-quality/business-rule guard, not a tenant-isolation-critical invariant that would justify one. |
+| The value's shape matches the attribute's `data_type` | **Backend** | Same reason — needs the definition looked up first. |
+| A required attribute (per `category_attributes`/`is_required_default`) is present | **Backend** | Requires resolving the product's category, then that category's required-attribute set — inherently multi-table, multi-step logic. |
+| A `select`/`multi_select` value's code exists in `attribute_options` and is `active` | **Backend** | Same reasoning; also needs to reject a code that exists but is `inactive` (a retired option shouldn't be assignable to *new* products, even though existing products keeping it is fine — an application-layer nuance a `CHECK` can't express). |
+| A `number`/`decimal` value is within `min_value`/`max_value` | **Backend** | Same reasoning. |
+
+**This validation logic is written once and shared** by both the interactive product-create/edit form
+*and* the Excel-import row validator ([§Excel import pipeline](#excel-import-pipeline)) — one
+validation service, two callers — so "a required attribute is missing" produces the identical error
+code/message whether it's caught editing one product in the UI or row 4,102 of a 10,000-row import.
+This is why the split favors backend logic even where a trigger *could* technically express some of it:
+a Postgres trigger's error can't be the same reusable, field-level, user-facing message the import
+preview ([§Excel import pipeline](#excel-import-pipeline)) needs to show per-row.
+
+### Search and indexing
+
+No JSONB attribute index — GIN or otherwise — is added in the initial migration, unchanged from
+[§Catalog](#catalog-products-variants-attributes)'s existing stance and per [CLAUDE.md
+§7.7](../../CLAUDE.md#77-database): none of "motocicletas de 250cc," "televisores de 55 pulgadas," etc.
+are built query endpoints yet. Two patterns are available, chosen per attribute **when a real query
+need exists**, not preemptively for every `attribute_definitions` row a tenant happens to create:
+
+- **`GIN (attributes jsonb_path_ops)`** — supports equality/containment (`attributes @> '{"color":
+  "black"}'`) across many attributes at once with one index; the right choice for "any of these
+  attributes might be filtered on" scenarios.
+- **A targeted B-tree expression index on one specific attribute** (e.g.
+  `((attributes->>'cilindraje')::numeric)`), added deliberately when *that* attribute specifically needs
+  efficient **range** queries (GIN/`jsonb_path_ops` doesn't do `<`/`>` well) — e.g. once "motorcycles
+  between 200–300cc" is a real, frequent filter for tenants in that vertical.
+
+**A known, stated limitation, not glossed over:** because `attribute_definitions.code` is tenant-chosen
+data, not a fixed schema column, a targeted expression index keyed on one literal code (e.g.
+`'cilindraje'`) only helps tenants whose attribute happens to use that exact code — a tenant who named
+the same concept `'displacement'` gets no benefit from it. Mitigating this generally (e.g. a curated,
+suggested attribute-code library per vertical, or per-tenant targeted indexes provisioned
+individually) is not designed here — flagged in [§Open decisions](#open-decisions-carried-forward).
 
 ---
 
@@ -941,10 +1243,11 @@ inventory_movements                      -- SOURCE OF TRUTH — append-only, nev
                           'ADJUSTMENT_IN','ADJUSTMENT_OUT',
                           'TRANSFER_OUT','TRANSFER_IN',
                           'RESERVATION','RESERVATION_RELEASE',
-                          'COMMITMENT','COMMITMENT_RELEASE')
+                          'COMMITMENT','COMMITMENT_RELEASE',
+                          'INITIAL_STOCK')
   quantity              numeric NOT NULL CHECK (quantity <> 0)   -- signed, relative to the bucket it affects
   balance_after         numeric NOT NULL       -- quantity_physical snapshot immediately after this movement
-  reference_type        text NULL              -- 'order', 'transfer', 'manual_adjustment', ...
+  reference_type        text NULL              -- 'order', 'transfer', 'sales_return_item', 'import_job', 'manual_adjustment', ...
   reference_id          uuid NULL              -- polymorphic soft reference, see §Tenant-aware referential integrity
   reason                text NULL
   actor_type            text NOT NULL CHECK IN ('user','system','platform_admin')
@@ -956,6 +1259,14 @@ inventory_movements                      -- SOURCE OF TRUTH — append-only, nev
 
   UNIQUE (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL
 ```
+
+**`INITIAL_STOCK` (Prompt 02-B):** distinct from `RECEIPT` on purpose — `RECEIPT` represents an actual
+operational event (a supplier delivery, a transfer's receiving leg); `INITIAL_STOCK` represents
+digitizing stock a tenant already had on hand before onboarding onto this platform, written by the
+Excel import pipeline ([§Excel import pipeline](#excel-import-pipeline)). Keeping them distinct lets a
+future report answer "how much has this tenant actually received operationally since go-live" without
+the one-time data migration inflating that number. No other new movement type was needed for this
+prompt's scope.
 
 `occurred_at` vs. `created_at`: the one deliberate case in this schema where "when it happened" and
 "when we recorded it" genuinely differ — a warehouse worker correcting yesterday's count enters an
@@ -1032,8 +1343,8 @@ inventory_transfers
   source_location_id        uuid NOT NULL FK -> locations(tenant_id, id)
   destination_location_id   uuid NOT NULL FK -> locations(tenant_id, id)
   status                    text NOT NULL CHECK IN (
-                              'DRAFT','APPROVED','PREPARING','DISPATCHED',
-                              'PARTIALLY_RECEIVED','RECEIVED','CANCELLED'), DEFAULT 'DRAFT'
+                              'draft','approved','preparing','dispatched',
+                              'partially_received','received','cancelled'), DEFAULT 'draft'
   requested_by              uuid NOT NULL FK -> users(tenant_id, id)
   approved_by               uuid NULL FK -> users(tenant_id, id)
   dispatched_by             uuid NULL FK -> users(tenant_id, id)
@@ -1042,7 +1353,7 @@ inventory_transfers
   updated_at                timestamptz NOT NULL DEFAULT now()
   approved_at               timestamptz NULL
   dispatched_at             timestamptz NULL
-  received_at               timestamptz NULL     -- set once status reaches RECEIVED (fully closed)
+  received_at               timestamptz NULL     -- set once status reaches 'received' (fully closed)
   cancelled_at              timestamptz NULL
 
   CHECK (source_location_id <> destination_location_id)
@@ -1055,7 +1366,7 @@ inventory_transfer_items
   transfer_id           uuid NOT NULL FK -> inventory_transfers(tenant_id, id)
   product_variant_id    uuid NOT NULL FK -> product_variants(tenant_id, id)
   quantity_requested    numeric NOT NULL CHECK (quantity_requested > 0)
-  quantity_dispatched   numeric NOT NULL DEFAULT 0 CHECK (quantity_dispatched >= 0)   -- set once, at DISPATCHED
+  quantity_dispatched   numeric NOT NULL DEFAULT 0 CHECK (quantity_dispatched >= 0)   -- set once, at 'dispatched'
   quantity_received     numeric NOT NULL DEFAULT 0 CHECK (quantity_received >= 0)     -- materialized running total, see below
   created_at            timestamptz NOT NULL DEFAULT now()
   updated_at            timestamptz NOT NULL DEFAULT now()
@@ -1065,18 +1376,34 @@ inventory_transfer_items
   CHECK (quantity_received <= quantity_dispatched)
 ```
 
-**Status meanings, defined precisely:** `DRAFT` — being assembled, no inventory effect. `APPROVED` —
-authorized to proceed, still no inventory effect (a pure authorization gate). `PREPARING` — a
+**Status meanings, defined precisely:** `draft` — being assembled, no inventory effect. `approved` —
+authorized to proceed, still no inventory effect (a pure authorization gate). `preparing` — a
 warehouse worker has started picking; stock is **reserved** at the source (see the movement mapping
-below). `DISPATCHED` — physically left the source; per this prompt's explicit requirement, the goods
+below). `dispatched` — physically left the source; per this prompt's explicit requirement, the goods
 are **not yet available at the destination** — see "In-transit stock" below.
-`PARTIALLY_RECEIVED`/`RECEIVED` — one or more receiving events have been recorded (see
-`inventory_transfer_receipts` below); `RECEIVED` means fully closed (received ≥ dispatched for every
-item). `CANCELLED` — only valid from `DRAFT`/`APPROVED`/`PREPARING`; a transfer already `DISPATCHED`
+`partially_received`/`received` — one or more receiving events have been recorded (see
+`inventory_transfer_receipts` below); `received` means fully closed (received ≥ dispatched for every
+item). `cancelled` — only valid from `draft`/`approved`/`preparing`; a transfer already `dispatched`
 cannot be cancelled at the schema level (the goods are already in motion — reversing that is a new,
 opposite-direction transfer, not a cancellation of this one). Valid-transition enforcement is
 application/domain logic (a state-transition table), not a `CHECK` constraint — consistent with how
 `orders.status` transitions are handled elsewhere in this document.
+
+**Prompt 02-D — `rejected` evaluated, not added.** The 02-C audit flagged that `price_approvals` has a
+`rejected` status distinct from `cancelled` while `inventory_transfers` does not, and asked whether that
+asymmetry is a real gap. Analysis: `price_approvals` genuinely models an asynchronous request/decision
+workflow — a `pending` row sits waiting, with `requested_at` separate from `resolved_at`, for someone
+else to act on it. `inventory_transfers`, as documented above, does **not** have an equivalent
+"submitted, awaiting a decision" state — `draft` transitions straight to `approved`, describing a
+single authorization gate (which may or may not involve a different person from the requester; the
+schema supports but doesn't require that), not a tracked async approval queue. `rejected` needs
+something to be rejected *from*; without a distinct "awaiting approval" state, adding it would add a
+status with no corresponding transition into it — exactly what this prompt warns against ("no agregues
+el estado solo para completar un enum"). A transfer that shouldn't proceed simply stays in `draft` and
+is eventually `cancelled` (by the requester or an administrator) — already fully covered by the
+existing status list. **Decision: no change.** If a future requirement introduces a genuine async
+approval queue for transfers (mirroring `price_approvals`' shape), that is a new, deliberately-scoped
+design pass, not a one-line enum addition made now.
 
 **Movement mapping — no new `movement_type` values needed.** Every transfer state transition maps onto
 `inventory_movements` types already in the Prompt 02 catalog
@@ -1084,11 +1411,11 @@ application/domain logic (a state-transition table), not a `CHECK` constraint �
 
 | Transition | Movement(s) written | Effect |
 | --- | --- | --- |
-| → `PREPARING` | `RESERVATION` at source, qty = `quantity_requested` | Source `quantity_reserved` ↑, `quantity_available` ↓. Physical stock is held so it can't be sold out from under the transfer while it's being picked. |
-| → `DISPATCHED` | `RESERVATION_RELEASE` at source (undoes the above) **and** `TRANSFER_OUT` at source, both qty = `quantity_dispatched` | Source `quantity_reserved` ↓ back to 0 for this transfer's hold, `quantity_physical` ↓ by the dispatched amount. If `quantity_dispatched < quantity_requested` (couldn't send it all), the shortfall's reservation is simply released with no corresponding `TRANSFER_OUT`. |
+| → `preparing` | `RESERVATION` at source, qty = `quantity_requested` | Source `quantity_reserved` ↑, `quantity_available` ↓. Physical stock is held so it can't be sold out from under the transfer while it's being picked. |
+| → `dispatched` | `RESERVATION_RELEASE` at source (undoes the above) **and** `TRANSFER_OUT` at source, both qty = `quantity_dispatched` | Source `quantity_reserved` ↓ back to 0 for this transfer's hold, `quantity_physical` ↓ by the dispatched amount. If `quantity_dispatched < quantity_requested` (couldn't send it all), the shortfall's reservation is simply released with no corresponding `TRANSFER_OUT`. |
 | each receiving event | `TRANSFER_IN` at destination, qty = that event's received amount | Destination `quantity_physical` ↑, `quantity_available` ↑ — **only now**, never before. |
-| `CANCELLED` from `PREPARING` | `RESERVATION_RELEASE` at source | Releases the hold; nothing was ever dispatched, so nothing to reverse there. |
-| `CANCELLED` from `DRAFT`/`APPROVED` | none | No inventory effect existed yet. |
+| `cancelled` from `preparing` | `RESERVATION_RELEASE` at source | Releases the hold; nothing was ever dispatched, so nothing to reverse there. |
+| `cancelled` from `draft`/`approved` | none | No inventory effect existed yet. |
 
 Both `RESERVATION`/`RESERVATION_RELEASE`/`TRANSFER_OUT` movements use `reference_type = 'transfer'`,
 `reference_id = inventory_transfers.id`. Each `TRANSFER_IN` uses `reference_type = 'transfer_receipt'`,
@@ -1101,12 +1428,12 @@ available at source; dispatch 30; receive 30):
 
 ```
 Before dispatch:      source.available = 100   destination.available = 0
-After DISPATCHED:     source.available = 70    destination.available = 0    (30 "in transit")
+After dispatched:     source.available = 70    destination.available = 0    (30 "in transit")
 After receipt of 30:  source.available = 70    destination.available = 30   (0 "in transit")
 ```
 
 This falls out of the movement mapping above **without any new column on `inventory_balances`**:
-source's `quantity_available` already correctly drops at `DISPATCHED` (physical decremented, no
+source's `quantity_available` already correctly drops at `dispatched` (physical decremented, no
 receiving-side effect yet), and destination's `quantity_available` already correctly stays at 0 until
 a `TRANSFER_IN` is actually written at receipt. "In transit" is not a stored balance at all — it is
 **derived** from the open transfer itself:
@@ -1115,7 +1442,7 @@ a `TRANSFER_IN` is actually written at receipt. "In transit" is not a stored bal
 SELECT ti.product_variant_id, SUM(ti.quantity_dispatched - ti.quantity_received) AS quantity_in_transit
 FROM inventory_transfer_items ti
 JOIN inventory_transfers t ON t.tenant_id = ti.tenant_id AND t.id = ti.transfer_id
-WHERE t.tenant_id = :tenant_id AND t.status IN ('DISPATCHED', 'PARTIALLY_RECEIVED')
+WHERE t.tenant_id = :tenant_id AND t.status IN ('dispatched', 'partially_received')
 GROUP BY ti.product_variant_id;
 ```
 
@@ -1144,7 +1471,7 @@ inventory_transfer_receipt_items        -- append-only, one row per product per 
   receipt_id            uuid NOT NULL FK -> inventory_transfer_receipts(tenant_id, id)
   transfer_item_id      uuid NOT NULL FK -> inventory_transfer_items(tenant_id, id)
   quantity_received     numeric NOT NULL CHECK (quantity_received > 0)
-  incident_type         text NULL CHECK (incident_type IS NULL OR incident_type IN ('SHORTAGE','DAMAGE','EXCESS'))
+  incident_type         text NULL CHECK (incident_type IS NULL OR incident_type IN ('shortage','damage','excess'))
   incident_notes        text NULL
   created_at            timestamptz NOT NULL DEFAULT now()
 ```
@@ -1158,10 +1485,10 @@ row-locked via the identical `FOR UPDATE` convoy described in
 `incident_type`/`incident_notes` **on the receipt line itself** — the discrepancy is preserved
 permanently as part of that receiving event's own row, never resolved by editing
 `quantity_dispatched` or any other historical figure. After each receipt, application logic recomputes
-the transfer's `status` (`RECEIVED` once every item's `quantity_received` reaches its
-`quantity_dispatched`, `PARTIALLY_RECEIVED` otherwise) — domain logic, not a trigger.
+the transfer's `status` (`received` once every item's `quantity_received` reaches its
+`quantity_dispatched`, `partially_received` otherwise) — domain logic, not a trigger.
 
-**Idempotency:** the one-time `DISPATCHED` transition's `TRANSFER_OUT` movement uses a **deterministic**
+**Idempotency:** the one-time `dispatched` transition's `TRANSFER_OUT` movement uses a **deterministic**
 idempotency key (`'transfer-dispatch:' || transfer_id`, not a client-supplied one — a transfer has
 exactly one legitimate dispatch, so the key can be derived rather than requested) against
 `inventory_movements.idempotency_key`'s existing partial-unique index
@@ -1235,13 +1562,354 @@ see [§Idempotency](#idempotency).
   optimistic check for any future code path that touches a cart outside this lock convoy, mirroring
   `inventory_balances.version`.
 - **Price approval resolution** ([§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval)) —
-  `UPDATE price_approvals SET status = 'APPROVED', approved_by = $1, resolved_at = now() WHERE id = $2
-  AND status = 'PENDING'`. A double-click or retried approval affects 0 rows the second time
+  `UPDATE price_approvals SET status = 'approved', approved_by = $1, resolved_at = now() WHERE id = $2
+  AND status = 'pending'`. A double-click or retried approval affects 0 rows the second time
   (already resolved), surfaced as a domain conflict rather than double-applying — no row lock needed
-  beyond the `WHERE status = 'PENDING'` guard itself.
+  beyond the `WHERE status = 'pending'` guard itself.
 - **Transfer dispatch/receipt** — see the dedicated write-up in
   [§Inventory transfers](#inventory-transfers-and-in-transit-stock), which reuses this exact
   balance-locking convoy for the `TRANSFER_OUT`/`TRANSFER_IN` movements.
+
+---
+
+## Excel import pipeline
+
+**Prompt 02-B.** Full record: [ADR-0027](../decisions/0027-staged-excel-import-pipeline.md). Answers
+this prompt's requirement for a guided, in-app "Importar inventario" flow — never a raw
+Excel-to-production-tables path. Three tables implement a staged pipeline: upload → map → validate →
+preview → commit, with every intermediate state durable and queryable, never held only in server
+memory (which wouldn't survive a large import running across multiple requests/background-job ticks).
+
+```
+import_mapping_templates            -- saved, reusable column mappings ("Excel proveedor X")
+  id                uuid PK
+  tenant_id         uuid NOT NULL FK -> tenants(id), UNIQUE (tenant_id, id)
+  name              text NOT NULL
+  category_id       uuid NULL FK -> categories(tenant_id, id)   -- optional: template tied to one category's attribute set
+  column_mapping    jsonb NOT NULL      -- { "CODIGO": "sku", "DESCRIPCION": "name", "CC": "attr:cilindraje", ... }
+  created_by        uuid NOT NULL FK -> users(tenant_id, id)
+  created_at        timestamptz NOT NULL DEFAULT now()
+  updated_at        timestamptz NOT NULL DEFAULT now()
+
+  UNIQUE (tenant_id, name)
+```
+
+```
+import_jobs
+  id                          uuid PK
+  tenant_id                   uuid NOT NULL FK -> tenants(id), UNIQUE (tenant_id, id)
+  created_by                  uuid NOT NULL FK -> users(tenant_id, id)
+  default_location_id         uuid NULL FK -> locations(tenant_id, id)   -- used when the file has no per-row location column
+  mapping_template_id         uuid NULL FK -> import_mapping_templates(tenant_id, id)
+  column_mapping               jsonb NOT NULL     -- the mapping actually used — a frozen copy, even when sourced from a template
+  duplicate_handling_mode      text NOT NULL CHECK IN (
+                                'update_catalog_only','update_catalog_and_inventory',
+                                'skip_existing','reject_on_duplicate'), DEFAULT 'update_catalog_only'
+  storage_key                   text NOT NULL      -- object storage, see §Security below
+  original_filename              text NOT NULL
+  status                          text NOT NULL CHECK IN (
+                                  'uploaded','mapping','validating','ready',
+                                  'importing','completed','completed_with_errors','failed','cancelled'), DEFAULT 'uploaded'
+  total_rows                       integer NULL
+  valid_rows                        integer NULL
+  invalid_rows                       integer NULL
+  warning_rows                        integer NULL
+  imported_rows                        integer NULL
+  error_report_storage_key              text NULL   -- downloadable report, generated after validation
+  started_at                             timestamptz NULL
+  completed_at                            timestamptz NULL
+  created_at                               timestamptz NOT NULL DEFAULT now()
+  updated_at                                timestamptz NOT NULL DEFAULT now()
+```
+
+```
+import_job_rows                     -- staging — one row per Excel row; NEVER writes directly to catalog/inventory tables
+  id                            uuid PK
+  tenant_id                     uuid NOT NULL FK -> tenants(id), UNIQUE (tenant_id, id)
+  import_job_id                  uuid NOT NULL FK -> import_jobs(tenant_id, id)
+  row_number                      integer NOT NULL     -- original Excel row number, for user-facing error messages
+  raw_data                          jsonb NOT NULL        -- the row exactly as read, column-header-keyed
+  mapped_data                        jsonb NULL            -- after column mapping is applied, target-field-keyed
+  status                              text NOT NULL CHECK IN ('pending','valid','warning','invalid','imported','skipped'), DEFAULT 'pending'
+  match_action                        text NULL CHECK (match_action IS NULL OR match_action IN ('create','update','skip'))
+  matched_product_variant_id           uuid NULL FK -> product_variants(tenant_id, id)   -- set once this row is matched to an existing SKU
+  errors                                jsonb NOT NULL DEFAULT '[]'::jsonb    -- [{ field, code, message }]
+  warnings                               jsonb NOT NULL DEFAULT '[]'::jsonb
+  created_at                              timestamptz NOT NULL DEFAULT now()
+  updated_at                               timestamptz NOT NULL DEFAULT now()
+
+  UNIQUE (tenant_id, import_job_id, row_number)
+```
+
+**Why a per-row staging table, not one JSONB blob on `import_jobs`:** a 100,000-row file
+([§Large imports](#large-imports) below) needs paginated preview ("show me rows 4,000–4,050"), targeted
+error queries ("show me only the 16 `invalid` rows"), and resumable/batched commit processing — none of
+which a single large JSONB array supports without loading the whole thing into application memory at
+once. A real table gets indexed, paginated, and partially-updated for free.
+
+### The flow, end to end
+
+```mermaid
+flowchart TD
+    A["Inventario"] --> B["Importar inventario"]
+    B --> C{"¿Tiene Excel propio?"}
+    C -- "No — usar plantilla" --> D["Seleccionar categoría"]
+    D --> E["Descargar plantilla dinámica"]
+    E --> F["Completar Excel"]
+    C -- "Sí — mapear el suyo" --> G["Subir Excel existente"]
+    F --> H["Subir Excel"]
+    G --> I["Mapear columnas\n(o reutilizar mapeo guardado)"]
+    H --> J["Confirmar mapeo\n(plantilla ya alineada 1:1)"]
+    I --> K["Validar"]
+    J --> K
+    K --> L["Vista previa\n(válidas / advertencias / errores)"]
+    L --> M{"¿Confirma?"}
+    M -- "No" --> N["Descargar reporte de errores,\ncorregir, volver a subir"]
+    M -- "Sí" --> O["Importar\n(commit por lotes)"]
+    O --> P["Completado /\nCompletado con errores"]
+```
+
+### Dynamic template generation
+
+Directly answering this prompt's requirement that the template is **not** a static file: generated on
+demand from `category_attributes` (joined to `attribute_definitions`) for whatever category the user
+selects, plus the fixed common columns every category needs (`SKU`, `Nombre`, `Marca`, `Precio mínimo`,
+`Precio base`, `Precio máximo`, `Cantidad`, `Ubicación`). A required attribute becomes a required
+template column (marked as such in the generated file); an optional one becomes an optional column. Two
+categories therefore produce visibly different templates — "Motocicletas" gets `Cilindraje`, `Año`,
+`Combustible`; "Muebles" gets `Material`, `Alto`, `Ancho`, `Profundidad` — with no template-specific
+table needed to store this: the template is a deterministic projection of
+`category_attributes`/`attribute_definitions`, generated fresh each time, never persisted as its own
+artifact.
+
+**Serialized categories get a structurally different template shape.** For a category whose variants
+are `is_serialized = true`, the template is one row **per physical unit** (its own `Serial`/`Chasis`/
+`Motor` columns, quantity implicitly 1) rather than one row per SKU with a `Cantidad` column — matching
+how serialized stock is actually counted in the real world (one VIN per motorcycle). A category with
+`is_lot_tracked = true` variants instead gets `Lote`, `Fecha de fabricación`, `Fecha de expiración`
+columns alongside a `Cantidad` for that lot. A plain, untracked category gets the simple
+one-row-per-SKU-with-quantity shape. All three shapes are generated from the same
+`product_variants.is_serialized`/`is_lot_tracked` flags the category's products already carry — not a
+new configuration surface.
+
+### Mapping an existing Excel
+
+For a tenant with their own pre-existing spreadsheet (`CODIGO`, `DESCRIPCION`, `CC`, `COLOR`, `STOCK`,
+...), the user maps each source column to a target field — a system column (`sku`, `name`, `quantity`,
+`location`, ...) or a dynamic attribute (`attr:cilindraje`, `attr:color`) — captured in
+`import_jobs.column_mapping`, the same JSONB shape `import_mapping_templates.column_mapping` uses. A
+named mapping can be **saved** (`import_mapping_templates`, tenant-scoped, `UNIQUE (tenant_id, name)`)
+and reused on a future import from the same source ("Excel proveedor X") without re-mapping — the job's
+own `column_mapping` is always a **frozen copy** at the moment the job runs, not a live reference to the
+template, so editing a saved template later never silently changes what an already-completed job did.
+
+### Validation
+
+Every `import_job_rows.mapped_data` value is checked by **the same validation service** the interactive
+product form uses ([§Dynamic attributes' validation split](#dynamic-attributes-governance-for-the-catalog-jsonb)),
+covering: unknown/unmapped columns, missing headers, wrong types, missing SKU, duplicate SKU *within
+the file itself* (not just against the database), unresolvable category/brand/supplier references,
+unknown or inactive attribute values, prices where `min > base` or `base > max`, negative/non-numeric
+quantities, unauthorized location ([§Ubicaciones](#ubicaciones-import) below), variant-identity
+conflicts, duplicate serial numbers, and lot data completeness. Each finding is classified as either an
+`error` (blocks that row from `valid`) or a `warning` (row stays importable but is flagged for review)
+— e.g. "category will be auto-created" is a warning, "price is missing" is an error. Findings accumulate
+in `import_job_rows.errors`/`.warnings` (structured, not free text: `{ field, code, message }`), and the
+row's `status` becomes `valid`, `warning`, or `invalid` accordingly. **Prompt 02-D note:** this shape is
+a deliberate, minimal convention for *this* table specifically — no equivalent shape for interactive
+DTO/`class-validator` field errors exists elsewhere in this docs set yet to reconcile it against; left
+open, not blocking, and worth revisiting when Prompt 03/04 defines the concrete DTO validation error
+format.
+
+### Preview
+
+`import_jobs.total_rows`/`valid_rows`/`invalid_rows`/`warning_rows` give the summary this prompt asks
+for ("1,250 filas — 1,214 válidas, 20 advertencias, 16 errores") without a full table scan on every
+page load — maintained incrementally as rows are validated, not recomputed live. The preview UI pages
+through `import_job_rows` filtered by `status`. `import_jobs.error_report_storage_key` points at a
+generated, downloadable report of every `invalid` (and, optionally, `warning`) row with its specific
+errors — object storage, same pattern as every other file this schema handles, **never** a large text
+blob stuffed into a database column. Given the potentially large row count (up to 100,000 per
+[§Large imports](#large-imports) below), this preview is exactly the kind of high-volume, paginated
+list [api.md#pagination-filtering-sorting-search](api.md#pagination-filtering-sorting-search) already
+flags as a candidate for cursor (not offset) pagination — the `(tenant_id, import_job_id, status)`
+index below supports either, the same stance already taken for `inventory_movements`/`audit_log`.
+
+### Committing (transactional strategy, duplicates, rollback)
+
+**Batched, not one giant transaction — an explicit, honest trade-off.** The commit phase processes
+`import_job_rows` where `status IN ('valid', 'warning')` in fixed-size batches (illustratively 500 rows;
+exact size is a tuning parameter), each batch its own database transaction, following the identical
+`SELECT ... FOR UPDATE` balance-locking convoy every other inventory-affecting operation in this schema
+uses ([§Concurrency strategy](#concurrency-strategy)) — the import pipeline has **no separate,
+parallel write path** into `products`/`product_variants`/`inventory_balances`/`inventory_movements`; it
+calls the same one every other flow does. For a **small** import (below the batch-size threshold), the
+whole commit *is* one transaction — small imports get true all-or-nothing rollback. For a **large**
+import, true single-transaction atomicity across the whole file is not the strategy — holding row locks
+across tens of thousands of rows in one transaction would be its own operational problem. What *is*
+guaranteed at any size: **inventory is never left partially corrupt**, because every write that
+happened was a complete, valid, correctly-ledgered batch — a failure mid-import means *fewer rows
+succeeded than requested*, precisely reported via `import_job_rows.status` per row and
+`import_jobs.status = 'completed_with_errors'`/`'failed'`, never silently-wrong balances. Retrying a
+`failed` job re-invokes the exact same commit process, which naturally resumes from
+`WHERE status IN ('valid', 'warning') AND status <> 'imported'` — already-imported rows are skipped, no
+new idempotency mechanism needed beyond this status field itself.
+
+**Duplicates (SKU already exists) — recommendation, not a silent default**, per this prompt's explicit
+instruction. `import_jobs.duplicate_handling_mode` makes the choice explicit per job:
+
+| Mode | Existing SKU's catalog fields | Existing SKU's inventory quantity |
+| --- | --- | --- |
+| `update_catalog_only` (**recommended default**) | Updated (name, price tiers, attributes) | **Untouched** — the row is skipped for inventory purposes |
+| `update_catalog_and_inventory` | Updated | An `ADJUSTMENT_IN` movement adjusts it — opt-in only (see the Prompt 02-D note below on why not `INITIAL_STOCK`) |
+| `skip_existing` | Untouched | Untouched |
+| `reject_on_duplicate` | Row marked `invalid` (blocks the whole row) | — |
+
+**Prompt 02-D — `INITIAL_STOCK` vs. `ADJUSTMENT_IN`, analyzed, not merged.** The 02-C audit flagged
+that `update_catalog_and_inventory` used `INITIAL_STOCK` for this row and asked whether `ADJUSTMENT_IN`
+was more correct. These are legitimately different real-world operations and are **not** being merged
+— `INITIAL_STOCK` means "digitizing stock that already physically existed, recorded in this system for
+the first time"; `ADJUSTMENT_IN` means "an operational correction to a balance the system already
+tracks." A `create`-action row (brand-new SKU, never before in the system) is unambiguously the first
+case — it keeps `INITIAL_STOCK`, unchanged, see [§Inventory](#inventory-warehouses-locations-balance-ledger).
+An `update`-action row under `update_catalog_and_inventory` (an **existing**, already-tracked SKU,
+touched by a second or later import) is unambiguously the second case: the balance already exists in
+the system, so adjusting it is a correction, not a first-time digitization — using `INITIAL_STOCK` here
+would inflate that report's "stock digitized before/at onboarding" figure with data that was never
+actually part of the original onboarding, contradicting the exact distinction `INITIAL_STOCK` exists
+to preserve ([§Inventory](#inventory-warehouses-locations-balance-ledger)). **Decision:** `create`-action
+rows always write `INITIAL_STOCK`; `update`-action rows under `update_catalog_and_inventory` always
+write `ADJUSTMENT_IN` (already an existing, unmodified movement type — no schema change beyond this
+corrected mapping).
+
+**Reasoning for the recommended default:** updating catalog data (name, price, attributes) for an
+existing SKU when a tenant re-uploads a corrected file is the expected, low-risk behavior — the user is
+explicitly trying to fix their catalog. Silently **adjusting inventory quantity** for an existing SKU is
+materially riskier: a re-uploaded file with stale quantities could double-count stock, or overwrite a
+count that has since changed from real sales. Separating "catalog update" from "inventory movement" —
+this prompt's own explicit instruction — is exactly what this table does: catalog fields update by
+default, inventory quantity requires the tenant to deliberately opt into
+`update_catalog_and_inventory` for that specific job.
+
+**Product vs. variant matching.** Primary match key is `sku` (exact, tenant-scoped, per
+[§Catalog](#catalog-products-variants-attributes)'s existing `UNIQUE (tenant_id, sku)`). A row whose SKU
+doesn't exist yet becomes `match_action = 'create'` — a new product (with its one default variant,
+[§Catalog](#catalog-products-variants-attributes)'s existing rule) unless the template/mapping includes
+a product-grouping column (e.g. a shared "Product Reference" value across several rows), in which case
+those rows become **new variants under one existing/new product** instead of several separate
+single-variant products — the template design consideration this prompt asks for when a category
+commonly has multi-variant products (e.g. a TV model sold in 55"/65"/75").
+
+### Initial stock and the ledger — no bypass
+
+Directly answering this prompt's explicit requirement: **a quantity column in the Excel never becomes
+an `inventory_balances` row by itself.** Every imported quantity is written exactly like every other
+stock-affecting operation — an `inventory_movements` row first (`INITIAL_STOCK` for a `create`-action
+row, `ADJUSTMENT_IN` for an `update`-action row under `update_catalog_and_inventory`, per the mapping
+fixed in [§Committing](#committing-transactional-strategy-duplicates-rollback)), `reference_type =
+'import_job'`, `reference_id = import_jobs.id`, with `inventory_balances` derived from it via the same
+locked read-then-write convoy. There is no code path in this design that writes a starting balance
+without a corresponding ledger entry — the same invariant [§Seed and demo tenant](#seed-and-demo-tenant)
+already holds itself to for seed data.
+
+### Ubicaciones (import)
+
+A row's target location comes from a mapped `location` column, or `import_jobs.default_location_id`
+when the template/mapping has none. Before any row targeting a given location can reach `valid`, the
+importing user (`import_jobs.created_by`) must be authorized for that location per
+[§Location-scoped authorization](#location-scoped-authorization) — an unauthorized location on a row is
+an `error`, not a warning, checked at validation time (not deferred to commit, so the preview honestly
+reflects what will actually be importable).
+
+### Serialized and lot-tracked rows
+
+No new tables — the import pipeline writes directly into `product_serials`/`product_lots`
+([§Catalog](#catalog-products-variants-attributes)), exactly like it writes into `product_variants`/
+`inventory_movements`. A duplicate `serial_number` within the file, or against an existing tenant
+record, is caught at **validation** time (checked against the file's own rows *and* the existing
+`UNIQUE (tenant_id, serial_number)` data) and surfaced as an `error` per row — never allowed to reach a
+raw constraint-violation exception at commit time, which would be a poor, late, unclear failure for
+something the validation pass can and should catch early with a specific message.
+
+### Large imports
+
+100 / 1,000 / 10,000 / 100,000 rows, per this prompt's explicit sizing. Below an illustrative 500-row
+threshold (a tuning parameter, not fixed here — the same "not fixed here" precedent as rate-limit
+thresholds elsewhere in this docs set), validation and commit can both complete synchronously within one
+HTTP request. Above it, both the `validating` and `importing` phases run as a **background job**,
+executed by a **separate Import Worker process — not the same worker/deployable as the Event
+Processor.** Full reasoning: [ADR-0029](../decisions/0029-import-worker-separation.md).
+
+**Same pattern, different process — Prompt 02-D closes this explicitly.** Both workers use the
+identical Postgres-backed mechanism already established for the Event Processor
+([events.md#event-processor](events.md#event-processor)) — no new queue technology, no message broker:
+a `SELECT ... FOR UPDATE SKIP LOCKED` claim query, a status column tracking progress, retry/backoff on
+failure. The Import Worker claims rows from `import_jobs`/`import_job_rows`; the Event Processor claims
+rows from `event_outbox`; neither reads the other's table. They are two small, independently-deployable
+processes sharing one proven pattern, not one worker doing two jobs — kept separate because their
+resource profiles and latency needs genuinely differ:
+
+- **Event Processor:** low-latency, I/O-bound (a webhook call to n8n per event), expected to stay
+  responsive so Telegram notifications arrive promptly.
+- **Import Worker:** potentially long-running (minutes, for a 100,000-row file), CPU/DB-bound (parsing,
+  validating, batched writes) — per [scalability.md#when-to-split-a-module-out](scalability.md#when-to-split-a-module-out)'s
+  own stated criterion for extraction ("a different deployment cadence or failure-isolation boundary"),
+  a large import hanging or crashing must never delay or take down notification delivery, and vice
+  versa — sharing one process would couple two workloads that have no reason to be coupled.
+
+**Reclaiming and retries:** an Import Worker instance polls `import_jobs` with `status = 'validating'`
+or `status = 'importing'`, claims via `FOR UPDATE SKIP LOCKED` (safe with multiple worker instances,
+identical to the Event Processor's claiming query), and processes in the batches already described
+above. A crashed worker simply stops claiming; a stuck job is detected the same way a stuck
+`event_outbox` row would be (a claimed-but-stale-for-too-long check, an operational concern, not a new
+mechanism) and can be picked up by another instance on retry. **Idempotency on retry** is the same
+`import_job_rows.status` resumability already described in [§Committing](#committing-transactional-strategy-duplicates-rollback) —
+re-running the job (whether by the same or a different worker instance) never reprocesses an already-
+`imported` row. **Observability** follows the existing, unchanged convention
+([backend.md#cross-cutting-concerns](backend.md#cross-cutting-concerns)): structured logs carrying
+`correlationId`/`tenantId`, no new logging mechanism introduced for this worker specifically.
+
+The frontend polls `import_jobs.status`/row counts rather than holding an HTTP connection open for a
+potentially-minutes-long operation. (Provisioning a second worker process/container is an infrastructure
+concern for Prompt 03+ deployment work — `docker-compose.yml` and equivalent are not touched by this
+design-only prompt.)
+
+### Security of the uploaded file
+
+Extends [security.md#file-upload-security](security.md#file-upload-security) (already established for
+product images) to Excel specifically:
+
+- **Extension allow-list:** `.xlsx` only — not legacy `.xls`, not macro-enabled `.xlsm` (macros are a
+  real execution-risk vector this design closes by never accepting a format that can carry one).
+- **MIME-type validated against actual file content**, not the declared header — unchanged principle
+  from the existing image-upload rule.
+- **Size limit** — an illustrative default (not fixed here, a tuning decision like the batch-size and
+  sync/async thresholds above).
+- **The parser reads cell *values* only**, never evaluates formulas as live/executable and never enables
+  macros (structurally impossible once `.xlsm` is rejected) — this is the mitigation for "fórmulas
+  peligrosas."
+- **The generated error report sanitizes any echoed cell content** before writing it back into a
+  downloadable spreadsheet — a leading `=`/`+`/`-`/`@` in a value being echoed into the report is
+  neutralized (e.g. a leading apostrophe prefix), closing the classic CSV/Excel formula-injection path
+  where a malicious input cell, once echoed into an output file an administrator later opens, executes a
+  formula in *their* spreadsheet application.
+- **Object storage, never local disk** — identical to every other upload in this schema
+  ([security.md#file-upload-security](security.md#file-upload-security)) — with a defined-but-not-fixed
+  retention window after which the uploaded file (not the `import_jobs`/`import_job_rows` audit record
+  itself) is deleted.
+- **Corrupted files** fail parsing cleanly, surfaced as `import_jobs.status = 'failed'` with a
+  structured, non-stack-trace error message, per the existing global-exception-filter/error-envelope
+  convention ([api.md#errors](api.md#errors)).
+
+### Auditability
+
+`import_jobs` is itself a detailed, tenant-scoped, queryable record (who, when, which file, which
+mapping/duplicate-handling configuration, full result counts) — but per the established
+[§Audit log vs. domain events vs. application logs](#audit-log-vs-domain-events-vs-application-logs)
+distinction, a **terminal** job state (`completed`/`completed_with_errors`/`failed`) also writes an
+`audit_log` entry (`action_code = 'INVENTORY_IMPORT_COMPLETED'` or similar, `entity_type =
+'import_job'`, `entity_id = import_jobs.id`) — the same permanent, standardized "who did what" trail
+every other CATALOG/INVENTORY mutation gets, not a special case for imports.
 
 ---
 
@@ -1403,8 +2071,8 @@ orders
   customer_phone_snapshot     text NULL
   customer_address_snapshot   jsonb NULL
   order_number                text NOT NULL        -- human-readable, per-tenant sequence — generation is a FASE 10 detail
-  document_type               text NOT NULL CHECK IN ('INVOICE','SALES_NOTE')
-  invoice_status               text NULL CHECK IN ('PENDING','ISSUED','FAILED')
+  document_type               text NOT NULL CHECK IN ('invoice','sales_note')
+  invoice_status               text NULL CHECK IN ('pending','issued','failed')
   status                      text NOT NULL CHECK IN ('draft','pending','confirmed','fulfilled','cancelled'), DEFAULT 'draft'
   subtotal                    numeric NOT NULL CHECK (subtotal >= 0)
   discount_total               numeric NOT NULL DEFAULT 0 CHECK (discount_total >= 0)
@@ -1417,8 +2085,8 @@ orders
   updated_at                    timestamptz NOT NULL DEFAULT now()
 
   UNIQUE (tenant_id, order_number)
-  CHECK ((document_type = 'INVOICE' AND invoice_status IS NOT NULL)
-      OR (document_type = 'SALES_NOTE' AND invoice_status IS NULL))
+  CHECK ((document_type = 'invoice' AND invoice_status IS NOT NULL)
+      OR (document_type = 'sales_note' AND invoice_status IS NULL))
 ```
 
 **No `deleted_at`.** An order is never soft-deleted — cancellation is the `status = 'cancelled'`
@@ -1438,13 +2106,13 @@ number, a changed address) must not alter what a historical order shows it colle
 alone is not sufficient to reconstruct this — the row it points at is mutable.
 
 **Prompt 02-A: `document_type` and `invoice_status`, kept distinct.** `document_type` records what the
-customer *asked for* at checkout (`INVOICE` or `SALES_NOTE`) — a closed, two-value choice, deliberately
+customer *asked for* at checkout (`invoice` or `sales_note`) — a closed, two-value choice, deliberately
 not a boolean `is_invoice` (see [ADR-0023](../decisions/0023-document-type-and-external-invoicing.md)
 for why). `invoice_status` tracks the **external** invoicing process's state and only applies when
-`document_type = 'INVOICE'` (enforced by the `CHECK` above — a `SALES_NOTE` order has no invoicing
+`document_type = 'invoice'` (enforced by the `CHECK` above — a `sales_note` order has no invoicing
 process to track, so the column is `NULL`, not a meaningless default). Per this prompt's architectural
-rule, **the platform never issues the invoice itself** — `invoice_status = 'PENDING'` means "requested,
-not yet handled externally," `'ISSUED'`/`'FAILED'` are updated later, by application code, once
+rule, **the platform never issues the invoice itself** — `invoice_status = 'pending'` means "requested,
+not yet handled externally," `issued`/`failed` are updated later, by application code, once
 whatever external process/integration exists reports back — no fiscal-provider integration is designed
 or implied by these two values existing. Full boundary:
 [ADR-0023](../decisions/0023-document-type-and-external-invoicing.md).
@@ -1509,7 +2177,7 @@ are **not** fully specified here — that is SALES domain logic, designed when F
 it. This document only fixes the schema-level `CHECK` list of valid status values.
 
 **Prompt 02-A: confirmation is gated on price approvals.** `orders.status` cannot move from `pending`
-to `confirmed` while any of its `order_items` has an unresolved (`PENDING`) row in `price_approvals`
+to `confirmed` while any of its `order_items` has an unresolved (`pending`) row in `price_approvals`
 ([§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval)) — domain logic, checked
 via `price_approvals`' `(tenant_id, order_id, status)` index
 ([§Indexes](#indexes)), not a new schema construct.
@@ -1581,29 +2249,29 @@ price_approvals
   reason                      text NOT NULL
   requested_by                 uuid NOT NULL FK -> users(tenant_id, id)
   approved_by                  uuid NULL FK -> users(tenant_id, id)
-  status                       text NOT NULL CHECK IN ('PENDING','APPROVED','REJECTED','CANCELLED'), DEFAULT 'PENDING'
+  status                       text NOT NULL CHECK IN ('pending','approved','rejected','cancelled'), DEFAULT 'pending'
   requested_at                  timestamptz NOT NULL DEFAULT now()
   resolved_at                   timestamptz NULL
 
-  UNIQUE (tenant_id, order_item_id) WHERE status = 'PENDING'   -- at most one open request per line
+  UNIQUE (tenant_id, order_item_id) WHERE status = 'pending'   -- at most one open request per line
 ```
 
 **Normal negotiation vs. exceptional discount, distinguished precisely.** Any `unit_price_snapshot`
 between `min_price` and `max_price` is a normal negotiation — no `price_approvals` row, no gate on
 order confirmation, per this prompt's explicit instruction not to treat every discount off list price
 as an exception request. A `price_approvals` row is created **only** when the vendor requests a price
-below `min_price`. Before it's even created as `PENDING`, application code checks it against
+below `min_price`. Before it's even created as `pending`, application code checks it against
 `tenant_price_policies.max_discount_below_min_percent` — a request below that hard floor is rejected
-outright (never becomes a `PENDING` row at all, since even approval couldn't authorize it); this
+outright (never becomes a `pending` row at all, since even approval couldn't authorize it); this
 cross-table arithmetic check is application-layer, not a `CHECK` constraint (a `CHECK` can't reference
 another table without a trigger, and this isn't a tenant-isolation-critical invariant that would
 justify one — a data-quality/business-rule guard, not a security boundary, matching the same judgment
 call already made for `product_images`' variant-product consistency).
 
 **The partial unique index is the idempotency mechanism here** — a second exceptional-discount request
-for the same line while one is still `PENDING` is rejected by the constraint itself, not by an
-application-layer duplicate check. Resolving a request (`APPROVED`/`REJECTED`) is idempotent by the
-`WHERE status = 'PENDING'` guard on the resolving `UPDATE`, per
+for the same line while one is still `pending` is rejected by the constraint itself, not by an
+application-layer duplicate check. Resolving a request (`approved`/`rejected`) is idempotent by the
+`WHERE status = 'pending'` guard on the resolving `UPDATE`, per
 [§Concurrency strategy](#concurrency-strategy).
 
 **Auditability, answered directly by this table's columns:** for any negotiated sale, `max_price`,
@@ -1624,7 +2292,7 @@ sales_returns
   tenant_id         uuid NOT NULL FK -> tenants(id), UNIQUE (tenant_id, id)
   order_id          uuid NOT NULL FK -> orders(tenant_id, id)
   location_id       uuid NOT NULL FK -> locations(tenant_id, id)    -- where the returned goods are physically received
-  status            text NOT NULL CHECK IN ('REQUESTED','INSPECTING','RESOLVED','CANCELLED'), DEFAULT 'REQUESTED'
+  status            text NOT NULL CHECK IN ('requested','inspecting','resolved','cancelled'), DEFAULT 'requested'
   requested_by       uuid NOT NULL FK -> users(tenant_id, id)
   received_by         uuid NULL FK -> users(tenant_id, id)
   reason             text NOT NULL
@@ -1640,7 +2308,7 @@ sales_return_items
   order_item_id             uuid NOT NULL FK -> order_items(tenant_id, id)
   product_variant_id        uuid NOT NULL FK -> product_variants(tenant_id, id)
   quantity_returned         numeric NOT NULL CHECK (quantity_returned > 0)
-  disposition               text NULL CHECK (disposition IS NULL OR disposition IN ('RESTOCK','QUARANTINE','DAMAGED','SCRAP'))
+  disposition               text NULL CHECK (disposition IS NULL OR disposition IN ('restock','quarantine','damaged','scrap'))
   disposition_location_id   uuid NULL FK -> locations(tenant_id, id)
   inspected_by               uuid NULL FK -> users(tenant_id, id)
   inspected_at                timestamptz NULL
@@ -1660,8 +2328,8 @@ elsewhere leaves to application code rather than a trigger, e.g. the transfer-qu
 [§Inventory transfers](#inventory-transfers-and-in-transit-stock)).
 
 **Returned stock is never automatically sellable — inspection decides.** `disposition` is `NULL` until
-someone inspects the returned item; only then does it become one of `RESTOCK` / `QUARANTINE` /
-`DAMAGED` / `SCRAP`. This is a deliberate scope simplification: one disposition per return line (not
+someone inspects the returned item; only then does it become one of `restock` / `quarantine` /
+`damaged` / `scrap`. This is a deliberate scope simplification: one disposition per return line (not
 split across multiple dispositions for a single line's quantity) — sufficient for what this prompt
 asks for, and avoids a `sales_return_item_dispositions` sub-table this prompt's requirements don't
 call for. Once `disposition` is set, application code writes an `inventory_movements` row (`RETURN`
@@ -1669,13 +2337,13 @@ type — reused, not a new movement type, see [§Inventory](#inventory-warehouse
 at `disposition_location_id`, with `reference_type = 'sales_return_item'`,
 `reference_id = sales_return_items.id`:
 
-- `RESTOCK` → `disposition_location_id` is a normal, `is_sellable = true` location — the stock becomes
+- `restock` → `disposition_location_id` is a normal, `is_sellable = true` location — the stock becomes
   available again.
-- `QUARANTINE` / `DAMAGED` → `disposition_location_id` is an `is_sellable = false` location
+- `quarantine` / `damaged` → `disposition_location_id` is an `is_sellable = false` location
   ([§Inventory](#inventory-warehouses-locations-balance-ledger)) — the stock is fully tracked (physical
   count, ledger entry, traceability) but never counted as available-for-sale anywhere, without needing
   a new balance bucket or movement type.
-- `SCRAP` → same mechanism as `QUARANTINE`/`DAMAGED` (a non-sellable location) — this document doesn't
+- `scrap` → same mechanism as `quarantine`/`damaged` (a non-sellable location) — this document doesn't
   model a further "written off/disposed" accounting step beyond that; see
   [§Open decisions](#open-decisions-carried-forward).
 
@@ -1835,14 +2503,14 @@ A transversal strategy, since more than one thing in this schema needs it for a 
 3. **Outbox-level idempotency** — `event_outbox.id` doubling as `event_id`, already covered in
    [§Outbox](#outbox). n8n and any downstream consumer dedupe on this value, not a new mechanism.
 
-4. **Deterministic keys for one-time state transitions (Prompt 02-A)** — a transfer's `DISPATCHED`
+4. **Deterministic keys for one-time state transitions (Prompt 02-A)** — a transfer's `dispatched`
    transition writes its `TRANSFER_OUT` movement with idempotency key `'transfer-dispatch:' ||
    transfer_id`, not a client-supplied one: the operation is legitimately one-time (a transfer can only
    be dispatched once), so the key can be derived from the entity itself rather than requested from the
    caller. See [§Inventory transfers](#inventory-transfers-and-in-transit-stock).
 
 5. **Structural idempotency via a partial unique index (Prompt 02-A)** — `price_approvals`'
-   `UNIQUE (tenant_id, order_item_id) WHERE status = 'PENDING'` prevents a second open exceptional-
+   `UNIQUE (tenant_id, order_item_id) WHERE status = 'pending'` prevents a second open exceptional-
    discount request for the same line by construction, no key or table lookup needed. See
    [§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval).
 
@@ -1861,7 +2529,7 @@ one-time state transition" don't share a natural key to unify around.
 **A retry never doubles an inventory or sales effect — restated across every new flow this prompt
 adds:** dispatch (deterministic key), receiving (idempotency table), cart checkout → order creation
 (existing `idempotency_keys`, `scope = 'orders.create'`), price-approval requests (partial unique
-index), price-approval resolution (conditional `UPDATE ... WHERE status = 'PENDING'`), and sales
+index), price-approval resolution (conditional `UPDATE ... WHERE status = 'pending'`), and sales
 returns (idempotency table) — every state-changing operation this prompt introduces has one of these
 mechanisms, not zero.
 
@@ -1874,10 +2542,10 @@ explicit, documented decision. Applied per-table, not indiscriminately:
 
 | Policy | Tables | Why |
 | --- | --- | --- |
-| **Soft delete** (`deleted_at`, filtered by default reads) | `users`, `roles`, `categories`, `brands`, `suppliers`, `customers`, `products`, `product_variants`, `warehouses`, `locations` | User-facing "delete" action on reference/master data that historical rows (orders, movements) may still reference via `RESTRICT` FKs — the row must keep existing for referential integrity even after a tenant considers it "gone." |
+| **Soft delete** (`deleted_at`, filtered by default reads) | `users`, `roles`, `categories`, `brands`, `suppliers`, `customers`, `products`, `product_variants`, `warehouses`, `locations`, `attribute_definitions` | User-facing "delete" action on reference/master data that historical rows (orders, movements, and — for `attribute_definitions` — existing products still carrying that key in their JSONB) may still reference — the row must keep existing so a historical value stays resolvable to a name/type even after a tenant retires the attribute. |
 | **Never deleted** (no `deleted_at`, no hard delete, ever) | `inventory_movements`, `audit_log`, `product_price_history`, `inventory_transfer_receipts`, `inventory_transfer_receipt_items`, `sales_return_items` | Append-only ledgers, or (for `sales_return_items`) a record of a fact that happened — deleting a row would falsify history, which is the one thing these tables exist to prevent. |
-| **Hard delete** (real `DELETE`, no tombstone) | `user_roles`, `role_permissions`, `product_images`, `order_items` (only while the parent order is `draft`), `inventory_transfer_items` (only while the parent transfer is `DRAFT`), `idempotency_keys` (TTL cleanup), `user_location_assignments`, `carts`/`cart_items` (`abandoned`, after `expires_at`) | Join/detail/ephemeral rows with no independent historical value once removed — the fact that a change happened is captured by `audit_log`, not by keeping the stale row around. |
-| **Status, not delete** (`status` enum governs lifecycle, no `deleted_at` at all) | `tenants`, `orders`, `inventory_transfers`, `sales_returns`, `price_approvals` | Lifecycle transitions that must remain visible in their terminal state (a `suspended` tenant, a `cancelled` order, a `RECEIVED` transfer, a `REJECTED` price approval), not disappear from default views the way a soft-deleted product does. |
+| **Hard delete** (real `DELETE`, no tombstone) | `user_roles`, `role_permissions`, `product_images`, `order_items` (only while the parent order is `draft`), `inventory_transfer_items` (only while the parent transfer is `draft`), `idempotency_keys` (TTL cleanup), `user_location_assignments`, `carts`/`cart_items` (`abandoned`, after `expires_at`), `import_mapping_templates` (user-deleted mapping — safe because `import_jobs.column_mapping` is always a frozen copy, never a live reference) | Join/detail/ephemeral rows with no independent historical value once removed — the fact that a change happened is captured by `audit_log`, not by keeping the stale row around. |
+| **Status, not delete** (`status` enum governs lifecycle, no `deleted_at` at all) | `tenants`, `orders`, `inventory_transfers`, `sales_returns`, `price_approvals`, `attribute_options` | Lifecycle transitions that must remain visible in their terminal state (a `suspended` tenant, a `cancelled` order, a `received` transfer, a `rejected` price approval, a **retired** attribute option) — `attribute_options.status = 'inactive'` (never deleted) is what keeps a historical product's JSONB value still resolvable to a display label even after the option is retired from new selection, the same reasoning `attribute_definitions` gets `deleted_at` for. |
 | **Mutable config, never deleted** (no `deleted_at`, no lifecycle status — just `UPDATE`) | `tenant_price_policies` | A singleton settings row per tenant, not a business event or a piece of master data — there is no "delete" concept for it at all, only ever an update. |
 
 `platform_admins` follows the same pattern as `tenants` — `status = 'disabled'`, no `deleted_at` —
@@ -1946,9 +2614,14 @@ per-table above (which Postgres backs with an index automatically) are not repea
 | `sales_returns` | `(tenant_id, order_id)` | "Returns against this order." |
 | `sales_returns` | `(tenant_id, status, created_at)` | The returns/inspection queue. |
 | `sales_return_items` | `(tenant_id, order_item_id)` | Sum returned quantity against one original line (the application-layer check described in [§Sales returns](#sales-returns-and-disposition)). |
-| `price_approvals` | `(tenant_id, status, requested_at) WHERE status = 'PENDING'` | The approver's queue — "show me everything waiting on me," the single hottest query against this table. |
+| `price_approvals` | `(tenant_id, status, requested_at) WHERE status = 'pending'` | The approver's queue — "show me everything waiting on me," the single hottest query against this table. |
 | `price_approvals` | `(tenant_id, order_id)` | "All approval requests for this order" — backs the confirmation gate in [§Orders](#orders-conceptual--sales-not-built-yet). |
 | `product_price_history` | `(tenant_id, product_variant_id, effective_from)` | Reconstruct a variant's price timeline for an audit/dispute query. |
+| `attribute_definitions` | `(tenant_id, status)` | List a tenant's active attributes for the configuration UI. |
+| `attribute_options` | `(tenant_id, attribute_definition_id, status)` | Resolve a `select`/`multi_select` attribute's active value list — read on every product form and every import validation row. |
+| `category_attributes` | `(tenant_id, category_id)` | "What attributes does this category require" — the single hottest read behind the dynamic template generator and the product form. |
+| `import_jobs` | `(tenant_id, status, created_at)` | The import job list/history view. |
+| `import_job_rows` | `(tenant_id, import_job_id, status)` | Paginated preview filtered by status (`invalid`/`warning`/`valid`) and the commit phase's batch-selection query. |
 
 Anything not listed here (e.g. a GIN index on `attributes` JSONB columns, full-text search indexes)
 is deliberately deferred until the query pattern that needs it is actually built — see the note at the
@@ -1979,9 +2652,16 @@ category this prompt requires is represented somewhere in this document:
   [§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval),
   [§Orders](#orders-conceptual--sales-not-built-yet)).
 - **Partial unique constraints as structural idempotency/business-rule guards (Prompt 02-A)** —
-  `price_approvals`' `UNIQUE (tenant_id, order_item_id) WHERE status = 'PENDING'` is a constraint doing
+  `price_approvals`' `UNIQUE (tenant_id, order_item_id) WHERE status = 'pending'` is a constraint doing
   the work an application-layer "check for an existing pending request" would otherwise have to do
   race-free; the same pattern `inventory_movements.idempotency_key` already established in Prompt 02.
+- **Attribute governance constraints (Prompt 02-B)** — `attribute_definitions`' range ordering
+  (`min_value <= max_value`) and type-gating (`min_value`/`max_value`/`unit_id` only meaningful for
+  `number`/`decimal`, enforced by `CHECK`s that reference `data_type` in the same row); which
+  `attribute_options` rows are valid for which `attribute_definitions.data_type` (`select`/
+  `multi_select` only) is application-validated, not a `CHECK`, per the same cross-table-lookup
+  reasoning already applied throughout this document (see
+  [§Dynamic attributes' validation table](#dynamic-attributes-governance-for-the-catalog-jsonb)).
 - **NOT NULL** — applied by default everywhere except where a field is genuinely optional (documented
   per-column above, e.g. `barcode`, `description`, `deleted_at`).
 - **Tenant-aware uniqueness** — `UNIQUE (tenant_id, x)` throughout, per
@@ -2016,8 +2696,11 @@ Planned initial sequence (file names illustrative, exact Drizzle Kit naming is a
 2. **Platform tables** — `tenants`, `platform_admins`, `permissions` (+ the initial `INSERT` of the
    permission catalog's first rows — see below).
 3. **Core** — `users`, `roles`, `role_permissions`, `user_roles`, `audit_log`, with RLS.
-4. **Catalog** — `categories`, `brands`, `suppliers`, `products`, `product_variants` (with the
-   `max_price`/`base_price`/`min_price` columns from the start — see
+4. **Catalog** — `measurement_units` (platform-scoped, no RLS, plus its initial `INSERT` of common
+   units — migration-managed data like `permissions`); `categories`, `brands`, `suppliers`,
+   `attribute_definitions`, `attribute_options`, `category_attributes` (Prompt 02-B — created before
+   `products`/`product_variants` since nothing FKs the other direction), `products`, `product_variants`
+   (with the `max_price`/`base_price`/`min_price` columns from the start — see
    [ADR-0022](../decisions/0022-pricing-tiers-and-discount-approval.md)), `product_images`,
    `product_serials`, `product_lots`, `product_price_history`, `tenant_price_policies`, with RLS.
 5. **QR** — `qr_codes`, with RLS + the public-resolver policy (including the column-level `GRANT`
@@ -2027,19 +2710,25 @@ Planned initial sequence (file names illustrative, exact Drizzle Kit naming is a
 7. **Location authorization** — `user_location_assignments`, with RLS (Prompt 02-A).
 8. **Inventory transfers** — `inventory_transfers`, `inventory_transfer_items`,
    `inventory_transfer_receipts`, `inventory_transfer_receipt_items`, with RLS (Prompt 02-A).
-9. **Sales** — within this one migration step, table creation order is: `customers`; `orders` (with
-   `location_id`, `document_type`, `invoice_status`, and the customer-snapshot columns); `order_items`
-   (with the price-tier snapshots); `carts`/`cart_items` (created after `orders`, since
-   `carts.order_id` references it — see the migration-ordering note in [§Cart](#cart));
-   `price_approvals`; `sales_returns`; `sales_return_items`. All with RLS. (Schema only — no SALES
-   endpoints/services are built until FASE 10; the table existing early does not imply the module is
-   implemented.)
-10. **Notifications** — `event_outbox`, with RLS + the Event Processor policy.
-11. **Idempotency** — `idempotency_keys`, with RLS.
+9. **Excel import pipeline** — `import_mapping_templates`, `import_jobs`, `import_job_rows`, with RLS
+   (Prompt 02-B). Created here — after Catalog (§4, including the attribute-governance tables) and
+   Inventory/transfers (§6–8), since `import_jobs`/`import_job_rows` reference `locations` and
+   `product_variants`.
+10. **Sales** — within this one migration step, table creation order is: `customers`; `orders` (with
+    `location_id`, `document_type`, `invoice_status`, and the customer-snapshot columns); `order_items`
+    (with the price-tier snapshots); `carts`/`cart_items` (created after `orders`, since
+    `carts.order_id` references it — see the migration-ordering note in [§Cart](#cart));
+    `price_approvals`; `sales_returns`; `sales_return_items`. All with RLS. (Schema only — no SALES
+    endpoints/services are built until FASE 10; the table existing early does not imply the module is
+    implemented.)
+11. **Notifications** — `event_outbox`, with RLS + the Event Processor policy.
+12. **Idempotency** — `idempotency_keys`, with RLS.
 
 Later migrations add `permissions` rows as new capabilities ship (`INSERT ... ON CONFLICT (code) DO
 NOTHING`) — this is genuinely schema-adjacent, versioned data, not tenant/seed data, so it travels
-with migrations rather than `database/seeds/`.
+with migrations rather than `database/seeds/`. `measurement_units` (Prompt 02-B) follows the identical
+pattern — its initial rows ship in the Catalog migration, and new units are added the same way as new
+capabilities are: a migration `INSERT`, never tenant data.
 
 **Reversibility:** consistent with the already-accepted rule (never edit an applied migration), a
 structural rollback is a new forward migration that undoes the previous one, not a hand-authored
@@ -2067,13 +2756,17 @@ idempotency key for "does the demo tenant already exist"). Upserts, in order: th
 (`is_demo = true`); a demo admin `users` row with a clearly-fake email (e.g. `demo@example.com`) and a
 password rotated/randomized per environment, never a real credential
 ([CLAUDE.md §7.4](../../CLAUDE.md#74-security)); default `roles`/`role_permissions`; a handful of
-`categories`/`brands`/`suppliers`/`products`/`product_variants` (each with its `max_price`/
-`base_price`/`min_price` set, plus a matching `product_price_history` row); a default
-`tenant_price_policies` row; `warehouses`/`locations`; initial stock — written as `inventory_movements`
-rows with a `RECEIPT` type first, with `inventory_balances` derived from them exactly like any real
-stock receipt (**the seed script never inserts a balance row without a matching movement row** — the
-ledger-is-the-source-of-truth invariant holds for seed data too, not just production writes); a couple
-of sample `customers`.
+`categories` with sample `attribute_definitions`/`attribute_options`/`category_attributes` (Prompt 02-B
+— enough to demonstrate the dynamic-catalog story, e.g. a "Muebles" category with `Material`/`Alto`/
+`Ancho`); `brands`/`suppliers`/`products`/`product_variants` (each with its `max_price`/`base_price`/
+`min_price` set, plus a matching `product_price_history` row); a default `tenant_price_policies` row;
+`warehouses`/`locations`; initial stock — written as `inventory_movements` rows with the
+`INITIAL_STOCK` type (Prompt 02-B — seed data *is* digitized starting stock, the same case the Excel
+import pipeline's `INITIAL_STOCK` movement type exists for, see
+[§Excel import pipeline](#excel-import-pipeline)), with `inventory_balances` derived from them exactly
+like any real import (**the seed script never inserts a balance row without a matching movement row**
+— the ledger-is-the-source-of-truth invariant holds for seed data too, not just production writes); a
+couple of sample `customers`.
 
 **Reset mechanism** (structure decided now; cadence — on-demand vs. scheduled vs. reset-on-login — is
 explicitly left to FASE 14 per [ADR-0014](../decisions/0014-demo-tenant-strategy.md), unchanged by
@@ -2084,21 +2777,23 @@ this document): a `database/scripts/reset-demo-tenant.ts` conceptual script that
    tenant id>` — so RLS itself is a second guarantee the script cannot touch any other tenant's rows,
    on top of every statement already being explicitly `tenant_id`-scoped.
 3. Deletes every row for that tenant, in FK-dependency order (children first:
-   `sales_return_items`, `sales_returns`, `price_approvals`, `order_items`, `orders`, `cart_items`,
-   `carts`, `inventory_transfer_receipt_items`, `inventory_transfer_receipts`,
-   `inventory_transfer_items`, `inventory_transfers`, `inventory_movements`, `inventory_balances`,
-   `product_price_history`, `product_images`, `product_serials`, `product_lots`, `product_variants`,
-   `products`, `categories`, `brands`, `suppliers`, `tenant_price_policies`,
-   `user_location_assignments`, `locations`, `warehouses`, `customers`, `qr_codes`, `user_roles`,
-   `role_permissions`, `roles`, `users`, plus that tenant's `audit_log`/`event_outbox`/
-   `idempotency_keys` rows). **Prompt 02-A extends this list** with every table this prompt added —
-   an ordered `DELETE` list is exactly the kind of thing a new tenant table must be added to, so it's
-   flagged here rather than left for Prompt 03 to notice was missing. This is explicit, reviewed,
-   ordered `DELETE` statements scoped by `tenant_id` — **not** an `ON DELETE CASCADE` from the
-   `tenants` row, which this document deliberately does not add anywhere (see [§Soft delete
-   policy](#soft-delete-policy)'s note on why hard-deleting a tenant isn't a cascade). The demo
-   tenant gets an explicit, narrowly-scoped script instead of a generic capability every tenant would
-   otherwise also have.
+   `import_job_rows`, `import_jobs`, `import_mapping_templates`, `sales_return_items`,
+   `sales_returns`, `price_approvals`, `order_items`, `orders`, `cart_items`, `carts`,
+   `inventory_transfer_receipt_items`, `inventory_transfer_receipts`, `inventory_transfer_items`,
+   `inventory_transfers`, `inventory_movements`, `inventory_balances`, `product_price_history`,
+   `product_images`, `product_serials`, `product_lots`, `product_variants`, `products`,
+   `category_attributes`, `attribute_options`, `attribute_definitions`, `categories`, `brands`,
+   `suppliers`, `tenant_price_policies`, `user_location_assignments`, `locations`, `warehouses`,
+   `customers`, `qr_codes`, `user_roles`, `role_permissions`, `roles`, `users`, plus that tenant's
+   `audit_log`/`event_outbox`/`idempotency_keys` rows — `measurement_units` is **not** in this list,
+   being platform-scoped, not tenant data). **Every prompt since 02-A extends this list** with every
+   table it added — an ordered `DELETE` list is exactly the kind of thing a new tenant table must be
+   added to, so it's flagged here rather than left for Prompt 03 to notice was missing. This is
+   explicit, reviewed, ordered `DELETE` statements scoped by `tenant_id` — **not** an
+   `ON DELETE CASCADE` from the `tenants` row, which this document deliberately does not add anywhere
+   (see [§Soft delete policy](#soft-delete-policy)'s note on why hard-deleting a tenant isn't a
+   cascade). The demo tenant gets an explicit, narrowly-scoped script instead of a generic capability
+   every tenant would otherwise also have.
 4. Re-runs the demo seed script from step zero.
 
 This is **reproducible** (same script, same resulting state), **idempotent** (running it twice is a
@@ -2243,6 +2938,54 @@ erDiagram
         uuid target_id "polymorphic"
     }
 ```
+
+### Dynamic attributes (Prompt 02-B)
+
+```mermaid
+erDiagram
+    TENANTS ||--o{ ATTRIBUTE_DEFINITIONS : "defines (reused across its own categories)"
+    ATTRIBUTE_DEFINITIONS ||--o{ ATTRIBUTE_OPTIONS : "controlled values for SELECT/MULTI_SELECT"
+    MEASUREMENT_UNITS ||--o{ ATTRIBUTE_DEFINITIONS : "fixes the unit (NUMBER/DECIMAL only)"
+    CATEGORIES ||--o{ CATEGORY_ATTRIBUTES : "requires"
+    ATTRIBUTE_DEFINITIONS ||--o{ CATEGORY_ATTRIBUTES : "assigned via"
+    ATTRIBUTE_DEFINITIONS }o..o{ PRODUCTS : "governs keys in .attributes (JSONB, not FK)"
+    ATTRIBUTE_DEFINITIONS }o..o{ PRODUCT_VARIANTS : "governs keys in .attributes (JSONB, not FK)"
+
+    ATTRIBUTE_DEFINITIONS {
+        uuid id PK
+        uuid tenant_id FK
+        text code
+        text data_type
+        text applies_to "product or variant"
+        uuid unit_id FK "nullable"
+        boolean is_required_default
+        numeric min_value "nullable"
+        numeric max_value "nullable"
+    }
+    ATTRIBUTE_OPTIONS {
+        uuid id PK
+        uuid attribute_definition_id FK
+        text code
+        text label
+        text status
+    }
+    MEASUREMENT_UNITS {
+        uuid id PK
+        text code "globally unique, platform-scoped"
+        text dimension
+    }
+    CATEGORY_ATTRIBUTES {
+        uuid tenant_id FK
+        uuid category_id FK
+        uuid attribute_definition_id FK
+        boolean is_required "nullable = inherit definition default"
+    }
+```
+
+The two dashed `}o..o{` relationships are **not foreign keys** — they represent the governance
+relationship this section exists to establish (an `attribute_definitions.code` corresponds to a JSONB
+key), validated by application code, not enforced by the database schema itself. Every solid
+relationship above it is a real FK.
 
 ### Inventory
 
@@ -2389,6 +3132,43 @@ erDiagram
     }
 ```
 
+### Excel import pipeline (Prompt 02-B)
+
+```mermaid
+erDiagram
+    USERS ||--o{ IMPORT_JOBS : "created by"
+    LOCATIONS ||--o{ IMPORT_JOBS : "default location (nullable)"
+    IMPORT_MAPPING_TEMPLATES ||--o{ IMPORT_JOBS : "sourced from (nullable, frozen copy)"
+    IMPORT_JOBS ||--|{ IMPORT_JOB_ROWS : "stages"
+    PRODUCT_VARIANTS ||--o{ IMPORT_JOB_ROWS : "matched to (nullable)"
+
+    IMPORT_MAPPING_TEMPLATES {
+        uuid id PK
+        uuid tenant_id FK
+        text name
+        jsonb column_mapping
+    }
+    IMPORT_JOBS {
+        uuid id PK
+        uuid tenant_id FK
+        uuid default_location_id FK "nullable"
+        text duplicate_handling_mode
+        text status
+        integer total_rows
+        integer invalid_rows
+    }
+    IMPORT_JOB_ROWS {
+        uuid id PK
+        uuid import_job_id FK
+        integer row_number
+        jsonb raw_data
+        text status
+        text match_action "nullable"
+        uuid matched_product_variant_id FK "nullable"
+        jsonb errors
+    }
+```
+
 ### Cart (Prompt 02-A)
 
 ```mermaid
@@ -2462,7 +3242,7 @@ erDiagram
     LOCATIONS ||--o{ SALES_RETURNS : "received at"
     SALES_RETURNS ||--|{ SALES_RETURN_ITEMS : "contains"
     ORDER_ITEMS ||--o{ SALES_RETURN_ITEMS : "returns from"
-    LOCATIONS ||--o{ SALES_RETURN_ITEMS : "disposed to (RESTOCK/QUARANTINE/DAMAGED/SCRAP)"
+    LOCATIONS ||--o{ SALES_RETURN_ITEMS : "disposed to (restock/quarantine/damaged/scrap)"
 
     SALES_RETURNS {
         uuid id PK
@@ -2515,7 +3295,7 @@ actually needs the answer:
   part scrapped) — deliberately not designed now; [§Sales returns](#sales-returns-and-disposition)
   fixes one disposition per `sales_return_items` row as a documented scope simplification, sufficient
   for what this prompt asks for.
-- **Scrap/write-off accounting beyond "moved to a non-sellable location"** — `SCRAP` disposition stops
+- **Scrap/write-off accounting beyond "moved to a non-sellable location"** — `scrap` disposition stops
   at making the stock permanently non-sellable and traceable; a further financial write-off/disposal
   step (if the business needs one) is not designed here.
 - **Per-role or per-category price-policy granularity** — `tenant_price_policies` is one row per
@@ -2525,7 +3305,7 @@ actually needs the answer:
 - **Splitting one order's fulfillment across multiple locations** — `orders.location_id` is singular;
   an order pulling stock from more than one location is not designed
   ([§Orders](#orders-conceptual--sales-not-built-yet)).
-- **`invoice_status` beyond `PENDING`/`ISSUED`/`FAILED`** (e.g. a retry count, a link to an external
+- **`invoice_status` beyond `pending`/`issued`/`failed`** (e.g. a retry count, a link to an external
   invoice id/number) — kept to the three values this prompt's example needs; extended only when an
   actual external invoicing integration is scoped (explicitly out of scope per
   [ADR-0023](../decisions/0023-document-type-and-external-invoicing.md)).
@@ -2534,3 +3314,45 @@ actually needs the answer:
   a symmetric "resolved" notification is not added now since this prompt's payload example shows
   approval status as one field within the sale notification itself, not a separate message — revisit
   if a concrete need for a resolution notification shows up.
+
+**Prompt 02-B additions:**
+
+- **Category-tree attribute inheritance** — deliberately not built; see
+  [§Dynamic attributes](#dynamic-attributes-governance-for-the-catalog-jsonb)'s explicit reasoning.
+  Revisit only if direct per-category assignment (already reuse-friendly at the definition level)
+  proves insufficient in practice.
+- **Curated/standardized attribute-code libraries per vertical** (so a targeted numeric-range index on
+  one attribute code benefits every tenant in that vertical, not only tenants who happened to name it
+  identically) — flagged as a known limitation in
+  [§Dynamic attributes' search section](#dynamic-attributes-governance-for-the-catalog-jsonb), not
+  designed.
+- **Excel import sync/async threshold, batch size, max file size, and staging-row retention window** —
+  all stated as illustrative defaults in [§Excel import pipeline](#excel-import-pipeline), tuning
+  decisions for Prompt 03+/ops, not fixed here (same "not fixed here" precedent as rate-limit
+  thresholds and the outbox retention window).
+- **Automatic new-category/brand/supplier creation from an Excel row referencing one that doesn't yet
+  exist** — the design surfaces this as a `warning` in preview (not silent, not blocked) but the exact
+  UX/confirmation flow around it is an implementation detail for Prompt 03, not pinned at the schema
+  level.
+- **A dedicated `INVENTORY_IMPORT_COMPLETED` outbox event** (mirroring the audit-log entry, so a
+  supervisor is notified via Telegram when a large import finishes) — plausible, natural, but not
+  required by this prompt's explicit scope; not added to the [events.md](events.md) catalog now.
+
+**Prompt 02-D confirmations (from the 02-C audit's M3/M5, explicitly kept POST-MVP, not implemented):**
+
+- **M3 — cart-level range validation.** `cart_items.negotiated_unit_price` ([§Cart](#cart)) has no
+  validation against `min_price`/`tenant_price_policies` at cart-mutation time — only the `>= 0` `CHECK`
+  and, separately, the authoritative gate at checkout/`order_items` creation
+  ([§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval)). This means a vendor
+  gets no in-cart feedback that a price will require approval until checkout — a UX completeness gap,
+  not a data-integrity one (the final gate already holds). **Confirmed POST-MVP**, per this prompt's
+  explicit instruction: the checkout-time gate is sufficient for MVP; earlier feedback is a UI/UX
+  enhancement for a later pass, not a schema change.
+- **M5 — serial-number uniqueness across unrelated verticals in one tenant.**
+  `product_serials.UNIQUE (tenant_id, serial_number)` ([§Catalog](#catalog-products-variants-attributes),
+  a Prompt 02 decision) is tenant-wide, not per-category — a tenant selling both motorcycles (VINs) and
+  electronics (manufacturer serials) in the same tenant could, in principle, hit a coincidental
+  collision between two unrelated numbering schemes. **Confirmed POST-MVP**: no structural change made:
+  the collision risk is low in practice (real-world serial formats rarely collide by accident) and
+  mitigable operationally (SKU/category-prefixed serials) without a schema change; revisit only if a
+  real tenant actually hits this.

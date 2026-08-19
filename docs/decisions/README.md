@@ -58,6 +58,11 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0022](0022-pricing-tiers-and-discount-approval.md) | Three-Tier Pricing, Price History, and Exceptional-Discount Approval | Accepted |
 | [0023](0023-document-type-and-external-invoicing.md) | Document Type Selection (Invoice / Sales Note) and the External-Invoicing Boundary | Accepted |
 | [0024](0024-location-scoped-authorization.md) | Location-Scoped Authorization as an RBAC Extension | Accepted |
+| [0025](0025-flutter-for-mobile.md) | Flutter for Mobile Applications | Accepted |
+| [0026](0026-dynamic-attribute-system.md) | Dynamic Attribute System (`attribute_definitions`, `category_attributes`) | Accepted |
+| [0027](0027-staged-excel-import-pipeline.md) | Staged Excel Import Pipeline | Accepted |
+| [0028](0028-field-level-price-authorization.md) | Field-Level Authorization for `cost` and `min_price` | Accepted |
+| [0029](0029-import-worker-separation.md) | Import Worker as a Separate Process from the Event Processor | Accepted |
 
 ADRs 0001–0015 were produced in Prompt 01 (architecture phase) alongside
 [docs/architecture/](../architecture/) and [docs/security/threat-model.md](../security/threat-model.md).
@@ -67,4 +72,15 @@ and demo-reset-mechanism pending items on 0004 and 0014 — see
 Prompt 02-A (an audit/extension pass over the Prompt 02 design), which also revised `product_variants`'
 single `price` column into three tiers (`max_price`/`base_price`/`min_price`) — see
 [discrepancy #5](../architecture/database.md#discrepancies-found-and-how-they-were-resolved) in
-`database.md`.
+`database.md`. ADRs 0025–0027 were produced in Prompt 02-B, which closed the dynamic per-tenant/
+per-category product attribute system governing Prompt 02's `attributes` JSONB columns, the staged
+Excel import pipeline (adding the `INITIAL_STOCK` movement type), and the mobile architecture — see
+[docs/architecture/mobile.md](../architecture/mobile.md) and
+[discrepancies #7–8](../architecture/database.md#discrepancies-found-and-how-they-were-resolved) in
+`database.md`. ADRs 0028–0029 were produced in Prompt 02-D, a controlled correction pass closing the
+required (HIGH) findings from the Prompt 02-C consistency audit — see
+[discrepancies #9–13](../architecture/database.md#discrepancies-found-and-how-they-were-resolved) in
+`database.md`. That pass also standardized every Prompt 02-A/02-B enum/status value to lowercase (no
+new ADR — a `CHECK`-list content correction, not a mechanism change) and corrected the
+`INITIAL_STOCK`/`ADJUSTMENT_IN` mapping in [ADR-0027](0027-staged-excel-import-pipeline.md)'s design
+without reopening that ADR's core decision.

@@ -27,6 +27,7 @@ flowchart TB
     Reports["REPORTS (future)\ndashboards, reports"]
     Admin["ADMINISTRATION\ntenant settings, system settings"]
     Demo["DEMO\ndemo tenant/users/data"]
+    Import["IMPORT\nimport jobs, staging, mapping templates"]
 
     Catalog --> Core
     Inventory --> Core
@@ -49,6 +50,9 @@ flowchart TB
     Demo --> Catalog
     Demo --> Inventory
     Demo --> Sales
+    Import --> Core
+    Import --> Catalog
+    Import --> Inventory
 ```
 
 ## CORE
@@ -68,21 +72,31 @@ interface.
 
 ## CATALOG
 
-**Responsibility:** what a tenant sells — products and the taxonomy around them. Deliberately
-generic; see the product model design in
+**Responsibility:** what a tenant sells — products and the taxonomy around them, including the
+per-tenant/per-category dynamic attribute system that governs what a product's flexible data can
+contain, and the bulk-onboarding path (Excel import) that populates the catalog and initial stock at
+scale. Deliberately generic; see the product model design in
 [database.md#catalog-products-variants-attributes](database.md#catalog-products-variants-attributes)
-and [ADR-0017](../decisions/0017-product-variant-attribute-model.md), produced in Prompt 02.
+and [ADR-0017](../decisions/0017-product-variant-attribute-model.md) (Prompt 02); the attribute
+governance layer in
+[database.md#dynamic-attributes-governance-for-the-catalog-jsonb](database.md#dynamic-attributes-governance-for-the-catalog-jsonb)
+and [ADR-0026](../decisions/0026-dynamic-attribute-system.md) (Prompt 02-B); and the import pipeline
+in [database.md#excel-import-pipeline](database.md#excel-import-pipeline) and
+[ADR-0027](../decisions/0027-staged-excel-import-pipeline.md) (Prompt 02-B).
 
-- `products`, `product_variants`, `categories`, `brands`, `product images`.
+- `products`, `product_variants`, `categories`, `brands`, `product_images`.
 - `suppliers` — a passive reference/attribution entity ("who this product is sourced from"), placed
   here rather than under SALES or a not-yet-existing PURCHASING module; see
   [ADR-0019](../decisions/0019-suppliers-ownership.md) for why. No purchase-order/receiving workflow
   is in scope.
+- `attribute_definitions`, `attribute_options`, `category_attributes`, `measurement_units` — the
+  metadata that validates every product/variant's `attributes` JSONB; see
+  [ADR-0026](../decisions/0026-dynamic-attribute-system.md).
 
 **Depends on:** CORE (tenant scoping, audit).
 
 **Consumed by:** INVENTORY (a stock record refers to a product), SALES (a cart/order line refers to
-a product), QR (a product can have a QR code), REPORTS.
+a product), QR (a product can have a QR code), IMPORT (populates CATALOG data), REPORTS.
 
 ## INVENTORY
 
@@ -147,7 +161,10 @@ queue safely.
 
 - `event_outbox` (the outbox table), delivery/retry bookkeeping.
 
-**Depends on:** nothing (it only reads events written by other modules' transactions).
+**Depends on:** nothing (it only reads events written by other modules' transactions). The Event
+Processor is a distinct process from IMPORT's Import Worker below (Prompt 02-D,
+[ADR-0029](../decisions/0029-import-worker-separation.md)) — they share the same claiming pattern but
+never the same deployable, so a large import can never delay a notification or vice versa.
 
 **Consumed by:** nothing inside the backend — its only consumer is the external Event Processor
 that forwards to n8n.
@@ -171,6 +188,30 @@ later, etc.) and system-level configuration that only a SuperAdmin can change.
 **Responsibility:** a fully isolated demo tenant — same isolation rules as any other tenant (see
 [multi-tenancy.md](multi-tenancy.md)) — seeded with synthetic data for prospects/sales demos. See
 [the demo strategy ADR](../decisions/0014-demo-tenant-strategy.md).
+
+## IMPORT (Prompt 02-B)
+
+**Responsibility:** the guided, staged bulk-inventory-onboarding flow — dynamic Excel template
+generation, upload, column mapping, validation, preview, and batched commit into CATALOG (products,
+variants) and INVENTORY (initial stock, ledgered like any other movement). See
+[database.md#excel-import-pipeline](database.md#excel-import-pipeline) and
+[ADR-0027](../decisions/0027-staged-excel-import-pipeline.md). Large-import processing runs on a
+**separate Import Worker process** from the NOTIFICATIONS module's Event Processor below — same
+Postgres-backed claiming pattern, different deployable, resolved in Prompt 02-D; see
+[ADR-0029](../decisions/0029-import-worker-separation.md) and
+[database.md#large-imports](database.md#large-imports).
+
+- `import_mapping_templates`, `import_jobs`, `import_job_rows`.
+
+**Depends on:** CORE (tenant scoping, audit), CATALOG (creates/updates products, variants, and reads
+`attribute_definitions`/`category_attributes` to validate rows and generate templates), INVENTORY
+(writes `inventory_movements`/`inventory_balances` for initial stock, through INVENTORY's own
+concurrency-safe write path — never touching INVENTORY's tables directly from CATALOG code). Shaped
+like DEMO above — a module whose entire purpose is populating other modules' data — rather than folded
+into CATALOG, specifically so CATALOG itself keeps its single, simple `Catalog --> Core` dependency
+edge and IMPORT carries the (legitimate, narrower) multi-module dependency instead.
+
+**Consumed by:** nothing depends on IMPORT — like QR, it is a leaf module.
 
 ## Inventory and locations summary
 

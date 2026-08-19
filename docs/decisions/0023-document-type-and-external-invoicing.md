@@ -15,11 +15,12 @@ explicitly rules out.
 
 ## Decision
 
-Two columns on `orders`, deliberately not one: `document_type` (`'INVOICE' | 'SALES_NOTE'`, what was
-requested at checkout — a closed two-value choice, not a boolean) and `invoice_status`
-(`'PENDING' | 'ISSUED' | 'FAILED'`, nullable, meaningful only when `document_type = 'INVOICE'`,
-enforced by a `CHECK`). The platform's own responsibility stops at recording the request and, later,
-recording whatever an external process reports back (`ISSUED`/`FAILED`) — it never generates a fiscal
+Two columns on `orders`, deliberately not one: `document_type` (`'invoice' | 'sales_note'`, lowercase
+per the enum-value naming convention closed in Prompt 02-D — what was requested at checkout, a closed
+two-value choice, not a boolean) and `invoice_status` (`'pending' | 'issued' | 'failed'`, nullable,
+meaningful only when `document_type = 'invoice'`, enforced by a `CHECK`). The platform's own
+responsibility stops at recording the request and, later, recording whatever an external process
+reports back (`issued`/`failed`) — it never generates a fiscal
 document, never talks to a tax authority or invoicing provider, and no such integration is designed or
 implied. Full schema:
 [database.md#orders-conceptual--sales-not-built-yet](../architecture/database.md#orders-conceptual--sales-not-built-yet).
@@ -34,7 +35,7 @@ implied. Full schema:
 - **Conflating `document_type` and `invoice_status` into one column** (e.g. `'sales_note' |
   'invoice_pending' | 'invoice_issued' | 'invoice_failed'`). Rejected: this prompt explicitly
   distinguishes "what was requested" from "what happened with the external process," and a
-  `SALES_NOTE` order simply has no invoicing status at all — collapsing them into one column would
+  `sales_note` order simply has no invoicing status at all — collapsing them into one column would
   either need a meaningless value for that case or lose the distinction the prompt asks to keep.
 - **Designing an actual fiscal-provider integration now** (API client, provider credentials, retry
   logic). Explicitly rejected — this prompt's architectural rule is that invoicing is external, and
@@ -45,11 +46,11 @@ implied. Full schema:
 ## Consequences
 
 - Any endpoint/notification that needs to tell a supervisor "this needs to be invoiced externally"
-  reads `document_type = 'INVOICE' AND invoice_status = 'PENDING'` directly off the order — no
+  reads `document_type = 'invoice' AND invoice_status = 'pending'` directly off the order — no
   derived state, no separate table needed for that signal.
 - If a real invoicing integration is ever built, `invoice_status` already has the right shape to be
-  updated by it (`PENDING → ISSUED`/`FAILED`) — this ADR doesn't need to be revisited for that, only
+  updated by it (`pending → issued`/`failed`) — this ADR doesn't need to be revisited for that, only
   extended with whatever integration-specific fields (a provider invoice id/number) turn out to be
   needed at that time.
-- `SALES_NOTE` orders carry a `NULL` `invoice_status` by construction (the `CHECK` constraint), not a
-  default `'PENDING'` that would misleadingly suggest an invoicing process exists for them.
+- `sales_note` orders carry a `NULL` `invoice_status` by construction (the `CHECK` constraint), not a
+  default `'pending'` that would misleadingly suggest an invoicing process exists for them.

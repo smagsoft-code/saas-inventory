@@ -29,7 +29,9 @@ database.
 ## Tenant context: where it comes from
 
 **The tenant is never trusted from anything the client controls.** Not the request body, not a
-query string parameter, not a path segment, not an arbitrary header.
+query string parameter, not a path segment, not an arbitrary header. This applies identically to the
+Flutter mobile app ([mobile.md#multi-tenant-mobile](mobile.md#multi-tenant-mobile)) — a client is a
+client, regardless of platform; nothing below is web-specific.
 
 The only source of truth for "which tenant is this request for" is the **authenticated session**:
 

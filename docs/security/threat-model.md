@@ -116,11 +116,18 @@ grows.
 ## Malicious file upload
 
 - **Risk:** an uploaded product image (or future upload) is actually an executable, a script, or
-  crafted to exploit an image-processing library.
+  crafted to exploit an image-processing library. For the Excel import pipeline (Prompt 02-B)
+  specifically: a macro-enabled spreadsheet, a formula crafted to execute when opened
+  (CSV/Excel formula injection), or a malformed/oversized `.xlsx` (a zip container) intended to exhaust
+  parser memory/time.
 - **Impact:** medium–high depending on where/how uploads are processed and served.
 - **Mitigation:** content-type validated against actual content, size and extension limits, storage
-  in object storage rather than the API's filesystem, served from an isolated origin. See
-  [security.md#file-upload-security](../architecture/security.md#file-upload-security).
+  in object storage rather than the API's filesystem, served from an isolated origin. For Excel
+  specifically: `.xlsx` only (macro-enabled `.xlsm` rejected outright), cell **values** read only,
+  never live formula evaluation, and the generated error report sanitizes any echoed cell content
+  before writing it into a downloadable file. See
+  [security.md#file-upload-security](../architecture/security.md#file-upload-security) and
+  [database.md#security-of-the-uploaded-file](../architecture/database.md#security-of-the-uploaded-file).
 - **Priority:** P1.
 
 ## Webhook abuse (outbound to n8n)
