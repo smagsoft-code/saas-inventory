@@ -1,0 +1,15 @@
+# Reverse proxy: routes the public domain to the web app and the API
+# under /api, terminates TLS, and never exposes Postgres/Redis directly.
+#
+# Placeholder — real domain/TLS settings are configured per environment
+# in a later phase (see docs/deployment/docker.md).
+
+{$APP_DOMAIN:localhost} {
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	handle {
+		reverse_proxy web:3000
+	}
+}

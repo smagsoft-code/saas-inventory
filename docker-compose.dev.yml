@@ -1,0 +1,73 @@
+name: saas-inventory-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-saas_inventory}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-saas_inventory}
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    image: node:20-alpine
+    working_dir: /repo
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @saas-inventory/api dev"
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-saas_inventory}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-saas_inventory}
+      REDIS_URL: redis://redis:6379
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    ports:
+      - '127.0.0.1:4000:4000'
+    volumes:
+      - .:/repo
+      - api_node_modules:/repo/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    image: node:20-alpine
+    working_dir: /repo
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @saas-inventory/web dev"
+    environment:
+      NODE_ENV: development
+      API_URL: http://api:4000
+    ports:
+      - '127.0.0.1:3000:3000'
+    volumes:
+      - .:/repo
+      - web_node_modules:/repo/node_modules
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
+  api_node_modules:
+  web_node_modules:

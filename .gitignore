@@ -1,0 +1,57 @@
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# Test coverage / reports
+coverage/
+playwright-report/
+test-results/
+.turbo/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# Docker volumes / local data
+infrastructure/docker/volumes/
+infrastructure/docker/data/
+
+# Secrets and credentials
+secrets/
+credentials/
+*.pem
+*.key
+!infrastructure/caddy/**/*.key.example
+
+# Temporary uploads
+uploads/
+tmp/
+temp/
+
+# Database local artifacts
+*.sqlite
+*.sqlite3
