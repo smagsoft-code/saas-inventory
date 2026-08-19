@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted (core strategy); RLS activation timing is a documented `PENDING DECISION`, see
-[Consequences](#consequences).
+Accepted. RLS activation timing (previously a documented `PENDING DECISION`) is resolved as of
+Prompt 02 — see [Consequences](#consequences) and
+[database.md#row-level-security](../architecture/database.md#row-level-security).
 
 ## Context
 
@@ -47,11 +48,18 @@ Full design in [multi-tenancy.md](../architecture/multi-tenancy.md). Summary:
 - Every new tenant-owned table's repository must implement tenant filtering — this is now a
   checklist item for [Definition of Done](../../CLAUDE.md#79-definition-of-done) and for code
   review, not optional.
-- **`PENDING DECISION`:** whether RLS policies are added starting with the first schema migration
-  (Prompt 02) or introduced later as a FASE 15 hardening pass — see
-  [database.md#row-level-security](../architecture/database.md#row-level-security) for the
-  trade-off. This does not block Prompt 02 database design; it affects whether Prompt 02's
-  migrations include `ENABLE ROW LEVEL SECURITY` statements or not.
+- **Resolved in Prompt 02:** RLS is enabled from the first migration that creates each tenant-owned
+  table, not deferred to FASE 15. Turning it on later would be safe but would leave the schema, seed
+  scripts, and any early admin tooling built and exercised without the database-level backstop for
+  weeks/months, each such path then needing a retroactive audit; building every tenant table with RLS
+  from day one costs nothing extra structurally since the policy is boilerplate generated alongside
+  the table in the same migration. Full design, including the multi-role strategy (`app_tenant`,
+  `app_platform`, `app_event_processor`, `app_public_resolver`, `app_migrator`) needed to make RLS
+  coexist with connection pooling, background workers, and controlled platform-level bypass:
+  [database.md#row-level-security](../architecture/database.md#row-level-security). Also closed in
+  the same pass: tenant-aware referential integrity via composite foreign keys, so a FK itself cannot
+  connect one tenant's row to another's — see
+  [ADR-0018](0018-tenant-aware-referential-integrity.md).
 - SuperAdmin functionality is necessarily a separate set of endpoints/guards/UI area (see
   [frontend.md](../architecture/frontend.md#app-router-structure)), not a mode switch inside the
   tenant application.

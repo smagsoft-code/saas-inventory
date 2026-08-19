@@ -15,8 +15,8 @@ where, and with what before/after effect — not just current-state data.
 
 A dedicated, append-only `AuditLog` in the CORE module (see
 [modules.md#core](../architecture/modules.md#core) and
-[database.md#audit-log-conceptual](../architecture/database.md#audit-log-conceptual)), separate
-from operational application logs (see
+[database.md#audit-log-vs-domain-events-vs-application-logs](../architecture/database.md#audit-log-vs-domain-events-vs-application-logs)),
+separate from operational application logs (see
 [security.md#logging-and-audit](../architecture/security.md#logging-and-audit)). Every entry
 captures actor (user or platform admin, with type), tenant_id (nullable for global/SuperAdmin
 actions), action code, entity type + id, before/after state (JSONB), correlation id, and

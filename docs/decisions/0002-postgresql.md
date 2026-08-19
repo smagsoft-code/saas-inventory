@@ -24,7 +24,7 @@ up under the architecture defined here.
   defense-in-depth layer for tenant isolation — see
   [multi-tenancy.md#enforcement-layers-defense-in-depth](../architecture/multi-tenancy.md#enforcement-layers-defense-in-depth))
   and JSONB support (needed for flexible product attributes — see
-  [database.md#product-model-conceptual](../architecture/database.md#product-model-conceptual))
+  [database.md#catalog-products-variants-attributes](../architecture/database.md#catalog-products-variants-attributes))
   are materially stronger in PostgreSQL.
 - **A NoSQL document store (e.g. MongoDB).** Rejected: inventory movements, order/cart consistency,
   and tenant isolation all lean heavily on multi-row ACID transactions and relational integrity

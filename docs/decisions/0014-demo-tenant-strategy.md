@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted (strategy); reset mechanism/cadence is a documented `PENDING DECISION`.
+Accepted. Reset mechanism resolved in Prompt 02 (see [Consequences](#consequences)); reset cadence
+remains a documented `PENDING DECISION`, deferred to FASE 14.
 
 ## Context
 
@@ -38,9 +39,18 @@ locations, inventory, movements, customers, sample orders) via the seed scripts 
 - Demo data is created and reset via the same seed-script mechanism used for any tenant's initial
   data (see [database/seeds/README.md](../../database/seeds/README.md)), not bespoke demo-only
   code.
-- **`PENDING DECISION`:** exact reset cadence/mechanism (on-demand via an admin action, scheduled
+- **Reset mechanism decided in Prompt 02** (cadence is still `PENDING DECISION`, deferred to FASE 14
+  as below): reset is an explicit, ordered, `tenant_id`-scoped delete of every row belonging to the
+  demo tenant (looked up by its fixed `slug = 'demo'`, not a hardcoded id), run with RLS active as a
+  second guarantee against touching any other tenant, followed by re-running the demo seed script.
+  Deliberately **not** an `ON DELETE CASCADE` from the `tenants` row — that capability isn't added
+  anywhere in this schema (see [database.md#soft-delete-policy](../architecture/database.md#soft-delete-policy)),
+  so the demo tenant gets its own narrow, reviewed script instead of a generic cascade every tenant
+  would otherwise also have. Full detail:
+  [database.md#seed-and-demo-tenant](../architecture/database.md#seed-and-demo-tenant).
+- **`PENDING DECISION`, unchanged:** exact reset *cadence* (on-demand via an admin action, scheduled
   nightly reset, reset-on-login) — deferred to FASE 14 (Demo Environment) in the
   [roadmap](../roadmap/roadmap.md), since it depends on how the demo is actually used in sales
-  motions, which isn't determined yet.
+  motions, which isn't determined yet. Prompt 02 fixes the reset *mechanism*, not *when* it runs.
 - Because the demo tenant is a real tenant, it also incidentally serves as a continuous
   integration-adjacent sanity check that seeding and multi-tenant isolation work end to end.

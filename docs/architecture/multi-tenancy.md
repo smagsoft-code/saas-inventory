@@ -69,12 +69,22 @@ result in cross-tenant data exposure:
    convention, not something left to individual call sites to remember — see
    [backend.md](backend.md) for how the repository layer is shaped to make omitting it hard to do
    by accident.
-3. **Database layer (planned, not yet active)** — PostgreSQL Row-Level Security (RLS) policies as
-   a last-resort backstop, so that even a query that forgot the `tenant_id` filter cannot read or
-   write another tenant's rows. **Status: evaluated and planned, activation timing is a
-   `PENDING DECISION`** — see [ADR-0004](../decisions/0004-tenant-isolation-strategy.md) and
-   [database.md](database.md#row-level-security). RLS is additive hardening on top of layers 1–2,
-   not a replacement for them.
+3. **Database layer (designed in Prompt 02, implemented starting Prompt 03)** — PostgreSQL
+   Row-Level Security (RLS) policies as a last-resort backstop, so that even a query that forgot the
+   `tenant_id` filter cannot read or write another tenant's rows. **Status: RLS timing is decided —
+   enabled from the first migration that creates each tenant-owned table, not deferred** — see
+   [ADR-0004](../decisions/0004-tenant-isolation-strategy.md) and
+   [database.md#row-level-security](database.md#row-level-security) for the full design (session
+   variable set via `SET LOCAL`/`set_config`, the `app_tenant`/`app_platform`/`app_event_processor`/
+   `app_public_resolver` role split, and how this stays safe under connection pooling). RLS is
+   additive hardening on top of layers 1–2, not a replacement for them.
+4. **Database layer — tenant-aware referential integrity.** Every foreign key between two
+   tenant-owned tables is a composite `(tenant_id, x_id) REFERENCES x(tenant_id, id)`, not a bare
+   `x_id REFERENCES x(id)`. This closes a failure mode RLS alone does not: RLS constrains which rows
+   a query can see/write, but does not by itself verify that a *referenced* row belongs to the same
+   tenant as the row referencing it. See
+   [ADR-0018](../decisions/0018-tenant-aware-referential-integrity.md) and
+   [database.md#tenant-aware-referential-integrity](database.md#tenant-aware-referential-integrity).
 
 ## Cross-tenant access: what "wrong" looks like
 
@@ -146,6 +156,14 @@ later, support tooling). These are:
   filter turned off — so the "normal" repository path is never given a way to accidentally skip
   isolation.
 - Audited like any other administrative action.
+
+**Prompt 02-A note — a different, narrower dimension:** location-scoped authorization
+(`user_location_assignments`, see [database.md#location-scoped-authorization](database.md#location-scoped-authorization))
+restricts which of a *tenant's own* locations a user may operate on — it is not a tenant-isolation
+mechanism and must not be confused with one. A location-authorization bug (an employee touching another
+location belonging to the *same* tenant) never crosses the tenant boundary this document exists to
+protect; it is reviewed and enforced independently, at the RBAC/guard layer, not via RLS or the
+tenant-context mechanisms described above.
 
 ## What is *not* tenant-scoped
 

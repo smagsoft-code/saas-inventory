@@ -19,7 +19,7 @@ events on the [outbox](events.md), not a direct import.
 ```mermaid
 flowchart TB
     Core["CORE\ntenants, users, roles, permissions, audit"]
-    Catalog["CATALOG\nproducts, categories, brands, attributes, images"]
+    Catalog["CATALOG\nproducts, categories, brands, suppliers, attributes, images"]
     Inventory["INVENTORY\nwarehouses, locations, inventory, movements, adjustments, transfers"]
     QR["QR\nproduct QR, location QR"]
     Sales["SALES (future)\ncustomers, cart, orders"]
@@ -69,10 +69,15 @@ interface.
 ## CATALOG
 
 **Responsibility:** what a tenant sells — products and the taxonomy around them. Deliberately
-generic; see [ADR](../decisions) list has no dedicated "product model" ADR because the product
-model is a database-design concern, not an architecture-level one — it's addressed in Prompt 02.
+generic; see the product model design in
+[database.md#catalog-products-variants-attributes](database.md#catalog-products-variants-attributes)
+and [ADR-0017](../decisions/0017-product-variant-attribute-model.md), produced in Prompt 02.
 
-- `products`, `categories`, `brands`, `product attributes`, `product images`.
+- `products`, `product_variants`, `categories`, `brands`, `product images`.
+- `suppliers` — a passive reference/attribution entity ("who this product is sourced from"), placed
+  here rather than under SALES or a not-yet-existing PURCHASING module; see
+  [ADR-0019](../decisions/0019-suppliers-ownership.md) for why. No purchase-order/receiving workflow
+  is in scope.
 
 **Depends on:** CORE (tenant scoping, audit).
 
@@ -81,16 +86,25 @@ a product), QR (a product can have a QR code), REPORTS.
 
 ## INVENTORY
 
-**Responsibility:** where stock physically is and how it moves. See
-[Inventory](#inventory-and-locations-summary) below and the Inventory Flow diagram.
+**Responsibility:** where stock physically is and how it moves, including stock moving *between*
+locations and stock in transit. See [Inventory](#inventory-and-locations-summary) below and the
+Inventory Flow diagram; full schema and concurrency design (row locking, idempotency) in
+[database.md#inventory-warehouses-locations-balance-ledger](database.md#inventory-warehouses-locations-balance-ledger)
+and [database.md#concurrency-strategy](database.md#concurrency-strategy) (Prompt 02); multi-location
+transfers, in-transit representation, and location-scoped authorization in
+[database.md#inventory-transfers-and-in-transit-stock](database.md#inventory-transfers-and-in-transit-stock)
+and [database.md#location-scoped-authorization](database.md#location-scoped-authorization)
+(Prompt 02-A, [ADR-0020](../decisions/0020-multi-location-inventory-transfers.md),
+[ADR-0024](../decisions/0024-location-scoped-authorization.md)).
 
-- `warehouses`, `locations` (hierarchical), `inventory` (balances), `inventory movements`,
-  `stock adjustments`, `transfers`.
+- `warehouses`, `locations` (hierarchical, `is_sellable`-flagged), `inventory_balances`,
+  `inventory_movements`, `stock adjustments`, `inventory_transfers`/`inventory_transfer_items`/
+  `inventory_transfer_receipts`/`inventory_transfer_receipt_items`, `user_location_assignments`.
 
 **Depends on:** CORE, CATALOG.
 
-**Consumed by:** SALES (reserving/committing stock for an order), QR (a location can have a QR
-code), REPORTS.
+**Consumed by:** SALES (reserving/committing stock for an order, receiving returned stock), QR (a
+location can have a QR code), REPORTS.
 
 ## QR
 
@@ -103,22 +117,35 @@ code), REPORTS.
 
 ## SALES (future — not built in this phase)
 
-**Responsibility:** the commerce flow — a customer builds a cart, which becomes an order, which
-consumes inventory.
+**Responsibility:** the commerce flow — a customer builds a cart, which becomes an order (with a
+negotiated price, an invoice-or-sales-note choice, and a frozen customer snapshot), which consumes
+inventory, and which may later be returned. Full schema in
+[database.md#cart](database.md#cart), [database.md#orders-conceptual--sales-not-built-yet](database.md#orders-conceptual--sales-not-built-yet),
+[database.md#pricing-history-tenant-policy-and-exceptional-discount-approval](database.md#pricing-history-tenant-policy-and-exceptional-discount-approval),
+and [database.md#sales-returns-and-disposition](database.md#sales-returns-and-disposition)
+(Prompt 02-A, [ADR-0021](../decisions/0021-sales-returns-disposition.md),
+[ADR-0022](../decisions/0022-pricing-tiers-and-discount-approval.md),
+[ADR-0023](../decisions/0023-document-type-and-external-invoicing.md)).
 
-- `customers`, `cart`, `orders`.
+- `customers`, `carts`/`cart_items`, `orders`/`order_items`, `price_approvals`, `sales_returns`/
+  `sales_return_items`.
 
 **Depends on:** CORE, CATALOG, INVENTORY.
 
 This module is designed conceptually now (see
-[Order flow](#order-flow-conceptual--sales-not-implemented-yet)) but not implemented.
+[Order flow](#order-flow-conceptual--sales-not-implemented-yet)) but not implemented. Its exceptional
+price approvals notify a supervisor/administrator via the same outbox → n8n → Telegram path as any
+other event ([events.md](events.md)), never a direct Telegram integration inside SALES itself.
 
 ## NOTIFICATIONS
 
 **Responsibility:** turning domain events into outbound notifications without coupling any other
-module to *how* a notification is delivered. See [events.md](events.md) in full.
+module to *how* a notification is delivered. See [events.md](events.md) in full and
+[database.md#outbox](database.md#outbox) (Prompt 02) for the `event_outbox` table shape and the
+`FOR UPDATE SKIP LOCKED` claiming pattern that lets multiple Event Processor instances share the
+queue safely.
 
-- `events` (the outbox table), delivery/retry bookkeeping.
+- `event_outbox` (the outbox table), delivery/retry bookkeeping.
 
 **Depends on:** nothing (it only reads events written by other modules' transactions).
 
@@ -234,6 +261,15 @@ unit of stock cannot both succeed. Idempotency is handled via a client-supplied 
 (see [api.md](api.md#idempotency)) so a retried request (e.g. after a timeout) does not create a
 duplicate order.
 
+**Prompt 02-A:** an order carries a negotiated price per line, frozen at the moment of sale, plus the
+customer's chosen document type (invoice/sales note) and a frozen snapshot of their contact details —
+see [database.md#orders-conceptual--sales-not-built-yet](database.md#orders-conceptual--sales-not-built-yet).
+If any line's price falls below the product's authorized minimum, order confirmation is additionally
+gated on that line's `price_approvals` request being resolved — see
+[database.md#pricing-history-tenant-policy-and-exceptional-discount-approval](database.md#pricing-history-tenant-policy-and-exceptional-discount-approval).
+Before an order exists at all, the customer's selections live in a `cart` — see
+[database.md#cart](database.md#cart).
+
 ## Audit
 
 Every module that mutates tenant data writes to the CORE audit log. What gets audited (initial
@@ -243,8 +279,10 @@ list — extended as modules are built):
 - Authorization failures (attempted access denied by a guard) above a noise threshold.
 - User/role/permission changes.
 - Tenant lifecycle (created, activated, deactivated) — SuperAdmin actions.
-- Inventory adjustments and transfers.
+- Inventory adjustments and transfers (dispatch, receipt, including incidents/discrepancies).
 - Order creation and cancellation (once SALES exists).
+- Exceptional price-discount requests and their approval/rejection.
+- Sales returns and their disposition (restock/quarantine/damaged/scrap).
 - Any SuperAdmin action touching a specific tenant.
 
 Each entry captures **who** (actor + whether SuperAdmin or tenant user), **what** (action code),

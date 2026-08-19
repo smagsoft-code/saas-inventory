@@ -75,7 +75,10 @@ This shape is already reflected in `packages/types` (`ApiErrorShape`, from Promp
   matching the `PaginatedResult<T>` / `PaginationParams` shapes already defined in
   `packages/types`. High-volume, append-mostly endpoints (e.g. `InventoryMovement` history) may
   need cursor-based pagination instead for stable results under concurrent writes —
-  `PENDING DECISION`, resolved per-endpoint when that endpoint is built, not globally now.
+  `PENDING DECISION`, resolved per-endpoint when that endpoint is built, not globally now. The
+  Prompt 02 schema's indexes on those tables (e.g. `inventory_movements(tenant_id, created_at)`, see
+  [database.md#indexes](database.md#indexes)) support either choice without a schema change, so this
+  decision is not blocked by the database design.
 - **Filtering:** explicit, documented query parameters per endpoint (e.g. `?status=active`), not a
   generic passthrough query-language — every filterable field is deliberately exposed, not
   whatever happens to exist as a column, which also avoids leaking schema shape.
@@ -88,10 +91,15 @@ This shape is already reflected in `packages/types` (`ApiErrorShape`, from Promp
 ## Idempotency
 
 State-changing endpoints where a client retry could otherwise duplicate an effect (most notably
-order creation, once SALES exists) accept an `Idempotency-Key` header. The API stores the key
-(scoped by tenant) with the result of the first request that used it; a retried request with the
-same key returns the original result instead of repeating the operation. See the
-[order flow](modules.md#order-flow-conceptual--sales-not-implemented-yet) in modules.md.
+order creation, once SALES exists — and, per Prompt 02-A, cart-item mutations, inventory-transfer
+receiving events, and sales-return creation/disposition) accept an `Idempotency-Key` header. The API
+stores the key (scoped by tenant) with the result of the first request that used it; a retried request
+with the same key returns the original result instead of repeating the operation. See the
+[order flow](modules.md#order-flow-conceptual--sales-not-implemented-yet) in modules.md and the full
+persistence design in [database.md#idempotency](database.md#idempotency). A one-time state transition
+that only ever legitimately happens once (e.g. a transfer's dispatch) instead uses a *deterministic*
+idempotency key derived from the entity itself, not a client-supplied header — see
+[database.md#inventory-transfers-and-in-transit-stock](database.md#inventory-transfers-and-in-transit-stock).
 
 ## Correlation ID
 

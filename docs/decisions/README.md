@@ -37,7 +37,7 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0001](0001-modular-monolith.md) | Modular Monolith over Microservices | Accepted |
 | [0002](0002-postgresql.md) | PostgreSQL as the Primary Database | Accepted |
 | [0003](0003-single-database-multi-tenant.md) | Single Database, Multi-Tenant | Accepted |
-| [0004](0004-tenant-isolation-strategy.md) | Tenant Isolation Strategy | Accepted (RLS timing pending) |
+| [0004](0004-tenant-isolation-strategy.md) | Tenant Isolation Strategy | Accepted (RLS timing resolved in Prompt 02) |
 | [0005](0005-rest-api.md) | REST API (not GraphQL) | Accepted |
 | [0006](0006-nextjs.md) | Next.js for the Web Frontend | Accepted |
 | [0007](0007-nestjs.md) | NestJS for the Backend | Accepted |
@@ -47,8 +47,24 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0011](0011-n8n-external-automation.md) | n8n as an External, Decoupled Automation Layer | Accepted |
 | [0012](0012-telegram-through-n8n.md) | Telegram Notifications Exclusively Through n8n | Accepted |
 | [0013](0013-docker-deployment.md) | Docker-based Deployment | Accepted (hosting provider pending) |
-| [0014](0014-demo-tenant-strategy.md) | Demo Tenant Strategy | Accepted (reset mechanism pending) |
+| [0014](0014-demo-tenant-strategy.md) | Demo Tenant Strategy | Accepted (reset mechanism resolved in Prompt 02, cadence pending) |
 | [0015](0015-audit-log.md) | Audit Log | Accepted |
+| [0016](0016-uuid-identifier-strategy.md) | UUIDv7 Primary Keys, Generated in the Application | Accepted |
+| [0017](0017-product-variant-attribute-model.md) | Product Model — Hybrid Relational + JSONB, Product/Variant Split | Accepted |
+| [0018](0018-tenant-aware-referential-integrity.md) | Tenant-Aware Referential Integrity (Composite Foreign Keys) | Accepted |
+| [0019](0019-suppliers-ownership.md) | Suppliers as a CATALOG-Owned Reference Entity | Accepted |
+| [0020](0020-multi-location-inventory-transfers.md) | Multi-Location Inventory Transfers and In-Transit Representation | Accepted |
+| [0021](0021-sales-returns-disposition.md) | Sales Returns and Disposition via Non-Sellable Locations | Accepted |
+| [0022](0022-pricing-tiers-and-discount-approval.md) | Three-Tier Pricing, Price History, and Exceptional-Discount Approval | Accepted |
+| [0023](0023-document-type-and-external-invoicing.md) | Document Type Selection (Invoice / Sales Note) and the External-Invoicing Boundary | Accepted |
+| [0024](0024-location-scoped-authorization.md) | Location-Scoped Authorization as an RBAC Extension | Accepted |
 
-These were produced in Prompt 01 (architecture phase) alongside
+ADRs 0001–0015 were produced in Prompt 01 (architecture phase) alongside
 [docs/architecture/](../architecture/) and [docs/security/threat-model.md](../security/threat-model.md).
+ADRs 0016–0019 were produced in Prompt 02 (database design phase), which also resolved the RLS-timing
+and demo-reset-mechanism pending items on 0004 and 0014 — see
+[docs/architecture/database.md](../architecture/database.md). ADRs 0020–0024 were produced in
+Prompt 02-A (an audit/extension pass over the Prompt 02 design), which also revised `product_variants`'
+single `price` column into three tiers (`max_price`/`base_price`/`min_price`) — see
+[discrepancy #5](../architecture/database.md#discrepancies-found-and-how-they-were-resolved) in
+`database.md`.

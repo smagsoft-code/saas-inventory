@@ -16,8 +16,12 @@ grows.
 - **Impact:** critical — this is the platform's core promise to every customer; a single incident
   is a trust-ending event, not just a bug.
 - **Mitigation:** tenant context derived only from the verified token (never client input),
-  enforced at the guard layer and the repository layer, with planned RLS as a database-level
-  backstop. See [multi-tenancy.md](../architecture/multi-tenancy.md#enforcement-layers-defense-in-depth).
+  enforced at the guard layer and the repository layer, with RLS (enabled from the first migration —
+  see [database.md#row-level-security](../architecture/database.md#row-level-security)) and
+  tenant-aware composite foreign keys (see
+  [database.md#tenant-aware-referential-integrity](../architecture/database.md#tenant-aware-referential-integrity))
+  as database-level backstops. See
+  [multi-tenancy.md](../architecture/multi-tenancy.md#enforcement-layers-defense-in-depth).
 - **Priority:** P0.
 
 ## Privilege escalation
@@ -30,8 +34,30 @@ grows.
   request (see [security.md#authorization-rbac--permissions](../architecture/security.md#authorization-rbac--permissions));
   SuperAdmin identity is structurally separate from tenant users, not a role flag (see
   [multi-tenancy.md#superadmin-vs-tenant](../architecture/multi-tenancy.md#superadmin-vs-tenant)),
-  so there is no single bit to flip to gain it.
+  so there is no single bit to flip to gain it. Location-scoped authorization (Prompt 02-A) adds a
+  narrower instance of this same class within a tenant — a user authorized for one location must not
+  thereby act on another; see
+  [database.md#location-scoped-authorization](../architecture/database.md#location-scoped-authorization).
 - **Priority:** P0.
+
+## Unauthorized exceptional discount
+
+- **Risk:** a vendor sells below the authorized minimum price without the required approval — either
+  by a client bypassing the approval gate directly, or by a compromised/careless server-side check
+  failing to enforce it.
+- **Impact:** medium — direct financial loss per occurrence, and if systematic, a real gap in the
+  business's pricing controls; bounded (unlike cross-tenant access) to whatever a single sale's margin
+  is.
+- **Mitigation:** `order_items.unit_price_snapshot < min_price_snapshot` requires a resolved
+  `price_approvals` row (`APPROVED`, not `PENDING`/`REJECTED`/`CANCELLED`) before the order can reach
+  `confirmed` — a database-queryable gate (the `(tenant_id, order_id, status)` index), not a
+  client-trusted flag; a request below the tenant's configured hard floor
+  (`tenant_price_policies.max_discount_below_min_percent`) is rejected before an approval request can
+  even be created, closing off "ask for approval on something that should never be approvable" as a
+  bypass path. See
+  [database.md#pricing-history-tenant-policy-and-exceptional-discount-approval](../architecture/database.md#pricing-history-tenant-policy-and-exceptional-discount-approval)
+  and [ADR-0022](../decisions/0022-pricing-tiers-and-discount-approval.md).
+- **Priority:** P2.
 
 ## Stolen / replayed JWT
 
@@ -118,7 +144,10 @@ grows.
   exists.
 - **Mitigation:** TLS prevents on-path capture in the common case; `Idempotency-Key` on
   effect-sensitive endpoints means even a legitimately retried (or replayed) request doesn't
-  duplicate the effect. See [api.md#idempotency](../architecture/api.md#idempotency).
+  duplicate the effect. See [api.md#idempotency](../architecture/api.md#idempotency) for the API
+  contract and [database.md#idempotency](../architecture/database.md#idempotency) for the persistence
+  design (the `idempotency_keys` table, plus the narrower ledger-level guard on
+  `inventory_movements`).
 - **Priority:** P2.
 
 ## Brute force
@@ -171,6 +200,7 @@ grows.
 | Compromised container | P1 |
 | Webhook abuse | P2 (today) |
 | Replay attack | P2 |
+| Unauthorized exceptional discount | P2 |
 
 P0 items are addressed by the architecture itself (guard/repository tenant filtering, parameterized
 queries, structurally separate SuperAdmin identity, gitignored secrets) rather than left as

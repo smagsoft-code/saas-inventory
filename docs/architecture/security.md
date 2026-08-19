@@ -60,11 +60,22 @@ that declaration before the controller runs — see [api.md#request-flow](api.md
 Authorization is always re-checked server-side on every request; the frontend hiding a button is a
 UX nicety, never the enforcement (per [CLAUDE.md §7.6](../../CLAUDE.md#76-frontend)).
 
+**Location-scoped authorization (Prompt 02-A)** is a second, independent check layered on top of RBAC
+for location-sensitive actions (receiving a transfer, adjusting stock at a specific location): holding
+the permission is necessary but not sufficient — the user must also be authorized for that specific
+location, or hold no location restrictions at all. See
+[database.md#location-scoped-authorization](database.md#location-scoped-authorization) and
+[ADR-0024](../decisions/0024-location-scoped-authorization.md). This is a business-authorization
+control, not a tenant-isolation one — it never permits crossing into another tenant's data.
+
 ## Tenant isolation
 
 Covered in full in [multi-tenancy.md](multi-tenancy.md): tenant context derived only from the
-verified token, enforced at the guard layer, the repository layer, and (planned) via PostgreSQL
-RLS as defense-in-depth. Cross-tenant access is treated as a critical-severity class of bug — see
+verified token, enforced at the guard layer, the repository layer, PostgreSQL RLS (enabled from the
+first migration, not deferred — see [database.md#row-level-security](database.md#row-level-security))
+and tenant-aware composite foreign keys (see
+[database.md#tenant-aware-referential-integrity](database.md#tenant-aware-referential-integrity)) as
+defense-in-depth. Cross-tenant access is treated as a critical-severity class of bug — see
 the [threat model](../security/threat-model.md).
 
 ## CSRF

@@ -73,13 +73,22 @@ result in unbounded retry traffic.
 | `USER_CREATED` | CORE | user id, tenant id |
 | `INVENTORY_ADJUSTED` | INVENTORY | product id, warehouse/location id, delta, resulting balance |
 | `LOW_STOCK` | INVENTORY | product id, warehouse/location id, current available stock, threshold |
-| `ORDER_CREATED` | SALES (future) | order id, tenant id, customer id, totals |
+| `ORDER_CREATED` | SALES (future) | order id, tenant id, customer id, **document type (invoice/sales note), customer snapshot (name/id/email/phone/address), line items with product/quantity/unit price, discount, totals, whether any line used an exceptional discount and that request's approval status (pending/approved/not required), placed-by user, fulfillment location** — see [database.md#pricing-history-tenant-policy-and-exceptional-discount-approval](database.md#pricing-history-tenant-policy-and-exceptional-discount-approval) for where each field comes from |
 | `ORDER_CANCELLED` | SALES (future) | order id, cancellation reason |
+| `PRICE_APPROVAL_REQUESTED` | SALES (future) | order id, order item id, product, requested price, min/max price at request, discount amount, reason, requested-by user — notifies a supervisor/administrator there is a pending exceptional-discount request to act on; see [database.md#pricing-history-tenant-policy-and-exceptional-discount-approval](database.md#pricing-history-tenant-policy-and-exceptional-discount-approval) |
 
 Every event payload includes `tenantId` (except platform-global events like `TENANT_CREATED`
 itself) and the `correlationId` of the request that produced it (see
 [api.md](api.md#correlation-id)), so a downstream n8n workflow — and any future debugging — can
 trace an event back to the exact request that caused it.
+
+**Three distinct layers, per Prompt 02-A — not to be conflated:** (1) **persisted data** — the actual
+`orders`/`order_items`/`price_approvals` rows in Postgres, the durable source of truth
+([database.md](database.md)); (2) **the domain event** — `ORDER_CREATED`'s JSON payload above, a
+read-only projection of that data written to `event_outbox` in the same transaction, generic and
+Telegram-agnostic; (3) **the notification** — the actual Telegram message text/formatting, which is
+entirely n8n's concern (message layout, which chat/channel, language) and never exists as backend
+code or a backend template. The backend produces (1) and (2) only; n8n turns (2) into (3).
 
 ## n8n and Telegram
 
