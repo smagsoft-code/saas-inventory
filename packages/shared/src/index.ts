@@ -76,6 +76,10 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'core.users.update',
       'core.roles.read',
       'core.roles.assign',
+      'products.view',
+      'products.manage',
+      'categories.view',
+      'categories.manage',
     ],
   },
   Supervisor: {
@@ -88,14 +92,22 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'inventory.transfers.dispatch',
       'inventory.transfers.receive',
       'inventory.returns.manage',
+      'products.view',
+      'categories.view',
     ],
   },
   Vendedor: {
     description: 'Vende y negocia dentro del rango autorizado; sin visibilidad de costos.',
-    permissionCodes: ['pricing.floor.view', 'pricing.discount.request'],
+    permissionCodes: ['pricing.floor.view', 'pricing.discount.request', 'products.view', 'categories.view'],
   },
   Bodega: {
     description: 'Opera transferencias y recepciones en las ubicaciones asignadas.',
-    permissionCodes: ['inventory.transfers.request', 'inventory.transfers.dispatch', 'inventory.transfers.receive'],
+    permissionCodes: [
+      'inventory.transfers.request',
+      'inventory.transfers.dispatch',
+      'inventory.transfers.receive',
+      'products.view',
+      'categories.view',
+    ],
   },
 };

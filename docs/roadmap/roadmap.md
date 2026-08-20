@@ -15,7 +15,10 @@ driven by its own prompt/spec and is only started once the prior phase is comple
   `apps/api/src/common/`)*
 - **FASE 5 — Tenant Administration** — tenant lifecycle and isolation. *(done — see
   [ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md), `apps/api/src/core/`)*
-- **FASE 6 — Products** — product catalog domain.
+- **FASE 6 — Products** — product catalog domain. *(done — see `apps/api/src/catalog/`,
+  [database.md#catalog-products-variants-attributes](../architecture/database.md#catalog-products-variants-attributes),
+  [ADR-0017](../decisions/0017-product-variant-attribute-model.md),
+  [ADR-0026](../decisions/0026-dynamic-attribute-system.md))*
 - **FASE 7 — Warehouses & Locations** — physical/location model.
 - **FASE 8 — Inventory** — stock tracking and movements.
 - **FASE 9 — QR** — QR code generation/scanning workflows.
@@ -35,8 +38,13 @@ refresh, guards/decorators, RBAC integration) — see
 [ADR-0030](../decisions/0030-authentication-foundation.md). FASE 5 added tenant self-administration
 (`GET`/`PATCH /tenant`) and user administration within a tenant (`GET`/`POST /users`,
 `GET`/`PATCH /users/:id`) with role assignment (`GET /roles`, `core.roles.assign`) — see
-[ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md). No business/domain endpoints (products,
-inventory, orders, ...) exist yet — that starts at FASE 6. Several implementation-level decisions
+[ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md). FASE 6 added the CATALOG
+module — categories (with the dynamic-attribute governance layer), products, and variants (always
+created together per ADR-0017, with three-tier pricing and a `product_price_history` ledger) —
+reusing the same RBAC/RLS/audit infrastructure, deliberately without brands/suppliers CRUD, QR, the
+Excel import pipeline, or the SALES-dependent exceptional-discount workflow (each scoped to its own
+module in [modules.md](../architecture/modules.md)). No inventory/order endpoints exist yet — that
+starts at FASE 7/8/10. Several implementation-level decisions
 were deliberately left open (RLS activation timing, web session-transport mechanism, product
 attribute/variant modeling, demo reset mechanism, and others) and are marked `PENDING DECISION` in
 their respective documents; most have since been resolved as the corresponding phase was actually

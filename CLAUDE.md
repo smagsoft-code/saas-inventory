@@ -183,3 +183,21 @@ thrown error directly); and two integration test files (`test/auth/auth-flow.int
 `test/core/users-rbac.integration.test.ts`) no longer call `resetAndMigrate()` in their own
 `beforeAll`, since that raced against `global-setup.ts`'s single run under `fileParallelism: true`.
 See the Prompt 05-B final report for the full real-Postgres test matrix.
+
+Prompt 06 added the CATALOG module (`apps/api/src/catalog/`) — `GET/POST /categories`,
+`GET/PATCH /categories/:id`, `GET/PUT /categories/:id/attributes`, `GET/POST /attribute-definitions`
+(+ options sub-resource), `GET /measurement-units`, `GET/POST /products`, `GET/PATCH /products/:id`,
+`GET/POST /products/:id/variants`, `GET/PATCH /products/:id/variants/:variantId` — four new
+`products.*`/`categories.*` permission codes (migration `0015`, filling a gap where `database.md`
+had named `products.view` as an already-established example since Prompt 02-D but no migration had
+ever inserted it), a shared `AttributeValidationService` enforcing the governed-JSONB rules from
+[ADR-0026](docs/decisions/0026-dynamic-attribute-system.md) on every product/variant create and
+update (including category-change re-validation), and `product_price_history` writes on every price
+change per [ADR-0022](docs/decisions/0022-pricing-tiers-and-discount-approval.md). Every product
+creates exactly one default variant alongside it, per
+[ADR-0017](docs/decisions/0017-product-variant-attribute-model.md). Deliberately not built this
+phase (each already scoped to its own module/phase — see
+[modules.md](docs/architecture/modules.md)): brands/suppliers CRUD, QR, the Excel import pipeline
+(needs its own Import Worker deployable per
+[ADR-0029](docs/decisions/0029-import-worker-separation.md)), and the SALES-dependent
+`price_approvals` exceptional-discount workflow. No frontend UI for CATALOG exists yet.

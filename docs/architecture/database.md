@@ -685,6 +685,18 @@ the catalog rows themselves, same precedent as above; the one new authorization 
 | `core.roles.read` | Listar los roles del tenant actual y sus permisos | Configuración | Bajo | Solo lectura — no hay CRUD de roles/permisos en esta fase |
 | `core.roles.assign` | Asignar o cambiar el rol de un usuario del tenant actual | Configuración / Sensible | Alto | Nunca suficiente para que un usuario cambie su propio rol — ver [ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md) |
 
+**Prompt 06** adds the products/categories CRUD permission codes (migration `0015`), filling a gap
+where this section's own `products.view` example (used illustratively since Prompt 02-D) had never
+actually been inserted by any migration — found auditing Prompt 06. Same `module.action` pattern,
+no ADR needed.
+
+| Code | Capacidad | Alcance | Riesgo | Observación |
+| --- | --- | --- | --- | --- |
+| `products.view` | Listar y ver productos y variantes del tenant actual | Operativo | Bajo | `cost`/`min_price` requieren además `pricing.cost.view`/`pricing.floor.view` — [ADR-0028](../decisions/0028-field-level-price-authorization.md) |
+| `products.manage` | Crear/actualizar productos y variantes, activar/desactivar | Operativo | Medio | Incluye crear variantes adicionales y cambiar precios (registra `product_price_history`) |
+| `categories.view` | Listar y ver categorías del tenant actual y su configuración de atributos (`category_attributes`) | Operativo | Bajo | — |
+| `categories.manage` | Crear/actualizar categorías del tenant actual | Configuración | Medio | Asignar/editar qué atributos gobiernan una categoría sigue requiriendo `catalog.attributes.manage` |
+
 **No mobile-specific permission codes exist, or are needed.** Per
 [mobile.md#backend-as-the-sole-authority](mobile.md#backend-as-the-sole-authority), Flutter calls the
 identical permission-gated `/api/v1` endpoints web does — the same code above governs both clients.

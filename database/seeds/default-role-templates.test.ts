@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_ROLE_TEMPLATE_NAMES, DEFAULT_ROLE_TEMPLATES } from './default-role-templates';
 
-/** The exact set inserted by database/migrations/0001_platform_tables.sql — kept in sync by
- * hand since the migration is the authoritative source and is never edited after being applied. */
+/** The exact set inserted by database/migrations/0001_platform_tables.sql, 0014_core_admin_permissions.sql,
+ * and 0015_catalog_permissions.sql — kept in sync by hand since migrations are the authoritative
+ * source and are never edited after being applied. */
 const KNOWN_PERMISSION_CODES = new Set([
   'catalog.attributes.manage',
   'catalog.qr.manage',
@@ -25,6 +26,10 @@ const KNOWN_PERMISSION_CODES = new Set([
   'core.users.update',
   'core.roles.read',
   'core.roles.assign',
+  'products.view',
+  'products.manage',
+  'categories.view',
+  'categories.manage',
 ]);
 
 describe('default role templates', () => {

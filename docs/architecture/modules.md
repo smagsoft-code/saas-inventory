@@ -103,6 +103,18 @@ in [database.md#excel-import-pipeline](database.md#excel-import-pipeline) and
   metadata that validates every product/variant's `attributes` JSONB; see
   [ADR-0026](../decisions/0026-dynamic-attribute-system.md).
 
+**Implemented in `apps/api/src/catalog/`** (Prompt 06) — categories (+ the attribute-governance
+assignment layer), `attribute_definitions`/`attribute_options` CRUD, products + variants (always
+created together, per ADR-0017), the shared `AttributeValidationService` enforcing §Dynamic
+attributes' governed-JSONB rules on every create/update (including category-change re-validation),
+and `product_price_history` writes on every price change. `products.view`/`products.manage`/
+`categories.view`/`categories.manage` (migration `0015`) plus the existing `catalog.attributes.manage`
+gate it via the same `PermissionsGuard` every other module uses. **Not implemented in this phase**
+(deliberately, each already scoped to its own module/phase elsewhere in this document): brands/
+suppliers CRUD (schema-ready, assignable by id only), QR, the Excel IMPORT pipeline below (needs its
+own Import Worker deployable, [ADR-0029](../decisions/0029-import-worker-separation.md)), and the
+`price_approvals` exceptional-discount workflow (SALES-dependent, see below).
+
 **Depends on:** CORE (tenant scoping, audit).
 
 **Consumed by:** INVENTORY (a stock record refers to a product), SALES (a cart/order line refers to
