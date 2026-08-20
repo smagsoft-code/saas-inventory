@@ -1,0 +1,27 @@
+{
+  "name": "@saas-inventory/database",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "seed": "tsx seeds/run.ts",
+    "reset-demo": "tsx scripts/reset-demo-tenant.ts"
+  },
+  "dependencies": {
+    "@saas-inventory/config": "workspace:*",
+    "@saas-inventory/shared": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@saas-inventory/eslint-config": "workspace:*",
+    "@saas-inventory/tsconfig": "workspace:*",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

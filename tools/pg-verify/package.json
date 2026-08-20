@@ -1,0 +1,23 @@
+{
+  "name": "@saas-inventory/pg-verify",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PROMPT 03-A verification-only tool: runs a real, local, Docker-free PostgreSQL instance (embedded-postgres) to verify migrations/RLS/roles/multi-tenancy against a genuine PostgreSQL server. Not part of the application runtime or docker-compose.dev.yml's deployment infra. Deliberately has NO dependency on drizzle-orm — it only issues raw SQL via the `postgres` driver and shells out to the real pnpm scripts — so it never shares dependency resolution with apps/api's or database's Drizzle schema.",
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "verify": "tsx verify-real-postgres.ts"
+  },
+  "dependencies": {
+    "embedded-postgres": "18.4.0-beta.17",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@saas-inventory/eslint-config": "workspace:*",
+    "@saas-inventory/tsconfig": "workspace:*",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.7.0"
+  }
+}

@@ -37,7 +37,13 @@ services:
     command: sh -c "corepack enable && pnpm install && pnpm --filter @saas-inventory/api dev"
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://${POSTGRES_USER:-saas_inventory}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-saas_inventory}
+      # app_tenant — subject to RLS, used for all normal request handling. Its password is set
+      # by the one-time `pnpm --filter @saas-inventory/api db:bootstrap-dev-roles` step (see
+      # database/migrations/README.md), never by a migration file — see CLAUDE.md §7.4.
+      DATABASE_URL: postgresql://app_tenant:${APP_TENANT_PASSWORD:?set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-saas_inventory}
+      # Bootstrap/superuser connection — used only by `db:generate`/`db:migrate`/`db:bootstrap-dev-roles`,
+      # never by the running API process (database.md#migration-strategy).
+      MIGRATOR_DATABASE_URL: postgresql://${POSTGRES_USER:-saas_inventory}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-saas_inventory}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
     ports:

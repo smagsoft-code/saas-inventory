@@ -1,0 +1,7 @@
+{
+  "extends": "@saas-inventory/tsconfig/nestjs.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [".", "../src"]
+}

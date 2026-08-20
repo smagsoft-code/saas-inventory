@@ -55,3 +55,6 @@ temp/
 # Database local artifacts
 *.sqlite
 *.sqlite3
+
+# tools/pg-verify: ephemeral embedded-PostgreSQL data directory (PROMPT 03-A verification tool)
+.verify-pgdata/

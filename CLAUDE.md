@@ -42,8 +42,10 @@ rules; those documents explain the *why* and the parts still open (`PENDING DECI
   authenticated context (never from a client-supplied header/body/query param taken at face value).
 - Authorization is checked in the backend, not the frontend.
 - The data-access layer must enforce tenant isolation, not just the service layer.
-- PostgreSQL Row-Level Security (RLS) will be evaluated and potentially implemented in a later
-  phase — do not assume it is active yet.
+- PostgreSQL Row-Level Security (RLS) is implemented and active from the first migration
+  (Prompt 03) — see [docs/architecture/database.md#row-level-security](docs/architecture/database.md#row-level-security).
+  It is a defense-in-depth backstop, not a replacement for the guard/repository-layer checks
+  above.
 
 ## 7.4 Security
 
@@ -151,6 +153,7 @@ and get it agreed before implementing.
 
 ## Current project status
 
-This repository is in the **foundation/scaffolding phase**. No business functionality exists yet:
-no auth, no users, no products, no inventory, no orders, no Telegram integration. See
+This repository is in the **foundation/scaffolding phase**. The PostgreSQL persistence layer
+(schema, migrations, RLS, constraints — Prompt 03) is implemented; no business functionality
+exists yet: no auth, no endpoints/services, no CRUD, no orders, no Telegram integration. See
 [docs/roadmap/roadmap.md](docs/roadmap/roadmap.md) for the phase plan.
