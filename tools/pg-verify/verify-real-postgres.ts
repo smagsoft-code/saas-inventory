@@ -31,11 +31,13 @@ const SUPERUSER = 'postgres';
 const SUPERUSER_PASSWORD = 'verify-only-ephemeral-instance';
 const DB_NAME = 'saas_inventory_verify';
 const APP_TENANT_PASSWORD = 'verify-app-tenant-ephemeral';
+const APP_PLATFORM_PASSWORD = 'verify-app-platform-ephemeral';
 const DATA_DIR = path.resolve(process.cwd(), '.verify-pgdata');
 const API_DIR = path.resolve(process.cwd(), '../../apps/api');
 
 const MIGRATOR_URL = `postgresql://${SUPERUSER}:${SUPERUSER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_TENANT_URL = `postgresql://app_tenant:${APP_TENANT_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
+const APP_PLATFORM_URL = `postgresql://app_platform:${APP_PLATFORM_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 
 let failures = 0;
 
@@ -121,10 +123,11 @@ async function main(): Promise<void> {
     section('3. Re-running migrations (must be a safe no-op, not corrupt/duplicate anything)');
     run('db:migrate (second run)', ['run', 'db:migrate'], { MIGRATOR_DATABASE_URL: MIGRATOR_URL });
 
-    section('4. Bootstrapping app_tenant role password');
+    section('4. Bootstrapping app_tenant / app_platform role passwords');
     run('db:bootstrap-dev-roles', ['run', 'db:bootstrap-dev-roles'], {
       MIGRATOR_DATABASE_URL: MIGRATOR_URL,
       APP_TENANT_PASSWORD,
+      APP_PLATFORM_PASSWORD,
     });
 
     await verifySchema();
@@ -147,10 +150,18 @@ async function main(): Promise<void> {
     });
     await verifySeedResult();
 
-    section('11. Full apps/api integration test suite (real cross-tenant SELECT/INSERT/UPDATE/DELETE, real RLS)');
+    section(
+      '11. Full apps/api integration test suite (real cross-tenant SELECT/INSERT/UPDATE/DELETE, real RLS, ' +
+        'real auth/tenant/RBAC HTTP flow)',
+    );
+    // TEST_APP_PLATFORM_DATABASE_URL gates the Prompt 04/05 suites (test/auth/*, test/core/*) —
+    // see apps/api/test/database/helpers.ts's appPlatformIntegrationTestsEnabled. Without it those
+    // files' describe.skipIf() silently skips every test in them, even with a real Postgres
+    // running — this ran unnoticed until Prompt 05-B because this harness predates Prompt 04.
     run('test:integration', ['run', 'test:integration'], {
       TEST_MIGRATOR_DATABASE_URL: MIGRATOR_URL,
       TEST_APP_TENANT_DATABASE_URL: APP_TENANT_URL,
+      TEST_APP_PLATFORM_DATABASE_URL: APP_PLATFORM_URL,
     });
   } finally {
     section('Stopping PostgreSQL (data directory is wiped — persistent: false)');
@@ -173,7 +184,10 @@ async function verifySchema(): Promise<void> {
     const tables = await sql<{ table_name: string }[]>`
       select table_name from information_schema.tables
       where table_schema = 'public' and table_type = 'BASE TABLE'`;
-    check('45 tables exist', tables.length === 45, `found ${tables.length}`);
+    // 46, not 45 — auth_refresh_tokens (migration 0013, Prompt 04) was added after this figure
+    // was first written and this check was never updated (found live, Prompt 05-B; same class of
+    // drift as the permissions-catalog count above).
+    check('46 tables exist', tables.length === 46, `found ${tables.length}`);
 
     const fks = await sql<{ count: number }[]>`
       select count(*)::int as count from information_schema.table_constraints
@@ -316,9 +330,10 @@ async function verifyRls(): Promise<void> {
         and c.relname not in ('tenants', 'platform_admins', 'permissions', 'measurement_units')`;
     // Filtering an empty `rows` is vacuously "zero without RLS" — assert the expected table count
     // explicitly first (same class of false-positive this file already got burned by in §8).
-    // 45 total tables - 4 platform-scoped (tenants, platform_admins, permissions,
-    // measurement_units) = 41 tenant-owned tables.
-    check('41 tenant-owned tables were found to check', rows.length === 41, `found ${rows.length}`);
+    // 46 total tables - 4 platform-scoped (tenants, platform_admins, permissions,
+    // measurement_units) = 42 tenant-owned tables (see the 46-tables comment above for why this
+    // isn't 45/41 any more).
+    check('42 tenant-owned tables were found to check', rows.length === 42, `found ${rows.length}`);
     const withoutRls = rows.filter((r) => !r.relrowsecurity);
     const withoutForce = rows.filter((r) => !r.relforcerowsecurity);
     const withoutPolicy = rows.filter((r) => r.policy_count === 0);
@@ -402,7 +417,7 @@ async function verifyPoolingLeakage(): Promise<void> {
 }
 
 async function verifyPermissionsCatalog(): Promise<void> {
-  section('14. permissions catalog — exact match against database.md#new-permission-codes-for-prompt-02-a02-b-capabilities-prompt-02-d');
+  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin codes)');
   const expected = [
     'catalog.attributes.manage',
     'catalog.qr.manage',
@@ -419,13 +434,20 @@ async function verifyPermissionsCatalog(): Promise<void> {
     'import.execute',
     'import.inventory',
     'core.users.locations.manage',
+    // Prompt 05-A (migration 0014) — tenant/user/role administration, see ADR-0031.
+    'core.tenant.update',
+    'core.users.read',
+    'core.users.create',
+    'core.users.update',
+    'core.roles.read',
+    'core.roles.assign',
   ].sort();
 
   const sql = postgres(MIGRATOR_URL, { max: 1 });
   try {
     const rows = await sql<{ code: string }[]>`select code from permissions order by code`;
     const actual = rows.map((r) => r.code).sort();
-    check('permissions catalog has exactly 15 rows', actual.length === 15, `found ${actual.length}`);
+    check('permissions catalog has exactly 21 rows', actual.length === 21, `found ${actual.length}`);
     check('permissions catalog matches database.md exactly, no narrative examples added', JSON.stringify(actual) === JSON.stringify(expected));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       console.log('  expected:', expected);

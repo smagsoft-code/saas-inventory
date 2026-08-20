@@ -9,7 +9,7 @@ const USER_STATUSES = ['invited', 'active', 'disabled'] as const;
  * present. No `email`/`passwordHash`/`tenantId` field exists here at all (§13/§14 mass-assignment
  * rule) — changing a user's own login email or password is out of this phase's scope. */
 export class UpdateUserDto {
-  @ApiPropertyOptional({ minLength: 2, maxLength: 120 })
+  @ApiPropertyOptional({ type: String, minLength: 2, maxLength: 120 })
   @IsOptional()
   @IsString()
   @Length(2, 120)
@@ -20,7 +20,7 @@ export class UpdateUserDto {
   @IsIn(USER_STATUSES)
   status?: (typeof USER_STATUSES)[number];
 
-  @ApiPropertyOptional({ description: 'A role id belonging to the current tenant. Requires core.roles.assign.' })
+  @ApiPropertyOptional({ type: String, description: 'A role id belonging to the current tenant. Requires core.roles.assign.' })
   @IsOptional()
   @IsUUID()
   roleId?: string;

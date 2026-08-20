@@ -21,8 +21,20 @@ interface UniqueViolation {
   code: string;
 }
 
-function isUniqueViolation(error: unknown): error is UniqueViolation {
+function hasUniqueViolationCode(error: unknown): error is UniqueViolation {
   return typeof error === 'object' && error !== null && 'code' in error && (error as UniqueViolation).code === '23505';
+}
+
+/** drizzle-orm's postgres-js driver never throws the raw `postgres` package error directly — it
+ * wraps it as `DrizzleQueryError` with the original (which carries Postgres's `.code`, e.g.
+ * '23505' unique_violation) on `.cause`, not on the thrown error itself (found running this
+ * against real PostgreSQL, Prompt 05-B — checking `error.code` here always missed, silently
+ * falling through to the generic 500 handler instead of the intended 409). */
+function isUniqueViolation(error: unknown): boolean {
+  if (hasUniqueViolationCode(error)) {
+    return true;
+  }
+  return error instanceof Error && hasUniqueViolationCode(error.cause);
 }
 
 function toResponse(user: UserRow | UserListRow, roleNames: string[]): UserResponseDto {

@@ -1,7 +1,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { HTTPMethods, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl, resetAndMigrate } from '../database/helpers';
+import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl } from '../database/helpers';
 
 /**
  * Prompt 05-A's mandatory security proof (§28/§29/§30): tenant/user/role administration exercised
@@ -9,13 +9,16 @@ import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl, resetAnd
  * boot/inject convention as test/auth/auth-flow.integration.test.ts; skipped (not failed) unless
  * TEST_MIGRATOR_DATABASE_URL / TEST_APP_TENANT_DATABASE_URL / TEST_APP_PLATFORM_DATABASE_URL are
  * all set — see test/database/helpers.ts.
+ *
+ * Does NOT call resetAndMigrate() itself — see the equivalent comment in
+ * test/auth/auth-flow.integration.test.ts for why (global-setup.ts already does this once for the
+ * whole run; a second per-file call here raced against it and against every other integration
+ * file under fileParallelism: true — found running this suite for real, Prompt 05-B).
  */
 describe.skipIf(!appPlatformIntegrationTestsEnabled)('core: tenant/users/roles RBAC (integration)', () => {
   let app: NestFastifyApplication;
 
   beforeAll(async () => {
-    await resetAndMigrate();
-
     process.env['DATABASE_URL'] = process.env['TEST_APP_TENANT_DATABASE_URL'];
     process.env['APP_PLATFORM_DATABASE_URL'] = getAppPlatformDatabaseUrl();
     process.env['JWT_SECRET'] = 'integration-test-jwt-secret';

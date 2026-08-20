@@ -84,6 +84,7 @@ describe.skipIf(!integrationTestsEnabled)('migrations', () => {
         'sales_return_items',
         'event_outbox',
         'idempotency_keys',
+        'auth_refresh_tokens',
       ];
       for (const table of expectedTables) {
         expect(actualTables.has(table), `expected table "${table}" to exist`).toBe(true);

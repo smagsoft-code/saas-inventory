@@ -166,3 +166,20 @@ role-assignment self-escalation rule — see
 `DEFAULT_ROLE_TEMPLATES` set, editable only via direct database access. No other business
 functionality exists yet: no product/inventory/order endpoints, no Telegram integration. See
 [docs/roadmap/roadmap.md](docs/roadmap/roadmap.md) for the phase plan.
+
+Prompt 05-B (integration hardening) verified the whole stack above against a real, local
+PostgreSQL instance for the first time — no Docker required (`tools/pg-verify`, which starts a
+disposable `embedded-postgres` server) — and fixed everything that surfaced only under that real
+run: `@fastify/cookie` downgraded to `^9.4.0` (the last major compatible with the pinned
+`fastify@^4.x`; `^11.x` requires Fastify 5 and crashed the server at boot); `apps/api/test/**/
+*.integration.test.ts` now transforms via SWC (`vitest.integration.config.ts` +
+`unplugin-swc`/`@swc/core`), not Vitest's default esbuild, because esbuild's `emitDecoratorMetadata`
+approximation was silently dropping NestJS DI and `@nestjs/swagger` type metadata; `GET /health`
+now carries `@Public()` + `@Version(VERSION_NEUTRAL)` so it is actually reachable unauthenticated
+and unversioned, matching `docs/architecture/api.md`'s documented contract (previously 401/404);
+`UsersService`'s unique-email-violation → 409 mapping now also unwraps
+`DrizzleQueryError.cause` (drizzle-orm's postgres-js driver never puts Postgres's `.code` on the
+thrown error directly); and two integration test files (`test/auth/auth-flow.integration.test.ts`,
+`test/core/users-rbac.integration.test.ts`) no longer call `resetAndMigrate()` in their own
+`beforeAll`, since that raced against `global-setup.ts`'s single run under `fileParallelism: true`.
+See the Prompt 05-B final report for the full real-Postgres test matrix.

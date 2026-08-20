@@ -185,6 +185,25 @@ describe('UsersService', () => {
         ),
       ).rejects.toThrow(ConflictException);
     });
+
+    it('maps a unique-violation wrapped as DrizzleQueryError.cause to ConflictException too', async () => {
+      // The real shape drizzle-orm's postgres-js driver actually throws — the Postgres error
+      // (carrying .code) lives on .cause, never on the thrown error directly. A mock using only
+      // the flat { code: '23505' } shape above would not have caught this (Prompt 05-B: found by
+      // running this path for real against PostgreSQL, where it fell through to a raw 500).
+      const { service, usersRepository } = buildService();
+      usersRepository.create.mockRejectedValue(new Error('Failed query', { cause: { code: '23505' } }));
+
+      await expect(
+        service.create(
+          TENANT_ID,
+          ACTOR_ID,
+          ['core.users.create'],
+          { email: 'dup@example.com', fullName: 'Dup User', password: 'a-long-enough-password' },
+          META,
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
   });
 
   describe('getById — cross-tenant/nonexistent (§12/§28 scenario A)', () => {

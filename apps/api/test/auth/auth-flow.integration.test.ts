@@ -1,7 +1,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { HTTPMethods, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl, resetAndMigrate } from '../database/helpers';
+import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl } from '../database/helpers';
 
 /**
  * Full HTTP-level auth flow, exercised through the real guard chain (JwtAuthGuard -> TenantGuard
@@ -15,13 +15,18 @@ import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl, resetAnd
  * turned into another tenant's session by any means available at this layer) and, at the
  * persistence layer, by the `auth_refresh_tokens` cases added to
  * test/database/multi-tenancy-rls.integration.test.ts.
+ *
+ * Does NOT call resetAndMigrate() itself — global-setup.ts already resets/migrates exactly once
+ * for the whole test:integration run, before any file. Calling it again here raced against that
+ * (and against every other *.integration.test.ts file under this config's fileParallelism: true)
+ * for a concurrent DROP SCHEMA/CREATE ROLE against the same live database — found running this
+ * suite for real against embedded-postgres, Prompt 05-B (surfaced as "relation ... does not
+ * exist" / "role ... does not exist" in unrelated files).
  */
 describe.skipIf(!appPlatformIntegrationTestsEnabled)('auth flow (integration)', () => {
   let app: NestFastifyApplication;
 
   beforeAll(async () => {
-    await resetAndMigrate();
-
     process.env['DATABASE_URL'] = process.env['TEST_APP_TENANT_DATABASE_URL'];
     process.env['APP_PLATFORM_DATABASE_URL'] = getAppPlatformDatabaseUrl();
     process.env['JWT_SECRET'] = 'integration-test-jwt-secret';

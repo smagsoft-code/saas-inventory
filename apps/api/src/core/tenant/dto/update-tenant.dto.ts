@@ -5,7 +5,7 @@ import { IsString, Length } from 'class-validator';
  * all, so DTO whitelisting (main.ts's ValidationPipe, forbidNonWhitelisted: true) rejects any
  * attempt to send them, independent of the service layer never reading them either. */
 export class UpdateTenantDto {
-  @ApiProperty({ minLength: 2, maxLength: 120 })
+  @ApiProperty({ type: String, minLength: 2, maxLength: 120 })
   @IsString()
   @Length(2, 120)
   name!: string;

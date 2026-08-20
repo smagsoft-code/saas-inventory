@@ -5,16 +5,16 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
  * left out of scope; see the final report's "Pendientes" section. This is only what user
  * administration needs: which roles exist in this tenant, to assign one to a user. */
 export class RoleResponseDto {
-  @ApiProperty()
+  @ApiProperty({ type: String })
   id!: string;
 
-  @ApiProperty()
+  @ApiProperty({ type: String })
   name!: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ type: String })
   description?: string | undefined;
 
-  @ApiProperty({ description: 'Copied from the fixed DEFAULT_ROLE_TEMPLATES at provisioning time — a label, not a protection (database.md).' })
+  @ApiProperty({ type: Boolean, description: 'Copied from the fixed DEFAULT_ROLE_TEMPLATES at provisioning time — a label, not a protection (database.md).' })
   isSystemDefault!: boolean;
 
   @ApiProperty({ type: [String] })
