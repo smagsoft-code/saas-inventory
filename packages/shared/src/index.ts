@@ -80,6 +80,10 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'products.manage',
       'categories.view',
       'categories.manage',
+      'warehouses.view',
+      'warehouses.manage',
+      'locations.view',
+      'locations.manage',
     ],
   },
   Supervisor: {
@@ -94,6 +98,8 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'inventory.returns.manage',
       'products.view',
       'categories.view',
+      'warehouses.view',
+      'locations.view',
     ],
   },
   Vendedor: {
@@ -108,6 +114,8 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'inventory.transfers.receive',
       'products.view',
       'categories.view',
+      'warehouses.view',
+      'locations.view',
     ],
   },
 };

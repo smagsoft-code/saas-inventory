@@ -417,7 +417,7 @@ async function verifyPoolingLeakage(): Promise<void> {
 }
 
 async function verifyPermissionsCatalog(): Promise<void> {
-  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin codes)');
+  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin + Prompt 07 warehouses/locations admin codes)');
   const expected = [
     'catalog.attributes.manage',
     'catalog.qr.manage',
@@ -447,13 +447,21 @@ async function verifyPermissionsCatalog(): Promise<void> {
     'products.manage',
     'categories.view',
     'categories.manage',
+    // Prompt 07 (migration 0016) — warehouses/locations administration, roadmap.md FASE 7 scope
+    // only (balances/movements/adjustments/transfers remain FASE 8). core.users.locations.manage
+    // already existed (migration 0001) and is reused as-is for the user<->location assignment
+    // endpoints, no new code needed for that action.
+    'warehouses.view',
+    'warehouses.manage',
+    'locations.view',
+    'locations.manage',
   ].sort();
 
   const sql = postgres(MIGRATOR_URL, { max: 1 });
   try {
     const rows = await sql<{ code: string }[]>`select code from permissions order by code`;
     const actual = rows.map((r) => r.code).sort();
-    check('permissions catalog has exactly 25 rows', actual.length === 25, `found ${actual.length}`);
+    check('permissions catalog has exactly 29 rows', actual.length === 29, `found ${actual.length}`);
     check('permissions catalog matches database.md exactly, no narrative examples added', JSON.stringify(actual) === JSON.stringify(expected));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       console.log('  expected:', expected);

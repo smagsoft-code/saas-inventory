@@ -201,3 +201,18 @@ phase (each already scoped to its own module/phase — see
 (needs its own Import Worker deployable per
 [ADR-0029](docs/decisions/0029-import-worker-separation.md)), and the SALES-dependent
 `price_approvals` exceptional-discount workflow. No frontend UI for CATALOG exists yet.
+
+Prompt 07 added the INVENTORY module's physical structure (`apps/api/src/inventory/`) — strictly
+roadmap.md's FASE 7 scope: `GET/POST /warehouses`, `GET/PATCH /warehouses/:id`, `GET/POST /locations`,
+`GET/PATCH /locations/:id`, `GET/PUT /users/:id/locations` — four new `warehouses.*`/`locations.*`
+permission codes (migration `0016`, same gap-filling precedent as Prompt 06's `0015`) plus reuse of
+the already-seeded `core.users.locations.manage` (migration `0001`) for the location-assignment
+endpoints. Creating a warehouse always creates its default "General" location in the same
+transaction, per `database.md`'s "every warehouse always has at least one location" invariant.
+Deliberately **not** built this phase (roadmap.md's FASE 8, a separate prompt): `inventory_balances`/
+`inventory_movements` reads/writes, stock adjustments, initial stock, concurrency/locking on
+balances, and inventory transfers — those tables (`inventory_balances`, `inventory_movements`,
+`inventory_transfers` and friends) have existed, fully migrated, since Prompt 03/03-A, but no
+application code touches them yet. The location-scoped-authorization *guard* (ADR-0024, combining
+RBAC with `user_location_assignments` membership) is also FASE 8 work — this phase only manages the
+assignment data itself. No frontend UI for INVENTORY exists yet.

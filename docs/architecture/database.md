@@ -697,6 +697,23 @@ no ADR needed.
 | `categories.view` | Listar y ver categorías del tenant actual y su configuración de atributos (`category_attributes`) | Operativo | Bajo | — |
 | `categories.manage` | Crear/actualizar categorías del tenant actual | Configuración | Medio | Asignar/editar qué atributos gobiernan una categoría sigue requiriendo `catalog.attributes.manage` |
 
+**Prompt 07** adds the warehouses/locations administration permission codes (migration `0016`),
+scoped strictly to roadmap.md's FASE 7 (`warehouses`, `locations`, `user_location_assignments`) —
+`inventory_balances`/`inventory_movements`/adjustments/transfers remain FASE 8, not built this
+prompt. Same `module.action` pattern, no ADR needed. `core.users.locations.manage` (above) already
+existed since migration `0001` and is reused as-is for the user↔location assignment endpoints — no
+new code needed for that action, even though the endpoints live in `apps/api/src/inventory/`
+(INVENTORY owns `user_location_assignments`, modules.md's dependency rule — CORE never depends on
+INVENTORY, even though this permission's `core.` prefix names the action, not the module that hosts
+its code).
+
+| Code | Capacidad | Alcance | Riesgo | Observación |
+| --- | --- | --- | --- | --- |
+| `warehouses.view` | Listar y ver almacenes del tenant actual | Operativo | Bajo | — |
+| `warehouses.manage` | Crear/actualizar almacenes del tenant actual | Configuración | Medio | Crear un almacén también crea su ubicación "General" por defecto (invariante de este documento, §Inventory) |
+| `locations.view` | Listar y ver ubicaciones (jerarquía) del tenant actual | Operativo | Bajo | — |
+| `locations.manage` | Crear/actualizar ubicaciones del tenant actual | Configuración | Medio | Reparentar solo dentro del mismo almacén; mover una ubicación entre almacenes queda fuera de alcance |
+
 **No mobile-specific permission codes exist, or are needed.** Per
 [mobile.md#backend-as-the-sole-authority](mobile.md#backend-as-the-sole-authority), Flutter calls the
 identical permission-gated `/api/v1` endpoints web does — the same code above governs both clients.

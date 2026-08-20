@@ -5,8 +5,9 @@ import { CommonModule } from './common/common.module';
 import { CoreModule } from './core/core.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { InventoryModule } from './inventory/inventory.module';
 
 @Module({
-  imports: [CommonModule, DatabaseModule, HealthModule, AuthModule, CoreModule, CatalogModule],
+  imports: [CommonModule, DatabaseModule, HealthModule, AuthModule, CoreModule, CatalogModule, InventoryModule],
 })
 export class AppModule {}

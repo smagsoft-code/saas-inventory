@@ -19,7 +19,8 @@ driven by its own prompt/spec and is only started once the prior phase is comple
   [database.md#catalog-products-variants-attributes](../architecture/database.md#catalog-products-variants-attributes),
   [ADR-0017](../decisions/0017-product-variant-attribute-model.md),
   [ADR-0026](../decisions/0026-dynamic-attribute-system.md))*
-- **FASE 7 — Warehouses & Locations** — physical/location model.
+- **FASE 7 — Warehouses & Locations** — physical/location model. *(done — see
+  `apps/api/src/inventory/`, migration `0016`)*
 - **FASE 8 — Inventory** — stock tracking and movements.
 - **FASE 9 — QR** — QR code generation/scanning workflows.
 - **FASE 10 — Customers, Cart & Orders** — commerce flow.
@@ -43,8 +44,15 @@ module — categories (with the dynamic-attribute governance layer), products, a
 created together per ADR-0017, with three-tier pricing and a `product_price_history` ledger) —
 reusing the same RBAC/RLS/audit infrastructure, deliberately without brands/suppliers CRUD, QR, the
 Excel import pipeline, or the SALES-dependent exceptional-discount workflow (each scoped to its own
-module in [modules.md](../architecture/modules.md)). No inventory/order endpoints exist yet — that
-starts at FASE 7/8/10. Several implementation-level decisions
+module in [modules.md](../architecture/modules.md)). FASE 7 added the INVENTORY module's physical
+structure — `warehouses`/`locations` CRUD (a location hierarchy under a warehouse, each warehouse
+always getting a default "General" location per
+[database.md#inventory-warehouses-locations-balance-ledger](../architecture/database.md#inventory-warehouses-locations-balance-ledger))
+and `user_location_assignments` management ([ADR-0024](../decisions/0024-location-scoped-authorization.md)) —
+deliberately without `inventory_balances`/`inventory_movements`, stock adjustments, or transfers,
+which remain FASE 8 (those tables were already schema-complete since FASE 3, but no application code
+reads/writes them yet). No order/stock-tracking endpoints exist yet — that starts at FASE 8/10.
+Several implementation-level decisions
 were deliberately left open (RLS activation timing, web session-transport mechanism, product
 attribute/variant modeling, demo reset mechanism, and others) and are marked `PENDING DECISION` in
 their respective documents; most have since been resolved as the corresponding phase was actually
