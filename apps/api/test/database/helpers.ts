@@ -24,8 +24,12 @@ import * as schema from '../../src/database/schema';
  */
 const TEST_MIGRATOR_DATABASE_URL = getOptionalEnvVar('TEST_MIGRATOR_DATABASE_URL', '');
 const TEST_APP_TENANT_DATABASE_URL = getOptionalEnvVar('TEST_APP_TENANT_DATABASE_URL', '');
+/** Only needed by the Prompt 04 auth-flow suite (test/auth/*.integration.test.ts) — every other
+ * integration test in this directory predates it and doesn't touch app_platform. */
+const TEST_APP_PLATFORM_DATABASE_URL = getOptionalEnvVar('TEST_APP_PLATFORM_DATABASE_URL', '');
 
 export const integrationTestsEnabled = TEST_MIGRATOR_DATABASE_URL !== '' && TEST_APP_TENANT_DATABASE_URL !== '';
+export const appPlatformIntegrationTestsEnabled = integrationTestsEnabled && TEST_APP_PLATFORM_DATABASE_URL !== '';
 
 const APP_ROLES = ['app_migrator', 'app_tenant', 'app_platform', 'app_event_processor', 'app_public_resolver'];
 
@@ -105,12 +109,34 @@ async function bootstrapAppTenantPassword(): Promise<void> {
   }
 }
 
+/** Mirrors bootstrapAppTenantPassword() for app_platform — only runs when
+ * TEST_APP_PLATFORM_DATABASE_URL is actually set, so the existing (pre-Prompt-04) integration
+ * suites are unaffected on a checkout that hasn't configured it. */
+async function bootstrapAppPlatformPassword(): Promise<void> {
+  if (!appPlatformIntegrationTestsEnabled) {
+    return;
+  }
+  const parsed = new URL(TEST_APP_PLATFORM_DATABASE_URL);
+  const password = decodeURIComponent(parsed.password);
+  const bootstrap = postgres(TEST_MIGRATOR_DATABASE_URL, { max: 1 });
+  try {
+    const [quoted] = await bootstrap<{ quoted_password: string }[]>`select quote_literal(${password}) as quoted_password`;
+    if (!quoted) {
+      throw new Error('quote_literal() returned no row for app_platform password');
+    }
+    await bootstrap.unsafe(`ALTER ROLE app_platform WITH PASSWORD ${quoted.quoted_password}`);
+  } finally {
+    await bootstrap.end();
+  }
+}
+
 /** Resets the target database to empty and applies every migration — call once per test file in
  * beforeAll(), never inside individual `it`s (each migration run is relatively expensive). */
 export async function resetAndMigrate(): Promise<void> {
   await dropEverything();
   await runMigrations();
   await bootstrapAppTenantPassword();
+  await bootstrapAppPlatformPassword();
 }
 
 export function getMigratorDb() {
@@ -120,6 +146,10 @@ export function getMigratorDb() {
 
 export function getAppTenantClient() {
   return postgres(TEST_APP_TENANT_DATABASE_URL, { max: 1 });
+}
+
+export function getAppPlatformDatabaseUrl(): string {
+  return TEST_APP_PLATFORM_DATABASE_URL;
 }
 
 /** The exact SET LOCAL / set_config pattern the running API uses (tenant-context.ts) — opens an

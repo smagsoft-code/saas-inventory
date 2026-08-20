@@ -44,8 +44,23 @@ services:
       # Bootstrap/superuser connection — used only by `db:generate`/`db:migrate`/`db:bootstrap-dev-roles`,
       # never by the running API process (database.md#migration-strategy).
       MIGRATOR_DATABASE_URL: postgresql://${POSTGRES_USER:-saas_inventory}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-saas_inventory}
+      # app_platform — BYPASSRLS, used only for the narrow administrative operations documented in
+      # apps/api/src/database/platform-client.ts (Prompt 04). Password set by the same
+      # db:bootstrap-dev-roles step as app_tenant's, from APP_PLATFORM_PASSWORD.
+      APP_PLATFORM_DATABASE_URL: postgresql://app_platform:${APP_PLATFORM_PASSWORD:?set APP_PLATFORM_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-saas_inventory}
       REDIS_URL: redis://redis:6379
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # Auth (Prompt 04) — see .env.example for the full list and defaults.
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET in .env}
+      ACCESS_TOKEN_TTL_SECONDS: ${ACCESS_TOKEN_TTL_SECONDS:-900}
+      REFRESH_TOKEN_TTL_SECONDS: ${REFRESH_TOKEN_TTL_SECONDS:-2592000}
+      ARGON2_MEMORY_COST_KIB: ${ARGON2_MEMORY_COST_KIB:-19456}
+      ARGON2_TIME_COST: ${ARGON2_TIME_COST:-2}
+      ARGON2_PARALLELISM: ${ARGON2_PARALLELISM:-1}
+      AUTH_RATE_LIMIT_TTL_SECONDS: ${AUTH_RATE_LIMIT_TTL_SECONDS:-60}
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-5}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
     ports:
       - '127.0.0.1:4000:4000'
     volumes:
@@ -64,6 +79,9 @@ services:
     environment:
       NODE_ENV: development
       API_URL: http://api:4000
+      # The browser calls the API directly (frontend.md#authentication-and-route-protection), so
+      # this must be reachable from the host, not the Docker-internal `api` hostname above.
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
     ports:
       - '127.0.0.1:3000:3000'
     volumes:

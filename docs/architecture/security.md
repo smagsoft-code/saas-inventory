@@ -9,10 +9,11 @@ mapped to mitigations and priority). Nothing here is implemented yet.
 
 Credentials are verified by the API; the API issues a short-lived **access token** (JWT) and a
 longer-lived **refresh token**. Passwords are never stored in plain text or reversibly
-encrypted — hashed with a modern, slow hash designed for passwords (Argon2id or bcrypt;
-exact choice is an implementation detail decided in FASE 4, both are acceptable, Argon2id is
-preferred where available). How the access token is carried to the browser (httpOnly cookie vs.
-bearer token in memory) is a `PENDING DECISION` — see [frontend.md](frontend.md#authentication-and-route-protection).
+encrypted — hashed with Argon2id (`apps/api/src/auth/password/password.service.ts`), with
+configurable cost parameters (`ARGON2_MEMORY_COST_KIB`/`ARGON2_TIME_COST`/`ARGON2_PARALLELISM`),
+resolved in Prompt 04 per [ADR-0030](../decisions/0030-authentication-foundation.md). How the
+access token is carried to the browser is resolved the same way — an httpOnly cookie; see
+[frontend.md](frontend.md#authentication-and-route-protection).
 
 ```mermaid
 sequenceDiagram
@@ -42,8 +43,13 @@ sequenceDiagram
 
 **Refresh tokens** are tracked server-side (so a specific session can be revoked — e.g. on
 password change or "log out everywhere") and rotated on use (a used refresh token is invalidated
-immediately, so a stolen-then-reused refresh token is detectable). Exact revocation storage
-(Redis vs. a Postgres table) is an implementation choice for FASE 4. These issuance/rotation/
+immediately, so a stolen-then-reused refresh token is detectable — presenting an already-revoked
+token revokes every active token for that user, per
+[threat-model.md#stolen--replayed-jwt](../security/threat-model.md#stolen--replayed-jwt)).
+Resolved in Prompt 04 ([ADR-0030](../decisions/0030-authentication-foundation.md)): revocation
+storage is a Postgres table (`auth_refresh_tokens`, RLS-enabled, tenant-owned — migration `0013`),
+not Redis, so the schema's existing isolation/audit guarantees apply directly. Tokens are opaque
+(not JWTs) and stored only as an HMAC hash, never the raw value. These issuance/rotation/
 revocation rules are transport-independent and apply unchanged to the Flutter mobile app — see
 [mobile.md#auth-on-mobile](mobile.md#auth-on-mobile) for mobile's specific transport/storage answer
 (bearer token in OS-level secure storage), which does not reopen or change
@@ -98,14 +104,17 @@ the [threat model](../security/threat-model.md).
 
 ## CSRF
 
-Relevant primarily if the session-transport decision (see
-[frontend.md](frontend.md#authentication-and-route-protection)) lands on cookies: a
-cookie-authenticated browser will automatically attach credentials to any request, including one
-triggered by a malicious third-party page, unless mitigated. If cookies are used, mitigation is
-`SameSite=Strict` (or `Lax` with care) plus a double-submit or synchronizer CSRF token on
-state-changing requests. If the bearer-token-in-memory approach is used instead, CSRF risk is
-substantially reduced (a third-party page cannot read the token to attach it), which is one of the
-factors weighed in that `PENDING DECISION`.
+Relevant because the session-transport decision
+([frontend.md](frontend.md#authentication-and-route-protection), Prompt 04,
+[ADR-0030](../decisions/0030-authentication-foundation.md)) is cookies: a cookie-authenticated
+browser automatically attaches credentials to any request, including one triggered by a malicious
+third-party page, unless mitigated. Mitigation is `SameSite=Lax` plus a double-submit CSRF token
+(`csrf_token` cookie + `X-CSRF-Token` header, `common/guards/csrf.guard.ts`) on every
+state-changing request — implemented, not just planned, since `SameSite` alone is not treated as
+sufficient. Login/register are exempt (`@SkipCsrf()`) since no session cookie exists yet to
+protect at that point. A request authenticated via `Authorization: Bearer` instead of a cookie
+(the mobile transport) is exempt from this check by construction — a third-party page cannot make
+a browser attach an arbitrary header, so CSRF does not apply to that transport.
 
 ## CORS
 
@@ -115,11 +124,12 @@ only allowed cross-origin for explicitly trusted origins.
 
 ## Rate limiting and brute-force protection
 
-See [api.md#rate-limiting](api.md#rate-limiting). Login and other credential-checking endpoints
-get a tighter limit keyed by IP + attempted identifier (not just IP alone, so distributed
-low-and-slow attempts against one account are still caught) with backoff, independent of the
-general per-tenant API rate limit. Exact thresholds are a tuning decision made when auth is built,
-not fixed here.
+See [api.md#rate-limiting](api.md#rate-limiting). Login and register are limited by IP + attempted
+identifier (not just IP alone, so distributed low-and-slow attempts against one account are still
+caught), independent of the general per-tenant API rate limit (not yet needed — no business
+endpoints exist yet). Implemented in Prompt 04 via `@nestjs/throttler`, in-memory, single API
+instance — a shared (Redis) store is the documented follow-up for horizontal scaling, per
+[api.md#rate-limiting](api.md#rate-limiting).
 
 ## Input validation, SQL injection, XSS
 

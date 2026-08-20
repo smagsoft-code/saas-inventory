@@ -33,22 +33,20 @@ show a logged-out user the app shell, don't flash a screen the user's role can't
 security boundary; the API re-checks authorization on every request regardless of what the
 frontend rendered.
 
-**How the session is carried between browser and API is a `PENDING DECISION`**, between:
-
-- An **httpOnly, secure, `SameSite` cookie** set by the API on login, containing the access token
-  (or a session identifier). The browser never has JS-readable access to it, which removes XSS
-  token theft as a risk (see [security.md](security.md)) — the tradeoff is CSRF becomes a concern
-  the API must defend against (see [security.md](security.md#csrf)) and cross-origin mobile clients
-  can't reuse this exact mechanism.
-- A **bearer JWT returned in the response body**, held in memory (not `localStorage`, to limit XSS
-  exposure) by the frontend and sent as an `Authorization` header. Works uniformly for web and
-  future mobile clients, but reintroduces "don't let anything read this token" as a frontend
-  concern and typically needs a silent-refresh flow.
-
-This is decided when authentication is actually designed (see
-[roadmap.md](../roadmap/roadmap.md) FASE 4), informed by how the mobile apps end up authenticating
-too. Either way, [security.md](security.md#authentication) fixes the token *issuance* rules (short-
-lived access token, longer-lived refresh token, rotation) independent of this transport choice.
+**Resolved in Prompt 04 — see [ADR-0030](../decisions/0030-authentication-foundation.md):** the
+web app uses an **httpOnly, `Secure` (outside local dev), `SameSite=Lax` cookie** for the access
+token (and a second, path-restricted one for the refresh token), set by the API on
+login/register/refresh. The browser never has JS-readable access to either, which removes XSS
+token theft as a risk (see [security.md](security.md)); the resulting CSRF exposure is mitigated
+with a double-submit `csrf_token` cookie + `X-CSRF-Token` header, checked by
+`common/guards/csrf.guard.ts` on every state-changing request (see
+[security.md#csrf](security.md#csrf)). This is a per-transport decision, not a global one: the
+Flutter mobile app independently uses bearer-in-secure-storage
+([mobile.md#auth-on-mobile](mobile.md#auth-on-mobile)) — the API's guards accept either an
+`Authorization: Bearer` header or the cookie, whichever a given client sends.
+[security.md#authentication](security.md#authentication) fixes the token *issuance* rules
+(short-lived access token, longer-lived opaque refresh token, rotation) independent of transport,
+as already documented.
 
 Route protection itself is implemented at the layout level per route group (redirect to `(public)`
 login if no valid session) plus, where Next.js middleware is used for an early redirect, the
@@ -114,6 +112,7 @@ warehouse worker scanning QR codes on a phone) rather than desktop-only.
 
 ## What this phase does not decide
 
-No pages, components, or auth implementation exist yet. Session-transport mechanism, form/validation
-libraries, and any client state library are decided when the modules that need them are actually
-built.
+Session-transport mechanism is resolved (see above, ADR-0030, Prompt 04). Form/validation
+libraries and any client state library are still decided when the modules that need them are
+actually built — the Prompt 04 login/register pages use plain React state and the API's own DTO
+validation errors, not a form library, since that's all two forms need.

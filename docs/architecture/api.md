@@ -113,11 +113,15 @@ can be traced end to end.
 
 ## Rate limiting
 
-Enforced at the API layer (Redis-backed counters, keyed by tenant and/or IP depending on the
-route — e.g. login attempts are limited by IP+identifier to blunt brute force, general API usage
-is limited per-tenant to protect the platform from a single noisy tenant). Specific limits are a
-tuning decision made alongside [security.md](security.md#rate-limiting-and-brute-force-protection),
-not fixed here.
+Enforced at the API layer, keyed by tenant and/or IP depending on the route — e.g. login/register
+are limited by IP+identifier to blunt brute force (implemented in Prompt 04,
+`apps/api/src/auth/guards/auth-throttler.guard.ts`, `AUTH_RATE_LIMIT_MAX`/
+`AUTH_RATE_LIMIT_TTL_SECONDS`). That implementation is in-memory (single API instance) — correct
+for the current single-instance deployment shape, but a `PENDING DECISION` for when the API runs
+horizontally scaled, at which point a shared store (Redis, already provisioned via `REDIS_URL`) is
+needed so limits are enforced across instances, not per-instance. General per-tenant API usage
+limiting (protecting the platform from a single noisy tenant) is not yet implemented — no
+business/domain endpoints exist yet to protect (see [security.md](security.md#rate-limiting-and-brute-force-protection)).
 
 ## Public endpoints
 

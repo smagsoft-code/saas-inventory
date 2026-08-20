@@ -98,6 +98,68 @@ describe.skipIf(!integrationTestsEnabled)('multi-tenancy and RLS', () => {
       },
     ];
 
+    describe('auth_refresh_tokens (Prompt 04)', () => {
+      // Separate from `cases` above (not a simple insert-two-rows-and-compare shape) because the
+      // table has a composite FK to users(tenant_id, id) — each tenant needs its own user row to
+      // reference first.
+      let userAId: string;
+      let userBId: string;
+      let tokenAId: string;
+      let tokenBId: string;
+
+      beforeAll(async () => {
+        userAId = generateId();
+        userBId = generateId();
+        tokenAId = generateId();
+        tokenBId = generateId();
+        const { client } = getMigratorDb();
+        try {
+          await client`
+            insert into users (id, tenant_id, email, password_hash, full_name)
+            values (${userAId}, ${tenantAId}, 'auth-iso-a@example.com', 'x', 'Auth Isolation User A'),
+                   (${userBId}, ${tenantBId}, 'auth-iso-b@example.com', 'x', 'Auth Isolation User B')
+          `;
+          await client`
+            insert into auth_refresh_tokens (id, tenant_id, user_id, token_hash, expires_at)
+            values (${tokenAId}, ${tenantAId}, ${userAId}, 'hash-a', now() + interval '30 days'),
+                   (${tokenBId}, ${tenantBId}, ${userBId}, 'hash-b', now() + interval '30 days')
+          `;
+        } finally {
+          await client.end();
+        }
+      });
+
+      it('Tenant A sees only its own refresh token on a plain SELECT', async () => {
+        const rows = await withTenantSql(appTenant, tenantAId, async (tx) => {
+          return tx<{ id: string }[]>`select id from auth_refresh_tokens`;
+        });
+        const ids = rows.map((r) => r.id);
+        expect(ids).toContain(tokenAId);
+        expect(ids).not.toContain(tokenBId);
+      });
+
+      it("Tenant A cannot SELECT Tenant B's refresh token by primary key", async () => {
+        const rows = await withTenantSql(appTenant, tenantAId, async (tx) => {
+          return tx`select id from auth_refresh_tokens where id = ${tokenBId}`;
+        });
+        expect(rows).toHaveLength(0);
+      });
+
+      it("Tenant A cannot revoke (UPDATE) Tenant B's refresh token", async () => {
+        const result = await withTenantSql(appTenant, tenantAId, async (tx) => {
+          return tx`update auth_refresh_tokens set revoked_at = now() where id = ${tokenBId}`;
+        });
+        expect(result.count).toBe(0);
+      });
+
+      it('a session with no tenant context set sees zero refresh tokens', async () => {
+        const rows = await withTenantSql(appTenant, undefined, async (tx) => {
+          return tx`select id from auth_refresh_tokens`;
+        });
+        expect(rows).toHaveLength(0);
+      });
+    });
+
     for (const testCase of cases) {
       describe(testCase.table, () => {
         let rowAId: string;

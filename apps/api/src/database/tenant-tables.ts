@@ -14,6 +14,7 @@ import * as schema from './schema';
  * is missing from this list or from Postgres's own `pg_policies`.
  */
 export const TENANT_TABLES_CHILDREN_FIRST = [
+  schema.authRefreshTokens,
   schema.importJobRows,
   schema.importJobs,
   schema.importMappingTemplates,

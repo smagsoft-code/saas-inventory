@@ -14,7 +14,7 @@ import { getDb } from './client';
  * used here.
  */
 
-type TenantTransaction = Parameters<Parameters<ReturnType<typeof getDb>['transaction']>[0]>[0];
+export type TenantTransaction = Parameters<Parameters<ReturnType<typeof getDb>['transaction']>[0]>[0];
 
 export async function withTenantTransaction<T>(
   tenantId: string,

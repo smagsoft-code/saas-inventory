@@ -6,11 +6,13 @@ import postgres from 'postgres';
  * environment variables — never from a hardcoded or migration-committed value (CLAUDE.md §7.4,
  * security.md#secrets-management). Idempotent (ALTER ROLE always succeeds by overwriting).
  *
- * Only app_tenant is required — it's the only role the running API process authenticates as
- * (client.ts). The other four roles (app_platform, app_event_processor, app_public_resolver) are
- * provisioned the same way, from their own env vars, when the deployables that use them
- * (SuperAdmin service, Event Processor, QR resolver) are actually built — set only if present so
- * this script doesn't fail on a fresh dev checkout that hasn't configured them yet.
+ * app_tenant and app_platform are both required as of Prompt 04 — the running API process
+ * authenticates as app_tenant for ordinary requests (client.ts) and as app_platform for the
+ * narrow administrative operations documented in platform-client.ts (self-service registration's
+ * `tenants` row, refresh-token tenant resolution). The remaining two roles (app_event_processor,
+ * app_public_resolver) are provisioned the same way, from their own env vars, when the deployables
+ * that use them (Event Processor, QR resolver) are actually built — set only if present so this
+ * script doesn't fail on a fresh dev checkout that hasn't configured them yet.
  */
 async function main(): Promise<void> {
   const migratorUrl = getRequiredEnvVar('MIGRATOR_DATABASE_URL');
@@ -18,10 +20,10 @@ async function main(): Promise<void> {
 
   const rolePasswords: Array<[role: string, password: string]> = [
     ['app_tenant', getRequiredEnvVar('APP_TENANT_PASSWORD')],
+    ['app_platform', getRequiredEnvVar('APP_PLATFORM_PASSWORD')],
   ];
 
   const optionalRoles: Array<[role: string, envVar: string]> = [
-    ['app_platform', 'APP_PLATFORM_PASSWORD'],
     ['app_event_processor', 'APP_EVENT_PROCESSOR_PASSWORD'],
     ['app_public_resolver', 'APP_PUBLIC_RESOLVER_PASSWORD'],
   ];

@@ -153,7 +153,10 @@ and get it agreed before implementing.
 
 ## Current project status
 
-This repository is in the **foundation/scaffolding phase**. The PostgreSQL persistence layer
-(schema, migrations, RLS, constraints — Prompt 03) is implemented; no business functionality
-exists yet: no auth, no endpoints/services, no CRUD, no orders, no Telegram integration. See
+The PostgreSQL persistence layer (schema, migrations, RLS, constraints — Prompt 03) is
+implemented. Authentication (Prompt 04) is implemented — registration (self-service tenant
+provisioning), login, logout, session refresh/rotation, `GET /auth/me`, the guard chain
+(JwtAuthGuard/TenantGuard/CsrfGuard/PermissionsGuard), and RBAC integration — see
+[ADR-0030](docs/decisions/0030-authentication-foundation.md). No other business functionality
+exists yet: no product/inventory/order endpoints, no Telegram integration. See
 [docs/roadmap/roadmap.md](docs/roadmap/roadmap.md) for the phase plan.

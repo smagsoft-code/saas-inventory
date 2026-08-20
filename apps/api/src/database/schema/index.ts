@@ -9,3 +9,4 @@ export * from './08-import';
 export * from './09-sales';
 export * from './10-notifications';
 export * from './11-idempotency';
+export * from './12-auth';

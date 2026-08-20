@@ -63,6 +63,7 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0027](0027-staged-excel-import-pipeline.md) | Staged Excel Import Pipeline | Accepted |
 | [0028](0028-field-level-price-authorization.md) | Field-Level Authorization for `cost` and `min_price` | Accepted |
 | [0029](0029-import-worker-separation.md) | Import Worker as a Separate Process from the Event Processor | Accepted |
+| [0030](0030-authentication-foundation.md) | Authentication Foundation — Session Transport, Token Model, and Login/Registration Contract | Accepted |
 
 ADRs 0001–0015 were produced in Prompt 01 (architecture phase) alongside
 [docs/architecture/](../architecture/) and [docs/security/threat-model.md](../security/threat-model.md).
@@ -83,4 +84,8 @@ required (HIGH) findings from the Prompt 02-C consistency audit — see
 `database.md`. That pass also standardized every Prompt 02-A/02-B enum/status value to lowercase (no
 new ADR — a `CHECK`-list content correction, not a mechanism change) and corrected the
 `INITIAL_STOCK`/`ADJUSTMENT_IN` mapping in [ADR-0027](0027-staged-excel-import-pipeline.md)'s design
-without reopening that ADR's core decision.
+without reopening that ADR's core decision. ADR-0030 was produced in Prompt 04 (authentication),
+which also resolved the web session-transport `PENDING DECISION` on
+[frontend.md](../architecture/frontend.md#authentication-and-route-protection) and the
+refresh-token-storage `PENDING DECISION` on
+[security.md](../architecture/security.md#authentication).
