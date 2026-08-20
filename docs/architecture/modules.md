@@ -70,6 +70,16 @@ tenant is, who the user is, what they're allowed to do, and a record of what hap
 **Exposes to other modules:** tenant context resolution, permission checks, an audit-write
 interface.
 
+**Implemented in `apps/api/src/core/` (Prompt 05-A):** self-administration of the caller's own
+tenant (`GET`/`PATCH /tenant`) and its users (`GET`/`POST /users`, `GET`/`PATCH /users/:id`), plus
+read-only role listing for assignment (`GET /roles`) — reusing `auth/`'s `UsersRepository`/
+`RolesRepository`/`TenantsPlatformRepository` rather than a parallel data-access layer. The
+audit-write interface this section promises is `common/audit/audit-log.service.ts`, a thin insert
+wrapper around the already-provisioned `audit_log` table. Role/permission CRUD (custom roles,
+per-role permission toggling) is not implemented — see
+[ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md) and the roadmap for what's
+deliberately out of this phase's scope.
+
 ## CATALOG
 
 **Responsibility:** what a tenant sells — products and the taxonomy around them, including the

@@ -10,6 +10,8 @@ export interface TenantRow {
   name: string;
   slug: string;
   status: string;
+  isDemo: boolean;
+  createdAt: Date;
 }
 
 /**
@@ -35,6 +37,21 @@ export class TenantsPlatformRepository {
 
   async create(values: { id: string; name: string; slug: string }): Promise<void> {
     await this.platformDb.insert(tenants).values({ ...values, status: 'active', isDemo: false });
+  }
+
+  /** The one place tenant self-administration (core/tenant) touches the platform-scoped `tenants`
+   * table — narrow and explicit per multi-tenancy.md#administrative--cross-tenant-queries, exactly
+   * like the other methods here. `tenantId` must always be the caller's own resolved tenant id
+   * (CurrentTenant, never client input) — this method has no authorization logic of its own, it
+   * trusts the caller already established that. Only `name` is writable this way: `slug`/`status`/
+   * `isDemo` are system/administrative fields with no endpoint exposing them for tenant self-edit
+   * (§7/§9 of Prompt 05-A). */
+  async updateName(tenantId: string, name: string): Promise<TenantRow> {
+    const [row] = await this.platformDb.update(tenants).set({ name }).where(eq(tenants.id, tenantId)).returning();
+    if (!row) {
+      throw new Error(`Tenant ${tenantId} not found while updating name.`);
+    }
+    return row;
   }
 
   /** Best-effort cleanup if tenant-scoped provisioning fails right after the tenant row is

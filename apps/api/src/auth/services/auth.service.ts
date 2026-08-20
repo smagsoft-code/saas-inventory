@@ -1,16 +1,16 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { generateId } from '@saas-inventory/shared';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
-import type { CsrfTokenService } from '../csrf/csrf-token.service';
-import type { PasswordService } from '../password/password.service';
-import type { RefreshTokensPlatformRepository } from '../repositories/refresh-tokens-platform.repository';
-import type { RefreshTokensRepository } from '../repositories/refresh-tokens.repository';
-import type { RolesRepository } from '../repositories/roles.repository';
-import type { TenantsPlatformRepository } from '../repositories/tenants-platform.repository';
-import type { UsersRepository } from '../repositories/users.repository';
-import type { AccessTokenService } from '../tokens/access-token.service';
-import type { RefreshTokenService } from '../tokens/refresh-token.service';
-import type { TenantProvisioningService } from './tenant-provisioning.service';
+import { CsrfTokenService } from '../csrf/csrf-token.service';
+import { PasswordService } from '../password/password.service';
+import { RefreshTokensPlatformRepository } from '../repositories/refresh-tokens-platform.repository';
+import { RefreshTokensRepository } from '../repositories/refresh-tokens.repository';
+import { RolesRepository } from '../repositories/roles.repository';
+import { TenantsPlatformRepository } from '../repositories/tenants-platform.repository';
+import { UsersRepository } from '../repositories/users.repository';
+import { AccessTokenService } from '../tokens/access-token.service';
+import { RefreshTokenService } from '../tokens/refresh-token.service';
+import { TenantProvisioningService } from './tenant-provisioning.service';
 import { normalizeEmail, normalizeSlug } from '../util/normalize';
 
 /** A fixed, valid Argon2id hash of a value nobody can log in with — verified against on a

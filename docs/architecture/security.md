@@ -84,6 +84,16 @@ approval, attribute/category configuration, Excel import, location assignment) a
 [database.md's RBAC section](database.md#new-permission-codes-for-prompt-02-a02-b-capabilities-prompt-02-d) —
 closed in Prompt 02-D so no critical operation ships without a defined authorization checkpoint.
 
+**Tenant/user/role administration (Prompt 05-A)** adds `core.tenant.update`/`core.users.read`/
+`core.users.create`/`core.users.update`/`core.roles.read`/`core.roles.assign` (database.md's table,
+same section). Role assignment carries its own rule beyond the ordinary permission check:
+`core.roles.assign` is never sufficient for a user to change their *own* role or status — that block
+is unconditional, checked in `UsersService` before any permission lookup — see
+[ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md) for the full reasoning
+(including why no role hierarchy is introduced). `GET /tenant` and `GET /users`/`GET /users/:id` are
+tenant-scoped exactly like every other endpoint in this document — a foreign-tenant id resolves as
+"not found," never as a distinguishable "found but forbidden."
+
 **Field-level authorization (Prompt 02-D)** — route-level permission checks are not always enough:
 `cost` and `min_price` need to be withheld from an authenticated caller who lacks the specific
 permission for them, even though that caller is otherwise authorized to view the product. See

@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
-import type { Reflector } from '@nestjs/core';
+import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 import { SKIP_CSRF_KEY } from '../decorators/skip-csrf.decorator';
 

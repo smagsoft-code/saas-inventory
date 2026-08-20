@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { DEFAULT_ROLE_TEMPLATES, generateId } from '@saas-inventory/shared';
 import { withTenantTransaction } from '../../database/tenant-context';
-import type { RolesRepository } from '../repositories/roles.repository';
-import type { TenantsPlatformRepository } from '../repositories/tenants-platform.repository';
-import type { UsersRepository } from '../repositories/users.repository';
+import { RolesRepository } from '../repositories/roles.repository';
+import { TenantsPlatformRepository } from '../repositories/tenants-platform.repository';
+import { UsersRepository } from '../repositories/users.repository';
 
 export interface ProvisionTenantInput {
   companyName: string;

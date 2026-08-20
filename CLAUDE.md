@@ -157,6 +157,12 @@ The PostgreSQL persistence layer (schema, migrations, RLS, constraints — Promp
 implemented. Authentication (Prompt 04) is implemented — registration (self-service tenant
 provisioning), login, logout, session refresh/rotation, `GET /auth/me`, the guard chain
 (JwtAuthGuard/TenantGuard/CsrfGuard/PermissionsGuard), and RBAC integration — see
-[ADR-0030](docs/decisions/0030-authentication-foundation.md). No other business functionality
-exists yet: no product/inventory/order endpoints, no Telegram integration. See
+[ADR-0030](docs/decisions/0030-authentication-foundation.md). Tenant/user/role administration
+(Prompt 05-A) is implemented — `GET/PATCH /tenant`, `GET/POST /users`, `GET /users/:id`,
+`PATCH /users/:id`, `GET /roles`, six new `core.*` permission codes (migration `0014`), and the
+role-assignment self-escalation rule — see
+[ADR-0031](docs/decisions/0031-role-assignment-escalation-prevention.md). No role/permission CRUD
+(custom roles, per-role permission toggling) exists yet — roles remain the fixed
+`DEFAULT_ROLE_TEMPLATES` set, editable only via direct database access. No other business
+functionality exists yet: no product/inventory/order endpoints, no Telegram integration. See
 [docs/roadmap/roadmap.md](docs/roadmap/roadmap.md) for the phase plan.

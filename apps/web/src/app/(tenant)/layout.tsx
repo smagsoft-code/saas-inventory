@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { getCurrentUser } from '../../lib/current-user';
@@ -14,13 +15,28 @@ export default async function TenantLayout({ children }: { children: ReactNode }
     redirect('/login');
   }
 
+  const canReadUsers = user.permissions.includes('core.users.read');
+
   return (
     <div className="min-h-screen bg-white">
       <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
-        <span className="text-sm text-slate-700">
+        <nav className="flex items-center gap-4 text-sm text-slate-600">
+          <Link href="/" className="hover:text-slate-900">
+            Dashboard
+          </Link>
+          {canReadUsers && (
+            <Link href="/users" className="hover:text-slate-900">
+              Users
+            </Link>
+          )}
+          <Link href="/settings" className="hover:text-slate-900">
+            Settings
+          </Link>
+        </nav>
+        <span className="flex items-center gap-3 text-sm text-slate-700">
           {user.fullName} · <span className="text-slate-400">{user.tenantSlug}</span>
+          <LogoutButton />
         </span>
-        <LogoutButton />
       </header>
       <main className="p-8">{children}</main>
     </div>

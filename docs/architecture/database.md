@@ -671,6 +671,20 @@ whole pipeline end to end.
 | `import.inventory` | Adicional a `import.execute` — requerido cuando `duplicate_handling_mode = 'update_catalog_and_inventory'` | Sensible | Alto | Separa explícitamente "actualizar catálogo" de "tocar inventario" — ver [§Excel import pipeline](#excel-import-pipeline) y M1 arriba |
 | `core.users.locations.manage` | Asignar/quitar restricciones de ubicación a un usuario (`user_location_assignments`) | Configuración | Alto | Administrador únicamente, por convención de negocio |
 
+**Prompt 05-A** adds the tenant/user/role administration surface's permission codes (migration
+`0014`), following the same `module.action`/`module.resource.action` pattern — no ADR needed for
+the catalog rows themselves, same precedent as above; the one new authorization *rule* they enable
+(`core.roles.assign`'s unconditional self-block) is [ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md).
+
+| Code | Capacidad | Alcance | Riesgo | Observación |
+| --- | --- | --- | --- | --- |
+| `core.tenant.update` | Actualizar los datos editables del tenant actual (`name`) | Configuración | Alto | `slug`/`status`/`isDemo` no son editables por este medio — ver [security.md#authorization-rbac--permissions](security.md#authorization-rbac--permissions) |
+| `core.users.read` | Listar y ver el detalle de los usuarios del tenant actual | Configuración | Bajo | Nunca expone `password_hash` |
+| `core.users.create` | Crear un nuevo usuario dentro del tenant actual | Configuración | Alto | Asignar un rol al crear requiere además `core.roles.assign` |
+| `core.users.update` | Actualizar el perfil (`full_name`) o estado (`invited`/`active`/`disabled`) de un usuario del tenant actual | Configuración | Medio | Cambiar `role_id` requiere `core.roles.assign`, no este permiso — ver ADR-0031 |
+| `core.roles.read` | Listar los roles del tenant actual y sus permisos | Configuración | Bajo | Solo lectura — no hay CRUD de roles/permisos en esta fase |
+| `core.roles.assign` | Asignar o cambiar el rol de un usuario del tenant actual | Configuración / Sensible | Alto | Nunca suficiente para que un usuario cambie su propio rol — ver [ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md) |
+
 **No mobile-specific permission codes exist, or are needed.** Per
 [mobile.md#backend-as-the-sole-authority](mobile.md#backend-as-the-sole-authority), Flutter calls the
 identical permission-gated `/api/v1` endpoints web does — the same code above governs both clients.

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import type { JwtService } from '@nestjs/jwt';
+import { JwtService } from '@nestjs/jwt';
 import { AUTH_CONFIG, type AuthConfig } from '../../common/config/auth-config';
 import type { AccessTokenPayload } from '../../common/tokens/access-token-payload';
 

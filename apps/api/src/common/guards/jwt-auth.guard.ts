@@ -1,6 +1,6 @@
 import { Inject, Injectable, type CanActivate, type ExecutionContext, UnauthorizedException } from '@nestjs/common';
-import type { Reflector } from '@nestjs/core';
-import type { JwtService } from '@nestjs/jwt';
+import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
 import type { FastifyRequest } from 'fastify';
 import { AUTH_CONFIG, type AuthConfig } from '../config/auth-config';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';

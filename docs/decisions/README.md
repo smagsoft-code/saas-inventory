@@ -88,4 +88,7 @@ without reopening that ADR's core decision. ADR-0030 was produced in Prompt 04 (
 which also resolved the web session-transport `PENDING DECISION` on
 [frontend.md](../architecture/frontend.md#authentication-and-route-protection) and the
 refresh-token-storage `PENDING DECISION` on
-[security.md](../architecture/security.md#authentication).
+[security.md](../architecture/security.md#authentication). ADR-0031 was produced in Prompt 05-A
+(tenant/user/role administration), fixing the role-assignment authorization rule
+(`core.roles.assign`, unconditional self-role/status block) that RBAC's permission mechanism
+([ADR-0009](0009-rbac-permissions.md)) never itself defined.

@@ -70,6 +70,12 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'import.execute',
       'import.inventory',
       'core.users.locations.manage',
+      'core.tenant.update',
+      'core.users.read',
+      'core.users.create',
+      'core.users.update',
+      'core.roles.read',
+      'core.roles.assign',
     ],
   },
   Supervisor: {

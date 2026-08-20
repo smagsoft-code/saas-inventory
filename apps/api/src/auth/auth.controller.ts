@@ -8,12 +8,11 @@ import { SkipCsrf } from '../common/decorators/skip-csrf.decorator';
 import type { AuthPrincipal } from '../common/context/request-context';
 import { setSessionCookies, clearSessionCookies } from './cookies/auth-cookies.util';
 import { AuthSessionResponseDto, CurrentUserResponseDto } from './dto/auth-session-response.dto';
-import type { LoginDto } from './dto/login.dto';
-import type { RefreshDto } from './dto/refresh.dto';
-import type { RegisterDto } from './dto/register.dto';
+import { LoginDto } from './dto/login.dto';
+import { RefreshDto } from './dto/refresh.dto';
+import { RegisterDto } from './dto/register.dto';
 import { AuthThrottlerGuard } from './guards/auth-throttler.guard';
-import type { AuthService} from './services/auth.service';
-import { type IssuedSession, type SessionRequestMeta } from './services/auth.service';
+import { AuthService, type IssuedSession, type SessionRequestMeta } from './services/auth.service';
 
 function requestMeta(request: FastifyRequest): SessionRequestMeta {
   const userAgent = request.headers['user-agent'];

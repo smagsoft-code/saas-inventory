@@ -13,7 +13,8 @@ driven by its own prompt/spec and is only started once the prior phase is comple
 - **FASE 4 — Authentication & Authorization** — auth, sessions, roles. *(done — see
   [ADR-0030](../decisions/0030-authentication-foundation.md), `apps/api/src/auth/`,
   `apps/api/src/common/`)*
-- **FASE 5 — Tenant Administration** — tenant lifecycle and isolation. *(next)*
+- **FASE 5 — Tenant Administration** — tenant lifecycle and isolation. *(done — see
+  [ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md), `apps/api/src/core/`)*
 - **FASE 6 — Products** — product catalog domain.
 - **FASE 7 — Warehouses & Locations** — physical/location model.
 - **FASE 8 — Inventory** — stock tracking and movements.
@@ -31,7 +32,10 @@ FASE 1 produced architecture documentation and ADRs only — no business tables,
 functionality. FASE 2/3 added the Docker/infra scaffold and the PostgreSQL schema (migrations,
 RLS, constraints). FASE 4 added the authentication foundation (registration, login, logout, session
 refresh, guards/decorators, RBAC integration) — see
-[ADR-0030](../decisions/0030-authentication-foundation.md). No business/domain endpoints (products,
+[ADR-0030](../decisions/0030-authentication-foundation.md). FASE 5 added tenant self-administration
+(`GET`/`PATCH /tenant`) and user administration within a tenant (`GET`/`POST /users`,
+`GET`/`PATCH /users/:id`) with role assignment (`GET /roles`, `core.roles.assign`) — see
+[ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md). No business/domain endpoints (products,
 inventory, orders, ...) exist yet — that starts at FASE 6. Several implementation-level decisions
 were deliberately left open (RLS activation timing, web session-transport mechanism, product
 attribute/variant modeling, demo reset mechanism, and others) and are marked `PENDING DECISION` in

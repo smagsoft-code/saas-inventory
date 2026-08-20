@@ -19,6 +19,12 @@ const KNOWN_PERMISSION_CODES = new Set([
   'import.execute',
   'import.inventory',
   'core.users.locations.manage',
+  'core.tenant.update',
+  'core.users.read',
+  'core.users.create',
+  'core.users.update',
+  'core.roles.read',
+  'core.roles.assign',
 ]);
 
 describe('default role templates', () => {
