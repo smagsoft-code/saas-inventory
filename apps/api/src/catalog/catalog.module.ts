@@ -19,6 +19,13 @@ import { ProductsRepository } from './repositories/products.repository';
  * registered here the same way CoreModule registers it alongside AuthModule's own registration
  * (each module gets its own stateless instance of the same class, not a competing implementation).
  */
+/**
+ * Exports (Prompt 10): IMPORT depends on CATALOG (modules.md's IMPORT --> CATALOG edge) and reuses
+ * these providers directly — AttributeValidationService for the governed-JSONB rules (ADR-0026,
+ * never re-implemented), ProductsRepository/CategoriesRepository for the same product/variant/
+ * category writes the interactive flow uses. This is the one direction the edge runs; CatalogModule
+ * itself never imports ImportModule.
+ */
 @Module({
   controllers: [CategoriesController, AttributesController, ProductsController],
   providers: [
@@ -31,5 +38,6 @@ import { ProductsRepository } from './repositories/products.repository';
     AttributesRepository,
     ProductsRepository,
   ],
+  exports: [AttributeValidationService, AttributesRepository, CategoriesRepository, ProductsRepository],
 })
 export class CatalogModule {}

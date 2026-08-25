@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
+import { getOptionalEnvVar } from '@saas-inventory/config';
 import fastifyCookie from '@fastify/cookie';
+import fastifyMultipart from '@fastify/multipart';
 import helmet from '@fastify/helmet';
 import { VersioningType } from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
@@ -37,6 +39,13 @@ export async function buildApp(): Promise<NestFastifyApplication> {
 
   await app.register(helmet);
   await app.register(fastifyCookie);
+  // security.md#file-upload-security / IMPORT_MAX_FILE_SIZE_BYTES (Prompt 10) — the plugin itself
+  // rejects an oversized upload before ImportFileService ever sees the buffer; ImportFileService's
+  // own size check stays too, as the actual documented contract (this limit is a hard backstop,
+  // not the source of truth for the error message).
+  await app.register(fastifyMultipart, {
+    limits: { fileSize: Number(getOptionalEnvVar('IMPORT_MAX_FILE_SIZE_BYTES', '26214400')), files: 1 },
+  });
 
   registerCorrelationId(app);
 

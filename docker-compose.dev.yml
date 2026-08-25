@@ -31,6 +31,41 @@ services:
       timeout: 5s
       retries: 10
 
+  # S3-compatible object storage (Prompt 10) — security.md#file-upload-security's "stored in
+  # object storage, never the API container's local filesystem", applied to uploaded Excel files
+  # and generated error reports (apps/api/src/common/storage/object-storage.service.ts). Any
+  # S3-compatible endpoint works via the same S3_ENDPOINT/S3_BUCKET/S3_ACCESS_KEY/S3_SECRET_KEY
+  # vars (.env.example) — MinIO is the local/dev choice, not a hard architectural dependency.
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+    ports:
+      - '127.0.0.1:9000:9000'
+      - '127.0.0.1:9001:9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: creates S3_BUCKET if it doesn't already exist, then exits — MinIO itself never
+  # auto-creates buckets. Not a long-running service (no restart policy, no healthcheck); `api`/
+  # `import-worker` only need this to have run at least once, not to stay up.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "mc alias set local http://minio:9000 ${S3_ACCESS_KEY} ${S3_SECRET_KEY} &&
+             mc mb --ignore-existing local/${S3_BUCKET:-saas-inventory}"
+
   api:
     image: node:20-alpine
     working_dir: /repo
@@ -61,6 +96,15 @@ services:
       AUTH_RATE_LIMIT_TTL_SECONDS: ${AUTH_RATE_LIMIT_TTL_SECONDS:-60}
       AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-5}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+      # Object storage (Prompt 10) — see the `minio`/`minio-init` services above.
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-saas-inventory}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+      IMPORT_SYNC_ROW_THRESHOLD: ${IMPORT_SYNC_ROW_THRESHOLD:-500}
+      IMPORT_BATCH_SIZE: ${IMPORT_BATCH_SIZE:-500}
+      IMPORT_MAX_FILE_SIZE_BYTES: ${IMPORT_MAX_FILE_SIZE_BYTES:-26214400}
+      IMPORT_MAX_ROWS: ${IMPORT_MAX_ROWS:-100000}
     ports:
       - '127.0.0.1:4000:4000'
     volumes:
@@ -71,6 +115,42 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+  # The Import Worker deployable (ADR-0029) — a separate process/container from `api`, never the
+  # same one. Shares the monorepo image/volume for simplicity in local dev; a production deploy
+  # gives it its own image build the same way `infrastructure/docker/api.Dockerfile` does for `api`
+  # (see that file's own header once added — not part of this phase's Docker image work, only the
+  # process split itself).
+  import-worker:
+    image: node:20-alpine
+    working_dir: /repo
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @saas-inventory/api worker:import:dev"
+    environment:
+      NODE_ENV: development
+      # app_tenant — the worker uses this exact connection for the actual catalog/inventory writes
+      # once a job is claimed, identical to the API's own (client.ts's getDb()).
+      DATABASE_URL: postgresql://app_tenant:${APP_TENANT_PASSWORD:?set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-saas_inventory}
+      # app_import_worker — the worker's own claiming connection (migration 0019, ADR-0029). Its
+      # password is set by the same `db:bootstrap-dev-roles` step as the other roles, from
+      # APP_IMPORT_WORKER_PASSWORD.
+      APP_IMPORT_WORKER_DATABASE_URL: postgresql://app_import_worker:${APP_IMPORT_WORKER_PASSWORD:?set APP_IMPORT_WORKER_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-saas_inventory}
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-saas-inventory}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+      IMPORT_BATCH_SIZE: ${IMPORT_BATCH_SIZE:-500}
+      IMPORT_WORKER_POLL_INTERVAL_MS: ${IMPORT_WORKER_POLL_INTERVAL_MS:-2000}
+      IMPORT_WORKER_STALE_CLAIM_MS: ${IMPORT_WORKER_STALE_CLAIM_MS:-600000}
+    volumes:
+      - .:/repo
+      - api_node_modules:/repo/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
 
   web:
     image: node:20-alpine
@@ -93,5 +173,6 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
   api_node_modules:
   web_node_modules:

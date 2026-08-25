@@ -33,12 +33,17 @@ const TEST_APP_TENANT_DATABASE_URL = getOptionalEnvVar('TEST_APP_TENANT_DATABASE
  * app_platform specifically". */
 const TEST_APP_PLATFORM_DATABASE_URL = getOptionalEnvVar('TEST_APP_PLATFORM_DATABASE_URL', '');
 const TEST_APP_PUBLIC_RESOLVER_DATABASE_URL = getOptionalEnvVar('TEST_APP_PUBLIC_RESOLVER_DATABASE_URL', '');
+/** Only needed by test/import/import-worker.integration.test.ts (the app_import_worker connection,
+ * migration 0019/0020, ADR-0029) — every other suite, including the rest of the IMPORT suite that
+ * only exercises the synchronous HTTP path, is unaffected if this is unset. */
+const TEST_APP_IMPORT_WORKER_DATABASE_URL = getOptionalEnvVar('TEST_APP_IMPORT_WORKER_DATABASE_URL', '');
 
 export const integrationTestsEnabled = TEST_MIGRATOR_DATABASE_URL !== '' && TEST_APP_TENANT_DATABASE_URL !== '';
 export const appPlatformIntegrationTestsEnabled =
   integrationTestsEnabled && TEST_APP_PLATFORM_DATABASE_URL !== '' && TEST_APP_PUBLIC_RESOLVER_DATABASE_URL !== '';
+export const importWorkerIntegrationTestsEnabled = appPlatformIntegrationTestsEnabled && TEST_APP_IMPORT_WORKER_DATABASE_URL !== '';
 
-const APP_ROLES = ['app_migrator', 'app_tenant', 'app_platform', 'app_event_processor', 'app_public_resolver'];
+const APP_ROLES = ['app_migrator', 'app_tenant', 'app_platform', 'app_event_processor', 'app_public_resolver', 'app_import_worker'];
 
 /** Tears the database down to a genuinely empty state — validates database.md §19's "una base
  * vacía pueda inicializarse" requirement isn't just true the first time a Postgres volume is
@@ -159,6 +164,26 @@ async function bootstrapAppPublicResolverPassword(): Promise<void> {
   }
 }
 
+/** Mirrors bootstrapAppTenantPassword() for app_import_worker — only runs when
+ * TEST_APP_IMPORT_WORKER_DATABASE_URL is actually set. */
+async function bootstrapAppImportWorkerPassword(): Promise<void> {
+  if (TEST_APP_IMPORT_WORKER_DATABASE_URL === '') {
+    return;
+  }
+  const parsed = new URL(TEST_APP_IMPORT_WORKER_DATABASE_URL);
+  const password = decodeURIComponent(parsed.password);
+  const bootstrap = postgres(TEST_MIGRATOR_DATABASE_URL, { max: 1 });
+  try {
+    const [quoted] = await bootstrap<{ quoted_password: string }[]>`select quote_literal(${password}) as quoted_password`;
+    if (!quoted) {
+      throw new Error('quote_literal() returned no row for app_import_worker password');
+    }
+    await bootstrap.unsafe(`ALTER ROLE app_import_worker WITH PASSWORD ${quoted.quoted_password}`);
+  } finally {
+    await bootstrap.end();
+  }
+}
+
 /** Resets the target database to empty and applies every migration — call once per test file in
  * beforeAll(), never inside individual `it`s (each migration run is relatively expensive). */
 export async function resetAndMigrate(): Promise<void> {
@@ -167,6 +192,7 @@ export async function resetAndMigrate(): Promise<void> {
   await bootstrapAppTenantPassword();
   await bootstrapAppPlatformPassword();
   await bootstrapAppPublicResolverPassword();
+  await bootstrapAppImportWorkerPassword();
 }
 
 export function getMigratorDb() {
@@ -184,6 +210,10 @@ export function getAppPlatformDatabaseUrl(): string {
 
 export function getAppPublicResolverDatabaseUrl(): string {
   return TEST_APP_PUBLIC_RESOLVER_DATABASE_URL;
+}
+
+export function getAppImportWorkerDatabaseUrl(): string {
+  return TEST_APP_IMPORT_WORKER_DATABASE_URL;
 }
 
 /** The exact SET LOCAL / set_config pattern the running API uses (tenant-context.ts) — opens an

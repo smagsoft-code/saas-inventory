@@ -12,10 +12,10 @@ import postgres from 'postgres';
  * `tenants` row, refresh-token tenant resolution), and as app_public_resolver for the QR public
  * resolver (public-resolver-client.ts, `GET /q/:code`) — DatabaseModule (database.module.ts) wires
  * up all three connections eagerly at app boot, so a missing password here means the API fails to
- * authenticate the moment that connection is actually queried. The remaining role
- * (app_event_processor) is provisioned the same way, from its own env var, when the deployable that
- * uses it (the Event Processor) is actually built — set only if present so this script doesn't fail
- * on a fresh dev checkout that hasn't configured it yet.
+ * authenticate the moment that connection is actually queried. The remaining roles
+ * (app_event_processor, app_import_worker) are each provisioned the same way, from their own env
+ * var, only when the deployable that uses them is actually built and run — set only if present so
+ * this script doesn't fail on a fresh dev checkout that hasn't configured them yet.
  */
 async function main(): Promise<void> {
   const migratorUrl = getRequiredEnvVar('MIGRATOR_DATABASE_URL');
@@ -27,7 +27,10 @@ async function main(): Promise<void> {
     ['app_public_resolver', getRequiredEnvVar('APP_PUBLIC_RESOLVER_PASSWORD')],
   ];
 
-  const optionalRoles: Array<[role: string, envVar: string]> = [['app_event_processor', 'APP_EVENT_PROCESSOR_PASSWORD']];
+  const optionalRoles: Array<[role: string, envVar: string]> = [
+    ['app_event_processor', 'APP_EVENT_PROCESSOR_PASSWORD'],
+    ['app_import_worker', 'APP_IMPORT_WORKER_PASSWORD'],
+  ];
   for (const [role, envVar] of optionalRoles) {
     const password = getOptionalEnvVar(envVar, '');
     if (password !== '') {

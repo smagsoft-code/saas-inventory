@@ -346,6 +346,7 @@ flag inside the app:
 | `app_platform` | NestJS API, SuperAdmin-only service methods | `BYPASSRLS` | `tenants`, `platform_admins`, plus explicit read access to tenant tables for cross-tenant admin aggregation (never through the `app_tenant` path — see [multi-tenancy.md#administrative--cross-tenant-queries](multi-tenancy.md#administrative--cross-tenant-queries)) |
 | `app_event_processor` | Event Processor worker | subject to RLS, but granted one **permissive, table-scoped** policy (below) | `event_outbox` only — no grants on any other table |
 | `app_public_resolver` | QR public resolver endpoint (`GET /q/:code`) | subject to RLS, one narrow SELECT policy | `qr_codes` (SELECT only), plus SELECT on the specific columns of `products`/`locations` needed to render a public response |
+| `app_import_worker` | Import Worker deployable (ADR-0029, migration 0019) | subject to RLS, granted one **permissive, table-scoped** policy per table (below) | `import_jobs`/`import_job_rows` only (SELECT, UPDATE) — the actual catalog/inventory writes for a claimed job happen over a normal, per-tenant `app_tenant` connection, never this one |
 
 `FORCE ROW LEVEL SECURITY` on `app_tenant`'s tables is a deliberate belt-and-suspenders: it is
 redundant in production (where `app_tenant` never owns the tables) but protects a local/dev setup
@@ -389,6 +390,29 @@ This role can see every tenant's events, but the blast radius of that is `event_
 else — it has no `GRANT` on any other table, so a compromised Event Processor cannot read
 `products`/`orders`/etc. even though its Postgres role isn't tenant-filtered on the one table it does
 touch. `qr_codes`' `app_public_resolver` policy follows the identical shape, restricted to `SELECT`.
+
+FASE 10 (ADR-0029) added `app_import_worker` with the identical shape, sized to the two tables the
+Import Worker claims/updates across every tenant in one query:
+
+```sql
+CREATE POLICY import_jobs_import_worker_access ON import_jobs
+    FOR ALL TO app_import_worker
+    USING (true) WITH CHECK (true);
+CREATE POLICY import_job_rows_import_worker_access ON import_job_rows
+    FOR ALL TO app_import_worker
+    USING (true) WITH CHECK (true);
+```
+
+Unlike `app_event_processor`, this role was not created by migration 0000 (that migration predates
+ADR-0027/ADR-0029) — migration 0019 creates it instead, `RESET ROLE`-ing back to the migration
+session's originally-authenticated (`CREATEROLE`-privileged) identity just long enough to do so,
+since by migration 0019 the session has already `SET ROLE app_migrator` (migration 0000's own
+switch, held for the rest of the batch) and `app_migrator` itself has no `CREATEROLE`. Migration
+0020 adds `import_jobs.claimed_at`/`claimed_by` (the same claim-tracking shape as
+`event_outbox.claimed_at`/`claimed_by`) and migration 0021 adds the matching partial index
+(`import_jobs_claimable_idx` on `(status, created_at) WHERE status IN ('validating',
+'importing')`) the worker's cross-tenant claim query needs, mirroring
+`event_outbox_pending_created_idx`.
 
 ### Setting tenant context: `SET LOCAL`, transactions, and connection pooling
 
@@ -1919,14 +1943,29 @@ resource profiles and latency needs genuinely differ:
 **Reclaiming and retries:** an Import Worker instance polls `import_jobs` with `status = 'validating'`
 or `status = 'importing'`, claims via `FOR UPDATE SKIP LOCKED` (safe with multiple worker instances,
 identical to the Event Processor's claiming query), and processes in the batches already described
-above. A crashed worker simply stops claiming; a stuck job is detected the same way a stuck
-`event_outbox` row would be (a claimed-but-stale-for-too-long check, an operational concern, not a new
-mechanism) and can be picked up by another instance on retry. **Idempotency on retry** is the same
-`import_job_rows.status` resumability already described in [§Committing](#committing-transactional-strategy-duplicates-rollback) —
-re-running the job (whether by the same or a different worker instance) never reprocesses an already-
-`imported` row. **Observability** follows the existing, unchanged convention
+above. A crashed worker simply stops claiming; a stuck job is detected via `claimed_at`
+(`import_jobs.claimed_at`/`claimed_by`, migration 0020 — the same shape as `event_outbox`'s own
+claim columns) — a job is only claimable when `claimed_at IS NULL OR claimed_at <
+now() - IMPORT_WORKER_STALE_CLAIM_MS`, so it can be picked up by another instance once that
+threshold passes. **Idempotency on retry** is the same `import_job_rows.status` resumability already
+described in [§Committing](#committing-transactional-strategy-duplicates-rollback) — re-running the
+job (whether by the same or a different worker instance) never reprocesses an already-`imported`
+row. **Observability** follows the existing, unchanged convention
 ([backend.md#cross-cutting-concerns](backend.md#cross-cutting-concerns)): structured logs carrying
 `correlationId`/`tenantId`, no new logging mechanism introduced for this worker specifically.
+
+FASE 10 implemented this exactly as designed: `apps/api/src/import-worker/main.ts` is the Import
+Worker's own process entry point (`NestFactory.createApplicationContext`, never `.listen()` — it
+serves no HTTP route), driving `ImportWorkerService.pollOnce()` in a loop
+(`IMPORT_WORKER_POLL_INTERVAL_MS` between empty polls) against `ImportWorkerClaimRepository`'s claim
+query (the `app_import_worker` connection, `import-worker-client.ts`) — see
+[§Row-Level Security](#row-level-security) above for the role/policy/index details. `IMPORT_SYNC_ROW_THRESHOLD`
+and `IMPORT_BATCH_SIZE` are the tunable env vars implementing the "illustratively 500" thresholds
+this section describes; `ImportJobService.triggerValidate`/`triggerConfirm` run the same
+`ImportValidationService`/`ImportExecutionService` synchronously inline when the job is at or under
+the threshold, or simply flip `import_jobs.status` and return when above it — the worker's
+`pollOnce()` calls those exact same two methods for the async path, so there is genuinely one
+implementation of "validate a job"/"commit a job," never two.
 
 The frontend polls `import_jobs.status`/row counts rather than holding an HTTP connection open for a
 potentially-minutes-long operation. (Provisioning a second worker process/container is an infrastructure

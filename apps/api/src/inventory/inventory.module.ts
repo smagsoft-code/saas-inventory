@@ -36,6 +36,14 @@ import { WarehousesService } from './warehouses/warehouses.service';
  * dependency edges. StockLedgerService is the one locking convoy every stock-affecting write (FASE
  * 8's adjustments and every transfer state transition) goes through — never duplicated per feature.
  */
+/**
+ * Exports (Prompt 10): IMPORT depends on INVENTORY (modules.md's IMPORT --> INVENTORY edge) and
+ * reuses these providers directly — StockLedgerService for the one locking convoy every
+ * stock-affecting write goes through (INITIAL_STOCK/ADJUSTMENT_IN, never a parallel write path),
+ * LocationAuthorizationService for the same ADR-0024 check every other location-targeting write
+ * uses, WarehousesRepository/LocationsRepository for template generation and row validation. This
+ * is the one direction the edge runs; InventoryModule itself never imports ImportModule.
+ */
 @Module({
   controllers: [WarehousesController, LocationsController, LocationAssignmentsController, BalancesController, MovementsController, TransfersController],
   providers: [
@@ -60,5 +68,6 @@ import { WarehousesService } from './warehouses/warehouses.service';
     ProductVariantsLookupRepository,
     UsersRepository,
   ],
+  exports: [StockLedgerService, LocationAuthorizationService, WarehousesRepository, LocationsRepository, ProductVariantsLookupRepository],
 })
 export class InventoryModule {}

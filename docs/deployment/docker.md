@@ -3,13 +3,22 @@
 ## Files
 
 - [docker-compose.dev.yml](../../docker-compose.dev.yml) — local development: `postgres`, `redis`,
-  `api`, `web`. The app services run via `pnpm dev` against a bind-mounted repo for fast iteration
-  (no image build required). Postgres/Redis are bound to `127.0.0.1` only, for local convenience.
+  `minio`/`minio-init` (S3-compatible object storage, Prompt 10 — `minio-init` is a one-shot bucket
+  creator, not a long-running service), `api`, `import-worker` (the ADR-0029 Import Worker
+  deployable, Prompt 10 — `pnpm --filter @saas-inventory/api worker:import:dev`, a separate
+  container from `api`, never the same process), `web`. The app services run via `pnpm dev`/
+  `worker:import:dev` against a bind-mounted repo for fast iteration (no image build required).
+  Postgres/Redis/MinIO are bound to `127.0.0.1` only, for local convenience.
 - [docker-compose.prod.yml](../../docker-compose.prod.yml) — production: `postgres`, `redis`,
   `api`, `web`, `caddy`. `api` and `web` are built from the multi-stage Dockerfiles in
   [infrastructure/docker/](../../infrastructure/docker/). Postgres and Redis publish **no** ports —
   they are reachable only from other containers on the compose network. `caddy` is the only
   service exposed on `80`/`443` and reverse-proxies `/api/*` to `api` and everything else to `web`.
+  **Not yet updated for Prompt 10** — a production object-storage endpoint (managed S3 or a
+  production-grade MinIO deployment) and an `import-worker` service/image are real, open work for
+  FASE 21 (Production Deployment); `docker-compose.prod.yml` and `infrastructure/docker/` are
+  deliberately out of this phase's scope, same as this file's own `## Status` note below already
+  establishes for the dev/prod split in general.
 
 ## n8n
 

@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm';
-import { check, foreignKey, index, integer, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { check, foreignKey, index, integer, jsonb, pgPolicy, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, id, tenantId, updatedAt } from './_helpers';
 import { tenantIsolationPolicy } from './_policies';
+import { appImportWorker } from './_roles';
 import { users } from './02-core';
 import { categories, productVariants } from './03-catalog';
 import { locations } from './05-inventory';
@@ -58,6 +59,11 @@ export const importJobs = pgTable('import_jobs', {
   warningRows: integer('warning_rows'),
   importedRows: integer('imported_rows'),
   errorReportStorageKey: text('error_report_storage_key'),
+  /** Import Worker claim tracking (ADR-0029) — same shape as event_outbox.claimed_at/claimed_by
+   * (schema/10-notifications.ts). Only meaningful while status IN ('validating','importing');
+   * irrelevant once the job moves to any other status, so it is never cleared on transition out. */
+  claimedAt: timestamp('claimed_at', { withTimezone: true }),
+  claimedBy: text('claimed_by'),
   startedAt: timestamp('started_at', { withTimezone: true }),
   completedAt: timestamp('completed_at', { withTimezone: true }),
   createdAt: createdAt(),
@@ -88,7 +94,25 @@ export const importJobs = pgTable('import_jobs', {
     sql`${t.status} IN ('uploaded', 'mapping', 'validating', 'ready', 'importing', 'completed', 'completed_with_errors', 'failed', 'cancelled')`,
   ),
   index('import_jobs_tenant_status_created_idx').on(t.tenantId, t.status, t.createdAt),
+  /** The Import Worker's cross-tenant claim query (`WHERE status IN ('validating', 'importing')
+   * ORDER BY created_at FOR UPDATE SKIP LOCKED`) never filters by tenant_id — same shape as
+   * event_outbox_pending_created_idx (schema/10-notifications.ts), applied to two statuses instead
+   * of one. */
+  index('import_jobs_claimable_idx').on(t.status, t.createdAt).where(sql`${t.status} IN ('validating', 'importing')`),
   tenantIsolationPolicy('import_jobs'),
+  /** ADR-0029 — the Import Worker claims jobs across every tenant in one query (`FOR UPDATE SKIP
+   * LOCKED WHERE status IN ('validating', 'importing')`), the identical mechanism
+   * app_event_processor uses on event_outbox (database.md#row-level-security's role table). This
+   * role's blast radius is exactly these two tables — it never touches products/inventory_balances/
+   * anything else; the actual catalog/inventory writes happen over a normal, tenant-scoped
+   * app_tenant connection once a job is claimed (database.md#large-imports). */
+  pgPolicy('import_jobs_import_worker_access', {
+    as: 'permissive',
+    for: 'all',
+    to: appImportWorker,
+    using: sql`true`,
+    withCheck: sql`true`,
+  }),
 ]).enableRLS();
 
 /** Staging — one row per Excel row; never writes directly to catalog/inventory tables. */
@@ -123,4 +147,13 @@ export const importJobRows = pgTable('import_job_rows', {
   check('import_job_rows_match_action_check', sql`${t.matchAction} IS NULL OR ${t.matchAction} IN ('create', 'update', 'skip')`),
   index('import_job_rows_tenant_job_status_idx').on(t.tenantId, t.importJobId, t.status),
   tenantIsolationPolicy('import_job_rows'),
+  /** Same rationale as import_jobs_import_worker_access above — the worker reads/updates row
+   * status across tenants while processing a claimed job's batches. */
+  pgPolicy('import_job_rows_import_worker_access', {
+    as: 'permissive',
+    for: 'all',
+    to: appImportWorker,
+    using: sql`true`,
+    withCheck: sql`true`,
+  }),
 ]).enableRLS();

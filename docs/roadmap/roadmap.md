@@ -42,12 +42,15 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   public and authenticated resolution according to the established authorization and pricing rules.
   *(done)*
 
-## Future phases
+- **FASE 10 — Import / Excel Onboarding** — staged Excel import pipeline: dynamic template
+  generation, upload, mapping, validation, preview, batch commit, initial inventory and the Import
+  Worker as a separate deployable from the (not-yet-built) Event Processor, per ADR-0027/ADR-0029.
+  A new `app_import_worker` Postgres role (migration 0019) and `import_jobs.claimed_at`/`claimed_by`
+  claim-tracking columns (migration 0020) plus a supporting partial index (migration 0021) were
+  added — real, necessary schema completions the pre-FASE-10 design left unfinished, not a
+  redesign; see this phase's final report for the full rationale. *(done)*
 
-- **FASE 10 — Import / Excel Onboarding** — staged Excel import pipeline: template generation,
-  upload, mapping, validation, preview, batch commit, initial inventory and Import Worker.
-  The Import Worker remains a separate deployable from the Event Processor, according to
-  ADR-0027 and ADR-0029.
+## Future phases
 
 - **FASE 11 — Administration & Tenant Configuration** — tenant-level configuration and system-level
   administration capabilities defined by the ADMINISTRATION bounded context, without duplicating
@@ -181,8 +184,8 @@ explicit review/commit.
 
 ## Current status
 
-FASE 0–9 are completed and committed.
+FASE 0–10 are completed and committed.
 
-FASE 10 is the next phase to be started.
+FASE 11 is the next phase to be started.
 
 No future phase has been started merely by defining its database schema or architecture.

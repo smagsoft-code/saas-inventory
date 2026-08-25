@@ -281,3 +281,58 @@ threat-model.md's brute-force mitigation already established for login. Because 
 also bootstraps `APP_PUBLIC_RESOLVER_DATABASE_URL` in its own `beforeAll` — a direct, unavoidable
 consequence of wiring a new required global connection, not scope creep. No frontend UI for QR exists
 yet.
+
+Prompt 10 added the IMPORT module (`apps/api/src/import/`) — the staged Excel onboarding pipeline
+per ADR-0027: `GET /imports/template` (dynamic `.xlsx` generation via `exceljs`, reflecting the
+tenant's real categories/attributes/warehouses/locations), `POST /imports` (multipart upload via
+`@fastify/multipart@^8` — downgraded from the latest major, which requires Fastify 5 and broke
+every integration suite's `buildApp()`, the same class of pin this repo already hit with
+`@fastify/cookie`), `GET /imports`, `GET /imports/:id`, `POST /imports/:id/mapping`,
+`POST /imports/:id/validate`, `GET /imports/:id/preview`, `GET /imports/:id/rows`,
+`POST /imports/:id/confirm`, `POST /imports/:id/cancel`, `GET /imports/:id/errors` (a sanitized,
+formula-injection-safe error report), plus full `import-mapping-templates` CRUD. `import_jobs`/
+`import_job_rows`/`import_mapping_templates` (schema-ready since migration 0008) get their first
+application code here — no schema changes to those three tables. `ImportValidationService` and
+`ImportExecutionService` are the two domain services both the synchronous (small-file) HTTP path
+and the async Import Worker path call identically — `IMPORT_SYNC_ROW_THRESHOLD`/`IMPORT_BATCH_SIZE`
+decide which path a job takes, never a second implementation. Every attribute check reuses
+`AttributeValidationService` verbatim (ADR-0026); every quantity write reuses
+`StockLedgerService.applyMovement` (`INITIAL_STOCK` for new SKUs, `ADJUSTMENT_IN` for
+`update_catalog_and_inventory` on existing ones — never a parallel write path); every
+location-targeting row is checked against `LocationAuthorizationService` at validation time, not
+deferred to commit. `duplicate_handling_mode` defaults to `update_catalog_only` — inventory is only
+ever touched when a job explicitly opts into `update_catalog_and_inventory`, which additionally
+requires the `import.inventory` permission (checked in `ImportJobService.triggerConfirm`, not just
+the route's `import.execute` gate). A real, necessary schema gap was found and closed: no
+`app_import_worker` Postgres role existed (migration 0000 predates ADR-0029), so migration 0019
+creates it — `RESET ROLE` back to the migration session's originally-authenticated identity first,
+since by migration 0019 the session has already `SET ROLE app_migrator` (no `CREATEROLE` of its
+own), confirmed necessary by actually running this migration against real PostgreSQL
+(`tools/pg-verify`, which failed with `permission denied to create role` before the fix) — plus one
+permissive, table-scoped policy each on `import_jobs`/`import_job_rows`, the same shape as
+`app_event_processor`'s `event_outbox` policy. Migration 0020 adds
+`import_jobs.claimed_at`/`claimed_by` (same shape as `event_outbox`'s own claim columns — needed to
+distinguish "just transitioned, needs pickup" from "already claimed" from "stale, reclaimable",
+which the schema had no way to express before) and migration 0021 adds the matching partial claim
+index. The Import Worker itself (`apps/api/src/import-worker/main.ts`,
+`worker:import:dev`/`worker:import:start`) is a separate `NestFactory.createApplicationContext`
+process — never `.listen()`s — polling `ImportWorkerClaimRepository`'s `FOR UPDATE SKIP LOCKED`
+claim query over its own `app_import_worker` connection (`import-worker-client.ts`,
+`APP_IMPORT_WORKER_DATABASE_URL`), then calling the exact same `ImportJobService.runValidation`/
+`runCommit` the synchronous HTTP path uses once a job's tenant is known. Serialized/lot-tracked rows
+write directly into `product_serials`/`product_lots` (first application code to touch either
+table); a duplicate SKU/serial/lot within one file is always rejected as an intra-file duplicate,
+regardless of whether it also exists in the database — a known, deliberate scope limit: bulk-adding
+multiple brand-new serialized units under one not-yet-existing SKU in a single file is not
+supported (create the variant first, then import additional serials against the now-existing SKU).
+Uploaded files and generated error reports are written through the new `ObjectStorageService`
+(`apps/api/src/common/storage/`, `@aws-sdk/client-s3`, S3-compatible/MinIO) — the first module to
+actually need object storage (`product_images.storage_key` was schema-ready but never wired to a
+real client). `docker-compose.dev.yml` gained `minio`/`minio-init`/`import-worker` services.
+Verified against real PostgreSQL end to end via `tools/pg-verify` (143 integration tests passing,
+including the full staged pipeline, tenant isolation, RBAC, and location authorization) plus a
+separate throwaway `embedded-postgres` run exercising the `app_import_worker` claim query
+specifically (cross-tenant claiming, no double-claim under concurrency, stale-claim reclaiming) —
+gated by `TEST_APP_IMPORT_WORKER_DATABASE_URL`, unset in the standard `pg-verify` harness, so
+`test/import/import-worker.integration.test.ts` skips there by design; see the FASE 10 final report
+for the exact command. No frontend UI for IMPORT exists yet (FASE 16/17).

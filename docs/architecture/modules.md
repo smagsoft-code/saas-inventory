@@ -211,7 +211,7 @@ later, etc.) and system-level configuration that only a SuperAdmin can change.
 [multi-tenancy.md](multi-tenancy.md)) — seeded with synthetic data for prospects/sales demos. See
 [the demo strategy ADR](../decisions/0014-demo-tenant-strategy.md).
 
-## IMPORT (Prompt 02-B)
+## IMPORT (Prompt 02-B, implemented FASE 10)
 
 **Responsibility:** the guided, staged bulk-inventory-onboarding flow — dynamic Excel template
 generation, upload, column mapping, validation, preview, and batched commit into CATALOG (products,

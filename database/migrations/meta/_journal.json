@@ -134,6 +134,27 @@
       "when": 1787621101704,
       "tag": "0018_qr_public_resolver_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787664006277,
+      "tag": "0019_import_worker_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787667637573,
+      "tag": "0020_import_worker_claim_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787667660047,
+      "tag": "0021_import_jobs_claimable_index",
+      "breakpoints": true
     }
   ]
 }
