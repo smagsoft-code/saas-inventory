@@ -417,7 +417,7 @@ async function verifyPoolingLeakage(): Promise<void> {
 }
 
 async function verifyPermissionsCatalog(): Promise<void> {
-  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin + Prompt 07 warehouses/locations admin codes)');
+  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin + Prompt 07 warehouses/locations admin + Prompt 08 inventory balances/movements admin codes)');
   const expected = [
     'catalog.attributes.manage',
     'catalog.qr.manage',
@@ -455,13 +455,21 @@ async function verifyPermissionsCatalog(): Promise<void> {
     'warehouses.manage',
     'locations.view',
     'locations.manage',
+    // Prompt 08 (migration 0017) — inventory_balances/inventory_movements read + manual-adjustment
+    // write, roadmap.md FASE 8 scope. database.md named 'inventory.adjust' as an already-established
+    // example (alongside 'products.view') since Prompt 02-D, but no migration had ever actually
+    // inserted it — same gap-filling precedent as migrations 0015/0016.
+    // inventory.transfers.*/inventory.returns.manage above already existed since migration 0001 and
+    // are reused as-is for FASE 8's transfer endpoints, no new codes needed for those.
+    'inventory.view',
+    'inventory.adjust',
   ].sort();
 
   const sql = postgres(MIGRATOR_URL, { max: 1 });
   try {
     const rows = await sql<{ code: string }[]>`select code from permissions order by code`;
     const actual = rows.map((r) => r.code).sort();
-    check('permissions catalog has exactly 29 rows', actual.length === 29, `found ${actual.length}`);
+    check('permissions catalog has exactly 31 rows', actual.length === 31, `found ${actual.length}`);
     check('permissions catalog matches database.md exactly, no narrative examples added', JSON.stringify(actual) === JSON.stringify(expected));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       console.log('  expected:', expected);

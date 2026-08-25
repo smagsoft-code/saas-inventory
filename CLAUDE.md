@@ -216,3 +216,36 @@ balances, and inventory transfers — those tables (`inventory_balances`, `inven
 application code touches them yet. The location-scoped-authorization *guard* (ADR-0024, combining
 RBAC with `user_location_assignments` membership) is also FASE 8 work — this phase only manages the
 assignment data itself. No frontend UI for INVENTORY exists yet.
+
+Prompt 08 completed the INVENTORY module (`apps/api/src/inventory/`) — `GET /inventory/balances`,
+`GET /inventory/balances/:id`, `GET /inventory/movements`, `POST /inventory/adjustments`
+(RECEIPT/ADJUSTMENT_IN/ADJUSTMENT_OUT, the only client-selectable movement types outside the
+transfer lifecycle), and the full transfer lifecycle under `/inventory/transfers` — `POST /`,
+`GET /`, `GET /:id`, `POST /:id/approve`, `POST /:id/prepare`, `POST /:id/dispatch`,
+`POST /:id/receive`, `POST /:id/cancel` — implementing the `draft -> approved -> preparing ->
+dispatched -> partially_received/received` state machine exactly as documented in
+[ADR-0020](docs/decisions/0020-multi-location-inventory-transfers.md), with in-transit stock derived
+from open transfer items (never a stored balance bucket). Two new permission codes
+(`inventory.view`, `inventory.adjust`; migration `0017`, same gap-filling precedent as migrations
+0015/0016) join the `inventory.transfers.*`/`inventory.returns.manage` codes already seeded since
+migration `0001`. Every stock-affecting write — adjustments and every transfer state transition —
+goes through one shared locking convoy (`StockLedgerService.applyMovement`): `INSERT ... ON CONFLICT
+DO NOTHING` (first-touch race), `SELECT ... FOR UPDATE` on the balance row, application-level
+validation against the schema's own CHECK constraints, an append-only `inventory_movements` insert,
+then an optimistic-locked `UPDATE` on `inventory_balances` — matching
+[database.md#concurrency-strategy](docs/architecture/database.md#concurrency-strategy) verbatim.
+Every transfer state transition additionally row-locks the `inventory_transfers` header itself
+first, serializing concurrent attempts on the same transfer (double-dispatch, double-cancel) before
+any balance row is ever touched. The ADR-0024 location-authorization guard FASE 7 deliberately
+deferred is now `LocationAuthorizationService`, checked explicitly wherever a write targets a
+specific physical location (adjustments; transfer prepare/dispatch on the source location; receive
+on the destination location) — a second, independent check alongside the `inventory.*`
+`RequirePermissions` gate, never a substitute for it. Transfer receiving requires a client-supplied
+`Idempotency-Key` header (`database.md#idempotency`'s general `idempotency_keys` table, `scope =
+'transfer.receive'`) since, unlike every other one-time transition, two legitimate receiving events
+can have identical shape. Deliberately **not** built this phase: `product_serials`/`product_lots`
+movement-level linkage (database.md itself leaves this "not fully pinned" and no schema column
+exists for it — extending the schema to add one was out of this phase's no-schema-changes mandate),
+and `sales_returns`/`sales_return_items` (ADR-0021's returns model FK-references `orders`/
+`order_items`, which do not exist until SALES/FASE 10 — `inventory.returns.manage` is seeded but
+unused until then). No frontend UI for INVENTORY exists yet.

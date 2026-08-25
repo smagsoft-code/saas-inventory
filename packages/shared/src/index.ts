@@ -84,6 +84,8 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'warehouses.manage',
       'locations.view',
       'locations.manage',
+      'inventory.view',
+      'inventory.adjust',
     ],
   },
   Supervisor: {
@@ -100,6 +102,8 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'categories.view',
       'warehouses.view',
       'locations.view',
+      'inventory.view',
+      'inventory.adjust',
     ],
   },
   Vendedor: {
@@ -116,6 +120,8 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'categories.view',
       'warehouses.view',
       'locations.view',
+      'inventory.view',
+      'inventory.adjust',
     ],
   },
 };
