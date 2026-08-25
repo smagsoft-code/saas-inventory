@@ -65,7 +65,14 @@ Tenant isolation is enforced at more than one layer, so that a bug in any single
 result in cross-tenant data exposure:
 
 1. **Guard layer** — the Tenant Guard rejects any request without a resolvable tenant context
-   (except explicitly public or SuperAdmin-only routes).
+   (except explicitly public or SuperAdmin-only routes). **It also rejects a resolvable tenant
+   that is not currently `active`** (PROMPT 011-A) — `tenants.status` is read fresh from
+   PostgreSQL on every request via `TenantsPlatformRepository`, never trusted from the JWT (a
+   claim would freeze the tenant's operability at token-issuance time). This is a distinct
+   concern from isolation: it governs *whether* a tenant may operate at all, not which rows it
+   may see — see [security.md](security.md#tenant-isolation) for the full enforcement design and
+   [database.md#core-tenants-users-platform-admins](database.md#core-tenants-users-platform-admins)
+   for `tenants.status`'s values (`active`/`suspended`/`archived`).
 2. **Repository/data-access layer** — every query against a tenant-owned table includes
    `WHERE tenant_id = :tenantId` (or the ORM-level equivalent). This is a repository-level
    convention, not something left to individual call sites to remember — see

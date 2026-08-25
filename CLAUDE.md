@@ -370,3 +370,23 @@ migrations.integration.test.ts` for real: `tenant_settings` was missing ADR-0018
 "plans" — named as illustrative SuperAdmin capabilities in multi-tenancy.md but with no concrete
 architectural definition anywhere — are deliberately not built. No frontend UI for ADMINISTRATION
 exists yet (FASE 16/17).
+
+PROMPT 011-A (post-FASE-11 controlled correction) audited and closed a real gap FASE 11's own
+report did not demonstrate: `AuthService.login()` already rejected a non-`active` tenant, but
+`AuthService.refresh()` did not, and — the P0 case — `TenantGuard` resolved tenant scope purely
+from the already-verified JWT claims and never checked `tenants.status` at all, so an access token
+minted while a tenant was `active` kept working on every tenant-scoped route (`GET /tenant`,
+`GET /categories`, ...) for the rest of its TTL even after that tenant was suspended via `POST
+/platform/tenants/:tenantId/suspend`. Fixed at the single central point every tenant-scoped
+request already passes through — `TenantGuard` (`common/guards/tenant.guard.ts`) now reads
+`tenants.status` live via `TenantsPlatformRepository` (added as a `CommonModule` provider) before
+resolving `tenantContext`, and `AuthService.refresh()` does the same live check before rotating a
+token. Neither the JWT nor the refresh-token row was changed to carry a frozen status — a token
+rejected only because its tenant is suspended is left un-revoked, so reactivation (`tenants.status`
+back to `active`) makes it work again immediately, with no forced re-login, since the check is a
+live read evaluated fresh on every request, not a cached decision. No new table, no permission
+code, no ADR (a gap-closure in already-approved lifecycle semantics, not a new architectural
+decision), no controller-by-controller check, and `@PlatformOnly()` routes are structurally
+unaffected (they never resolve a tenant context at all). See
+[security.md#tenant-isolation](docs/architecture/security.md#tenant-isolation) and
+[multi-tenancy.md#enforcement-layers-defense-in-depth](docs/architecture/multi-tenancy.md#enforcement-layers-defense-in-depth).

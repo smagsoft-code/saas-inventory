@@ -25,7 +25,12 @@ const ACTIVE_USER = {
 
 function buildService() {
   const tenantProvisioningService = { provision: vi.fn() };
-  const tenantsPlatformRepository = { findBySlug: vi.fn(), findById: vi.fn() };
+  // findById defaults to an active tenant-1 — PROMPT 011-A's refresh() tenant-status check reads
+  // this; the dedicated "suspended tenant" describe block below overrides it per-test.
+  const tenantsPlatformRepository = {
+    findBySlug: vi.fn(),
+    findById: vi.fn().mockResolvedValue({ id: 'tenant-1', status: 'active' }),
+  };
   const usersRepository = {
     findByEmail: vi.fn(),
     findById: vi.fn(),
@@ -202,6 +207,26 @@ describe('AuthService', () => {
       });
       await expect(mocks.service.refresh('some-token', {})).rejects.toThrow('Invalid or expired session.');
       expect(mocks.refreshTokensRepository.revokeAllForUser).not.toHaveBeenCalled();
+    });
+
+    it('PROMPT 011-A: rejects when the token is otherwise valid but the tenant is no longer active, without revoking or rotating it', async () => {
+      const mocks = buildService();
+      mocks.refreshTokensPlatformRepository.findByHash.mockResolvedValue({
+        id: 'rt-1',
+        tenantId: 'tenant-1',
+        tenantSlug: 'acme',
+        userId: 'user-1',
+        expiresAt: new Date(Date.now() + 100_000),
+        revokedAt: null,
+      });
+      mocks.tenantsPlatformRepository.findById.mockResolvedValue({ id: 'tenant-1', status: 'suspended' });
+
+      await expect(mocks.service.refresh('valid-token', {})).rejects.toThrow('Invalid or expired session.');
+
+      // Left untouched: a later reactivation must let this same token work again on its own.
+      expect(mocks.refreshTokensRepository.revoke).not.toHaveBeenCalled();
+      expect(mocks.refreshTokensRepository.revokeAllForUser).not.toHaveBeenCalled();
+      expect(mocks.accessTokenService.issue).not.toHaveBeenCalled();
     });
 
     it('treats a revoked (already-rotated) token being reused as possible theft and revokes every session', async () => {

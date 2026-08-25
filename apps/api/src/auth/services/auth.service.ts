@@ -171,6 +171,18 @@ export class AuthService {
       throw invalidSession();
     }
 
+    // PROMPT 011-A: a refresh token minted while the tenant was active must not survive a
+    // later suspension — checked here, live, the same way login() already checks it, rather than
+    // relying solely on the resulting access token failing at TenantGuard on its next use. Left
+    // unrevoked (not rotated, not marked revoked): if the tenant is later reactivated, this same
+    // still-valid refresh token works again on its own, with no forced re-login — see this
+    // prompt's final report for why that is the chosen (least-surprising, no-ADR-mandated-
+    // revocation) reactivation semantics.
+    const tenant = await this.tenantsPlatformRepository.findById(existing.tenantId);
+    if (!tenant || tenant.status !== 'active') {
+      throw invalidSession();
+    }
+
     const result = await withTenantTransaction(existing.tenantId, async (tx) => {
       const user = await this.usersRepository.findById(tx, existing.tenantId, existing.userId);
       if (!user || user.status !== 'active') {

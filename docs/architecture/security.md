@@ -112,6 +112,22 @@ signup would otherwise be (see [threat-model.md#privilege-escalation](../securit
 `@PlatformOnly()` alone — never by `@RequirePermissions()` — so no tenant RBAC configuration
 (`core.roles.assign` and everything it can grant) can ever reach a platform-level capability.
 
+**Tenant suspension is enforced live, on every request, not frozen into the JWT (PROMPT 011-A).**
+`tenants.status` (`active`/`suspended`/`archived`) is never a token claim — a claim would freeze
+the tenant's operability at token-issuance time, leaving a suspended tenant fully operable for the
+remainder of its access token's TTL. Instead, `TenantGuard` (`common/guards/tenant.guard.ts`) reads
+`tenants.status` fresh, via `TenantsPlatformRepository`, on every tenant-scoped request — the single
+central point every route not marked `@Public()`/`@PlatformOnly()` passes through, so no controller
+re-implements this check. `AuthService.login()` already rejected a non-`active` tenant before this
+fix; `AuthService.refresh()` now does too, checked the same way, so a refresh token minted while
+active cannot outlive a later suspension either — deliberately left un-revoked when rejected (no
+forced logout, no token blacklist): reactivation (`tenants.status` back to `active`) makes both the
+existing refresh token and any not-yet-expired access token work again on their own, on the very
+next request, since the guard's check is a live read, not a cached or one-time decision. Suspending
+one tenant has no effect on any other tenant's sessions, isolation (RLS), or the platform-admin
+identity's own ability to keep managing it — `@PlatformOnly()` routes never resolve a tenant context
+at all, so they are structurally unaffected by any tenant's status.
+
 **Field-level authorization (Prompt 02-D)** — route-level permission checks are not always enough:
 `cost` and `min_price` need to be withheld from an authenticated caller who lacks the specific
 permission for them, even though that caller is otherwise authorized to view the product. See

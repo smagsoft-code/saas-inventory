@@ -35,6 +35,7 @@ sequenceDiagram
     AG-->>FA: 401 if invalid/expired
     FA->>TG: resolve tenant context from token claims
     TG-->>FA: 403 if no resolvable tenant (except public/SuperAdmin routes)
+    TG-->>FA: 403 if the resolved tenant is not currently active (PROMPT 011-A — read live, never from the token)
     FA->>PG: check required permission for this route
     PG-->>FA: 403 if missing permission
     FA->>Ctrl: validate body/query against DTO
