@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, ilike, isNull } from 'drizzle-orm';
+import { and, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import { brands, categories, locations, productLots, products, productSerials, productVariants, suppliers, warehouses } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -96,6 +96,28 @@ export class ImportCatalogLookupRepository {
       .innerJoin(products, and(eq(products.id, productVariants.productId), eq(products.tenantId, productVariants.tenantId)))
       .where(and(eq(productVariants.tenantId, tenantId), eq(productVariants.sku, sku), isNull(productVariants.deletedAt)));
     return row;
+  }
+
+  /** PROMPT 010-A §4/§9 — one round trip for every SKU that repeats within a file, so
+   * ImportValidationService can decide "is this a legitimate new-SKU serialized/lot group" without
+   * a query per row. Only SKUs that already exist come back; a SKU absent from the result map is a
+   * genuinely new one as far as the database is concerned right now. */
+  async findVariantsBySkus(tx: TenantTransaction, tenantId: string, skus: string[]): Promise<Map<string, VariantMatchRow>> {
+    if (skus.length === 0) return new Map();
+    const rows = await tx
+      .select({
+        variantId: productVariants.id,
+        productId: productVariants.productId,
+        categoryId: products.categoryId,
+        sku: productVariants.sku,
+        status: productVariants.status,
+        isSerialized: productVariants.isSerialized,
+        isLotTracked: productVariants.isLotTracked,
+      })
+      .from(productVariants)
+      .innerJoin(products, and(eq(products.id, productVariants.productId), eq(products.tenantId, productVariants.tenantId)))
+      .where(and(eq(productVariants.tenantId, tenantId), inArray(productVariants.sku, skus), isNull(productVariants.deletedAt)));
+    return new Map(rows.map((row) => [row.sku, row]));
   }
 
   async serialNumberExists(tx: TenantTransaction, tenantId: string, serialNumber: string): Promise<boolean> {

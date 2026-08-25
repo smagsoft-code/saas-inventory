@@ -130,6 +130,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('import: staged Excel onboa
     return (JSON.parse(response.body) as { id: string }).id;
   }
 
+  async function createCategory(admin: Session, name: string, slug: string): Promise<string> {
+    const response = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(admin), payload: { name, slug } });
+    expect(response.statusCode).toBe(201);
+    return (JSON.parse(response.body) as { id: string }).id;
+  }
+
   async function buildXlsx(headers: string[], rows: Array<Array<string | number>>): Promise<Buffer> {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Import');
@@ -419,6 +425,417 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('import: staged Excel onboa
 
       const afterCancel = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
       expect(afterCancel.statusCode).toBe(409);
+    });
+  });
+
+  const SERIAL_MAPPING = JSON.stringify({
+    SKU: 'sku',
+    Nombre: 'name',
+    Categoria: 'category',
+    'Precio Max': 'maxPrice',
+    'Precio Base': 'basePrice',
+    'Precio Min': 'minPrice',
+    Cantidad: 'quantity',
+    Ubicacion: 'location',
+    Serial: 'serialNumber',
+  });
+  const SERIAL_HEADERS = ['SKU', 'Nombre', 'Categoria', 'Precio Max', 'Precio Base', 'Precio Min', 'Cantidad', 'Ubicacion', 'Serial'];
+
+  /** Fetches the internal row ids (never exposed over HTTP) for direct repository-level
+   * manipulation/inspection — the same DI-container access pattern
+   * test/import/import-worker.integration.test.ts already uses. */
+  async function getRowIds(tenantId: string, jobId: string): Promise<Array<{ id: string; rowNumber: number }>> {
+    const { withTenantTransaction } = await import('../../src/database/tenant-context');
+    const { ImportJobRowsRepository } = await import('../../src/import/repositories/import-job-rows.repository');
+    const repo = app.get(ImportJobRowsRepository);
+    return withTenantTransaction(tenantId, async (tx) => {
+      const { rows } = await repo.listByJob(tx, tenantId, jobId, { page: 1, pageSize: 100 });
+      return rows.map((r) => ({ id: r.id, rowNumber: r.rowNumber }));
+    });
+  }
+
+  describe('PROMPT 010-A §4-§11 — multi-serial onboarding for a brand-new SKU', () => {
+    it('S1: several rows sharing one brand-new SKU, each with a distinct serial, create exactly one product/variant and one physical unit per row', async () => {
+      const admin = await registerTenant('Serial Alpha Co', 'admin@serial-alpha.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      await createCategory(admin, 'Televisores', `televisores-${Date.now()}`);
+      const sku = `TV-${Date.now()}`;
+
+      const buffer = await buildXlsx(SERIAL_HEADERS, [
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001'],
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0002'],
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0003'],
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0004'],
+      ]);
+
+      const job = await uploadJob(admin, { columnMapping: SERIAL_MAPPING, defaultLocationId: locationId }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+      const validatedBody = JSON.parse(validated.body) as { validRows: number; invalidRows: number };
+      expect(validatedBody).toEqual(expect.objectContaining({ validRows: 4, invalidRows: 0 }));
+
+      const confirmed = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/confirm`, headers: writeHeaders(admin) });
+      const confirmedBody = JSON.parse(confirmed.body) as { status: string; importedRows: number };
+      expect(confirmedBody).toEqual(expect.objectContaining({ status: 'completed', importedRows: 4 }));
+
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows`, headers: readHeaders(admin) });
+      const rowData = (JSON.parse(rows.body) as { data: { status: string; matchedProductVariantId: string }[] }).data;
+      expect(rowData.every((r) => r.status === 'imported')).toBe(true);
+      const distinctVariantIds = new Set(rowData.map((r) => r.matchedProductVariantId));
+      expect(distinctVariantIds.size).toBe(1); // exactly one product/variant, never four.
+      const variantId = [...distinctVariantIds][0];
+
+      const movements = await inject({ method: 'GET', url: `/api/v1/inventory/movements?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const movementRows = (JSON.parse(movements.body) as { data: { movementType: string; quantity: number }[] }).data;
+      expect(movementRows).toHaveLength(4); // one INITIAL_STOCK per physical unit, never one combined movement.
+      expect(movementRows.every((m) => m.movementType === 'INITIAL_STOCK' && m.quantity === 1)).toBe(true);
+
+      const balances = await inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const balance = (JSON.parse(balances.body) as { data: { quantityPhysical: number }[] }).data[0]!;
+      expect(balance.quantityPhysical).toBe(4);
+    });
+
+    it('S2: a serial repeated within the same file is rejected at validation, never silently imported', async () => {
+      const admin = await registerTenant('Serial Beta Co', 'admin@serial-beta.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      const sku = `TV-${Date.now()}`;
+
+      const buffer = await buildXlsx(SERIAL_HEADERS, [
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001'],
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001'],
+      ]);
+      const job = await uploadJob(admin, { columnMapping: SERIAL_MAPPING, defaultLocationId: locationId }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+      const validatedBody = JSON.parse(validated.body) as { invalidRows: number };
+      expect(validatedBody.invalidRows).toBe(2);
+
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows?status=invalid`, headers: readHeaders(admin) });
+      const errors = (JSON.parse(rows.body) as { data: { errors: { code: string }[] }[] }).data.flatMap((r) => r.errors.map((e) => e.code));
+      expect(errors).toContain('DUPLICATE_SERIAL_IN_FILE');
+    });
+
+    it('S3: a serial already present in the database (from a prior import) is rejected, never a raw constraint exception', async () => {
+      const admin = await registerTenant('Serial Gamma Co', 'admin@serial-gamma.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      await createCategory(admin, 'Televisores', `televisores-${Date.now()}`);
+      const existingSerial = `SN-EXISTING-${Date.now()}`;
+
+      const first = await buildXlsx(SERIAL_HEADERS, [[`TV-A-${Date.now()}`, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', existingSerial]]);
+      const firstJob = await uploadJob(admin, { columnMapping: SERIAL_MAPPING, defaultLocationId: locationId }, first);
+      const firstJobId = (JSON.parse(firstJob.body) as { id: string }).id;
+      await inject({ method: 'POST', url: `/api/v1/imports/${firstJobId}/validate`, headers: writeHeaders(admin) });
+      const firstConfirm = await inject({ method: 'POST', url: `/api/v1/imports/${firstJobId}/confirm`, headers: writeHeaders(admin) });
+      expect(JSON.parse(firstConfirm.body)).toEqual(expect.objectContaining({ status: 'completed' }));
+
+      const second = await buildXlsx(SERIAL_HEADERS, [[`TV-B-${Date.now()}`, 'TV LG', 'Televisores', 500, 450, 400, 1, 'Zone A', existingSerial]]);
+      const secondJob = await uploadJob(admin, { columnMapping: SERIAL_MAPPING, defaultLocationId: locationId }, second);
+      const secondJobId = (JSON.parse(secondJob.body) as { id: string }).id;
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${secondJobId}/validate`, headers: writeHeaders(admin) });
+      expect(JSON.parse(validated.body)).toEqual(expect.objectContaining({ invalidRows: 1 }));
+
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${secondJobId}/rows?status=invalid`, headers: readHeaders(admin) });
+      const errors = (JSON.parse(rows.body) as { data: { errors: { code: string }[] }[] }).data.flatMap((r) => r.errors.map((e) => e.code));
+      expect(errors).toContain('SERIAL_NUMBER_EXISTS');
+    });
+
+    it('S4: rows sharing a brand-new SKU with contradictory product-identity fields are rejected as inconsistent, not silently merged', async () => {
+      const admin = await registerTenant('Serial Delta Co', 'admin@serial-delta.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      const sku = `TV-${Date.now()}`;
+
+      const buffer = await buildXlsx(SERIAL_HEADERS, [
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001'],
+        [sku, 'Refrigerador', 'Refrigeracion', 500, 450, 400, 1, 'Zone A', 'SN0002'],
+      ]);
+      const job = await uploadJob(admin, { columnMapping: SERIAL_MAPPING, defaultLocationId: locationId }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+      expect(JSON.parse(validated.body)).toEqual(expect.objectContaining({ invalidRows: 2 }));
+
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows?status=invalid`, headers: readHeaders(admin) });
+      const errors = (JSON.parse(rows.body) as { data: { errors: { code: string }[] }[] }).data.flatMap((r) => r.errors.map((e) => e.code));
+      expect(errors).toContain('SKU_GROUP_INCONSISTENT_METADATA');
+    });
+
+    it('mixing serial-tracked and lot-tracked rows under the same brand-new SKU is rejected as a tracking-mode conflict', async () => {
+      const admin = await registerTenant('Serial Epsilon Co', 'admin@serial-epsilon.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      const sku = `TV-${Date.now()}`;
+
+      const headers = [...SERIAL_HEADERS, 'Lote'];
+      const mapping = JSON.stringify({ ...JSON.parse(SERIAL_MAPPING), Lote: 'lotNumber' });
+      const buffer = await buildXlsx(headers, [
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001', ''],
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', '', 'LOT-1'],
+      ]);
+      const job = await uploadJob(admin, { columnMapping: mapping, defaultLocationId: locationId }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+      expect(JSON.parse(validated.body)).toEqual(expect.objectContaining({ invalidRows: 2 }));
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows?status=invalid`, headers: readHeaders(admin) });
+      const errors = (JSON.parse(rows.body) as { data: { errors: { code: string }[] }[] }).data.flatMap((r) => r.errors.map((e) => e.code));
+      expect(errors).toContain('SKU_GROUP_TRACKING_MODE_INCONSISTENT');
+    });
+
+    it('S5/§35: distinct physical units of the same brand-new SKU each validate their own (distinct, valid) location independently', async () => {
+      const admin = await registerTenant('Serial Zeta Co', 'admin@serial-zeta.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationA = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      const locationB = await createLocation(admin, warehouseId, 'Zone B', `ZB-${Date.now()}`);
+      await createCategory(admin, 'Televisores', `televisores-${Date.now()}`);
+      const sku = `TV-${Date.now()}`;
+
+      const buffer = await buildXlsx(SERIAL_HEADERS, [
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001'],
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone B', 'SN0002'],
+      ]);
+      const job = await uploadJob(admin, { columnMapping: SERIAL_MAPPING }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+      expect(JSON.parse(validated.body)).toEqual(expect.objectContaining({ validRows: 2, invalidRows: 0 }));
+
+      await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/confirm`, headers: writeHeaders(admin) });
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows`, headers: readHeaders(admin) });
+      const variantId = (JSON.parse(rows.body) as { data: { matchedProductVariantId: string }[] }).data[0]!.matchedProductVariantId;
+
+      const balances = await inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const balanceRows = (JSON.parse(balances.body) as { data: { locationId: string; quantityPhysical: number }[] }).data;
+      expect(balanceRows.find((b) => b.locationId === locationA)?.quantityPhysical).toBe(1);
+      expect(balanceRows.find((b) => b.locationId === locationB)?.quantityPhysical).toBe(1);
+    });
+
+    it('S6/§35: one unit targeting an unauthorized location fails independently — sibling units in authorized locations still succeed', async () => {
+      const admin = await registerTenant('Serial Eta Co', 'admin@serial-eta.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationA = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      await createLocation(admin, warehouseId, 'Zone B', `ZB-${Date.now()}`);
+      await createCategory(admin, 'Televisores', `televisores-${Date.now()}`);
+      const sku = `TV-${Date.now()}`;
+
+      // Restrict the importing admin to locationA only (ADR-0024 applies to any user, admins
+      // included — see the existing §18 test in this file).
+      const restrict = await inject({ method: 'PUT', url: `/api/v1/users/${admin.user.id}/locations`, headers: writeHeaders(admin), payload: { locationIds: [locationA] } });
+      expect(restrict.statusCode).toBe(200);
+
+      const buffer = await buildXlsx(SERIAL_HEADERS, [
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001'],
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone B', 'SN0002'],
+      ]);
+      const job = await uploadJob(admin, { columnMapping: SERIAL_MAPPING }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+      const validatedBody = JSON.parse(validated.body) as { validRows: number; invalidRows: number };
+      expect(validatedBody).toEqual(expect.objectContaining({ validRows: 1, invalidRows: 1 }));
+
+      const invalidRows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows?status=invalid`, headers: readHeaders(admin) });
+      const errors = (JSON.parse(invalidRows.body) as { data: { errors: { code: string }[] }[] }).data.flatMap((r) => r.errors.map((e) => e.code));
+      expect(errors).toContain('LOCATION_NOT_AUTHORIZED');
+    });
+
+    it('S7/§16: re-importing an existing serialized SKU under update_catalog_only registers the new serial but never moves stock', async () => {
+      const admin = await registerTenant('Serial Theta Co', 'admin@serial-theta.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      await createCategory(admin, 'Televisores', `televisores-${Date.now()}`);
+      const sku = `TV-${Date.now()}`;
+
+      const first = await buildXlsx(SERIAL_HEADERS, [[sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001']]);
+      const firstJob = await uploadJob(admin, { columnMapping: SERIAL_MAPPING, defaultLocationId: locationId }, first);
+      const firstJobId = (JSON.parse(firstJob.body) as { id: string }).id;
+      await inject({ method: 'POST', url: `/api/v1/imports/${firstJobId}/validate`, headers: writeHeaders(admin) });
+      await inject({ method: 'POST', url: `/api/v1/imports/${firstJobId}/confirm`, headers: writeHeaders(admin) });
+
+      const firstRows = await inject({ method: 'GET', url: `/api/v1/imports/${firstJobId}/rows`, headers: readHeaders(admin) });
+      const variantId = (JSON.parse(firstRows.body) as { data: { matchedProductVariantId: string }[] }).data[0]!.matchedProductVariantId;
+      const balancesBefore = await inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const physicalBefore = (JSON.parse(balancesBefore.body) as { data: { quantityPhysical: number }[] }).data[0]!.quantityPhysical;
+
+      // Second import: same SKU (now existing), a brand-new serial, default update_catalog_only.
+      const second = await buildXlsx(SERIAL_HEADERS, [[sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0002']]);
+      const secondJob = await uploadJob(admin, { columnMapping: SERIAL_MAPPING, defaultLocationId: locationId }, second);
+      const secondJobId = (JSON.parse(secondJob.body) as { id: string }).id;
+      await inject({ method: 'POST', url: `/api/v1/imports/${secondJobId}/validate`, headers: writeHeaders(admin) });
+      const secondConfirm = await inject({ method: 'POST', url: `/api/v1/imports/${secondJobId}/confirm`, headers: writeHeaders(admin) });
+      expect(JSON.parse(secondConfirm.body)).toEqual(expect.objectContaining({ status: 'completed', importedRows: 1 }));
+
+      const balancesAfter = await inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const physicalAfter = (JSON.parse(balancesAfter.body) as { data: { quantityPhysical: number }[] }).data[0]!.quantityPhysical;
+      expect(physicalAfter).toBe(physicalBefore); // unchanged — update_catalog_only never moves stock.
+
+      const movements = await inject({ method: 'GET', url: `/api/v1/inventory/movements?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      expect((JSON.parse(movements.body) as { data: unknown[] }).data).toHaveLength(1); // only the original INITIAL_STOCK.
+    });
+
+    it('S8: rows of the same brand-new SKU landing in different commit batches still resolve to exactly one product/variant', async () => {
+      const admin = await registerTenant('Serial Iota Co', 'admin@serial-iota.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      await createCategory(admin, 'Televisores', `televisores-${Date.now()}`);
+      const sku = `TV-${Date.now()}`;
+
+      const buffer = await buildXlsx(SERIAL_HEADERS, [
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001'],
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0002'],
+        [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0003'],
+      ]);
+      const job = await uploadJob(admin, { columnMapping: SERIAL_MAPPING, defaultLocationId: locationId }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+      await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+
+      const previousBatchSize = process.env['IMPORT_BATCH_SIZE'];
+      process.env['IMPORT_BATCH_SIZE'] = '1'; // forces each row into its own commit transaction.
+      try {
+        const confirmed = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/confirm`, headers: writeHeaders(admin) });
+        expect(JSON.parse(confirmed.body)).toEqual(expect.objectContaining({ status: 'completed', importedRows: 3 }));
+      } finally {
+        if (previousBatchSize === undefined) delete process.env['IMPORT_BATCH_SIZE'];
+        else process.env['IMPORT_BATCH_SIZE'] = previousBatchSize;
+      }
+
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows`, headers: readHeaders(admin) });
+      const rowData = (JSON.parse(rows.body) as { data: { matchedProductVariantId: string }[] }).data;
+      expect(new Set(rowData.map((r) => r.matchedProductVariantId)).size).toBe(1);
+
+      const movements = await inject({ method: 'GET', url: `/api/v1/inventory/movements?productVariantId=${rowData[0]!.matchedProductVariantId}`, headers: readHeaders(admin) });
+      expect((JSON.parse(movements.body) as { data: unknown[] }).data).toHaveLength(3);
+    });
+  });
+
+  describe('PROMPT 010-A §19-§28 — crash/retry idempotency', () => {
+    it('I1/I6/I7/I8/I9: repeating confirm on an already-completed job is a safe no-op — no duplicate product, serial, movement, or balance increase', async () => {
+      const admin = await registerTenant('Idem Alpha Co', 'admin@idem-alpha.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      const sku = `SKU-${Date.now()}`;
+
+      const buffer = await buildXlsx(
+        ['SKU', 'Nombre', 'Precio Max', 'Precio Base', 'Precio Min', 'Cantidad', 'Ubicacion'],
+        [[sku, 'Widget', 100, 90, 80, 10, 'Zone A']],
+      );
+      const job = await uploadJob(admin, { columnMapping: STANDARD_MAPPING, defaultLocationId: locationId }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+      await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+
+      const firstConfirm = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/confirm`, headers: writeHeaders(admin) });
+      const firstBody = JSON.parse(firstConfirm.body) as { status: string; importedRows: number };
+      expect(firstBody).toEqual(expect.objectContaining({ status: 'completed', importedRows: 1 }));
+
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows`, headers: readHeaders(admin) });
+      const variantId = (JSON.parse(rows.body) as { data: { matchedProductVariantId: string }[] }).data[0]!.matchedProductVariantId;
+
+      const balancesBefore = await inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const physicalBefore = (JSON.parse(balancesBefore.body) as { data: { quantityPhysical: number }[] }).data[0]!.quantityPhysical;
+      const movementsBefore = await inject({ method: 'GET', url: `/api/v1/inventory/movements?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const movementCountBefore = (JSON.parse(movementsBefore.body) as { data: unknown[] }).data.length;
+
+      // Retry: the client never saw the first response (or clicked confirm twice) — the state
+      // machine itself must reject this cleanly, never re-run the commit (§10: `completed` has no
+      // outgoing transition).
+      const secondConfirm = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/confirm`, headers: writeHeaders(admin) });
+      expect(secondConfirm.statusCode).toBe(409);
+
+      const balancesAfter = await inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const physicalAfter = (JSON.parse(balancesAfter.body) as { data: { quantityPhysical: number }[] }).data[0]!.quantityPhysical;
+      const movementsAfter = await inject({ method: 'GET', url: `/api/v1/inventory/movements?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const movementCountAfter = (JSON.parse(movementsAfter.body) as { data: unknown[] }).data.length;
+
+      expect(physicalAfter).toBe(physicalBefore); // I9 — balance never double-incremented.
+      expect(movementCountAfter).toBe(movementCountBefore); // I8 — no duplicate inventory_movements.
+
+      const jobAfter = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}`, headers: readHeaders(admin) });
+      expect(JSON.parse(jobAfter.body)).toEqual(expect.objectContaining({ importedRows: 1 })); // I6 — counters not doubled.
+    });
+
+    it('§31: two concurrent confirm requests on the same job resolve to exactly one effective execution', async () => {
+      const admin = await registerTenant('Idem Beta Co', 'admin@idem-beta.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      const sku = `SKU-${Date.now()}`;
+
+      const buffer = await buildXlsx(
+        ['SKU', 'Nombre', 'Precio Max', 'Precio Base', 'Precio Min', 'Cantidad', 'Ubicacion'],
+        [[sku, 'Widget', 100, 90, 80, 10, 'Zone A']],
+      );
+      const job = await uploadJob(admin, { columnMapping: STANDARD_MAPPING, defaultLocationId: locationId }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+      await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+
+      const [first, second] = await Promise.all([
+        inject({ method: 'POST', url: `/api/v1/imports/${jobId}/confirm`, headers: writeHeaders(admin) }),
+        inject({ method: 'POST', url: `/api/v1/imports/${jobId}/confirm`, headers: writeHeaders(admin) }),
+      ]);
+      const statuses = [first.statusCode, second.statusCode].sort();
+      expect(statuses).toEqual([201, 409]); // exactly one proceeds; the row-locked state machine rejects the other.
+
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows`, headers: readHeaders(admin) });
+      const variantId = (JSON.parse(rows.body) as { data: { matchedProductVariantId: string }[] }).data[0]!.matchedProductVariantId;
+      const movements = await inject({ method: 'GET', url: `/api/v1/inventory/movements?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      expect((JSON.parse(movements.body) as { data: unknown[] }).data).toHaveLength(1);
+    });
+
+    it('I2/§21: a late conflict on one row (a duplicate serial slipping past validation) fails only that row, in its own rolled-back sub-transaction — the sibling row in the same batch still commits', async () => {
+      const admin = await registerTenant('Idem Gamma Co', 'admin@idem-gamma.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
+      await createCategory(admin, 'Televisores', `televisores-${Date.now()}`);
+      const skuA = `TV-A-${Date.now()}`;
+      const skuB = `TV-B-${Date.now()}`;
+      const collidingSerial = `SN-COLLIDE-${Date.now()}`;
+
+      // Two independent (different SKU) rows, each validly serialized — no group relationship, no
+      // validation-time duplicate-serial error, since they don't share a serial at validation time.
+      const buffer = await buildXlsx(SERIAL_HEADERS, [
+        [skuA, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', `${collidingSerial}-A`],
+        [skuB, 'TV LG', 'Televisores', 500, 450, 400, 1, 'Zone A', `${collidingSerial}-B`],
+      ]);
+      const job = await uploadJob(admin, { columnMapping: SERIAL_MAPPING, defaultLocationId: locationId }, buffer);
+      const jobId = (JSON.parse(job.body) as { id: string }).id;
+      await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+
+      // Simulate a conflict that only a genuine late race could produce (§12/§21): row B's staged
+      // *raw* data (what commit actually re-derives `mapped` from — ImportExecutionService.
+      // commitOneRow calls applyColumnMapping(row.rawData, ...) fresh, never trusting the
+      // already-computed `mapped_data` column) is corrupted, after validation, to reuse row A's
+      // exact serial — the same shape a real concurrent process claiming that serial between
+      // validation and commit would produce. This exercises the actual createSerial()
+      // unique-violation path this correction added a catch for, using a real Postgres constraint,
+      // not a mock.
+      // rowNumber starts at 2 (the header occupies row 1) — the second data row is rowNumber 3.
+      const rowIds = await getRowIds(admin.user.tenantId, jobId);
+      const rowB = rowIds.find((r) => r.rowNumber === 3)!;
+      const { withTenantTransaction } = await import('../../src/database/tenant-context');
+      const { importJobRows } = await import('../../src/database/schema');
+      const { and, eq } = await import('drizzle-orm');
+      await withTenantTransaction(admin.user.tenantId, (tx) =>
+        tx
+          .update(importJobRows)
+          .set({ rawData: { SKU: skuB, Nombre: 'TV LG', Categoria: 'Televisores', 'Precio Max': 500, 'Precio Base': 450, 'Precio Min': 400, Cantidad: 1, Ubicacion: 'Zone A', Serial: `${collidingSerial}-A` } })
+          .where(and(eq(importJobRows.tenantId, admin.user.tenantId), eq(importJobRows.id, rowB.id))),
+      );
+
+      const confirmed = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/confirm`, headers: writeHeaders(admin) });
+      const confirmedBody = JSON.parse(confirmed.body) as { status: string; importedRows: number; invalidRows: number };
+      expect(confirmedBody.status).toBe('completed_with_errors');
+      expect(confirmedBody.importedRows).toBe(1); // row A only.
+      expect(confirmedBody.invalidRows).toBe(1); // row B failed cleanly — no unhandled exception, no aborted batch.
+
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows`, headers: readHeaders(admin) });
+      const rowData = (JSON.parse(rows.body) as { data: { rowNumber: number; status: string; errors: { code: string }[] }[] }).data;
+      expect(rowData.find((r) => r.rowNumber === 2)?.status).toBe('imported'); // sibling row (row A) unaffected.
+      expect(rowData.find((r) => r.rowNumber === 3)?.status).toBe('invalid');
+      expect(rowData.find((r) => r.rowNumber === 3)?.errors.map((e) => e.code)).toContain('COMMIT_CONFLICT');
     });
   });
 });

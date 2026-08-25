@@ -30,6 +30,26 @@ export const STANDARD_IMPORT_FIELDS = [
 ] as const;
 export type StandardImportField = (typeof STANDARD_IMPORT_FIELDS)[number];
 
+/** PROMPT 010-A §9/§10 — fields that define the *logical* product/variant entity a row belongs
+ * to, as opposed to fields scoped to one *physical unit* (serialNumber, lotNumber, location,
+ * quantity, manufacturedDate, expiryDate) or the row itself. When several rows in one file share a
+ * brand-new SKU (a serialized/lot-tracked onboarding group — §4/§5), every row must agree on these
+ * fields; a mismatch means the rows are contradicting each other about what "TV-001" actually is,
+ * not describing several legitimate physical units of the same thing. `attr:*` fields are handled
+ * separately (any attr: field is entity-scoped by construction, checked by iterating the mapped
+ * row's own keys rather than a fixed list here). */
+export const PRODUCT_IDENTITY_FIELDS = ['name', 'category', 'brand', 'supplier', 'description', 'unit', 'maxPrice', 'basePrice', 'minPrice', 'cost'] as const;
+
+/** Normalizes a mapped field value for cross-row equality comparison — string/number/blank
+ * distinctions that shouldn't cause a false-positive mismatch (e.g. `100` vs `"100"` vs `" 100 "`)
+ * collapse to the same comparable form; `undefined`/`null`/`''` all collapse to `''` (a row that
+ * simply omitted the column never conflicts with one that supplied it). */
+export function normalizeForGroupComparison(value: unknown): string {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'number') return String(value);
+  return String(value).trim();
+}
+
 export const ATTRIBUTE_FIELD_PREFIX = 'attr:';
 
 export function isAttributeField(field: string): boolean {
@@ -81,6 +101,56 @@ export function assertValidColumnMapping(columnMapping: Record<string, string>):
   if (!targets.includes('sku')) {
     throw new BadRequestException('columnMapping must map a column to "sku".');
   }
+}
+
+/** PROMPT 010-A §4/§5/§9 — resolved once per SKU that repeats in the file and does not already
+ * exist in the database: is this repeat a legitimate "several physical units of one new,
+ * serialized/lot-tracked product" group, or does it carry a contradiction that must be rejected? A
+ * SKU that already exists in the database is untouched by this — repeated rows against an existing
+ * SKU keep the pre-existing per-row `update` behavior (already correct: nothing is (re-)created
+ * there, so there is no "create it twice" risk to guard against). */
+export interface NewSkuGroupInfo {
+  /** Every row in the group uniformly declares a serial (and only a serial), or uniformly declares
+   * a lot (and only a lot) — the one shape that makes "same SKU, several rows" a legitimate
+   * multi-unit onboarding group rather than an ambiguous duplicate. */
+  isLegitimateUnitGroup: boolean;
+  /** At least one row in the group declared a serial or lot number, but not uniformly — mixing
+   * serial-tracked and lot-tracked rows (or bare rows) under one new SKU is always a contradiction,
+   * never merely "not a group" (§9's tracking-mode consistency). */
+  trackingModeConflict: boolean;
+  /** Product/variant-identity field names (PRODUCT_IDENTITY_FIELDS plus any `attr:*` key present
+   * on any row) whose value differs across the group's rows. */
+  mismatchedFields: string[];
+}
+
+/** Pure, no I/O — the caller (ImportValidationService) has already fetched every raw row's mapped
+ * data and only needs to run this once per repeated-and-not-yet-existing SKU, not per row. */
+export function analyzeNewSkuGroup(rows: Array<Record<string, unknown>>): NewSkuGroupInfo {
+  const asGroupText = (value: unknown): string | undefined => {
+    if (value === undefined || value === null) return undefined;
+    const text = String(value).trim();
+    return text === '' ? undefined : text;
+  };
+
+  const hasSerial = rows.map((row) => Boolean(asGroupText(row['serialNumber'])));
+  const hasLot = rows.map((row) => Boolean(asGroupText(row['lotNumber'])));
+  const allSerialOnly = hasSerial.every(Boolean) && !hasLot.some(Boolean);
+  const allLotOnly = hasLot.every(Boolean) && !hasSerial.some(Boolean);
+  const isLegitimateUnitGroup = allSerialOnly || allLotOnly;
+  const anyPhysicalMarker = hasSerial.some(Boolean) || hasLot.some(Boolean);
+  const trackingModeConflict = !isLegitimateUnitGroup && anyPhysicalMarker;
+
+  const mismatchedFields: string[] = [];
+  const canonical = rows[0] ?? {};
+  const attrFields = new Set(rows.flatMap((row) => Object.keys(row).filter(isAttributeField)));
+  for (const field of [...PRODUCT_IDENTITY_FIELDS, ...attrFields]) {
+    const canonicalValue = normalizeForGroupComparison(canonical[field]);
+    if (rows.some((row) => normalizeForGroupComparison(row[field]) !== canonicalValue)) {
+      mismatchedFields.push(field);
+    }
+  }
+
+  return { isLegitimateUnitGroup, trackingModeConflict, mismatchedFields };
 }
 
 /** Splits a row's mapped `attr:*` values into a plain `{code: value}` map — the shape

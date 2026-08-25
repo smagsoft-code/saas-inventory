@@ -141,13 +141,29 @@ export class ImportExecutionService {
     };
   }
 
+  /** PROMPT 010-A §4/§5/§11 — several rows in the same job can legitimately share one brand-new
+   * SKU (multiple serial/lot units of one product, ImportValidationService's `newSkuGroups`
+   * already vetted the group for consistency). The *first* such row to reach commit creates the
+   * product/variant; every later row — whether in this same batch or an already-committed earlier
+   * one, since batches run strictly sequentially and each is fully committed before the next starts
+   * (§12) — must find that variant already there and only attach its own physical unit
+   * (serial/lot + INITIAL_STOCK), never attempt a second `CREATE product/variant`. Checked first via
+   * `findVariantBySku` (the common case, zero wasted INSERT attempts for a group of size N>2); the
+   * `createVariant` unique-violation catch below remains as the last-resort fallback for a genuine
+   * race (two processes, or two rows landing in independently-processed batches at the same instant
+   * — see §12), converting it into the same attach path instead of failing the row. */
   private async commitCreate(tx: TenantTransaction, tenantId: string, actorId: string, job: ImportJobRow, mapped: Record<string, unknown>): Promise<string> {
     const sku = asText(mapped['sku'])!;
-    const { categoryId, brandId, supplierId, locationId } = await this.resolveReferences(tx, tenantId, mapped);
-    const { productAttrs, variantAttrs } = await this.attributePartitionService.partition(tx, tenantId, categoryId, mapped);
-
     const serialNumber = asText(mapped['serialNumber']);
     const lotNumber = asText(mapped['lotNumber']);
+
+    const alreadyCreated = await this.catalogLookup.findVariantBySku(tx, tenantId, sku);
+    if (alreadyCreated) {
+      return this.attachPhysicalUnit(tx, tenantId, actorId, job, mapped, alreadyCreated.variantId, serialNumber, lotNumber);
+    }
+
+    const { categoryId, brandId, supplierId } = await this.resolveReferences(tx, tenantId, mapped);
+    const { productAttrs, variantAttrs } = await this.attributePartitionService.partition(tx, tenantId, categoryId, mapped);
     const isSerialized = Boolean(serialNumber);
     const isLotTracked = Boolean(lotNumber);
 
@@ -181,7 +197,19 @@ export class ImportExecutionService {
         attributes: variantAttrs,
       });
     } catch (error) {
-      if (this.isUniqueViolation(error)) throw new RowCommitConflictError(`SKU "${sku}" was created concurrently by another process.`);
+      if (this.isUniqueViolation(error)) {
+        // Lost a genuine race — a sibling row (or a fully independent concurrent process) created
+        // this SKU between our lookup above and this INSERT. A row carrying a serial/lot is still
+        // recoverable: attach to whichever variant now exists. A plain row with neither has no
+        // physical-unit identity to attach — that remains a real conflict, same as before this fix.
+        if (serialNumber || lotNumber) {
+          const nowExisting = await this.catalogLookup.findVariantBySku(tx, tenantId, sku);
+          if (nowExisting) {
+            return this.attachPhysicalUnit(tx, tenantId, actorId, job, mapped, nowExisting.variantId, serialNumber, lotNumber);
+          }
+        }
+        throw new RowCommitConflictError(`SKU "${sku}" was created concurrently by another process.`);
+      }
       throw error;
     }
 
@@ -198,25 +226,59 @@ export class ImportExecutionService {
       changedBy: actorId,
     });
 
-    if (isSerialized && serialNumber) {
-      await this.catalogLookup.createSerial(tx, { id: generateId(), tenantId, productVariantId: variant.id, serialNumber });
+    await this.writeAudit(tx, tenantId, actorId, 'product.created', 'product', productId, { name: product.name, sku, importJobId: job.id });
+    return this.attachPhysicalUnit(tx, tenantId, actorId, job, mapped, variant.id, serialNumber, lotNumber);
+  }
+
+  /** The physical-unit tail shared by a freshly-created variant and one a sibling row (or a
+   * concurrent process) already created: attach this row's serial/lot and apply its INITIAL_STOCK
+   * movement. `INITIAL_STOCK`, never `ADJUSTMENT_IN`, regardless of which path got here — every row
+   * in a new-SKU group is still "digitizing stock that never existed in the system before" (§15),
+   * the same as a lone create-action row always was. Serial/lot inserts are wrapped the same way
+   * `createVariant` already was: a unique-violation this late (another row/process claimed the same
+   * serial between validation and commit) becomes a controlled row failure, never a raw SQL
+   * exception escaping to abort the rest of the batch (§7/§21). */
+  private async attachPhysicalUnit(
+    tx: TenantTransaction,
+    tenantId: string,
+    actorId: string,
+    job: ImportJobRow,
+    mapped: Record<string, unknown>,
+    variantId: string,
+    serialNumber: string | undefined,
+    lotNumber: string | undefined,
+  ): Promise<string> {
+    const { locationId } = await this.resolveReferences(tx, tenantId, mapped);
+
+    if (serialNumber) {
+      try {
+        await this.catalogLookup.createSerial(tx, { id: generateId(), tenantId, productVariantId: variantId, serialNumber });
+      } catch (error) {
+        if (this.isUniqueViolation(error)) throw new RowCommitConflictError(`Serial "${serialNumber}" was created concurrently by another process.`);
+        throw error;
+      }
     }
-    if (isLotTracked && lotNumber) {
-      await this.catalogLookup.createLot(tx, {
-        id: generateId(),
-        tenantId,
-        productVariantId: variant.id,
-        lotNumber,
-        manufacturedDate: asText(mapped['manufacturedDate']),
-        expiryDate: asText(mapped['expiryDate']),
-      });
+    if (lotNumber) {
+      try {
+        await this.catalogLookup.createLot(tx, {
+          id: generateId(),
+          tenantId,
+          productVariantId: variantId,
+          lotNumber,
+          manufacturedDate: asText(mapped['manufacturedDate']),
+          expiryDate: asText(mapped['expiryDate']),
+        });
+      } catch (error) {
+        if (this.isUniqueViolation(error)) throw new RowCommitConflictError(`Lot "${lotNumber}" was created concurrently by another process.`);
+        throw error;
+      }
     }
 
     const quantity = asNumber(mapped['quantity']);
     if (quantity !== undefined && quantity > 0 && locationId) {
       await this.stockLedgerService.applyMovement(tx, {
         tenantId,
-        productVariantId: variant.id,
+        productVariantId: variantId,
         locationId,
         movementType: 'INITIAL_STOCK',
         quantity,
@@ -228,8 +290,7 @@ export class ImportExecutionService {
       });
     }
 
-    await this.writeAudit(tx, tenantId, actorId, 'product.created', 'product', productId, { name: product.name, sku, importJobId: job.id });
-    return variant.id;
+    return variantId;
   }
 
   private async commitUpdate(
@@ -291,22 +352,36 @@ export class ImportExecutionService {
       });
     }
 
+    // §7/§21 — the same "never a raw SQL exception" guarantee commitCreate's attachPhysicalUnit
+    // gives new SKUs applies here too: a serial/lot colliding this late (another row or a fully
+    // independent concurrent process) is a controlled row failure, not an exception that aborts
+    // the rest of the batch.
     const serialNumber = asText(mapped['serialNumber']);
     if (existing.isSerialized && serialNumber) {
-      await this.catalogLookup.createSerial(tx, { id: generateId(), tenantId, productVariantId: variantId, serialNumber });
+      try {
+        await this.catalogLookup.createSerial(tx, { id: generateId(), tenantId, productVariantId: variantId, serialNumber });
+      } catch (error) {
+        if (this.isUniqueViolation(error)) throw new RowCommitConflictError(`Serial "${serialNumber}" was created concurrently by another process.`);
+        throw error;
+      }
     }
     const lotNumber = asText(mapped['lotNumber']);
     if (existing.isLotTracked && lotNumber) {
       const alreadyExists = await this.catalogLookup.lotExists(tx, tenantId, variantId, lotNumber);
       if (!alreadyExists) {
-        await this.catalogLookup.createLot(tx, {
-          id: generateId(),
-          tenantId,
-          productVariantId: variantId,
-          lotNumber,
-          manufacturedDate: asText(mapped['manufacturedDate']),
-          expiryDate: asText(mapped['expiryDate']),
-        });
+        try {
+          await this.catalogLookup.createLot(tx, {
+            id: generateId(),
+            tenantId,
+            productVariantId: variantId,
+            lotNumber,
+            manufacturedDate: asText(mapped['manufacturedDate']),
+            expiryDate: asText(mapped['expiryDate']),
+          });
+        } catch (error) {
+          if (this.isUniqueViolation(error)) throw new RowCommitConflictError(`Lot "${lotNumber}" was created concurrently by another process.`);
+          throw error;
+        }
       }
     }
 

@@ -3,7 +3,7 @@ import { getOptionalEnvVar } from '@saas-inventory/config';
 import { AttributeValidationService } from '../../catalog/products/attribute-validation.service';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
-import { applyColumnMapping } from '../import-fields';
+import { analyzeNewSkuGroup, applyColumnMapping, type NewSkuGroupInfo } from '../import-fields';
 import type { ImportRowError } from '../repositories/import-job-rows.repository';
 import { ImportJobRowsRepository } from '../repositories/import-job-rows.repository';
 import { ImportJobsRepository } from '../repositories/import-jobs.repository';
@@ -32,6 +32,7 @@ interface FileWideMaps {
   skuRowCounts: Map<string, number>;
   serialRowCounts: Map<string, number>;
   skuLotRowCounts: Map<string, number>;
+  newSkuGroups: Map<string, NewSkuGroupInfo>;
 }
 
 /**
@@ -105,20 +106,38 @@ export class ImportValidationService {
       const skuRowCounts = new Map<string, number>();
       const serialRowCounts = new Map<string, number>();
       const skuLotRowCounts = new Map<string, number>();
+      const mappedRowsBySku = new Map<string, Record<string, unknown>[]>();
 
       for (const { rawData } of all) {
         const mapped = applyColumnMapping(rawData, columnMapping);
         const sku = asText(mapped['sku']);
         const serial = asText(mapped['serialNumber']);
         const lot = asText(mapped['lotNumber']);
-        if (sku) skuRowCounts.set(sku, (skuRowCounts.get(sku) ?? 0) + 1);
+        if (sku) {
+          skuRowCounts.set(sku, (skuRowCounts.get(sku) ?? 0) + 1);
+          const bucket = mappedRowsBySku.get(sku) ?? [];
+          bucket.push(mapped);
+          mappedRowsBySku.set(sku, bucket);
+        }
         if (serial) serialRowCounts.set(serial, (serialRowCounts.get(serial) ?? 0) + 1);
         if (sku && lot) {
           const key = `${sku}::${lot}`;
           skuLotRowCounts.set(key, (skuLotRowCounts.get(key) ?? 0) + 1);
         }
       }
-      return { skuRowCounts, serialRowCounts, skuLotRowCounts };
+
+      // Only SKUs that repeat AND do not already exist in the database are candidate onboarding
+      // groups — a repeat against an existing SKU keeps the pre-existing per-row `update` handling
+      // (§4/§9: this correction is scoped to the brand-new-SKU case).
+      const repeatedSkus = [...skuRowCounts.entries()].filter(([, count]) => count > 1).map(([sku]) => sku);
+      const existingBySku = await this.catalogLookup.findVariantsBySkus(tx, tenantId, repeatedSkus);
+      const newSkuGroups = new Map<string, NewSkuGroupInfo>();
+      for (const sku of repeatedSkus) {
+        if (existingBySku.has(sku)) continue;
+        newSkuGroups.set(sku, analyzeNewSkuGroup(mappedRowsBySku.get(sku) ?? []));
+      }
+
+      return { skuRowCounts, serialRowCounts, skuLotRowCounts, newSkuGroups };
     });
   }
 
@@ -139,9 +158,38 @@ export class ImportValidationService {
       errors.push({ field: 'sku', code: 'SKU_REQUIRED', message: 'SKU is required.' });
       return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
     }
+    // PROMPT 010-A §4/§5/§9 — a SKU repeated in the file is only ever a plain duplicate when it
+    // isn't a recognized new-SKU onboarding group (analyzeNewSkuGroup, computed once file-wide).
+    // A repeat against a SKU that already exists in the database was never routed into
+    // `newSkuGroups` at all — it keeps the pre-existing per-row `update` handling below unchanged.
     if ((fileWideMaps.skuRowCounts.get(sku) ?? 0) > 1) {
-      errors.push({ field: 'sku', code: 'DUPLICATE_SKU_IN_FILE', message: `SKU "${sku}" appears more than once in this file.` });
-      return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
+      const group = fileWideMaps.newSkuGroups.get(sku);
+      if (!group) {
+        errors.push({ field: 'sku', code: 'DUPLICATE_SKU_IN_FILE', message: `SKU "${sku}" appears more than once in this file.` });
+        return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
+      }
+      if (group.trackingModeConflict) {
+        errors.push({
+          field: 'sku',
+          code: 'SKU_GROUP_TRACKING_MODE_INCONSISTENT',
+          message: `SKU "${sku}" is repeated with inconsistent serial/lot tracking across rows — every row for a new serialized SKU must declare a serial number, or every row must declare a lot number, never a mix.`,
+        });
+        return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
+      }
+      if (!group.isLegitimateUnitGroup) {
+        errors.push({ field: 'sku', code: 'DUPLICATE_SKU_IN_FILE', message: `SKU "${sku}" appears more than once in this file.` });
+        return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
+      }
+      if (group.mismatchedFields.length > 0) {
+        errors.push({
+          field: 'sku',
+          code: 'SKU_GROUP_INCONSISTENT_METADATA',
+          message: `SKU "${sku}" is repeated across multiple physical units, but these fields disagree between rows: ${group.mismatchedFields.join(', ')}.`,
+        });
+        return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
+      }
+      // A legitimate, internally-consistent new-SKU group — fall through and validate this row as
+      // one physical unit of it (matchAction resolves to 'create' below, same as any other new SKU).
     }
 
     const existingVariant = await this.catalogLookup.findVariantBySku(tx, tenantId, sku);
