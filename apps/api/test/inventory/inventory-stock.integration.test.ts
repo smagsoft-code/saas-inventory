@@ -1,7 +1,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { HTTPMethods, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl } from '../database/helpers';
+import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl, getAppPublicResolverDatabaseUrl } from '../database/helpers';
 
 /**
  * FASE 8 (roadmap.md) — inventory_balances / inventory_movements / manual adjustments, exercised
@@ -19,6 +19,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: balances/moveme
   beforeAll(async () => {
     process.env['DATABASE_URL'] = process.env['TEST_APP_TENANT_DATABASE_URL'];
     process.env['APP_PLATFORM_DATABASE_URL'] = getAppPlatformDatabaseUrl();
+    process.env['APP_PUBLIC_RESOLVER_DATABASE_URL'] = getAppPublicResolverDatabaseUrl();
     process.env['JWT_SECRET'] = 'integration-test-jwt-secret';
     process.env['JWT_REFRESH_SECRET'] = 'integration-test-refresh-pepper';
     process.env['CORS_ORIGINS'] = 'http://localhost:3000';

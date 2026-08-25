@@ -52,8 +52,13 @@ export async function buildApp(): Promise<NestFastifyApplication> {
 
   // api.md#versioning's decision, applied now that a real endpoint (auth) exists to version.
   // health/docs are excluded — they were already scaffolded unprefixed/unversioned in Prompt 00
-  // and are depended on as-is (container healthchecks, Caddy).
-  app.setGlobalPrefix('api', { exclude: ['health', 'docs', 'docs/(.*)'] });
+  // and are depended on as-is (container healthchecks, Caddy). `q/(.*)` (Prompt 09) is excluded the
+  // same way, for the same reason: api.md#public-endpoints documents the QR public resolver's route
+  // literally as `GET /q/:code`, meant to be embedded in a physical, printed QR image — baking
+  // `/api/v1/` into a URL printed on a label that outlives any one API version would be a worse
+  // contract than a stable, unprefixed, version-neutral one (health.controller.ts's own
+  // @Version(VERSION_NEUTRAL) precedent, applied here to a second route for the same reason).
+  app.setGlobalPrefix('api', { exclude: ['health', 'docs', 'docs/(.*)', 'q/(.*)'] });
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
   app.useGlobalPipes(

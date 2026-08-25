@@ -249,3 +249,35 @@ exists for it — extending the schema to add one was out of this phase's no-sch
 and `sales_returns`/`sales_return_items` (ADR-0021's returns model FK-references `orders`/
 `order_items`, which do not exist until SALES/FASE 10 — `inventory.returns.manage` is seeded but
 unused until then). No frontend UI for INVENTORY exists yet.
+
+Prompt 09 added the QR module (`apps/api/src/qr/`) — `POST/GET /qr-codes`, `GET/PATCH /qr-codes/:id`,
+`GET /qr-codes/resolve/:code` (authenticated, tenant-scoped identity resolution), and the
+unauthenticated, unversioned `GET /q/:code` public resolver, exactly matching api.md's literal
+documented route. No new permission code: `catalog.qr.manage` (already seeded since migration 0001)
+gates every `/qr-codes*` management route; `resolve/:code` needs only authentication, per
+mobile.md#qr-on-mobile's explicit design — QR's own job is identity resolution only ("what does this
+code point at"), never pricing, so the authenticated path hands the caller `{productId,
+productVariantId}`/`{locationId}` and the caller then calls the pre-existing, unmodified
+`GET /products/:id/variants/:variantId` (ADR-0028's field-level price authorization) or
+`GET /locations/:id` — no pricing logic is duplicated inside QR. A real, pre-existing schema gap was
+found and closed (migration `0018`): `database.md#row-level-security` and `#qr-codes` already
+documented `app_public_resolver` as needing row access to `products`/`product_variants`/`locations`,
+and migration 0003 had granted the column-level `GRANT`s for the first two — but no `CREATE POLICY`
+naming that role ever existed on any of the three tables, and RLS defaults to deny with zero matching
+policies, so the public QR resolver could never actually read a row at the database level despite the
+column `GRANT`s. Migration 0018 adds the three `*_public_resolve` SELECT policies (`USING (deleted_at
+IS NULL)`, no other restriction — access is bounded by the pre-existing `GRANT`s) plus the
+column-level `GRANT SELECT (id, tenant_id, name, code, status) ON locations`, the one piece
+`locations` never had at all. `qr_codes.code` is a `randomBytes(24)`-based opaque token (never
+`generateId()`'s UUIDv7 — that's chosen for time-ordering, the opposite property wanted on a value
+meant to be publicly printed), minted by insert-and-catch-`23505`-and-retry, never
+SELECT-then-INSERT, against the table's existing global `UNIQUE (code)` constraint (migration 0004).
+The public resolver runs on its own Postgres connection/role (`app_public_resolver`,
+`public-resolver-client.ts`, `APP_PUBLIC_RESOLVER_DATABASE_URL`) — never `withTenantTransaction()`,
+since there is no session to derive a tenant from — and is rate-limited by IP alone
+(`QrPublicThrottlerGuard`, `QR_PUBLIC_RATE_LIMIT_MAX`/`_TTL_SECONDS`), consistent with
+threat-model.md's brute-force mitigation already established for login. Because `DatabaseModule` is
+`@Global()`, every existing `buildApp()`-based integration test (auth, catalog, core, inventory) now
+also bootstraps `APP_PUBLIC_RESOLVER_DATABASE_URL` in its own `beforeAll` — a direct, unavoidable
+consequence of wiring a new required global connection, not scope creep. No frontend UI for QR exists
+yet.

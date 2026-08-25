@@ -1,7 +1,7 @@
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { HTTPMethods, InjectOptions, LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl } from '../database/helpers';
+import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl, getAppPublicResolverDatabaseUrl } from '../database/helpers';
 
 /**
  * Prompt 05-A's mandatory security proof (§28/§29/§30): tenant/user/role administration exercised
@@ -21,6 +21,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('core: tenant/users/roles R
   beforeAll(async () => {
     process.env['DATABASE_URL'] = process.env['TEST_APP_TENANT_DATABASE_URL'];
     process.env['APP_PLATFORM_DATABASE_URL'] = getAppPlatformDatabaseUrl();
+    process.env['APP_PUBLIC_RESOLVER_DATABASE_URL'] = getAppPublicResolverDatabaseUrl();
     process.env['JWT_SECRET'] = 'integration-test-jwt-secret';
     process.env['JWT_REFRESH_SECRET'] = 'integration-test-refresh-pepper';
     process.env['CORS_ORIGINS'] = 'http://localhost:3000';

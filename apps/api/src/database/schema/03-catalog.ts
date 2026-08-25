@@ -8,6 +8,7 @@ import {
   integer,
   jsonb,
   numeric,
+  pgPolicy,
   pgTable,
   primaryKey,
   text,
@@ -18,6 +19,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createdAt, deletedAt, id, tenantId, updatedAt } from './_helpers';
 import { tenantIsolationPolicy } from './_policies';
+import { appPublicResolver } from './_roles';
 import { tenants } from './01-platform';
 import { users } from './02-core';
 
@@ -222,6 +224,21 @@ export const products = pgTable('products', {
   index('products_tenant_category_idx').on(t.tenantId, t.categoryId).where(sql`${t.deletedAt} IS NULL`),
   index('products_tenant_status_idx').on(t.tenantId, t.status).where(sql`${t.deletedAt} IS NULL`),
   tenantIsolationPolicy('products'),
+  /** Prompt 09 (QR): the column-level GRANT SELECT (id, name) ON products TO app_public_resolver
+   * (migration 0003) has been dead weight since Prompt 02 — RLS defaults to deny when zero
+   * permissive policies match the querying role, and until this policy existed, no policy on
+   * `products` ever named app_public_resolver at all. The public QR resolver (GET /q/:code) could
+   * therefore never actually read a product row despite the column GRANT and this table's explicit
+   * listing in database.md#row-level-security's roles table and #qr-codes. Closed here, not
+   * invented: the condition only excludes soft-deleted rows, mirroring every other read path's own
+   * `deleted_at IS NULL` filter — no additional restriction beyond what the pre-existing column
+   * GRANT already scopes this role to. */
+  pgPolicy('products_public_resolve', {
+    as: 'permissive',
+    for: 'select',
+    to: appPublicResolver,
+    using: sql`${t.deletedAt} IS NULL`,
+  }),
 ]).enableRLS();
 
 export const productVariants = pgTable('product_variants', {
@@ -260,6 +277,15 @@ export const productVariants = pgTable('product_variants', {
   check('product_variants_price_tier_check', sql`${t.minPrice} <= ${t.basePrice} AND ${t.basePrice} <= ${t.maxPrice}`),
   index('product_variants_tenant_product_idx').on(t.tenantId, t.productId),
   tenantIsolationPolicy('product_variants'),
+  /** Prompt 09 (QR): same gap as `products_public_resolve` above, for the column-level GRANT SELECT
+   * (id, tenant_id, product_id, max_price, status) ON product_variants TO app_public_resolver
+   * (migration 0003) — the actual row-level policy naming this role never existed until now. */
+  pgPolicy('product_variants_public_resolve', {
+    as: 'permissive',
+    for: 'select',
+    to: appPublicResolver,
+    using: sql`${t.deletedAt} IS NULL`,
+  }),
 ]).enableRLS();
 
 /** No deleted_at — removed by deleting the row (database.md#catalog-products-variants-attributes). */

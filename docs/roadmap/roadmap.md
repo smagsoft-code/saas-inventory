@@ -38,10 +38,11 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   multi-location transfers, in-transit representation, concurrency-safe stock mutations,
   idempotency and location-scoped authorization. *(done)*
 
-## Future phases
-
 - **FASE 9 — QR** — QR generation and resolution workflows for products and locations, including
   public and authenticated resolution according to the established authorization and pricing rules.
+  *(done)*
+
+## Future phases
 
 - **FASE 10 — Import / Excel Onboarding** — staged Excel import pipeline: template generation,
   upload, mapping, validation, preview, batch commit, initial inventory and Import Worker.
@@ -180,8 +181,8 @@ explicit review/commit.
 
 ## Current status
 
-FASE 0–8 are completed and committed.
+FASE 0–9 are completed and committed.
 
-FASE 9 is the next phase to be started after this roadmap revision is reviewed and committed.
+FASE 10 is the next phase to be started.
 
 No future phase has been started merely by defining its database schema or architecture.

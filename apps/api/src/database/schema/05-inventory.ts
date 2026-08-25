@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   numeric,
+  pgPolicy,
   pgTable,
   text,
   timestamp,
@@ -16,6 +17,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { createdAt, deletedAt, id, tenantId, updatedAt } from './_helpers';
 import { tenantIsolationPolicy } from './_policies';
+import { appPublicResolver } from './_roles';
 import { tenants } from './01-platform';
 import { productVariants } from './03-catalog';
 
@@ -70,6 +72,20 @@ export const locations = pgTable('locations', {
   unique('locations_tenant_warehouse_code_key').on(t.tenantId, t.warehouseId, t.code),
   check('locations_status_check', sql`${t.status} IN ('active', 'inactive')`),
   tenantIsolationPolicy('locations'),
+  /** Prompt 09 (QR): database.md#row-level-security's roles table and #qr-codes both already
+   * documented `locations` as one of the tables `app_public_resolver` needs read access to
+   * (location QR's public resolution, alongside product QR) — but no migration ever granted it,
+   * neither the row-level policy nor the column-level GRANT (unlike `products`/`product_variants`,
+   * which at least had the GRANT since migration 0003). Both are added now, together, in migration
+   * 0018 — this policy plus that migration's hand-written `GRANT SELECT (id, tenant_id, name, code,
+   * status)`. Same `deleted_at IS NULL` condition as the products/product_variants policies above —
+   * no additional restriction invented beyond excluding soft-deleted rows. */
+  pgPolicy('locations_public_resolve', {
+    as: 'permissive',
+    for: 'select',
+    to: appPublicResolver,
+    using: sql`${t.deletedAt} IS NULL`,
+  }),
 ]).enableRLS();
 
 /** MATERIALIZED READ MODEL — not the source of truth (inventory_movements is). */

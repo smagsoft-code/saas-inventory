@@ -32,12 +32,14 @@ const SUPERUSER_PASSWORD = 'verify-only-ephemeral-instance';
 const DB_NAME = 'saas_inventory_verify';
 const APP_TENANT_PASSWORD = 'verify-app-tenant-ephemeral';
 const APP_PLATFORM_PASSWORD = 'verify-app-platform-ephemeral';
+const APP_PUBLIC_RESOLVER_PASSWORD = 'verify-app-public-resolver-ephemeral';
 const DATA_DIR = path.resolve(process.cwd(), '.verify-pgdata');
 const API_DIR = path.resolve(process.cwd(), '../../apps/api');
 
 const MIGRATOR_URL = `postgresql://${SUPERUSER}:${SUPERUSER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_TENANT_URL = `postgresql://app_tenant:${APP_TENANT_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_PLATFORM_URL = `postgresql://app_platform:${APP_PLATFORM_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
+const APP_PUBLIC_RESOLVER_URL = `postgresql://app_public_resolver:${APP_PUBLIC_RESOLVER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 
 let failures = 0;
 
@@ -123,11 +125,12 @@ async function main(): Promise<void> {
     section('3. Re-running migrations (must be a safe no-op, not corrupt/duplicate anything)');
     run('db:migrate (second run)', ['run', 'db:migrate'], { MIGRATOR_DATABASE_URL: MIGRATOR_URL });
 
-    section('4. Bootstrapping app_tenant / app_platform role passwords');
+    section('4. Bootstrapping app_tenant / app_platform / app_public_resolver role passwords');
     run('db:bootstrap-dev-roles', ['run', 'db:bootstrap-dev-roles'], {
       MIGRATOR_DATABASE_URL: MIGRATOR_URL,
       APP_TENANT_PASSWORD,
       APP_PLATFORM_PASSWORD,
+      APP_PUBLIC_RESOLVER_PASSWORD,
     });
 
     await verifySchema();
@@ -154,14 +157,17 @@ async function main(): Promise<void> {
       '11. Full apps/api integration test suite (real cross-tenant SELECT/INSERT/UPDATE/DELETE, real RLS, ' +
         'real auth/tenant/RBAC HTTP flow)',
     );
-    // TEST_APP_PLATFORM_DATABASE_URL gates the Prompt 04/05 suites (test/auth/*, test/core/*) —
-    // see apps/api/test/database/helpers.ts's appPlatformIntegrationTestsEnabled. Without it those
-    // files' describe.skipIf() silently skips every test in them, even with a real Postgres
-    // running — this ran unnoticed until Prompt 05-B because this harness predates Prompt 04.
+    // TEST_APP_PLATFORM_DATABASE_URL / TEST_APP_PUBLIC_RESOLVER_DATABASE_URL gate every suite that
+    // calls buildApp() (test/auth/*, test/catalog/*, test/core/*, test/inventory/*, test/qr/*) —
+    // see apps/api/test/database/helpers.ts's appPlatformIntegrationTestsEnabled, which as of
+    // Prompt 09 requires both. Without them those files' describe.skipIf() silently skips every
+    // test in them, even with a real Postgres running — this ran unnoticed until Prompt 05-B
+    // because this harness predates Prompt 04.
     run('test:integration', ['run', 'test:integration'], {
       TEST_MIGRATOR_DATABASE_URL: MIGRATOR_URL,
       TEST_APP_TENANT_DATABASE_URL: APP_TENANT_URL,
       TEST_APP_PLATFORM_DATABASE_URL: APP_PLATFORM_URL,
+      TEST_APP_PUBLIC_RESOLVER_DATABASE_URL: APP_PUBLIC_RESOLVER_URL,
     });
   } finally {
     section('Stopping PostgreSQL (data directory is wiped — persistent: false)');

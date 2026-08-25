@@ -127,6 +127,13 @@
       "when": 1787270000000,
       "tag": "0017_inventory_movements_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787621101704,
+      "tag": "0018_qr_public_resolver_rls",
+      "breakpoints": true
     }
   ]
 }

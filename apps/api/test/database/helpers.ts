@@ -24,12 +24,19 @@ import * as schema from '../../src/database/schema';
  */
 const TEST_MIGRATOR_DATABASE_URL = getOptionalEnvVar('TEST_MIGRATOR_DATABASE_URL', '');
 const TEST_APP_TENANT_DATABASE_URL = getOptionalEnvVar('TEST_APP_TENANT_DATABASE_URL', '');
-/** Only needed by the Prompt 04 auth-flow suite (test/auth/*.integration.test.ts) — every other
- * integration test in this directory predates it and doesn't touch app_platform. */
+/** Needed by every suite that boots the full app (`buildApp()`) — DatabaseModule
+ * (database.module.ts) eagerly wires up app_platform (Prompt 04) and, as of Prompt 09,
+ * app_public_resolver alongside app_tenant, so `buildApp()` throws immediately if either of these
+ * two is unset, regardless of whether the specific suite exercises that role's endpoints. Kept as
+ * one combined `appPlatformIntegrationTestsEnabled` gate (not a second, separate flag) since every
+ * existing consumer of it already means exactly "can I call buildApp()", not "does this suite test
+ * app_platform specifically". */
 const TEST_APP_PLATFORM_DATABASE_URL = getOptionalEnvVar('TEST_APP_PLATFORM_DATABASE_URL', '');
+const TEST_APP_PUBLIC_RESOLVER_DATABASE_URL = getOptionalEnvVar('TEST_APP_PUBLIC_RESOLVER_DATABASE_URL', '');
 
 export const integrationTestsEnabled = TEST_MIGRATOR_DATABASE_URL !== '' && TEST_APP_TENANT_DATABASE_URL !== '';
-export const appPlatformIntegrationTestsEnabled = integrationTestsEnabled && TEST_APP_PLATFORM_DATABASE_URL !== '';
+export const appPlatformIntegrationTestsEnabled =
+  integrationTestsEnabled && TEST_APP_PLATFORM_DATABASE_URL !== '' && TEST_APP_PUBLIC_RESOLVER_DATABASE_URL !== '';
 
 const APP_ROLES = ['app_migrator', 'app_tenant', 'app_platform', 'app_event_processor', 'app_public_resolver'];
 
@@ -130,6 +137,28 @@ async function bootstrapAppPlatformPassword(): Promise<void> {
   }
 }
 
+/** Mirrors bootstrapAppTenantPassword() for app_public_resolver — only runs when
+ * TEST_APP_PUBLIC_RESOLVER_DATABASE_URL is actually set, so pre-Prompt-09 checkouts that haven't
+ * configured it don't fail here (buildApp() itself is what actually enforces the requirement, via
+ * appPlatformIntegrationTestsEnabled above). */
+async function bootstrapAppPublicResolverPassword(): Promise<void> {
+  if (TEST_APP_PUBLIC_RESOLVER_DATABASE_URL === '') {
+    return;
+  }
+  const parsed = new URL(TEST_APP_PUBLIC_RESOLVER_DATABASE_URL);
+  const password = decodeURIComponent(parsed.password);
+  const bootstrap = postgres(TEST_MIGRATOR_DATABASE_URL, { max: 1 });
+  try {
+    const [quoted] = await bootstrap<{ quoted_password: string }[]>`select quote_literal(${password}) as quoted_password`;
+    if (!quoted) {
+      throw new Error('quote_literal() returned no row for app_public_resolver password');
+    }
+    await bootstrap.unsafe(`ALTER ROLE app_public_resolver WITH PASSWORD ${quoted.quoted_password}`);
+  } finally {
+    await bootstrap.end();
+  }
+}
+
 /** Resets the target database to empty and applies every migration — call once per test file in
  * beforeAll(), never inside individual `it`s (each migration run is relatively expensive). */
 export async function resetAndMigrate(): Promise<void> {
@@ -137,6 +166,7 @@ export async function resetAndMigrate(): Promise<void> {
   await runMigrations();
   await bootstrapAppTenantPassword();
   await bootstrapAppPlatformPassword();
+  await bootstrapAppPublicResolverPassword();
 }
 
 export function getMigratorDb() {
@@ -150,6 +180,10 @@ export function getAppTenantClient() {
 
 export function getAppPlatformDatabaseUrl(): string {
   return TEST_APP_PLATFORM_DATABASE_URL;
+}
+
+export function getAppPublicResolverDatabaseUrl(): string {
+  return TEST_APP_PUBLIC_RESOLVER_DATABASE_URL;
 }
 
 /** The exact SET LOCAL / set_config pattern the running API uses (tenant-context.ts) — opens an

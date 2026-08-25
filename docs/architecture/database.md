@@ -1157,6 +1157,22 @@ CREATE POLICY qr_public_resolve ON qr_codes
 `app_event_processor`'s is: no `GRANT` exists on any table besides `qr_codes` and the specific
 read-only columns of `products`/`product_variants`/`locations` the public response needs.
 
+**Prompt 09 finding, closed:** this section and the [§Database roles](#database-roles) table above
+both already described `app_public_resolver` as needing row access to `products`/`product_variants`/
+`locations` — but migration 0003 (Prompt 02) only ever added the column-level `GRANT`s for the first
+two, and no migration ever added a `CREATE POLICY` naming `app_public_resolver` on any of the three
+tables. RLS defaults to deny when zero permissive policies match the querying role for a command, so
+the public resolver could never actually read a `products`/`product_variants` row at the database
+level despite the column `GRANT`s being in place since Prompt 02 — the `GRANT` was necessary but not
+sufficient. `locations` had neither the policy nor the `GRANT`. Migration `0018` (Prompt 09) closes
+both halves of the gap: a `*_public_resolve` `SELECT` policy on all three tables (`USING (deleted_at
+IS NULL)` — no restriction beyond excluding soft-deleted rows, since row/column access is already
+bounded by the pre-existing `GRANT`s), plus the missing `GRANT SELECT (id, tenant_id, name, code,
+status) ON locations TO app_public_resolver`. Nothing about the documented design changed — this
+closes an implementation gap between what was already decided and what migration 0003 actually
+shipped, the same category of correction as discrepancies #10/#11/#13 above (Prompt 02-D), just found
+one implementation phase later.
+
 **Prompt 02-A: QR displays the reference price, never the negotiation floor.** Per this prompt's
 requirement, resolving a `target_type = 'product_variant'` QR must return `max_price` (the
 maximum/reference price a customer can be shown) — and must **never** return `base_price`,
