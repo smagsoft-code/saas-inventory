@@ -50,11 +50,15 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   added — real, necessary schema completions the pre-FASE-10 design left unfinished, not a
   redesign; see this phase's final report for the full rationale. *(done)*
 
-## Future phases
+- **FASE 11 — Administration & Tenant Configuration** — tenant-level configuration (`tenant_settings`:
+  timezone, business hours) and the one system-level administration capability grounded in the
+  existing architecture (platform-admin authentication, ADR-0032, plus tenant lifecycle management:
+  list/suspend/activate a company), without duplicating CORE tenant/user/RBAC responsibilities
+  already implemented in FASE 5. `notification_preferences`/branding and platform-level metrics/
+  global configuration remain explicitly out of scope — see modules.md#administration and this
+  phase's final report. *(done)*
 
-- **FASE 11 — Administration & Tenant Configuration** — tenant-level configuration and system-level
-  administration capabilities defined by the ADMINISTRATION bounded context, without duplicating
-  CORE tenant/user/RBAC responsibilities already implemented in FASE 5.
+## Future phases
 
 - **FASE 12 — Customers, Cart & Orders / Sales** — SALES bounded context: customers, carts,
   orders, order items, negotiated/frozen pricing, invoice-or-sales-note selection, customer
@@ -184,8 +188,8 @@ explicit review/commit.
 
 ## Current status
 
-FASE 0–10 are completed and committed.
+FASE 0–11 are completed and committed.
 
-FASE 11 is the next phase to be started.
+FASE 12 is the next phase to be started.
 
 No future phase has been started merely by defining its database schema or architecture.

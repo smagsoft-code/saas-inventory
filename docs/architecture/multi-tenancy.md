@@ -145,7 +145,11 @@ Consequences of this split:
   [modules.md](modules.md#audit) and [ADR-0015](../decisions/0015-audit-log.md)).
 
 See [ADR-0004](../decisions/0004-tenant-isolation-strategy.md) for the formal record of this
-decision.
+decision. **Implemented FASE 11** — see [ADR-0032](../decisions/0032-platform-admin-authentication.md)
+for the concrete mechanism (`auth/platform-auth.controller.ts`, `common/decorators/platform-only.
+decorator.ts`) and [modules.md#administration](modules.md#administration) for the tenant-lifecycle
+capability (list/suspend/activate a company) this phase actually built. Platform-level metrics and
+global configuration/plans remain unbuilt — no concrete architectural definition exists for them yet.
 
 ## Administrative / cross-tenant queries
 

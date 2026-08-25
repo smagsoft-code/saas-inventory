@@ -87,4 +87,17 @@ describe('JwtAuthGuard', () => {
     const guard = new JwtAuthGuard(reflector, jwtService, testAuthConfig);
     await expect(guard.canActivate(context)).resolves.toBe(true);
   });
+
+  it('accepts a valid platform token from the platform_access_token cookie and sets platformPrincipal, never authPrincipal', async () => {
+    const token = await jwtService.signAsync(
+      { sub: 'admin-1', context: 'global', jti: 'j1' },
+      { secret: 'test-secret', expiresIn: 900 },
+    );
+    const request: Record<string, unknown> = { headers: {}, cookies: { platform_access_token: token } };
+    const { context, reflector } = contextFor(request);
+    const guard = new JwtAuthGuard(reflector, jwtService, testAuthConfig);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+    expect(request['platformPrincipal']).toEqual({ adminId: 'admin-1' });
+    expect(request['authPrincipal']).toBeUndefined();
+  });
 });

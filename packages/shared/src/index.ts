@@ -86,6 +86,8 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'locations.manage',
       'inventory.view',
       'inventory.adjust',
+      'administration.settings.view',
+      'administration.settings.manage',
     ],
   },
   Supervisor: {

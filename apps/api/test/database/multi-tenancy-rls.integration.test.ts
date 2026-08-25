@@ -96,6 +96,15 @@ describe.skipIf(!integrationTestsEnabled)('multi-tenancy and RLS', () => {
         insertColumns: ['id', 'tenant_id', 'email', 'password_hash', 'full_name'],
         insertValuesFor: (tenantId, rowId) => [rowId, tenantId, `iso-${rowId.slice(0, 8)}@example.com`, 'x', 'Isolation User'],
       },
+      {
+        // FASE 11 — tenant_settings (migration 0022). Singleton per tenant (unique(tenant_id)), so
+        // tenantA's and tenantB's rows here are naturally distinct rows, not a re-used id — no
+        // special-casing needed versus the other representative tables. timezone/business_hours
+        // are left at their column defaults ('UTC' / '[]'::jsonb).
+        table: 'tenant_settings',
+        insertColumns: ['id', 'tenant_id'],
+        insertValuesFor: (tenantId, rowId) => [rowId, tenantId],
+      },
     ];
 
     describe('auth_refresh_tokens (Prompt 04)', () => {

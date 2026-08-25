@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, type CanActivate, type ExecutionContext
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 import { withTenantTransaction } from '../../database/tenant-context';
+import { IS_PLATFORM_ONLY_KEY } from '../decorators/platform-only.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { loadEffectivePermissions } from '../permissions/load-effective-permissions';
 
@@ -15,6 +16,14 @@ import { loadEffectivePermissions } from '../permissions/load-effective-permissi
  * Every tenant user in this schema belongs to exactly one tenant (users.tenant_id is NOT NULL,
  * database.md) — there is no "active tenant" to select or switch, so resolution here is a direct
  * read of the token's tenantId claim, not a lookup across memberships.
+ *
+ * @PlatformOnly() routes (FASE 11's SuperAdmin endpoints) take a third path, structurally
+ * separate from both of the above: they require a verified `platformPrincipal` (set by
+ * JwtAuthGuard from a platform-context token) and never touch tenant RBAC at all — no
+ * `tenantContext`, no `loadEffectivePermissions` call, no permission catalog lookup. This is what
+ * rule 13 of this phase means by "never protect platform operations with the tenant
+ * PermissionsGuard" — there is nothing for that guard to check on these requests in the first
+ * place, by construction.
  */
 @Injectable()
 export class TenantGuard implements CanActivate {
@@ -30,6 +39,18 @@ export class TenantGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<FastifyRequest>();
+
+    const isPlatformOnly = this.reflector.getAllAndOverride<boolean>(IS_PLATFORM_ONLY_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (isPlatformOnly) {
+      if (!request.platformPrincipal) {
+        throw new ForbiddenException('Platform admin context required.');
+      }
+      return true;
+    }
+
     const principal = request.authPrincipal;
     if (!principal?.tenantId) {
       throw new ForbiddenException('No resolvable tenant context.');

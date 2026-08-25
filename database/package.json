@@ -8,11 +8,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "seed": "tsx seeds/run.ts",
+    "seed:platform-admin": "tsx seeds/platform-admin.ts",
     "reset-demo": "tsx scripts/reset-demo-tenant.ts"
   },
   "dependencies": {
     "@saas-inventory/config": "workspace:*",
     "@saas-inventory/shared": "workspace:*",
+    "argon2": "^0.41.1",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9"
   },

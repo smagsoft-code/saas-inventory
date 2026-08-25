@@ -190,10 +190,10 @@ async function verifySchema(): Promise<void> {
     const tables = await sql<{ table_name: string }[]>`
       select table_name from information_schema.tables
       where table_schema = 'public' and table_type = 'BASE TABLE'`;
-    // 46, not 45 — auth_refresh_tokens (migration 0013, Prompt 04) was added after this figure
-    // was first written and this check was never updated (found live, Prompt 05-B; same class of
-    // drift as the permissions-catalog count above).
-    check('46 tables exist', tables.length === 46, `found ${tables.length}`);
+    // 48, not 46 — tenant_settings + platform_admin_refresh_tokens (migration 0022, FASE 11) were
+    // added after this figure was first written and this check was never updated (same class of
+    // drift as the permissions-catalog count above, and as the 45->46 update it already documents).
+    check('48 tables exist', tables.length === 48, `found ${tables.length}`);
 
     const fks = await sql<{ count: number }[]>`
       select count(*)::int as count from information_schema.table_constraints
@@ -333,13 +333,13 @@ async function verifyRls(): Promise<void> {
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r'
-        and c.relname not in ('tenants', 'platform_admins', 'permissions', 'measurement_units')`;
+        and c.relname not in ('tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens')`;
     // Filtering an empty `rows` is vacuously "zero without RLS" — assert the expected table count
     // explicitly first (same class of false-positive this file already got burned by in §8).
-    // 46 total tables - 4 platform-scoped (tenants, platform_admins, permissions,
-    // measurement_units) = 42 tenant-owned tables (see the 46-tables comment above for why this
-    // isn't 45/41 any more).
-    check('42 tenant-owned tables were found to check', rows.length === 42, `found ${rows.length}`);
+    // 48 total tables - 5 platform-scoped (tenants, platform_admins, permissions,
+    // measurement_units, platform_admin_refresh_tokens) = 43 tenant-owned tables (see the
+    // 48-tables comment above for why this isn't 42/41 any more).
+    check('43 tenant-owned tables were found to check', rows.length === 43, `found ${rows.length}`);
     const withoutRls = rows.filter((r) => !r.relrowsecurity);
     const withoutForce = rows.filter((r) => !r.relforcerowsecurity);
     const withoutPolicy = rows.filter((r) => r.policy_count === 0);
@@ -372,7 +372,7 @@ async function verifyRls(): Promise<void> {
       select relname, relrowsecurity from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r'
-        and c.relname in ('tenants', 'platform_admins', 'permissions', 'measurement_units')`;
+        and c.relname in ('tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens')`;
     check('platform-scoped tables have NO RLS (by design)', platformTables.every((r) => !r.relrowsecurity));
   } finally {
     await sql.end();
@@ -423,7 +423,7 @@ async function verifyPoolingLeakage(): Promise<void> {
 }
 
 async function verifyPermissionsCatalog(): Promise<void> {
-  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin + Prompt 07 warehouses/locations admin + Prompt 08 inventory balances/movements admin codes)');
+  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin + Prompt 07 warehouses/locations admin + Prompt 08 inventory balances/movements admin + FASE 11 administration codes)');
   const expected = [
     'catalog.attributes.manage',
     'catalog.qr.manage',
@@ -469,13 +469,16 @@ async function verifyPermissionsCatalog(): Promise<void> {
     // are reused as-is for FASE 8's transfer endpoints, no new codes needed for those.
     'inventory.view',
     'inventory.adjust',
+    // FASE 11 (migration 0023) — tenant configuration administration (administration/tenant-settings).
+    'administration.settings.view',
+    'administration.settings.manage',
   ].sort();
 
   const sql = postgres(MIGRATOR_URL, { max: 1 });
   try {
     const rows = await sql<{ code: string }[]>`select code from permissions order by code`;
     const actual = rows.map((r) => r.code).sort();
-    check('permissions catalog has exactly 31 rows', actual.length === 31, `found ${actual.length}`);
+    check('permissions catalog has exactly 33 rows', actual.length === 33, `found ${actual.length}`);
     check('permissions catalog matches database.md exactly, no narrative examples added', JSON.stringify(actual) === JSON.stringify(expected));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       console.log('  expected:', expected);

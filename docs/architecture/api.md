@@ -49,6 +49,14 @@ sequenceDiagram
 Every failure path returns the same [error envelope](#errors); no route bypasses the guard chain
 except explicitly public routes (health check, login, the QR public resolver).
 
+**SuperAdmin routes** (FASE 11, `@PlatformOnly()` — `apps/api/src/administration/platform-tenants/`,
+`apps/api/src/auth/platform-auth.controller.ts`) take a third path through the Tenant Guard,
+distinct from both the ordinary flow above and `@Public()`: they require a verified
+`platform_admins` principal (a structurally separate token — see
+[ADR-0032](../decisions/0032-platform-admin-authentication.md)) but never resolve a tenant context
+or reach the Permission Guard's tenant-RBAC check — there is no tenant permission catalog entry for
+these routes, by design ([multi-tenancy.md#superadmin-vs-tenant](multi-tenancy.md#superadmin-vs-tenant)).
+
 ## Errors
 
 A single error shape across the whole API, produced by the global exception filter (see
@@ -128,7 +136,8 @@ business/domain endpoints exist yet to protect (see [security.md](security.md#ra
 A small, explicit set of routes don't require the normal auth/tenant guard chain:
 
 - `GET /health` (already scaffolded).
-- Login/token-refresh endpoints (they establish the session, so they can't require one).
+- Login/token-refresh endpoints (they establish the session, so they can't require one) — both the
+  tenant (`/auth/*`) and platform-admin (`/platform/auth/*`, FASE 11) variants.
 - The QR public resolver (`GET /q/:code` or similar) — returns only the subset of information
   appropriate for an unauthenticated scan (see [multi-tenancy.md](multi-tenancy.md) and
   [security.md](security.md) for public-vs-private data rules); it does not require a tenant

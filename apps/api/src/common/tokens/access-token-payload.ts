@@ -2,8 +2,16 @@
  * Shape of the signed access-token JWT (security.md#authentication). Shared between the auth
  * module (issues it) and the common guards (verify it) so neither side depends on the other for
  * this type — auth/ depends on common/, never the reverse.
+ *
+ * Two, structurally distinct variants share one JWT signing secret (JwtAuthGuard verifies both
+ * with the same call) but are never confusable with each other at the type level: a tenant
+ * payload always carries `tenantId`/`tenantSlug`; a platform (SuperAdmin) payload never does, and
+ * instead carries `context: 'global'` — multi-tenancy.md#superadmin-vs-tenant's "distinct token
+ * type/claim... does not grant blanket access to every tenant's data." This is what lets
+ * TenantGuard route a request to either the ordinary tenant-scoped path or the
+ * @PlatformOnly()-gated path without ever needing to trust a client-supplied flag.
  */
-export interface AccessTokenPayload {
+export interface TenantAccessTokenPayload {
   /** Subject — the authenticated user's id. */
   sub: string;
   tenantId: string;
@@ -13,4 +21,18 @@ export interface AccessTokenPayload {
   /** Unique token id (defense-in-depth identifier for log correlation; this phase does not
    * implement access-token blacklisting — access tokens are short-lived by design instead). */
   jti: string;
+}
+
+/** Subject is a `platform_admins.id`, never a tenant `users.id` — the two id spaces are never
+ * compared against each other anywhere in this codebase. */
+export interface PlatformAccessTokenPayload {
+  sub: string;
+  context: 'global';
+  jti: string;
+}
+
+export type AccessTokenPayload = TenantAccessTokenPayload | PlatformAccessTokenPayload;
+
+export function isPlatformAccessTokenPayload(payload: AccessTokenPayload): payload is PlatformAccessTokenPayload {
+  return (payload as PlatformAccessTokenPayload).context === 'global';
 }

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AUTH_CONFIG, type AuthConfig } from '../../common/config/auth-config';
-import type { AccessTokenPayload } from '../../common/tokens/access-token-payload';
+import type { AccessTokenPayload, PlatformAccessTokenPayload } from '../../common/tokens/access-token-payload';
 
 export interface IssuedAccessToken {
   token: string;
@@ -23,6 +23,17 @@ export class AccessTokenService {
 
   async issue(userId: string, tenantId: string, tenantSlug: string): Promise<IssuedAccessToken> {
     const payload: AccessTokenPayload = { sub: userId, tenantId, tenantSlug, jti: randomUUID() };
+    const token = await this.jwtService.signAsync(payload, {
+      secret: this.authConfig.jwtSecret,
+      expiresIn: this.authConfig.accessTokenTtlSeconds,
+    });
+    return { token, expiresInSeconds: this.authConfig.accessTokenTtlSeconds };
+  }
+
+  /** Issues a platform (SuperAdmin) access token — same secret/TTL, structurally distinct payload
+   * (no `tenantId`, `context: 'global'`) — see access-token-payload.ts. */
+  async issuePlatform(platformAdminId: string): Promise<IssuedAccessToken> {
+    const payload: PlatformAccessTokenPayload = { sub: platformAdminId, context: 'global', jti: randomUUID() };
     const token = await this.jwtService.signAsync(payload, {
       secret: this.authConfig.jwtSecret,
       expiresIn: this.authConfig.accessTokenTtlSeconds,

@@ -205,6 +205,28 @@ later, etc.) and system-level configuration that only a SuperAdmin can change.
 
 **Depends on:** CORE.
 
+**Implemented in `apps/api/src/administration/` (FASE 11):** tenant-level configuration —
+`GET`/`PATCH /administration/tenant-settings` (timezone, business hours; `administration.settings.
+view`/`.manage`, migration `0023`), backed by a new singleton-per-tenant `tenant_settings` table
+(migration `0022`) — see
+[database.md#administration-tenant-settings-and-platform-admin-sessions](database.md#administration-tenant-settings-and-platform-admin-sessions).
+`notification_preferences`/`branding` are deliberately not built this phase: the former's mechanism
+is an explicit `PENDING DECISION` [events.md](events.md#n8n-and-telegram) defers to the phase that
+actually builds tenant-configurable notifications (FASE 15); the latter modules.md itself already
+names "later." System-level administration — the SuperAdmin (`platform_admins`) authentication
+mechanism ADR-0030/Prompt 04 deliberately left unbuilt, plus the one concrete system-level
+capability this phase found grounded in the existing architecture (tenant lifecycle management:
+`GET /platform/tenants`, `GET /platform/tenants/:tenantId`, `POST /platform/tenants/:tenantId/
+suspend`, `POST /platform/tenants/:tenantId/activate`, `POST/GET /platform/auth/*`) — see
+[ADR-0032](../decisions/0032-platform-admin-authentication.md) for the full authentication design
+and [multi-tenancy.md#superadmin-vs-tenant](multi-tenancy.md#superadmin-vs-tenant) for why this is
+structurally separate from CORE's tenant self-administration (Prompt 05-A) rather than an extension
+of it. `TenantsPlatformRepository` (CORE/AUTH's existing repository) is reused as-is for the
+tenant-status mutation — no second `tenants`-table repository was introduced. Platform-level
+metrics/global configuration/"plans" — named as illustrative SuperAdmin capabilities in
+multi-tenancy.md but with no concrete architectural definition anywhere — are deliberately not
+built; see this phase's final report for the full scope-boundary rationale.
+
 ## DEMO
 
 **Responsibility:** a fully isolated demo tenant — same isolation rules as any other tenant (see

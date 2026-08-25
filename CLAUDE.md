@@ -336,3 +336,37 @@ specifically (cross-tenant claiming, no double-claim under concurrency, stale-cl
 gated by `TEST_APP_IMPORT_WORKER_DATABASE_URL`, unset in the standard `pg-verify` harness, so
 `test/import/import-worker.integration.test.ts` skips there by design; see the FASE 10 final report
 for the exact command. No frontend UI for IMPORT exists yet (FASE 16/17).
+
+FASE 11 added the ADMINISTRATION module (`apps/api/src/administration/`) — strictly the two
+capabilities grounded in the existing architecture, per modules.md#administration and this phase's
+final report. Tenant-level configuration: `GET`/`PATCH /administration/tenant-settings` (timezone,
+business hours — `administration.settings.view`/`.manage`, migration `0023`), backed by a new
+singleton-per-tenant `tenant_settings` table (migration `0022`); the effective value is resolved
+server-side (stored row, or a hardcoded system default when none exists yet) — never a second
+"defaults" table. `notification_preferences`/branding were deliberately not built: the former's
+mechanism is an explicit `PENDING DECISION` events.md defers to FASE 15 (tenant-configurable
+notifications), the latter modules.md itself names "later." System-level administration: the
+platform-admin (SuperAdmin) authentication mechanism ADR-0030/Prompt 04 deliberately left unbuilt
+(`auth_refresh_tokens.tenant_id`/`user_id` are `NOT NULL` by design — see that migration's own
+header comment anticipating this exact follow-up) is now built — see
+[ADR-0032](docs/decisions/0032-platform-admin-authentication.md): a structurally distinct JWT
+payload (`context: 'global'`, never `tenantId`), a new `platform_admin_refresh_tokens` table
+(platform-scoped, no RLS), distinct session cookies (`platform_access_token`/
+`platform_refresh_token`/`platform_csrf_token`), and a new `@PlatformOnly()` route-guard branch
+(`common/guards/tenant.guard.ts`) that requires a verified platform principal and never touches
+tenant RBAC — no permission code exists for platform routes, by design. `POST /platform/auth/login`
+has no self-service registration counterpart; the first platform admin is provisioned out-of-band
+(`pnpm --filter @saas-inventory/database seed:platform-admin`, opt-in, never part of the default
+demo seed). The one concrete system-level capability built on top of this: tenant lifecycle
+management (`GET /platform/tenants`, `GET /platform/tenants/:tenantId`, `POST
+/platform/tenants/:tenantId/suspend`/`activate`), reusing `TenantsPlatformRepository` (CORE/AUTH's
+existing repository) as-is rather than a second `tenants`-table repository. A real, necessary grant
+gap was found and closed (migration `0022`): `app_platform` had `SELECT`-only on `audit_log`
+(migration 0002) because no platform-level write path existed before this phase — `PlatformAuditLogService`
+(parallel to the existing tenant-scoped `AuditLogService`) is the first code to use the new `GRANT
+INSERT`. Migration `0024` closes a second real gap, found running `test/database/
+migrations.integration.test.ts` for real: `tenant_settings` was missing ADR-0018's universal `UNIQUE
+(tenant_id, id)` composite-FK-target constraint. Platform-level metrics and global configuration/
+"plans" — named as illustrative SuperAdmin capabilities in multi-tenancy.md but with no concrete
+architectural definition anywhere — are deliberately not built. No frontend UI for ADMINISTRATION
+exists yet (FASE 16/17).

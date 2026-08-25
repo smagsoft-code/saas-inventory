@@ -20,12 +20,24 @@ export interface TenantRequestContext extends AuthPrincipal {
   permissions: string[];
 }
 
+/** The verified identity of a platform_admins row — structurally separate from AuthPrincipal
+ * (never a `tenantId` field of any kind), per multi-tenancy.md#superadmin-vs-tenant. Set by
+ * JwtAuthGuard when the verified token is a platform (SuperAdmin) token, never alongside
+ * `authPrincipal` on the same request. */
+export interface PlatformPrincipal {
+  adminId: string;
+}
+
 declare module 'fastify' {
   interface FastifyRequest {
-    /** Set by JwtAuthGuard once the access token is verified. Absent on public routes. */
+    /** Set by JwtAuthGuard once a tenant-scoped access token is verified. Absent on public routes
+     * and on platform-admin-authenticated requests. */
     authPrincipal?: AuthPrincipal;
+    /** Set by JwtAuthGuard once a platform (SuperAdmin) access token is verified. Absent on every
+     * other request. */
+    platformPrincipal?: PlatformPrincipal;
     /** Set by TenantGuard once the tenant scope + permissions are resolved. Absent on public
-     * routes and on any route JwtAuthGuard already rejected. */
+     * routes, @PlatformOnly() routes, and on any route JwtAuthGuard already rejected. */
     tenantContext?: TenantRequestContext;
     /** Set by the correlation-id hook (main.ts) on every request, including public ones. */
     correlationId: string;
@@ -38,4 +50,8 @@ export function getAuthPrincipal(request: FastifyRequest): AuthPrincipal | undef
 
 export function getTenantContext(request: FastifyRequest): TenantRequestContext | undefined {
   return request.tenantContext;
+}
+
+export function getPlatformPrincipal(request: FastifyRequest): PlatformPrincipal | undefined {
+  return request.platformPrincipal;
 }

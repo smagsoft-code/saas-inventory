@@ -188,6 +188,8 @@ These apply to every table unless a section below states an explicit exception.
 | `sales_return_items` | Tenant | SALES | yes | yes |
 | `event_outbox` | Mixed (nullable tenant_id) | NOTIFICATIONS | yes, **nullable** | yes (see note) |
 | `idempotency_keys` | Tenant | cross-cutting (owned by whichever module's transaction writes it) | yes | yes |
+| `tenant_settings` | Tenant | ADMINISTRATION (FASE 11, see [§Administration](#administration-tenant-settings-and-platform-admin-sessions)) | yes | yes |
+| `platform_admin_refresh_tokens` | Platform | ADMINISTRATION (see [ADR-0032](../decisions/0032-platform-admin-authentication.md)) | no | no |
 
 **Notes on the "mixed" rows:** `audit_log` and `event_outbox` carry `tenant_id` for almost every row
 (a tenant action, an `INVENTORY_ADJUSTED` event, ...) but must also hold platform-only rows with no
@@ -208,6 +210,11 @@ to this same group** — a small, fixed, platform-owned catalog (`kg`, `cm`, `cc
 every role, writable only by `app_migrator`, for the identical reason `permissions` is: letting tenants
 invent arbitrary unit strings would break the numeric-search value `attribute_definitions.unit_id`
 exists to preserve — see [§Dynamic attributes](#dynamic-attributes-governance-for-the-catalog-jsonb).
+
+**FASE 11 adds `platform_admin_refresh_tokens` to the same no-RLS-by-GRANT-alone group** (see
+[ADR-0032](../decisions/0032-platform-admin-authentication.md)) — the server-side session store for
+platform-admin logins, with no tenant dimension of its own, access restricted to `app_platform`
+(and `app_migrator` for schema) exactly like `platform_admins` itself.
 
 ---
 
@@ -343,7 +350,7 @@ flag inside the app:
 | --- | --- | --- | --- |
 | `app_migrator` | Drizzle Kit (CI/deploy) | owner — RLS does not apply | DDL owner of every table |
 | `app_tenant` | NestJS API, all normal tenant-scoped requests | subject to RLS, `FORCE ROW LEVEL SECURITY` | every table the API needs, filtered by policy to `tenant_id = app.tenant_id` |
-| `app_platform` | NestJS API, SuperAdmin-only service methods | `BYPASSRLS` | `tenants`, `platform_admins`, plus explicit read access to tenant tables for cross-tenant admin aggregation (never through the `app_tenant` path — see [multi-tenancy.md#administrative--cross-tenant-queries](multi-tenancy.md#administrative--cross-tenant-queries)) |
+| `app_platform` | NestJS API, SuperAdmin-only service methods | `BYPASSRLS` | `tenants`, `platform_admins`, `platform_admin_refresh_tokens` (FASE 11), plus explicit read access to tenant tables for cross-tenant admin aggregation (never through the `app_tenant` path — see [multi-tenancy.md#administrative--cross-tenant-queries](multi-tenancy.md#administrative--cross-tenant-queries)) and `INSERT` on `audit_log` (FASE 11/ADR-0032 — auditing platform-admin actions) |
 | `app_event_processor` | Event Processor worker | subject to RLS, but granted one **permissive, table-scoped** policy (below) | `event_outbox` only — no grants on any other table |
 | `app_public_resolver` | QR public resolver endpoint (`GET /q/:code`) | subject to RLS, one narrow SELECT policy | `qr_codes` (SELECT only), plus SELECT on the specific columns of `products`/`locations` needed to render a public response |
 | `app_import_worker` | Import Worker deployable (ADR-0029, migration 0019) | subject to RLS, granted one **permissive, table-scoped** policy per table (below) | `import_jobs`/`import_job_rows` only (SELECT, UPDATE) — the actual catalog/inventory writes for a claimed job happen over a normal, per-tenant `app_tenant` connection, never this one |
@@ -737,6 +744,19 @@ its code).
 | `warehouses.manage` | Crear/actualizar almacenes del tenant actual | Configuración | Medio | Crear un almacén también crea su ubicación "General" por defecto (invariante de este documento, §Inventory) |
 | `locations.view` | Listar y ver ubicaciones (jerarquía) del tenant actual | Operativo | Bajo | — |
 | `locations.manage` | Crear/actualizar ubicaciones del tenant actual | Configuración | Medio | Reparentar solo dentro del mismo almacén; mover una ubicación entre almacenes queda fuera de alcance |
+
+**FASE 11** adds the ADMINISTRATION tenant-configuration permission codes (migration `0023`). Same
+`module.action` pattern, no ADR needed for the catalog rows themselves — the authorization *design*
+they sit inside (structural separation from platform-admin routes) is
+[ADR-0032](../decisions/0032-platform-admin-authentication.md). No permission code is added for
+platform-admin (SuperAdmin) endpoints — those are gated structurally (`@PlatformOnly()`, a verified
+`platform_admins` principal), never through this tenant-scoped catalog — see
+[multi-tenancy.md#superadmin-vs-tenant](multi-tenancy.md#superadmin-vs-tenant).
+
+| Code | Capacidad | Alcance | Riesgo | Observación |
+| --- | --- | --- | --- | --- |
+| `administration.settings.view` | Ver `tenant_settings` (zona horaria, horario de atención) del tenant actual | Configuración | Bajo | — |
+| `administration.settings.manage` | Actualizar `tenant_settings` del tenant actual | Configuración | Medio | Upsert transparente — la primera escritura crea la fila |
 
 **No mobile-specific permission codes exist, or are needed.** Per
 [mobile.md#backend-as-the-sole-authority](mobile.md#backend-as-the-sole-authority), Flutter calls the
@@ -2011,6 +2031,64 @@ every other CATALOG/INVENTORY mutation gets, not a special case for imports.
 
 ---
 
+## Administration: tenant settings and platform-admin sessions
+
+FASE 11 (roadmap.md) — [modules.md#administration](modules.md#administration)'s "tenant-level
+configuration ... and system-level configuration that only a SuperAdmin can change," implemented
+as two independently-scoped tables:
+
+```
+tenant_settings                -- singleton row per tenant — tenant-level configuration
+  id                uuid PK
+  tenant_id         uuid NOT NULL FK -> tenants(id), UNIQUE, UNIQUE(tenant_id, id)
+  timezone          text NOT NULL DEFAULT 'UTC'          -- IANA name, validated server-side
+  business_hours    jsonb NOT NULL DEFAULT '[]'           -- governed array, see below
+  created_at        timestamp with time zone NOT NULL
+  updated_at        timestamp with time zone NOT NULL
+
+platform_admin_refresh_tokens  -- SuperAdmin session store (ADR-0032), no tenant_id, no RLS
+  id                    uuid PK
+  platform_admin_id     uuid NOT NULL FK -> platform_admins(id)
+  token_hash            text NOT NULL UNIQUE   -- same HMAC-SHA256 scheme as auth_refresh_tokens
+  rotated_from_id       uuid NULL
+  created_at            timestamp with time zone NOT NULL
+  expires_at            timestamp with time zone NOT NULL
+  revoked_at            timestamp with time zone NULL
+  user_agent            text NULL
+  ip_address            inet NULL
+```
+
+`tenant_settings` is a "mutable config, never deleted" singleton per tenant — the same lifecycle
+category as `tenant_price_policies` (§Soft delete policy). Only `timezone`/`business_hours` are
+modeled: `branding` is explicitly named "later" in modules.md itself, and per-tenant
+`notification_preferences`' exact mechanism is a `PENDING DECISION` events.md defers to "when
+tenant-configurable notifications are actually built" (FASE 15) — neither is invented here.
+`business_hours` is a governed JSONB array (not an open key/value bag, per §Dynamic attributes'
+"validated schema, filtered properties" posture applied to a simpler domain): each entry is
+`{ dayOfWeek: 0-6, isClosed?, opensAt?: "HH:mm", closesAt?: "HH:mm" }`, validated by DTO
+(class-validator) — at most one entry per `dayOfWeek`, `opensAt` strictly before `closesAt` unless
+`isClosed`, checked in `TenantSettingsService` (a cross-field rule a `CHECK` constraint alone
+cannot express). No system/tenant-override table pair exists — the "effective value" (§10 of the
+FASE 11 prompt) is resolved in application code: the stored row if one exists, else a hardcoded
+system default (`timezone = 'UTC'`, `business_hours = []`), never persisted as a separate row.
+
+`platform_admin_refresh_tokens` exists because `auth_refresh_tokens` (migration 0013,
+[ADR-0030](../decisions/0030-authentication-foundation.md)) has `NOT NULL` `tenant_id`/`user_id` by
+design — see that migration's own header comment anticipating this exact follow-up. Platform-admin
+sessions reuse every other piece of Prompt 04's session machinery (opaque token, HMAC-SHA256
+storage, rotation, reuse-detection) through a structurally separate table and cookie set — see
+[ADR-0032](../decisions/0032-platform-admin-authentication.md) for the full authentication design,
+including why `app_platform` needed a new `GRANT INSERT ON audit_log` (it previously had
+`SELECT`-only, since no platform-level write path existed before this phase).
+
+Migration `0022` creates both tables; `0023` adds the `administration.settings.*` permission
+catalog rows (data-only); `0024` adds `tenant_settings`' `UNIQUE (tenant_id, id)` composite-FK-target
+constraint (§Tenant-aware referential integrity's universal convention, applied even though nothing
+currently composite-FKs into this table — closed as a follow-up migration, not a retroactive edit
+to `0022`, per this document's own "an applied migration is never edited" convention).
+
+---
+
 ## Customers and suppliers
 
 Both tenant-scoped, both intentionally minimal — no billing/payment storage, no document scans, per
@@ -2821,6 +2899,11 @@ Planned initial sequence (file names illustrative, exact Drizzle Kit naming is a
     implemented.)
 11. **Notifications** — `event_outbox`, with RLS + the Event Processor policy.
 12. **Idempotency** — `idempotency_keys`, with RLS.
+13. **Auth** (Prompt 04, migration `0013`) — `auth_refresh_tokens`, with RLS.
+14. **Administration** (FASE 11, migrations `0022`–`0024`) — `tenant_settings` (RLS) and
+    `platform_admin_refresh_tokens` (platform-scoped, no RLS — see
+    [§Administration](#administration-tenant-settings-and-platform-admin-sessions)), plus a
+    follow-up `GRANT INSERT ON audit_log TO app_platform` (ADR-0032).
 
 Later migrations add `permissions` rows as new capabilities ship (`INSERT ... ON CONFLICT (code) DO
 NOTHING`) — this is genuinely schema-adjacent, versioned data, not tenant/seed data, so it travels

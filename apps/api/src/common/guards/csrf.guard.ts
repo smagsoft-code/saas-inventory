@@ -42,7 +42,7 @@ export class CsrfGuard implements CanActivate {
     }
 
     const cookies = request.cookies as Record<string, string | undefined> | undefined;
-    const cookieToken = cookies?.['csrf_token'];
+    const cookieToken = cookies?.['csrf_token'] ?? cookies?.['platform_csrf_token'];
     const headerToken = request.headers['x-csrf-token'];
 
     if (!cookieToken || typeof headerToken !== 'string' || headerToken !== cookieToken) {

@@ -28,6 +28,7 @@ export default defineConfig({
     './src/database/schema/10-notifications.ts',
     './src/database/schema/11-idempotency.ts',
     './src/database/schema/12-auth.ts',
+    './src/database/schema/13-administration.ts',
   ],
   out: '../../database/migrations',
   dbCredentials: {

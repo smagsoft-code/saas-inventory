@@ -46,4 +46,13 @@ describe('AccessTokenService', () => {
     const payloadB = jwtService.decode<{ jti: string }>(b.token);
     expect(payloadA.jti).not.toBe(payloadB.jti);
   });
+
+  it('issues a platform token carrying sub/context but never tenantId/tenantSlug', async () => {
+    const issued = await service.issuePlatform('admin-1');
+    const payload = await jwtService.verifyAsync(issued.token, { secret: 'test-jwt-secret' });
+    expect(payload.sub).toBe('admin-1');
+    expect(payload.context).toBe('global');
+    expect(payload.tenantId).toBeUndefined();
+    expect(payload.tenantSlug).toBeUndefined();
+  });
 });

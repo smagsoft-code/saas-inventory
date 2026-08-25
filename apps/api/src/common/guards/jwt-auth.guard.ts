@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { FastifyRequest } from 'fastify';
 import { AUTH_CONFIG, type AuthConfig } from '../config/auth-config';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import type { AccessTokenPayload } from '../tokens/access-token-payload';
+import { type AccessTokenPayload, isPlatformAccessTokenPayload } from '../tokens/access-token-payload';
 
 /**
  * "Who are you?" — api.md#request-flow's Auth Guard. Verifies the access token (Authorization
@@ -43,7 +43,11 @@ export class JwtAuthGuard implements CanActivate {
       const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token, {
         secret: this.authConfig.jwtSecret,
       });
-      request.authPrincipal = { userId: payload.sub, tenantId: payload.tenantId, tenantSlug: payload.tenantSlug };
+      if (isPlatformAccessTokenPayload(payload)) {
+        request.platformPrincipal = { adminId: payload.sub };
+      } else {
+        request.authPrincipal = { userId: payload.sub, tenantId: payload.tenantId, tenantSlug: payload.tenantSlug };
+      }
       return true;
     } catch {
       // Deliberately one generic message — an expired token and a forged/tampered one both look
@@ -59,5 +63,5 @@ function extractAccessToken(request: FastifyRequest): string | undefined {
     return authHeader.slice('Bearer '.length).trim() || undefined;
   }
   const cookies = request.cookies as Record<string, string | undefined> | undefined;
-  return cookies?.['access_token'];
+  return cookies?.['access_token'] ?? cookies?.['platform_access_token'];
 }

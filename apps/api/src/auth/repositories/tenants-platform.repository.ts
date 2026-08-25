@@ -1,9 +1,15 @@
 import { randomBytes } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { PLATFORM_DATABASE } from '../../database/database.module';
 import type { PlatformDatabase } from '../../database/platform-client';
 import { tenants } from '../../database/schema';
+
+/** The only two lifecycle states a SuperAdmin can move a tenant between via
+ * administration/platform-tenants — 'archived' has no application code path that produces it
+ * anywhere in this codebase yet (out of this phase's grounded scope, see the FASE 11 final
+ * report's "limitaciones restantes"). */
+export type TenantLifecycleStatus = 'active' | 'suspended';
 
 export interface TenantRow {
   id: string;
@@ -32,6 +38,26 @@ export class TenantsPlatformRepository {
 
   async findById(id: string): Promise<TenantRow | undefined> {
     const [row] = await this.platformDb.select().from(tenants).where(eq(tenants.id, id));
+    return row;
+  }
+
+  /** SuperAdmin-only listing (multi-tenancy.md's "list companies" capability) — every tenant,
+   * regardless of status. Ordered newest-first, matching orders.controller's "default admin list
+   * view" convention (database.md's indexing rationale table). No filter/pagination beyond this:
+   * the platform tenant count is operationally small compared to any one tenant's business data. */
+  async list(): Promise<TenantRow[]> {
+    return this.platformDb.select().from(tenants).orderBy(desc(tenants.createdAt));
+  }
+
+  /** The one place a tenant's lifecycle status is changed by an explicit administrative action
+   * (as opposed to markSuspended's best-effort provisioning-rollback below) — SuperAdmin-only,
+   * per §9/§16 of this phase: `slug`/`status`/`isDemo` have no tenant-self-edit endpoint (Prompt
+   * 05-A) and this method is never reachable from a tenant-scoped route. */
+  async setStatus(tenantId: string, status: TenantLifecycleStatus): Promise<TenantRow> {
+    const [row] = await this.platformDb.update(tenants).set({ status }).where(eq(tenants.id, tenantId)).returning();
+    if (!row) {
+      throw new Error(`Tenant ${tenantId} not found while updating status.`);
+    }
     return row;
   }
 

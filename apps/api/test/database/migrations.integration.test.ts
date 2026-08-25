@@ -85,6 +85,8 @@ describe.skipIf(!integrationTestsEnabled)('migrations', () => {
         'event_outbox',
         'idempotency_keys',
         'auth_refresh_tokens',
+        'tenant_settings',
+        'platform_admin_refresh_tokens',
       ];
       for (const table of expectedTables) {
         expect(actualTables.has(table), `expected table "${table}" to exist`).toBe(true);
@@ -151,9 +153,9 @@ describe.skipIf(!integrationTestsEnabled)('migrations', () => {
         SELECT relname, relrowsecurity FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relkind = 'r'
-          AND c.relname = ANY(ARRAY['tenants', 'platform_admins', 'permissions', 'measurement_units'])
+          AND c.relname = ANY(ARRAY['tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens'])
       `);
-      expect(rows).toHaveLength(4);
+      expect(rows).toHaveLength(5);
       for (const row of rows) {
         expect(row.relrowsecurity, `${row.relname} should not have RLS enabled`).toBe(false);
       }

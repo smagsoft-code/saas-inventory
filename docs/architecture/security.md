@@ -94,6 +94,24 @@ is unconditional, checked in `UsersService` before any permission lookup — see
 tenant-scoped exactly like every other endpoint in this document — a foreign-tenant id resolves as
 "not found," never as a distinguishable "found but forbidden."
 
+**Tenant configuration (FASE 11)** adds `administration.settings.view`/`administration.settings.manage`
+(database.md's table, same section) — `GET`/`PATCH /administration/tenant-settings`, tenant-scoped
+exactly like every other endpoint in this document.
+
+**Platform-admin (SuperAdmin) authentication (FASE 11)** — a second, structurally independent
+authentication mechanism from everything above, never sharing a code path or a permission catalog
+entry with tenant RBAC. See [ADR-0032](../decisions/0032-platform-admin-authentication.md) for the
+full design: a distinct JWT payload shape (`context: 'global'`, never `tenantId`), a distinct
+server-tracked refresh-token table (`platform_admin_refresh_tokens`), and distinct, non-overlapping
+session cookies (`platform_access_token`/`platform_refresh_token`/`platform_csrf_token`). `POST
+/platform/auth/login` has no counterpart registration endpoint — a platform admin is provisioned
+out-of-band (`database/seeds/platform-admin.ts`, opt-in, never part of the default demo seed), never
+through a public endpoint, closing the P0 privilege-escalation risk a self-service SuperAdmin
+signup would otherwise be (see [threat-model.md#privilege-escalation](../security/threat-model.md#privilege-escalation)).
+`GET /platform/tenants`, `POST /platform/tenants/:tenantId/suspend`/`activate` are gated by
+`@PlatformOnly()` alone — never by `@RequirePermissions()` — so no tenant RBAC configuration
+(`core.roles.assign` and everything it can grant) can ever reach a platform-level capability.
+
 **Field-level authorization (Prompt 02-D)** — route-level permission checks are not always enough:
 `cost` and `min_price` need to be withheld from an authenticated caller who lacks the specific
 permission for them, even though that caller is otherwise authorized to view the product. See
