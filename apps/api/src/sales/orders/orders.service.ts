@@ -1,0 +1,502 @@
+import { createHash } from 'node:crypto';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { generateId } from '@saas-inventory/shared';
+import type { PaginatedResult } from '@saas-inventory/types';
+import { sql } from 'drizzle-orm';
+import { AuditLogService } from '../../common/audit/audit-log.service';
+import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
+import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
+import { LocationsRepository } from '../../inventory/repositories/locations.repository';
+import { InsufficientStockError, StockLedgerService } from '../../inventory/stock-ledger.service';
+import { CartItemsRepository } from '../repositories/cart-items.repository';
+import { CartsRepository } from '../repositories/carts.repository';
+import type { CustomerRow } from '../repositories/customers.repository';
+import { CustomersRepository } from '../repositories/customers.repository';
+import type { CreateOrderItemValues, OrderItemRow } from '../repositories/order-items.repository';
+import { OrderItemsRepository } from '../repositories/order-items.repository';
+import type { OrderRow } from '../repositories/orders.repository';
+import { OrdersRepository } from '../repositories/orders.repository';
+import { SalesCatalogLookupRepository } from '../repositories/sales-catalog-lookup.repository';
+import { SalesIdempotencyRepository } from '../repositories/sales-idempotency.repository';
+import type { AuditMeta } from '../sales-audit-meta';
+import { moneyString, roundMoney } from '../sales-money';
+import { SalesPricingService } from '../pricing/sales-pricing.service';
+import type { CreateOrderDto } from './dto/create-order.dto';
+import type { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import type { OrderItemResponseDto, OrderResponseDto } from './dto/order-response.dto';
+
+const IDEMPOTENCY_SCOPE = 'orders.create';
+const IDEMPOTENCY_TTL_MS = 48 * 60 * 60 * 1000;
+/** Single-currency-per-tenant is assumed by the schema (`orders.currency`, database.md#orders);
+ * no tenant currency setting exists yet. USD is the FASE 12 default — a documented assumption,
+ * revisited if/when multi-currency or a tenant currency config is introduced. */
+const DEFAULT_CURRENCY = 'USD';
+
+function hashRequest(body: unknown): string {
+  return createHash('sha256').update(JSON.stringify(body)).digest('hex');
+}
+
+interface ResolvedLine {
+  variantId: string;
+  sku: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  maxPrice: number;
+  basePrice: number;
+  minPrice: number;
+  unitCost: string | null;
+  discountAmount: number;
+  lineTotal: number;
+}
+
+/**
+ * Orders / checkout (§36-§41, §144). The two-phase lifecycle for FASE 12:
+ *
+ *   POST /orders           cart -> order `pending`, writes a RESERVATION inventory movement per line
+ *                          (reserved stock held, physical untouched). Idempotent via
+ *                          `idempotency_keys` (`scope = 'orders.create'`), the mechanism
+ *                          modules.md#order-flow and api.md#idempotency both name.
+ *   POST /orders/:id/confirm   `pending` -> `confirmed`, RESERVATION_RELEASE + SALE per line — this
+ *                          is the inventory COMMIT boundary (physical stock leaves).
+ *   POST /orders/:id/cancel    `draft`/`pending` -> `cancelled`, RESERVATION_RELEASE per line. A
+ *                          `confirmed` order cannot be cancelled — reversing a committed sale is a
+ *                          sales return (FASE 13), never a cancellation (§54).
+ *
+ * SALES never writes `inventory_balances` directly (§42) — every stock effect goes through
+ * `StockLedgerService.applyMovement`, INVENTORY's one locking convoy, which is what makes two
+ * simultaneous sales of the last unit safe (§44). No `price_approvals` rows, no `tenant_price_policies`
+ * reads — exceptional pricing is FASE 13; a below-min price is rejected here in a controlled way
+ * (SalesPricingService), never bypassed (§25).
+ */
+@Injectable()
+export class OrdersService {
+  constructor(
+    private readonly ordersRepository: OrdersRepository,
+    private readonly orderItemsRepository: OrderItemsRepository,
+    private readonly cartsRepository: CartsRepository,
+    private readonly cartItemsRepository: CartItemsRepository,
+    private readonly customersRepository: CustomersRepository,
+    private readonly catalogLookup: SalesCatalogLookupRepository,
+    private readonly locationsRepository: LocationsRepository,
+    private readonly locationAuthorizationService: LocationAuthorizationService,
+    private readonly stockLedgerService: StockLedgerService,
+    private readonly pricingService: SalesPricingService,
+    private readonly idempotencyRepository: SalesIdempotencyRepository,
+    private readonly auditLogService: AuditLogService,
+  ) {}
+
+  async list(tenantId: string, permissions: string[], query: ListOrdersQueryDto): Promise<PaginatedResult<OrderResponseDto>> {
+    return withTenantTransaction(tenantId, async (tx) => {
+      const { rows, total } = await this.ordersRepository.listByTenant(tx, tenantId, {
+        page: query.page,
+        pageSize: query.pageSize,
+        status: query.status,
+        customerId: query.customerId,
+        documentType: query.documentType,
+        createdFrom: query.createdFrom,
+        createdTo: query.createdTo,
+      });
+      const data = await Promise.all(rows.map((row) => this.toResponse(tx, tenantId, row, permissions)));
+      return {
+        data,
+        meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.max(1, Math.ceil(total / query.pageSize)) },
+      };
+    });
+  }
+
+  async getById(tenantId: string, permissions: string[], id: string): Promise<OrderResponseDto> {
+    return withTenantTransaction(tenantId, async (tx) => {
+      const order = await this.ordersRepository.findById(tx, tenantId, id);
+      if (!order) {
+        throw new NotFoundException('Order not found.');
+      }
+      return this.toResponse(tx, tenantId, order, permissions);
+    });
+  }
+
+  async checkout(
+    tenantId: string,
+    actorId: string,
+    permissions: string[],
+    dto: CreateOrderDto,
+    meta: AuditMeta,
+    idempotencyKey: string | undefined,
+  ): Promise<OrderResponseDto> {
+    if (!idempotencyKey) {
+      throw new BadRequestException('Idempotency-Key header is required to create an order.');
+    }
+    const requestHash = hashRequest({ cartId: dto.cartId, documentType: dto.documentType });
+
+    return withTenantTransaction(tenantId, async (tx) => {
+      // Serialize same-key requests before any work (§61) — the second concurrent request blocks
+      // here until the first commits, then finds the cached result below. The
+      // UNIQUE (tenant_id, scope, idempotency_key) constraint (migration 0011) is the backstop.
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${IDEMPOTENCY_SCOPE}:${tenantId}:${idempotencyKey}`}))`);
+      const existing = await this.idempotencyRepository.find(tx, tenantId, IDEMPOTENCY_SCOPE, idempotencyKey);
+      if (existing) {
+        if (existing.requestHash !== requestHash) {
+          throw new ConflictException('Idempotency-Key was already used for a different request.');
+        }
+        return existing.responseBody as OrderResponseDto;
+      }
+
+      const cart = await this.cartsRepository.lockById(tx, tenantId, dto.cartId);
+      if (!cart || cart.userId !== actorId) {
+        throw new NotFoundException('Cart not found.');
+      }
+      if (cart.status !== 'open') {
+        throw new ConflictException('This cart has already been checked out.');
+      }
+
+      const cartItems = await this.cartItemsRepository.listByCart(tx, tenantId, cart.id);
+      if (cartItems.length === 0) {
+        throw new BadRequestException('The cart is empty.');
+      }
+      if (!cart.customerId) {
+        throw new BadRequestException('Set a customer on the cart before checkout (PATCH /cart).');
+      }
+      const customer = await this.customersRepository.findById(tx, tenantId, cart.customerId);
+      if (!customer) {
+        throw new NotFoundException('The cart customer no longer exists.');
+      }
+      this.assertCustomerDataForDocument(customer, dto.documentType);
+
+      const location = await this.locationsRepository.findById(tx, tenantId, cart.locationId);
+      if (!location) {
+        throw new NotFoundException('The cart location no longer exists.');
+      }
+      if (location.status !== 'active' || !location.isSellable) {
+        throw new ConflictException('The cart location can no longer be used for sales.');
+      }
+      await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, cart.locationId);
+
+      const lines = await this.resolveLines(tx, tenantId, cartItems);
+
+      const subtotal = roundMoney(lines.reduce((sum, line) => sum + line.lineTotal, 0));
+      const discountTotal = roundMoney(lines.reduce((sum, line) => sum + line.discountAmount, 0));
+      const taxTotal = 0;
+      const total = roundMoney(subtotal + taxTotal);
+
+      const orderId = generateId();
+      const orderNumber = await this.ordersRepository.nextOrderNumber(tx, tenantId);
+      const invoiceStatus = dto.documentType === 'invoice' ? 'pending' : null;
+      const address = (customer.address ?? null) as Record<string, unknown> | null;
+
+      const order = await this.ordersRepository.create(tx, {
+        id: orderId,
+        tenantId,
+        locationId: cart.locationId,
+        customerId: customer.id,
+        customerNameSnapshot: customer.displayName,
+        customerTaxIdSnapshot: customer.taxId,
+        customerEmailSnapshot: customer.email,
+        customerPhoneSnapshot: customer.phone,
+        customerAddressSnapshot: address,
+        orderNumber,
+        documentType: dto.documentType,
+        invoiceStatus,
+        status: 'pending',
+        subtotal: moneyString(subtotal),
+        discountTotal: moneyString(discountTotal),
+        taxTotal: moneyString(taxTotal),
+        total: moneyString(total),
+        currency: DEFAULT_CURRENCY,
+        placedByUserId: actorId,
+        correlationId: meta.correlationId ?? null,
+      });
+
+      const itemValues: CreateOrderItemValues[] = lines.map((line) => ({
+        id: generateId(),
+        tenantId,
+        orderId,
+        productVariantId: line.variantId,
+        skuSnapshot: line.sku,
+        productNameSnapshot: line.productName,
+        maxPriceSnapshot: moneyString(line.maxPrice),
+        basePriceSnapshot: moneyString(line.basePrice),
+        minPriceSnapshot: moneyString(line.minPrice),
+        unitPriceSnapshot: moneyString(line.unitPrice),
+        unitCostSnapshot: line.unitCost,
+        quantity: String(line.quantity),
+        discountAmount: moneyString(line.discountAmount),
+        isExceptionalDiscount: false,
+        lineTotal: moneyString(line.lineTotal),
+      }));
+      await this.orderItemsRepository.createMany(tx, itemValues);
+
+      // Reservation boundary — hold stock, physical untouched until confirm (§16, §53).
+      for (const line of lines) {
+        try {
+          await this.stockLedgerService.applyMovement(tx, {
+            tenantId,
+            productVariantId: line.variantId,
+            locationId: cart.locationId,
+            movementType: 'RESERVATION',
+            quantity: line.quantity,
+            referenceType: 'order',
+            referenceId: orderId,
+            actorType: 'user',
+            actorId,
+            correlationId: meta.correlationId,
+          });
+        } catch (error) {
+          if (error instanceof InsufficientStockError) {
+            throw new ConflictException(`Insufficient stock for ${line.sku} at the selected location.`);
+          }
+          throw error;
+        }
+      }
+
+      await this.cartsRepository.update(tx, tenantId, cart.id, { status: 'checked_out', orderId });
+
+      await this.writeAudit(tx, {
+        tenantId,
+        actorId,
+        actionCode: 'order.created',
+        entityId: orderId,
+        afterState: { orderNumber, documentType: dto.documentType, total: moneyString(total), lineCount: lines.length },
+        meta,
+      });
+
+      const response = await this.toResponse(tx, tenantId, order, permissions);
+      await this.idempotencyRepository.create(tx, {
+        id: generateId(),
+        tenantId,
+        scope: IDEMPOTENCY_SCOPE,
+        idempotencyKey,
+        requestHash,
+        responseStatus: 201,
+        responseBody: response,
+        expiresAt: new Date(Date.now() + IDEMPOTENCY_TTL_MS),
+      });
+      return response;
+    });
+  }
+
+  async confirm(tenantId: string, actorId: string, permissions: string[], id: string, meta: AuditMeta): Promise<OrderResponseDto> {
+    return withTenantTransaction(tenantId, async (tx) => {
+      const order = await this.ordersRepository.lockById(tx, tenantId, id);
+      if (!order) {
+        throw new NotFoundException('Order not found.');
+      }
+      if (order.status === 'confirmed') {
+        return this.toResponse(tx, tenantId, order, permissions);
+      }
+      if (order.status !== 'pending') {
+        throw new ConflictException(`An order must be "pending" to confirm (currently "${order.status}").`);
+      }
+
+      await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, order.locationId);
+      const items = await this.orderItemsRepository.listByOrder(tx, tenantId, id);
+
+      for (const item of items) {
+        const quantity = Number(item.quantity);
+        await this.stockLedgerService.applyMovement(tx, {
+          tenantId,
+          productVariantId: item.productVariantId,
+          locationId: order.locationId,
+          movementType: 'RESERVATION_RELEASE',
+          quantity,
+          referenceType: 'order',
+          referenceId: id,
+          actorType: 'user',
+          actorId,
+          correlationId: meta.correlationId,
+        });
+        try {
+          await this.stockLedgerService.applyMovement(tx, {
+            tenantId,
+            productVariantId: item.productVariantId,
+            locationId: order.locationId,
+            movementType: 'SALE',
+            quantity,
+            referenceType: 'order',
+            referenceId: id,
+            actorType: 'user',
+            actorId,
+            correlationId: meta.correlationId,
+          });
+        } catch (error) {
+          if (error instanceof InsufficientStockError) {
+            throw new ConflictException(`Insufficient stock to fulfil ${item.skuSnapshot}.`);
+          }
+          throw error;
+        }
+      }
+
+      const updated = await this.ordersRepository.updateStatus(tx, tenantId, id, { status: 'confirmed' });
+      if (!updated) {
+        throw new NotFoundException('Order not found.');
+      }
+
+      await this.writeAudit(tx, { tenantId, actorId, actionCode: 'order.confirmed', entityId: id, meta });
+      return this.toResponse(tx, tenantId, updated, permissions);
+    });
+  }
+
+  async cancel(tenantId: string, actorId: string, permissions: string[], id: string, meta: AuditMeta): Promise<OrderResponseDto> {
+    return withTenantTransaction(tenantId, async (tx) => {
+      const order = await this.ordersRepository.lockById(tx, tenantId, id);
+      if (!order) {
+        throw new NotFoundException('Order not found.');
+      }
+      if (order.status === 'cancelled') {
+        return this.toResponse(tx, tenantId, order, permissions);
+      }
+      if (order.status === 'confirmed' || order.status === 'fulfilled') {
+        throw new ConflictException('A confirmed order cannot be cancelled — reversing a committed sale is a sales return (FASE 13).');
+      }
+      if (order.status !== 'draft' && order.status !== 'pending') {
+        throw new ConflictException(`An order cannot be cancelled from status "${order.status}".`);
+      }
+
+      if (order.status === 'pending') {
+        const items = await this.orderItemsRepository.listByOrder(tx, tenantId, id);
+        for (const item of items) {
+          await this.stockLedgerService.applyMovement(tx, {
+            tenantId,
+            productVariantId: item.productVariantId,
+            locationId: order.locationId,
+            movementType: 'RESERVATION_RELEASE',
+            quantity: Number(item.quantity),
+            referenceType: 'order',
+            referenceId: id,
+            actorType: 'user',
+            actorId,
+            correlationId: meta.correlationId,
+          });
+        }
+      }
+
+      const updated = await this.ordersRepository.updateStatus(tx, tenantId, id, { status: 'cancelled' });
+      if (!updated) {
+        throw new NotFoundException('Order not found.');
+      }
+
+      await this.writeAudit(tx, { tenantId, actorId, actionCode: 'order.cancelled', entityId: id, meta });
+      return this.toResponse(tx, tenantId, updated, permissions);
+    });
+  }
+
+  private assertCustomerDataForDocument(customer: CustomerRow, documentType: string): void {
+    if (documentType !== 'invoice') {
+      return;
+    }
+    const missing: string[] = [];
+    if (!customer.taxId) missing.push('taxId');
+    if (!customer.email) missing.push('email');
+    if (!customer.phone) missing.push('phone');
+    const address = customer.address as Record<string, unknown> | null;
+    if (!address || Object.keys(address).length === 0) missing.push('address');
+    if (missing.length > 0) {
+      throw new UnprocessableEntityException(`Customer is missing data required for an invoice: ${missing.join(', ')}.`);
+    }
+  }
+
+  private async resolveLines(tx: TenantTransaction, tenantId: string, cartItems: { productVariantId: string; quantity: string; negotiatedUnitPrice: string | null }[]): Promise<ResolvedLine[]> {
+    const lines: ResolvedLine[] = [];
+    for (const cartItem of cartItems) {
+      const variant = await this.catalogLookup.findVariantById(tx, tenantId, cartItem.productVariantId);
+      if (!variant) {
+        throw new NotFoundException(`Product variant ${cartItem.productVariantId} no longer exists.`);
+      }
+      if (variant.status !== 'active') {
+        throw new ConflictException(`Product variant ${variant.sku} is no longer sellable.`);
+      }
+      if (variant.isSerialized || variant.isLotTracked) {
+        throw new UnprocessableEntityException(
+          `Product variant ${variant.sku} is serialized or lot-tracked; selling those is not supported yet (deferred to a later phase).`,
+        );
+      }
+      const maxPrice = Number(variant.maxPrice);
+      const basePrice = Number(variant.basePrice);
+      const minPrice = Number(variant.minPrice);
+      const negotiated = cartItem.negotiatedUnitPrice === null ? undefined : Number(cartItem.negotiatedUnitPrice);
+      const unitPrice = this.pricingService.assertAllowed(negotiated, { maxPrice, basePrice, minPrice }, variant.sku);
+      const quantity = Number(cartItem.quantity);
+      const lineTotal = roundMoney(unitPrice * quantity);
+      const discountAmount = roundMoney(Math.max(0, (maxPrice - unitPrice) * quantity));
+      lines.push({
+        variantId: variant.id,
+        sku: variant.sku,
+        productName: variant.productName,
+        quantity,
+        unitPrice,
+        maxPrice,
+        basePrice,
+        minPrice,
+        unitCost: variant.cost,
+        discountAmount,
+        lineTotal,
+      });
+    }
+    return lines;
+  }
+
+  private async toResponse(tx: TenantTransaction, tenantId: string, order: OrderRow, permissions: string[]): Promise<OrderResponseDto> {
+    const canViewFloor = permissions.includes('pricing.floor.view');
+    const items = await this.orderItemsRepository.listByOrder(tx, tenantId, order.id);
+    return {
+      id: order.id,
+      orderNumber: order.orderNumber,
+      status: order.status,
+      documentType: order.documentType,
+      ...(order.invoiceStatus ? { invoiceStatus: order.invoiceStatus } : {}),
+      locationId: order.locationId,
+      ...(order.customerId ? { customerId: order.customerId } : {}),
+      customer: {
+        name: order.customerNameSnapshot,
+        ...(order.customerTaxIdSnapshot ? { taxId: order.customerTaxIdSnapshot } : {}),
+        ...(order.customerEmailSnapshot ? { email: order.customerEmailSnapshot } : {}),
+        ...(order.customerPhoneSnapshot ? { phone: order.customerPhoneSnapshot } : {}),
+        ...(order.customerAddressSnapshot ? { address: order.customerAddressSnapshot as Record<string, unknown> } : {}),
+      },
+      items: items.map((item) => this.toItemResponse(item, canViewFloor)),
+      subtotal: Number(order.subtotal),
+      discountTotal: Number(order.discountTotal),
+      taxTotal: Number(order.taxTotal),
+      total: Number(order.total),
+      currency: order.currency,
+      ...(order.placedByUserId ? { placedByUserId: order.placedByUserId } : {}),
+      createdAt: order.createdAt.toISOString(),
+      updatedAt: order.updatedAt.toISOString(),
+    };
+  }
+
+  private toItemResponse(item: OrderItemRow, canViewFloor: boolean): OrderItemResponseDto {
+    return {
+      id: item.id,
+      productVariantId: item.productVariantId,
+      sku: item.skuSnapshot,
+      productName: item.productNameSnapshot,
+      quantity: Number(item.quantity),
+      unitPrice: Number(item.unitPriceSnapshot),
+      maxPrice: Number(item.maxPriceSnapshot),
+      basePrice: Number(item.basePriceSnapshot),
+      ...(canViewFloor ? { minPrice: Number(item.minPriceSnapshot) } : {}),
+      discountAmount: Number(item.discountAmount),
+      lineTotal: Number(item.lineTotal),
+    };
+  }
+
+  private async writeAudit(
+    tx: TenantTransaction,
+    input: { tenantId: string; actorId: string; actionCode: string; entityId: string; afterState?: Record<string, unknown>; meta: AuditMeta },
+  ): Promise<void> {
+    try {
+      await this.auditLogService.record(tx, {
+        tenantId: input.tenantId,
+        actorId: input.actorId,
+        actionCode: input.actionCode,
+        entityType: 'order',
+        entityId: input.entityId,
+        afterState: input.afterState,
+        correlationId: input.meta.correlationId,
+        ipAddress: input.meta.ipAddress,
+      });
+    } catch {
+      // Best-effort — an audit write failure must never block the primary operation.
+    }
+  }
+}

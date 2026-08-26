@@ -9,6 +9,7 @@ import { HealthModule } from './health/health.module';
 import { ImportModule } from './import/import.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { QrModule } from './qr/qr.module';
+import { SalesModule } from './sales/sales.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { QrModule } from './qr/qr.module';
     QrModule,
     ImportModule,
     AdministrationModule,
+    SalesModule,
   ],
 })
 export class AppModule {}

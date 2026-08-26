@@ -2246,9 +2246,14 @@ land in the same "Sales" migration step, [§Migration strategy](#migration-strat
 
 ## Orders (conceptual — SALES not built yet)
 
-Per [modules.md#sales-future--not-built-in-this-phase](modules.md#sales-future--not-built-in-this-phase),
-SALES is designed, not implemented. This is the schema Prompt 10 will implement; no order
-endpoints/services exist after Prompt 02.
+> **Implemented in FASE 12** (`apps/api/src/sales/`) — the section title is kept for anchor
+> stability; the schema below is unchanged and is now backed by application code. See
+> [modules.md#sales](modules.md#sales) for the module overview and the **FASE 12 application
+> behavior** note at the end of this section for the order lifecycle, totals formula, and order
+> numbering. `price_approvals`, `sales_returns`/`sales_return_items` remain schema-only (FASE 13).
+
+The schema below was fixed in Prompt 02-A; FASE 12 implements the application layer on top of it
+without modifying it.
 
 ```
 orders
@@ -2371,7 +2376,60 @@ it. This document only fixes the schema-level `CHECK` list of valid status value
 to `confirmed` while any of its `order_items` has an unresolved (`pending`) row in `price_approvals`
 ([§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval)) — domain logic, checked
 via `price_approvals`' `(tenant_id, order_id, status)` index
-([§Indexes](#indexes)), not a new schema construct.
+([§Indexes](#indexes)), not a new schema construct. (FASE 12 does not create `price_approvals` rows
+at all — a below-`min_price` line is rejected outright until FASE 13; see below.)
+
+### FASE 12 application behavior
+
+The order lifecycle the schema left "not fully specified" is implemented as **two phases**, derived
+from [modules.md#order-flow](modules.md#order-flow-conceptual--sales-not-implemented-yet)'s
+"reserve at creation, release on cancel" diagram:
+
+| Command | Transition | Inventory effect (via `StockLedgerService`, never a direct `inventory_balances` write) |
+| --- | --- | --- |
+| `POST /orders` (checkout, `Idempotency-Key` required) | — → `pending` | one `RESERVATION` movement per line at `orders.location_id` (`reserved` ↑, `physical` untouched) — the reservation boundary |
+| `POST /orders/:id/confirm` | `pending` → `confirmed` | `RESERVATION_RELEASE` + `SALE` per line (`reserved` ↓, `physical` ↓) — the inventory **commit** boundary |
+| `POST /orders/:id/cancel` | `draft`/`pending` → `cancelled` | `RESERVATION_RELEASE` per line (a `pending` order only). A `confirmed` order **cannot** be cancelled — reversing a committed sale is a sales return (FASE 13). |
+
+`fulfilled` is a valid schema status but has no FASE 12 transition into it (no goods-handover
+tracking is designed yet).
+
+**Totals** (`order_items` and `orders`), one rounding policy — half-up to 2 decimals, applied to
+every monetary result (there is no tax engine — `tax_total` is always `0`):
+
+```
+order_items.line_total        = unit_price_snapshot * quantity              (the amount charged for the line)
+order_items.discount_amount    = max(0, (max_price_snapshot - unit_price_snapshot) * quantity)   (informational, vs. the reference price)
+orders.subtotal                = Σ line_total
+orders.discount_total          = Σ discount_amount        (informational — NOT re-subtracted from total)
+orders.tax_total               = 0
+orders.total                   = subtotal + tax_total
+```
+
+`is_exceptional_discount` is always `false` in FASE 12 (below-`min_price` lines are rejected, never
+sold).
+
+**Order numbering** (`orders.order_number`) — `ORD-` + a 6-digit zero-padded per-tenant sequence,
+generated inside the checkout transaction as `pg_advisory_xact_lock(hashtext('sales.order_number:' ||
+tenant_id))` then `COUNT(*) + 1` over that tenant's `orders` (never `SELECT MAX(...)+1` without a
+lock, per this document's concurrency rules; orders are never hard-deleted, so the count is
+monotonic). If write volume ever makes the count expensive, a dedicated per-tenant sequence row is
+the migration path — not needed at current scale.
+
+**Currency** — `orders.currency` is set to `'USD'` (a documented FASE 12 assumption: no tenant
+currency configuration exists yet; the schema already assumes single-currency-per-tenant).
+
+**Customer data for a document** — a `document_type = 'invoice'` checkout additionally requires the
+cart's customer to have `tax_id`, `email`, `phone`, and a non-empty `address`; a `sales_note` needs
+only the always-present `display_name`. Both freeze the `customer_*_snapshot` columns from the
+validated `customers` row.
+
+**Serialized / lot-tracked variants** — selling them is **rejected** (`422`) in FASE 12: no approved
+model links `order_items` to `product_serials`/`product_lots`, and `inventory_movements` has no
+serial/lot column (the same "not fully pinned" gap [§Serialized and lot-tracked
+rows](#serialized-and-lot-tracked-rows) and FASE 8/10 already flag). A future phase needs its own
+design pass (an `order_item_serials` link + a movement-level column, or equivalent) before this can
+be lifted.
 
 ---
 

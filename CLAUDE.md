@@ -423,3 +423,47 @@ passes `TEST_APP_IMPORT_WORKER_DATABASE_URL`, so `test/import/import-worker.inte
 pass. No new ADR (both are gap-closures in already-approved status/lifecycle semantics), no new
 table, no new permission code, no controller-by-controller or per-service-by-service check outside
 the two central points named above.
+
+FASE 12 added the SALES module (`apps/api/src/sales/`) — customers, the vendor cart, and orders,
+per modules.md#sales. The `0009_sales`/`0011_idempotency` schema (customers, carts/cart_items,
+orders/order_items, idempotency_keys — RLS + tenant-aware FKs since Prompt 03) gets its first
+application code here; **no schema table was added or changed**. Six new `sales.*` permission codes
+(migration `0026`, `module.resource.action` pattern, same gap-filling precedent as
+0014-0017/0023): `sales.customers.view`/`.manage`, `sales.carts.manage`,
+`sales.orders.view`/`.create`/`.cancel`; `pricing.floor.view` (ADR-0028 field-level `min_price`
+visibility — enforced by explicit DTO construction, never a strip-after-the-fact) and
+`pricing.discount.request` are reused as-is. **Customers**: `GET/POST /customers`,
+`GET/PATCH /customers/:id`, search by displayName/taxId/email/phone; `taxId` is unique per tenant
+(`customers_tenant_id_tax_id_key`), never globally; soft-deleted, never physically removed.
+**Cart**: a singular `/cart` resource owned by the authenticated vendor (`carts.user_id`), one open
+cart per vendor (enforced in-service via `findOpenByUser` + `pg_advisory_xact_lock`, not a new
+unique index); `GET/POST/PATCH /cart`, `POST/PATCH/DELETE /cart/items[/:itemId]`; no inventory is
+reserved by cart edits (database.md#cart's explicit design). **Orders**: `GET /orders`,
+`GET /orders/:id`, `POST /orders` (`Idempotency-Key` header required — `idempotency_keys`,
+`scope = 'orders.create'`, with a `pg_advisory_xact_lock` on the key serializing concurrent
+retries), `POST /orders/:id/confirm`, `POST /orders/:id/cancel`. **Two-phase inventory lifecycle**
+(derived from modules.md#order-flow, which only pins "reserve at creation / release on cancel"):
+`POST /orders` freezes the customer + per-line price snapshots, writes one `RESERVATION` movement
+per line through `StockLedgerService` (SALES never writes `inventory_balances` directly) and
+creates the order `pending`; `confirm` writes `RESERVATION_RELEASE` + `SALE` per line (the physical
+commit boundary) → `confirmed`; `cancel` releases a still-`pending` reservation → `cancelled` — a
+`confirmed` order can only be reversed by a sales return (FASE 13), never cancelled. Totals are
+server-computed with one half-up-to-2dp rounding policy (`line_total = unit_price * qty`,
+`subtotal = Σ line_total`, `tax_total = 0`, `total = subtotal`; `discount_total` is informational,
+not re-subtracted). `order_number` is `ORD-` + a 6-digit per-tenant sequence
+(`pg_advisory_xact_lock` + `COUNT(*)+1`, never unlocked `MAX+1`). `currency` is `'USD'` (documented
+FASE 12 assumption — no tenant currency config exists). Document type: `invoice` sets
+`invoice_status = 'pending'` and requires the customer to have taxId/email/phone/address;
+`sales_note` carries NULL `invoice_status`; the platform never issues a fiscal document (ADR-0023).
+A negotiated price within `[min_price, max_price]` completes; **below `min_price` is rejected
+(`409`), never bypassed** — the exceptional-discount approval workflow (`price_approvals`) is
+FASE 13. **Deliberately not built** (each a later phase): selling serialized/lot-tracked variants
+(rejected `422` — no approved `order_items` ↔ `product_serials`/`product_lots` model, and
+`inventory_movements` has no serial/lot column, the same "not fully pinned" gap FASE 8/10 flagged),
+`price_approvals`/`sales_returns` (FASE 13), any `event_outbox` write (FASE 14), Telegram/n8n
+(FASE 15), any frontend (FASE 16/17). Verified end to end against real PostgreSQL via
+`tools/pg-verify` (232 integration tests, 0 skipped — including SALES tenant isolation, IDOR, RBAC,
+location authorization, price-field visibility, historical snapshots, the last-unit checkout race,
+idempotent order creation under HTTP retry + concurrent same-key + payload mismatch, and the
+011-A/011-B tenant-suspension / user-deactivation regressions applied to SALES routes). No frontend
+UI for SALES exists yet (FASE 16/17).

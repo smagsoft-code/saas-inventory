@@ -68,6 +68,16 @@ import { WarehousesService } from './warehouses/warehouses.service';
     ProductVariantsLookupRepository,
     UsersRepository,
   ],
-  exports: [StockLedgerService, LocationAuthorizationService, WarehousesRepository, LocationsRepository, ProductVariantsLookupRepository],
+  exports: [
+    StockLedgerService,
+    LocationAuthorizationService,
+    WarehousesRepository,
+    LocationsRepository,
+    ProductVariantsLookupRepository,
+    // Prompt 012 (SALES): checkout reads available stock at the cart location for the cart view and
+    // reserves/commits through StockLedgerService — modules.md's SALES --> INVENTORY edge, the same
+    // "reuse the public provider, never a parallel read" posture IMPORT already uses.
+    InventoryBalancesRepository,
+  ],
 })
 export class InventoryModule {}

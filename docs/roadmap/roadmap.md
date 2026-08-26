@@ -58,11 +58,22 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   global configuration remain explicitly out of scope — see modules.md#administration and this
   phase's final report. *(done)*
 
-## Future phases
+- **FASE 12 — Customers, Cart & Orders / Sales** — SALES bounded context (`apps/api/src/sales/`):
+  customers CRUD + per-tenant identification uniqueness + frozen customer snapshot; the vendor's
+  single open cart with negotiated per-line pricing; orders / order items with frozen price
+  snapshots; invoice-or-sales-note document type (the platform records the choice, never issues a
+  fiscal document — ADR-0023); a two-phase inventory lifecycle — `POST /orders` reserves
+  (`RESERVATION`) into `pending`, `POST /orders/:id/confirm` commits (`RESERVATION_RELEASE` +
+  `SALE`) into `confirmed`, `POST /orders/:id/cancel` releases a still-`pending` reservation — all
+  through `StockLedgerService` (SALES never writes `inventory_balances`); idempotent order creation
+  via `idempotency_keys` (`scope = 'orders.create'`). Six new `sales.*` permission codes (migration
+  0026). Selling serialized/lot-tracked variants is deferred (no approved `order_items` ↔
+  `product_serials`/`product_lots` model — see this phase's final report and
+  database.md#orders-conceptual--sales-not-built-yet). Exceptional (below-`min_price`) pricing,
+  `price_approvals`, `sales_returns`, event-outbox writes and any frontend remain out of scope.
+  *(done)*
 
-- **FASE 12 — Customers, Cart & Orders / Sales** — SALES bounded context: customers, carts,
-  orders, order items, negotiated/frozen pricing, invoice-or-sales-note selection, customer
-  snapshot, inventory reservation/commit integration and idempotent order creation.
+## Future phases
 
 - **FASE 13 — Sales Returns & Exceptional Pricing** — sales returns/disposition and the
   SALES-dependent exceptional-discount approval workflow, including price approvals and their
@@ -188,8 +199,8 @@ explicit review/commit.
 
 ## Current status
 
-FASE 0–11 are completed and committed.
+FASE 0–12 are completed and committed.
 
-FASE 12 is the next phase to be started.
+FASE 13 (Sales Returns & Exceptional Pricing) is the next phase to be started.
 
 No future phase has been started merely by defining its database schema or architecture.

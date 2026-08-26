@@ -151,9 +151,9 @@ location can have a QR code), REPORTS.
 
 **Consumed by:** nothing depends on QR — it is a leaf module.
 
-## SALES (future — not built in this phase)
+## SALES
 
-**Responsibility:** the commerce flow — a customer builds a cart, which becomes an order (with a
+**Responsibility:** the commerce flow — a vendor builds a cart, which becomes an order (with a
 negotiated price, an invoice-or-sales-note choice, and a frozen customer snapshot), which consumes
 inventory, and which may later be returned. Full schema in
 [database.md#cart](database.md#cart), [database.md#orders-conceptual--sales-not-built-yet](database.md#orders-conceptual--sales-not-built-yet),
@@ -163,15 +163,50 @@ and [database.md#sales-returns-and-disposition](database.md#sales-returns-and-di
 [ADR-0022](../decisions/0022-pricing-tiers-and-discount-approval.md),
 [ADR-0023](../decisions/0023-document-type-and-external-invoicing.md)).
 
-- `customers`, `carts`/`cart_items`, `orders`/`order_items`, `price_approvals`, `sales_returns`/
-  `sales_return_items`.
+- `customers`, `carts`/`cart_items`, `orders`/`order_items` (FASE 12). `price_approvals`,
+  `sales_returns`/`sales_return_items` — schema-ready, application behavior is FASE 13.
 
-**Depends on:** CORE, CATALOG, INVENTORY.
+**Depends on:** CORE (tenant scoping, audit), CATALOG (reads `product_variants`/`products` directly
+for price + sellability — SALES must validate a negotiated price against `min_price` server-side
+even for a caller who cannot *see* it, ADR-0028), INVENTORY (`StockLedgerService` — the one stock
+locking convoy; `LocationAuthorizationService` — ADR-0024; `LocationsRepository` /
+`InventoryBalancesRepository`).
 
-This module is designed conceptually now (see
-[Order flow](#order-flow-conceptual--sales-not-implemented-yet)) but not implemented. Its exceptional
-price approvals notify a supervisor/administrator via the same outbox → n8n → Telegram path as any
-other event ([events.md](events.md)), never a direct Telegram integration inside SALES itself.
+**Implemented in `apps/api/src/sales/` (FASE 12):**
+
+- **Customers** — `GET/POST /customers`, `GET/PATCH /customers/:id`, search by
+  displayName/taxId/email/phone. `taxId` (identification) is unique per tenant, never globally
+  (`customers_tenant_id_tax_id_key`). Soft-deleted, never physically removed (historical orders
+  still reference `customer_id`). `sales.customers.view`/`sales.customers.manage` (migration 0026).
+- **Cart** — a singular `/cart` resource owned by the authenticated vendor (`carts.user_id`); one
+  open cart per vendor (enforced in-service via `findOpenByUser` + a `pg_advisory_xact_lock`, not a
+  new unique index). `GET /cart`, `POST /cart`, `PATCH /cart`, `POST/PATCH/DELETE /cart/items[/:id]`.
+  No inventory is reserved by cart edits (database.md#cart's explicit design) — availability is a
+  live read shown for guidance. `sales.carts.manage`.
+- **Orders** — `GET /orders`, `GET /orders/:id`, `POST /orders` (checkout, `Idempotency-Key`
+  required), `POST /orders/:id/confirm`, `POST /orders/:id/cancel`. Two-phase lifecycle:
+  `POST /orders` validates everything under lock, freezes the customer + per-line price snapshots,
+  writes a `RESERVATION` movement per line and creates the order `pending`; `confirm` writes
+  `RESERVATION_RELEASE` + `SALE` per line (the inventory commit boundary) and moves to `confirmed`;
+  `cancel` releases a still-`pending` reservation (`RESERVATION_RELEASE`) and moves to `cancelled` —
+  a `confirmed` order can only be reversed by a sales return (FASE 13), never cancelled.
+  `sales.orders.view`/`.create`/`.cancel`.
+- **Document type** — `invoice` records `invoice_status = 'pending'` for a later external process;
+  `sales_note` carries a NULL `invoice_status`. The platform never issues a fiscal document
+  (ADR-0023). An `invoice` order additionally requires the customer to have taxId/email/phone/address.
+- **Pricing** — a per-line negotiated price within `[min_price, max_price]` completes now; a price
+  below `min_price` is an exceptional discount whose approval workflow is FASE 13 — FASE 12 rejects
+  it in a controlled way (409), never silently bypassing the floor. Above `max_price` is always
+  invalid (400). No `price_approvals` rows, no `tenant_price_policies` reads in this phase.
+
+**Deliberately not built in FASE 12** (each scoped to a later phase): selling serialized/lot-tracked
+variants (no approved `order_items` ↔ `product_serials`/`product_lots` linkage exists, and
+`inventory_movements` has no serial/lot column — the same "not fully pinned" gap FASE 8/10 flagged;
+FASE 12 rejects such lines with a controlled `422`); the `price_approvals` exceptional-discount
+workflow and `sales_returns` (FASE 13); any `event_outbox` write (FASE 14); Telegram/n8n
+(FASE 15); any frontend (FASE 16/17). Its exceptional-price approvals will notify a
+supervisor/administrator via the same outbox → n8n → Telegram path as any other event
+([events.md](events.md)), never a direct Telegram integration inside SALES itself.
 
 ## NOTIFICATIONS
 
@@ -329,6 +364,12 @@ The event write happens in the **same database transaction** as the inventory ch
 [events.md](events.md#why-outbox) for why.
 
 ## Order flow (conceptual — SALES not implemented yet)
+
+> **Implemented in FASE 12** — heading kept for anchor stability. The diagram below is the
+> checkout half; FASE 12 splits it into a `pending` (reservation) phase and a `confirm` (commit)
+> phase, and never creates a `price_approvals` row (below-`min_price` is rejected until FASE 13).
+> See [SALES](#sales) and
+> [database.md#fase-12-application-behavior](database.md#fase-12-application-behavior).
 
 ```mermaid
 sequenceDiagram

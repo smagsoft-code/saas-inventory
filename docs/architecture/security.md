@@ -98,6 +98,20 @@ tenant-scoped exactly like every other endpoint in this document — a foreign-t
 (database.md's table, same section) — `GET`/`PATCH /administration/tenant-settings`, tenant-scoped
 exactly like every other endpoint in this document.
 
+**SALES (FASE 12)** adds `sales.customers.view`/`.manage`, `sales.carts.manage`,
+`sales.orders.view`/`.create`/`.cancel` (database.md's table, migration 0026), and reuses
+`pricing.floor.view` (whether `min_price` appears in a cart/order response — ADR-0028's field-level
+authorization, enforced by explicit DTO construction, never a strip-after-the-fact) and
+`pricing.discount.request` (FASE 13). Checkout (`POST /orders`) additionally goes through the
+location-scoped authorization check on the cart's `location_id` (ADR-0024). Every SALES resource
+(customer, cart, cart item, order, order item) is tenant-scoped exactly like every other endpoint
+here — a foreign-tenant id resolves as "not found." The cart is user-scoped on top of that: a
+vendor only ever reaches their own open cart, addressed as a singular `/cart`, never by id.
+`POST /orders` is idempotent (`idempotency_keys`, `scope = 'orders.create'`) and every stock effect
+goes through INVENTORY's one locking convoy — SALES never writes `inventory_balances` directly, and
+a below-`min_price` price is rejected, never bypassed (the exceptional-discount approval workflow is
+FASE 13).
+
 **Platform-admin (SuperAdmin) authentication (FASE 11)** — a second, structurally independent
 authentication mechanism from everything above, never sharing a code path or a permission catalog
 entry with tenant RBAC. See [ADR-0032](../decisions/0032-platform-admin-authentication.md) for the

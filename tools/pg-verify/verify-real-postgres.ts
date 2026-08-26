@@ -434,7 +434,7 @@ async function verifyPoolingLeakage(): Promise<void> {
 }
 
 async function verifyPermissionsCatalog(): Promise<void> {
-  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin + Prompt 07 warehouses/locations admin + Prompt 08 inventory balances/movements admin + FASE 11 administration codes)');
+  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin + Prompt 07 warehouses/locations admin + Prompt 08 inventory balances/movements admin + FASE 11 administration codes + FASE 12 sales codes)');
   const expected = [
     'catalog.attributes.manage',
     'catalog.qr.manage',
@@ -483,13 +483,23 @@ async function verifyPermissionsCatalog(): Promise<void> {
     // FASE 11 (migration 0023) — tenant configuration administration (administration/tenant-settings).
     'administration.settings.view',
     'administration.settings.manage',
+    // FASE 12 (migration 0026) — SALES (customers, carts, orders). `module.resource.action`
+    // pattern, no ADR needed for the catalog rows (same precedent as 0014-0017/0023).
+    // pricing.floor.view/pricing.discount.request already existed since migration 0001 and are
+    // reused by SALES as-is — no new pricing codes.
+    'sales.customers.view',
+    'sales.customers.manage',
+    'sales.carts.manage',
+    'sales.orders.view',
+    'sales.orders.create',
+    'sales.orders.cancel',
   ].sort();
 
   const sql = postgres(MIGRATOR_URL, { max: 1 });
   try {
     const rows = await sql<{ code: string }[]>`select code from permissions order by code`;
     const actual = rows.map((r) => r.code).sort();
-    check('permissions catalog has exactly 33 rows', actual.length === 33, `found ${actual.length}`);
+    check('permissions catalog has exactly 39 rows', actual.length === 39, `found ${actual.length}`);
     check('permissions catalog matches database.md exactly, no narrative examples added', JSON.stringify(actual) === JSON.stringify(expected));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       console.log('  expected:', expected);

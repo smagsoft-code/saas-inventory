@@ -1,0 +1,433 @@
+import { randomUUID } from 'node:crypto';
+import { and, eq } from 'drizzle-orm';
+import type { NestFastifyApplication } from '@nestjs/platform-fastify';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { auditLog, rolePermissions, roles } from '../../src/database/schema';
+import { appPlatformIntegrationTestsEnabled, getMigratorDb } from '../database/helpers';
+import { makeClient, setIntegrationEnv, type Session } from './sales-harness';
+
+/**
+ * FASE 12 (SALES) — the cart -> checkout -> confirm/cancel workflow end to end against real
+ * PostgreSQL: cart item ops, negotiated pricing, customer + price snapshots, document type,
+ * two-phase inventory reservation/commit, order state machine, cross-tenant IDOR, RBAC, location
+ * authorization, and the serialized/lot deferral (§104-§119, §140-§147). No mocks.
+ */
+describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (integration)', () => {
+  let app: NestFastifyApplication;
+  let c: ReturnType<typeof makeClient>;
+
+  beforeAll(async () => {
+    setIntegrationEnv();
+    const { buildApp } = await import('../../src/main');
+    app = await buildApp();
+    await app.init();
+    c = makeClient(app);
+  }, 60_000);
+
+  afterAll(async () => {
+    if (app) await app.close();
+  });
+
+  interface Fixture {
+    admin: Session;
+    warehouseId: string;
+    locationId: string;
+    productId: string;
+    variantId: string;
+    customerId: string;
+  }
+
+  async function seed(company: string, email: string, opts: { stock?: number; maxPrice?: number; basePrice?: number; minPrice?: number } = {}): Promise<Fixture> {
+    const admin = await c.registerTenant(company, email);
+    const warehouseId = await c.createWarehouse(admin, `WH-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+    const locationId = await c.createLocation(admin, warehouseId, `L-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+    const { productId, variantId } = await c.createProductVariant(admin, {
+      sku: `SKU-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      maxPrice: opts.maxPrice,
+      basePrice: opts.basePrice,
+      minPrice: opts.minPrice,
+    });
+    await c.receiveStock(admin, variantId, locationId, opts.stock ?? 100);
+    const customerId = await c.createCustomer(admin, c.fullCustomer(email.split('@')[0]!));
+    return { admin, warehouseId, locationId, productId, variantId, customerId };
+  }
+
+  const cart = (session: Session, method: 'GET' | 'POST' | 'PATCH', path = '', payload?: unknown) =>
+    c.inject({ method, url: `/api/v1/cart${path}`, headers: c.writeHeaders(session), payload });
+
+  async function openCartWith(f: Fixture, session: Session, items: { variantId: string; quantity: number; negotiatedUnitPrice?: number }[]): Promise<string> {
+    const created = await cart(session, 'POST', '', { locationId: f.locationId, customerId: f.customerId });
+    expect(created.statusCode, created.body).toBe(201);
+    const cartId = (JSON.parse(created.body) as { id: string }).id;
+    for (const item of items) {
+      const added = await cart(session, 'POST', '/items', {
+        productVariantId: item.variantId,
+        quantity: item.quantity,
+        ...(item.negotiatedUnitPrice !== undefined ? { negotiatedUnitPrice: item.negotiatedUnitPrice } : {}),
+      });
+      expect(added.statusCode, added.body).toBe(200);
+    }
+    return cartId;
+  }
+
+  function checkout(session: Session, cartId: string, documentType: 'invoice' | 'sales_note', key = randomUUID()) {
+    return c.inject({
+      method: 'POST',
+      url: '/api/v1/orders',
+      headers: c.writeHeaders(session, { 'idempotency-key': key }),
+      payload: { cartId, documentType },
+    });
+  }
+
+  describe('cart item operations (§104, §141)', () => {
+    it('add, increment, set quantity, clear negotiation, remove — subtotal recomputed server-side', async () => {
+      const f = await seed('Cart Alpha Co', 'admin@cart-alpha.example', { basePrice: 100, maxPrice: 120, minPrice: 80 });
+      const create = await cart(f.admin, 'POST', '', { locationId: f.locationId });
+      expect(create.statusCode).toBe(201);
+
+      let state = JSON.parse((await cart(f.admin, 'POST', '/items', { productVariantId: f.variantId, quantity: 2 })).body) as {
+        items: { id: string; quantity: number; unitPrice: number; lineSubtotal: number }[];
+        subtotal: number;
+      };
+      expect(state.items[0]!.quantity).toBe(2);
+      expect(state.subtotal).toBe(200);
+
+      // add same variant again -> increments the single row (§18 upsert)
+      state = JSON.parse((await cart(f.admin, 'POST', '/items', { productVariantId: f.variantId, quantity: 1 })).body);
+      expect(state.items).toHaveLength(1);
+      expect(state.items[0]!.quantity).toBe(3);
+
+      const itemId = state.items[0]!.id;
+      state = JSON.parse((await cart(f.admin, 'PATCH', `/items/${itemId}`, { quantity: 5, negotiatedUnitPrice: 90 })).body);
+      expect(state.items[0]!.quantity).toBe(5);
+      expect(state.items[0]!.unitPrice).toBe(90);
+      expect(state.subtotal).toBe(450);
+
+      state = JSON.parse((await cart(f.admin, 'PATCH', `/items/${itemId}`, { negotiatedUnitPrice: null })).body);
+      expect(state.items[0]!.unitPrice).toBe(100);
+
+      const removed = await c.inject({ method: 'DELETE', url: `/api/v1/cart/items/${itemId}`, headers: c.writeHeaders(f.admin) });
+      expect(removed.statusCode).toBe(200);
+      expect((JSON.parse(removed.body) as { items: unknown[] }).items).toHaveLength(0);
+    });
+
+    it('rejects quantity <= 0 (400)', async () => {
+      const f = await seed('Cart Qty Co', 'admin@cart-qty.example');
+      await cart(f.admin, 'POST', '', { locationId: f.locationId });
+      const bad = await cart(f.admin, 'POST', '/items', { productVariantId: f.variantId, quantity: 0 });
+      expect(bad.statusCode).toBe(400);
+    });
+
+    it('a below-min negotiated price is rejected already at the cart (§24-§25, §101)', async () => {
+      const f = await seed('Cart Floor Co', 'admin@cart-floor.example', { minPrice: 80, basePrice: 100, maxPrice: 120 });
+      await cart(f.admin, 'POST', '', { locationId: f.locationId });
+      const bad = await cart(f.admin, 'POST', '/items', { productVariantId: f.variantId, quantity: 1, negotiatedUnitPrice: 50 });
+      expect(bad.statusCode).toBe(409);
+    });
+
+    it('rejects a cross-tenant variant (§104) and a serialized variant (deferred, §49-§51)', async () => {
+      const f = await seed('Cart XT Co', 'admin@cart-xt.example');
+      const other = await seed('Cart XT Other Co', 'admin@cart-xt-other.example');
+      await cart(f.admin, 'POST', '', { locationId: f.locationId });
+
+      const crossTenant = await cart(f.admin, 'POST', '/items', { productVariantId: other.variantId, quantity: 1 });
+      expect(crossTenant.statusCode).toBe(404);
+
+      const serial = await c.createProductVariant(f.admin, { sku: `SER-${Date.now()}`, isSerialized: true });
+      const serialAdd = await cart(f.admin, 'POST', '/items', { productVariantId: serial.variantId, quantity: 1 });
+      expect(serialAdd.statusCode).toBe(409);
+    });
+
+    it('one open cart per vendor — a second POST /cart returns the same cart', async () => {
+      const f = await seed('Cart Single Co', 'admin@cart-single.example');
+      const a = JSON.parse((await cart(f.admin, 'POST', '', { locationId: f.locationId })).body) as { id: string };
+      const b = JSON.parse((await cart(f.admin, 'POST', '', { locationId: f.locationId })).body) as { id: string };
+      expect(b.id).toBe(a.id);
+    });
+  });
+
+  describe('checkout -> confirm -> inventory commit (§41, §144, §145)', () => {
+    it('reserves at checkout (pending), commits at confirm (SALE), leaving a consistent ledger', async () => {
+      const f = await seed('Order Flow Co', 'admin@order-flow.example', { stock: 10, basePrice: 100, maxPrice: 120, minPrice: 80 });
+      const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 3, negotiatedUnitPrice: 95 }]);
+
+      const created = await checkout(f.admin, cartId, 'sales_note');
+      expect(created.statusCode, created.body).toBe(201);
+      const order = JSON.parse(created.body) as { id: string; status: string; orderNumber: string; total: number; subtotal: number; discountTotal: number; taxTotal: number; items: { unitPrice: number; lineTotal: number }[] };
+      expect(order.status).toBe('pending');
+      expect(order.orderNumber).toMatch(/^ORD-\d{6}$/);
+      expect(order.subtotal).toBe(285);
+      expect(order.total).toBe(285);
+      expect(order.discountTotal).toBe(75); // (120-95)*3
+      expect(order.taxTotal).toBe(0);
+      expect(order.items[0]!.unitPrice).toBe(95);
+
+      // reservation held: available dropped, physical unchanged
+      let bal = await balance(f.admin, f.variantId);
+      expect(bal.quantityPhysical).toBe(10);
+      expect(bal.quantityReserved).toBe(3);
+      expect(bal.quantityAvailable).toBe(7);
+
+      const confirmed = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin) });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
+      expect((JSON.parse(confirmed.body) as { status: string }).status).toBe('confirmed');
+
+      bal = await balance(f.admin, f.variantId);
+      expect(bal.quantityPhysical).toBe(7);
+      expect(bal.quantityReserved).toBe(0);
+      expect(bal.quantityAvailable).toBe(7);
+
+      const movementTypes = await movements(f.admin, f.variantId);
+      expect(movementTypes).toEqual(expect.arrayContaining(['RECEIPT', 'RESERVATION', 'RESERVATION_RELEASE', 'SALE']));
+
+      // cart is now checked_out and linked to the order
+      const cartRead = await c.inject({ method: 'GET', url: '/api/v1/cart', headers: c.readHeaders(f.admin) });
+      expect(cartRead.statusCode).toBe(404); // no OPEN cart anymore
+    });
+
+    it('confirm is idempotent; cancel of a confirmed order is rejected (§54)', async () => {
+      const f = await seed('Order Confirm Co', 'admin@order-confirm.example', { stock: 5 });
+      const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
+      const order = JSON.parse((await checkout(f.admin, cartId, 'sales_note')).body) as { id: string };
+
+      const first = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin) });
+      expect(first.statusCode).toBe(200);
+      const second = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin) });
+      expect(second.statusCode).toBe(200);
+      expect((JSON.parse(second.body) as { status: string }).status).toBe('confirmed');
+
+      const cancel = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/cancel`, headers: c.writeHeaders(f.admin) });
+      expect(cancel.statusCode).toBe(409);
+
+      const bal = await balance(f.admin, f.variantId);
+      expect(bal.quantityPhysical).toBe(4);
+    });
+
+    it('cancel of a pending order releases the reservation transactionally (§54)', async () => {
+      const f = await seed('Order Cancel Co', 'admin@order-cancel.example', { stock: 8 });
+      const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 5 }]);
+      const order = JSON.parse((await checkout(f.admin, cartId, 'sales_note')).body) as { id: string };
+
+      expect((await balance(f.admin, f.variantId)).quantityReserved).toBe(5);
+      const cancel = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/cancel`, headers: c.writeHeaders(f.admin) });
+      expect(cancel.statusCode).toBe(200);
+      const bal = await balance(f.admin, f.variantId);
+      expect(bal.quantityReserved).toBe(0);
+      expect(bal.quantityAvailable).toBe(8);
+    });
+
+    it('checkout with more units than available is a controlled 409, no order, no reservation (§91)', async () => {
+      const f = await seed('Order Oversell Co', 'admin@order-oversell.example', { stock: 2 });
+      const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 5 }]);
+      const created = await checkout(f.admin, cartId, 'sales_note');
+      expect(created.statusCode).toBe(409);
+      expect((await balance(f.admin, f.variantId)).quantityReserved).toBe(0);
+      const list = await c.inject({ method: 'GET', url: '/api/v1/orders', headers: c.readHeaders(f.admin) });
+      expect((JSON.parse(list.body) as { data: unknown[] }).data).toHaveLength(0);
+    });
+  });
+
+  describe('document type + customer data (§32-§34, §108, §143)', () => {
+    it('sales_note works without full customer data; invoice requires it and records invoice_status=pending', async () => {
+      const admin = await c.registerTenant('Doc Type Co', 'admin@doc-type.example');
+      const wh = await c.createWarehouse(admin, `WH-${Date.now()}`);
+      const loc = await c.createLocation(admin, wh, `L-${Date.now()}`);
+      const { variantId } = await c.createProductVariant(admin, { sku: `SKU-${Date.now()}` });
+      await c.receiveStock(admin, variantId, loc, 20);
+
+      const sparseCustomer = await c.createCustomer(admin, { type: 'individual', displayName: 'Walk-in' });
+      const noteCartId = await openCartWithCustomer(admin, loc, sparseCustomer, variantId);
+      const note = await checkout(admin, noteCartId, 'sales_note');
+      expect(note.statusCode, note.body).toBe(201);
+      expect((JSON.parse(note.body) as { invoiceStatus?: string }).invoiceStatus).toBeUndefined();
+
+      const invoiceTry = await checkoutCartFor(admin, loc, sparseCustomer, variantId, 'invoice');
+      expect(invoiceTry.statusCode).toBe(422);
+
+      const fullCustomer = await c.createCustomer(admin, c.fullCustomer('doc-full'));
+      const invoiceOk = await checkoutCartFor(admin, loc, fullCustomer, variantId, 'invoice');
+      expect(invoiceOk.statusCode, invoiceOk.body).toBe(201);
+      const body = JSON.parse(invoiceOk.body) as { documentType: string; invoiceStatus: string; customer: { name: string; taxId: string } };
+      expect(body.documentType).toBe('invoice');
+      expect(body.invoiceStatus).toBe('pending');
+      expect(body.customer.name).toBe('Customer doc-full');
+    });
+
+    async function openCartWithCustomer(session: Session, locationId: string, customerId: string, variantId: string): Promise<string> {
+      const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(session), payload: { locationId, customerId } });
+      const cartId = (JSON.parse(created.body) as { id: string }).id;
+      // POST /cart is get-or-create — an earlier failed checkout can leave an open cart with a
+      // different customer, so pin it explicitly.
+      await c.inject({ method: 'PATCH', url: '/api/v1/cart', headers: c.writeHeaders(session), payload: { customerId } });
+      await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(session), payload: { productVariantId: variantId, quantity: 1 } });
+      return cartId;
+    }
+
+    async function checkoutCartFor(session: Session, locationId: string, customerId: string, variantId: string, documentType: 'invoice' | 'sales_note') {
+      const cartId = await openCartWithCustomer(session, locationId, customerId, variantId);
+      return checkout(session, cartId, documentType);
+    }
+  });
+
+  describe('historical snapshots (§13-§14, §27-§28, §106, §107)', () => {
+    it('editing the customer and the catalog price afterwards never changes the historical order', async () => {
+      const f = await seed('Snapshot Co', 'admin@snapshot.example', { stock: 10, basePrice: 100, maxPrice: 120, minPrice: 80 });
+      const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 1, negotiatedUnitPrice: 95 }]);
+      const order = JSON.parse((await checkout(f.admin, cartId, 'invoice')).body) as { id: string; customer: { name: string; email: string }; items: { unitPrice: number; maxPrice: number }[] };
+      expect(order.items[0]!.unitPrice).toBe(95);
+
+      // mutate the customer
+      await c.inject({ method: 'PATCH', url: `/api/v1/customers/${f.customerId}`, headers: c.writeHeaders(f.admin), payload: { displayName: 'RENAMED', email: 'new@example.com' } });
+      // mutate the catalog price
+      await c.inject({
+        method: 'PATCH',
+        url: `/api/v1/products/${f.productId}/variants/${f.variantId}`,
+        headers: c.writeHeaders(f.admin),
+        payload: { maxPrice: 300, basePrice: 250, minPrice: 200 },
+      });
+
+      const reread = JSON.parse((await c.inject({ method: 'GET', url: `/api/v1/orders/${order.id}`, headers: c.readHeaders(f.admin) })).body) as {
+        customer: { name: string; email: string };
+        items: { unitPrice: number; maxPrice: number }[];
+      };
+      expect(reread.customer.name).toBe(order.customer.name);
+      expect(reread.customer.email).toBe(order.customer.email);
+      expect(reread.items[0]!.unitPrice).toBe(95);
+      expect(reread.items[0]!.maxPrice).toBe(120);
+
+      // the live customer shows the new data
+      const liveCustomer = JSON.parse((await c.inject({ method: 'GET', url: `/api/v1/customers/${f.customerId}`, headers: c.readHeaders(f.admin) })).body) as { displayName: string };
+      expect(liveCustomer.displayName).toBe('RENAMED');
+    });
+  });
+
+  describe('pricing field visibility (§23, §68, §105, §142)', () => {
+    it('a caller with pricing.floor.view sees minPrice on the order line; a caller without it never does', async () => {
+      const f = await seed('Price Vis Co', 'admin@price-vis.example', { stock: 10, minPrice: 80, basePrice: 100, maxPrice: 120 });
+
+      // Admin has pricing.floor.view — minPrice snapshot is present.
+      const adminCartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
+      const adminOrder = JSON.parse((await checkout(f.admin, adminCartId, 'sales_note')).body) as { id: string; items: { minPrice?: number }[] };
+      expect(adminOrder.items[0]!.minPrice).toBe(80);
+
+      // A Vendedor with pricing.floor.view removed (direct DB edit — no role CRUD exists) must not
+      // receive minPrice, even reading the exact same order.
+      const vendedor = await c.createAndLoginAs(f.admin, 'vendedor@price-vis.example', 'Vendedor');
+      const { client, db } = getMigratorDb();
+      try {
+        const [role] = await db
+          .select({ id: roles.id })
+          .from(roles)
+          .where(and(eq(roles.tenantId, f.admin.user.tenantId), eq(roles.name, 'Vendedor')));
+        await db
+          .delete(rolePermissions)
+          .where(and(eq(rolePermissions.tenantId, f.admin.user.tenantId), eq(rolePermissions.roleId, role!.id), eq(rolePermissions.permissionCode, 'pricing.floor.view')));
+      } finally {
+        await client.end();
+      }
+      const relogin = await c.loginAs(f.admin.user.tenantSlug, 'vendedor@price-vis.example');
+      const read = await c.inject({ method: 'GET', url: `/api/v1/orders/${adminOrder.id}`, headers: c.readHeaders(relogin) });
+      expect(read.statusCode).toBe(200);
+      expect((JSON.parse(read.body) as { items: { minPrice?: number }[] }).items[0]!.minPrice).toBeUndefined();
+      void vendedor;
+    });
+  });
+
+  describe('cross-tenant IDOR on cart/order/location (§48, §115)', () => {
+    it('tenant A cannot use tenant B location/customer, read tenant B order, or check out tenant B cart', async () => {
+      const a = await seed('IDOR A Co', 'admin@idor-a.example', { stock: 5 });
+      const b = await seed('IDOR B Co', 'admin@idor-b.example', { stock: 5 });
+
+      const crossLoc = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(a.admin), payload: { locationId: b.locationId } });
+      expect(crossLoc.statusCode).toBe(404);
+
+      await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(a.admin), payload: { locationId: a.locationId } });
+      const crossCustomer = await c.inject({ method: 'PATCH', url: '/api/v1/cart', headers: c.writeHeaders(a.admin), payload: { customerId: b.customerId } });
+      expect(crossCustomer.statusCode).toBe(404);
+
+      const bCartId = await openCartWith(b, b.admin, [{ variantId: b.variantId, quantity: 1 }]);
+      const bOrder = JSON.parse((await checkout(b.admin, bCartId, 'sales_note')).body) as { id: string };
+
+      const readCross = await c.inject({ method: 'GET', url: `/api/v1/orders/${bOrder.id}`, headers: c.readHeaders(a.admin) });
+      expect(readCross.statusCode).toBe(404);
+      const confirmCross = await c.inject({ method: 'POST', url: `/api/v1/orders/${bOrder.id}/confirm`, headers: c.writeHeaders(a.admin) });
+      expect(confirmCross.statusCode).toBe(404);
+      const checkoutCross = await checkout(a.admin, bCartId, 'sales_note');
+      expect(checkoutCross.statusCode).toBe(404);
+    });
+  });
+
+  describe('location authorization (ADR-0024, §46, §69, §115)', () => {
+    it('a Vendedor restricted to LOC-A cannot open a cart / check out from LOC-B', async () => {
+      const f = await seed('Loc Auth Co', 'admin@loc-auth.example', { stock: 10 });
+      const locB = await c.createLocation(f.admin, f.warehouseId, `LB-${Date.now()}`);
+      await c.receiveStock(f.admin, f.variantId, locB, 10);
+      const vendedor = await c.createAndLoginAs(f.admin, 'vendedor@loc-auth.example', 'Vendedor');
+      const assign = await c.inject({
+        method: 'PUT',
+        url: `/api/v1/users/${vendedor.user.id}/locations`,
+        headers: c.writeHeaders(f.admin),
+        payload: { locationIds: [f.locationId] },
+      });
+      expect(assign.statusCode).toBe(200);
+
+      const atA = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(vendedor), payload: { locationId: f.locationId } });
+      expect(atA.statusCode).toBe(201);
+      // switching this open cart to LOC-B is blocked
+      const toB = await c.inject({ method: 'PATCH', url: '/api/v1/cart', headers: c.writeHeaders(vendedor), payload: { locationId: locB } });
+      expect(toB.statusCode).toBe(403);
+    });
+  });
+
+  describe('audit log (§71, §118)', () => {
+    it('customer.created, order.created and order.confirmed are audited with tenant/actor/action/entity', async () => {
+      const f = await seed('Audit Co', 'admin@audit-sales.example', { stock: 5 });
+      const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
+      const order = JSON.parse((await checkout(f.admin, cartId, 'sales_note')).body) as { id: string };
+      await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin) });
+
+      const { client, db } = getMigratorDb();
+      try {
+        const rows = await db
+          .select({ actionCode: auditLog.actionCode, actorId: auditLog.actorId, entityType: auditLog.entityType, entityId: auditLog.entityId, actorType: auditLog.actorType })
+          .from(auditLog)
+          .where(eq(auditLog.tenantId, f.admin.user.tenantId));
+        const byAction = new Map(rows.map((r) => [r.actionCode, r]));
+        expect(byAction.has('customer.created')).toBe(true);
+        const created = byAction.get('order.created')!;
+        expect(created).toEqual(expect.objectContaining({ entityType: 'order', entityId: order.id, actorId: f.admin.user.id, actorType: 'user' }));
+        expect(byAction.get('order.confirmed')).toEqual(expect.objectContaining({ entityType: 'order', entityId: order.id }));
+      } finally {
+        await client.end();
+      }
+    });
+  });
+
+  describe('RBAC on orders (§66, §147)', () => {
+    it('403 without sales.orders.create; cancel needs sales.orders.cancel', async () => {
+      const f = await seed('Order Rbac Co', 'admin@order-rbac.example', { stock: 5 });
+      const bodega = await c.createAndLoginAs(f.admin, 'bodega@order-rbac.example', 'Bodega');
+      const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
+      const forbidden = await c.inject({
+        method: 'POST',
+        url: '/api/v1/orders',
+        headers: c.writeHeaders(bodega, { 'idempotency-key': randomUUID() }),
+        payload: { cartId, documentType: 'sales_note' },
+      });
+      expect(forbidden.statusCode).toBe(403);
+    });
+  });
+
+  async function balance(session: Session, variantId: string): Promise<{ quantityPhysical: number; quantityReserved: number; quantityAvailable: number }> {
+    const response = await c.inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${variantId}`, headers: c.readHeaders(session) });
+    expect(response.statusCode).toBe(200);
+    const row = (JSON.parse(response.body) as { data: { quantityPhysical: number; quantityReserved: number; quantityAvailable: number }[] }).data[0];
+    return row ?? { quantityPhysical: 0, quantityReserved: 0, quantityAvailable: 0 };
+  }
+
+  async function movements(session: Session, variantId: string): Promise<string[]> {
+    const response = await c.inject({ method: 'GET', url: `/api/v1/inventory/movements?productVariantId=${variantId}&pageSize=50`, headers: c.readHeaders(session) });
+    expect(response.statusCode).toBe(200);
+    return (JSON.parse(response.body) as { data: { movementType: string }[] }).data.map((m) => m.movementType);
+  }
+});

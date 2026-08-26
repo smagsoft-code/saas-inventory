@@ -1,0 +1,341 @@
+import { BadRequestException, ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { InsufficientStockError } from '../../inventory/stock-ledger.service';
+import { SalesPricingService } from '../pricing/sales-pricing.service';
+import { OrdersService } from './orders.service';
+
+vi.mock('../../database/tenant-context', () => ({
+  withTenantTransaction: vi.fn(async (_tenantId: string, fn: (tx: unknown) => unknown) => fn({ execute: vi.fn() })),
+}));
+
+const TENANT_ID = 'tenant-1';
+const ACTOR_ID = 'user-1';
+const META = { correlationId: undefined, ipAddress: undefined };
+const KEY = 'idem-key-1';
+const PERMS = ['sales.orders.create', 'pricing.floor.view'];
+
+const CART = {
+  id: 'cart-1',
+  tenantId: TENANT_ID,
+  locationId: 'loc-1',
+  userId: ACTOR_ID,
+  customerId: 'customer-1',
+  orderId: null,
+  status: 'open',
+  version: 0,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  expiresAt: null,
+};
+
+const CUSTOMER = {
+  id: 'customer-1',
+  tenantId: TENANT_ID,
+  type: 'business',
+  displayName: 'Contoso SA',
+  taxId: '1790012345001',
+  email: 'ap@contoso.example',
+  phone: '+59322222222',
+  address: { city: 'Quito' },
+  status: 'active',
+  notes: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  deletedAt: null,
+};
+
+const VARIANT = {
+  id: 'variant-1',
+  productId: 'product-1',
+  productName: 'Refrigerator',
+  sku: 'SKU-1',
+  unit: 'unit',
+  maxPrice: '120',
+  basePrice: '100',
+  minPrice: '80',
+  cost: '60',
+  status: 'active',
+  isSerialized: false,
+  isLotTracked: false,
+};
+
+const LOCATION = { id: 'loc-1', tenantId: TENANT_ID, status: 'active', isSellable: true };
+
+function build() {
+  const ordersRepository = {
+    findById: vi.fn(),
+    lockById: vi.fn(),
+    listByTenant: vi.fn(),
+    nextOrderNumber: vi.fn().mockResolvedValue('ORD-000001'),
+    create: vi.fn(),
+    updateStatus: vi.fn(),
+  };
+  const orderItemsRepository = { listByOrder: vi.fn().mockResolvedValue([]), createMany: vi.fn().mockResolvedValue([]) };
+  const cartsRepository = { lockById: vi.fn().mockResolvedValue(CART), update: vi.fn() };
+  const cartItemsRepository = { listByCart: vi.fn().mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2', negotiatedUnitPrice: '95' }]) };
+  const customersRepository = { findById: vi.fn().mockResolvedValue(CUSTOMER) };
+  const catalogLookup = { findVariantById: vi.fn().mockResolvedValue(VARIANT) };
+  const locationsRepository = { findById: vi.fn().mockResolvedValue(LOCATION) };
+  const locationAuthorizationService = { assertAccess: vi.fn() };
+  const stockLedgerService = { applyMovement: vi.fn().mockResolvedValue({}) };
+  const idempotencyRepository = { find: vi.fn().mockResolvedValue(undefined), create: vi.fn() };
+  const auditLogService = { record: vi.fn() };
+
+  const createdOrder = {
+    id: 'order-1',
+    tenantId: TENANT_ID,
+    locationId: 'loc-1',
+    customerId: 'customer-1',
+    customerNameSnapshot: 'Contoso SA',
+    customerTaxIdSnapshot: '1790012345001',
+    customerEmailSnapshot: 'ap@contoso.example',
+    customerPhoneSnapshot: '+59322222222',
+    customerAddressSnapshot: { city: 'Quito' },
+    orderNumber: 'ORD-000001',
+    documentType: 'invoice',
+    invoiceStatus: 'pending',
+    status: 'pending',
+    subtotal: '190.00',
+    discountTotal: '50.00',
+    taxTotal: '0.00',
+    total: '190.00',
+    currency: 'USD',
+    placedByUserId: ACTOR_ID,
+    correlationId: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+  ordersRepository.create.mockResolvedValue(createdOrder);
+
+  const service = new OrdersService(
+    ordersRepository as never,
+    orderItemsRepository as never,
+    cartsRepository as never,
+    cartItemsRepository as never,
+    customersRepository as never,
+    catalogLookup as never,
+    locationsRepository as never,
+    locationAuthorizationService as never,
+    stockLedgerService as never,
+    new SalesPricingService(),
+    idempotencyRepository as never,
+    auditLogService as never,
+  );
+  return {
+    service,
+    ordersRepository,
+    orderItemsRepository,
+    cartsRepository,
+    cartItemsRepository,
+    customersRepository,
+    catalogLookup,
+    locationsRepository,
+    stockLedgerService,
+    idempotencyRepository,
+    createdOrder,
+  };
+}
+
+describe('OrdersService.checkout', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('requires an Idempotency-Key header (§57)', async () => {
+    const { service } = build();
+    await expect(service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, undefined)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  it('returns the cached result when the same key + same request is replayed (§60)', async () => {
+    const { service, idempotencyRepository, ordersRepository } = build();
+    idempotencyRepository.find.mockResolvedValue({ requestHash: 'x', responseBody: { id: 'order-1' } });
+    // requestHash must match — recompute the way the service does.
+    const { createHash } = await import('node:crypto');
+    const hash = createHash('sha256').update(JSON.stringify({ cartId: 'cart-1', documentType: 'sales_note' })).digest('hex');
+    idempotencyRepository.find.mockResolvedValue({ requestHash: hash, responseBody: { id: 'order-1', orderNumber: 'ORD-000001' } });
+    const result = await service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY);
+    expect(result).toEqual({ id: 'order-1', orderNumber: 'ORD-000001' });
+    expect(ordersRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects the same key reused with a different request body (§59)', async () => {
+    const { service, idempotencyRepository } = build();
+    idempotencyRepository.find.mockResolvedValue({ requestHash: 'a-different-hash', responseBody: {} });
+    await expect(
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'invoice' }, META, KEY),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('rejects an empty cart', async () => {
+    const { service, cartItemsRepository } = build();
+    cartItemsRepository.listByCart.mockResolvedValue([]);
+    await expect(
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('rejects a cart owned by a different user (§40, IDOR)', async () => {
+    const { service, cartsRepository } = build();
+    cartsRepository.lockById.mockResolvedValue({ ...CART, userId: 'someone-else' });
+    await expect(
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY),
+    ).rejects.toThrow(NotFoundException);
+  });
+
+  it('rejects an invoice when the customer is missing required data (§34)', async () => {
+    const { service, customersRepository } = build();
+    customersRepository.findById.mockResolvedValue({ ...CUSTOMER, taxId: null, email: null });
+    await expect(
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'invoice' }, META, KEY),
+    ).rejects.toThrow(UnprocessableEntityException);
+  });
+
+  it('allows a sales_note for a customer without full invoice data', async () => {
+    const { service, customersRepository, ordersRepository } = build();
+    customersRepository.findById.mockResolvedValue({ ...CUSTOMER, taxId: null, email: null, address: null });
+    await service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY);
+    expect(ordersRepository.create).toHaveBeenCalled();
+  });
+
+  it('rejects a below-min negotiated price on any line — never bypassed (§25)', async () => {
+    const { service, cartItemsRepository } = build();
+    cartItemsRepository.listByCart.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '1', negotiatedUnitPrice: '40' }]);
+    await expect(
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY),
+    ).rejects.toThrow(ConflictException);
+  });
+
+  it('rejects a serialized / lot-tracked variant (deferred, §49-§51)', async () => {
+    const { service, catalogLookup } = build();
+    catalogLookup.findVariantById.mockResolvedValue({ ...VARIANT, isLotTracked: true });
+    await expect(
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY),
+    ).rejects.toThrow(UnprocessableEntityException);
+  });
+
+  it('freezes the customer snapshot from the validated row and computes totals server-side (§13, §27, §30)', async () => {
+    const { service, ordersRepository, orderItemsRepository, stockLedgerService, cartsRepository, idempotencyRepository } = build();
+    await service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'invoice' }, META, KEY);
+
+    const orderValues = ordersRepository.create.mock.calls[0]![1] as Record<string, unknown>;
+    expect(orderValues.customerNameSnapshot).toBe('Contoso SA');
+    expect(orderValues.customerTaxIdSnapshot).toBe('1790012345001');
+    expect(orderValues.status).toBe('pending');
+    expect(orderValues.invoiceStatus).toBe('pending');
+    expect(orderValues.currency).toBe('USD');
+    expect(orderValues.placedByUserId).toBe(ACTOR_ID);
+    // 2 units at 95 negotiated => subtotal 190; (120-95)*2 = 50 discount; total = subtotal.
+    expect(orderValues.subtotal).toBe('190.00');
+    expect(orderValues.discountTotal).toBe('50.00');
+    expect(orderValues.taxTotal).toBe('0.00');
+    expect(orderValues.total).toBe('190.00');
+
+    const itemValues = (orderItemsRepository.createMany.mock.calls[0]![1] as Record<string, unknown>[])[0] as Record<string, unknown>;
+    expect(itemValues.unitPriceSnapshot).toBe('95.00');
+    expect(itemValues.minPriceSnapshot).toBe('80.00');
+    expect(itemValues.lineTotal).toBe('190.00');
+    expect(itemValues.isExceptionalDiscount).toBe(false);
+
+    expect(stockLedgerService.applyMovement).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ movementType: 'RESERVATION', quantity: 2, referenceType: 'order' }),
+    );
+    expect(cartsRepository.update).toHaveBeenCalledWith(expect.anything(), TENANT_ID, 'cart-1', expect.objectContaining({ status: 'checked_out' }));
+    expect(idempotencyRepository.create).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ scope: 'orders.create', responseStatus: 201 }),
+    );
+  });
+
+  it('maps an insufficient-stock reservation failure to 409 (§44)', async () => {
+    const { service, stockLedgerService } = build();
+    stockLedgerService.applyMovement.mockRejectedValueOnce(new InsufficientStockError('nope'));
+    await expect(
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY),
+    ).rejects.toThrow(ConflictException);
+  });
+});
+
+describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('confirm on a pending order releases the reservation and writes a SALE (commit boundary)', async () => {
+    const { service, ordersRepository, orderItemsRepository, stockLedgerService } = build();
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID });
+    orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2', skuSnapshot: 'SKU-1' }]);
+    ordersRepository.updateStatus.mockResolvedValue({
+      id: 'order-1',
+      status: 'confirmed',
+      locationId: 'loc-1',
+      documentType: 'invoice',
+      invoiceStatus: 'pending',
+      orderNumber: 'ORD-000001',
+      customerNameSnapshot: 'Contoso SA',
+      subtotal: '190.00',
+      discountTotal: '50.00',
+      taxTotal: '0.00',
+      total: '190.00',
+      currency: 'USD',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', META);
+    const types = stockLedgerService.applyMovement.mock.calls.map((call) => (call[1] as { movementType: string }).movementType);
+    expect(types).toEqual(['RESERVATION_RELEASE', 'SALE']);
+  });
+
+  it('confirm is idempotent — an already-confirmed order returns without touching stock', async () => {
+    const { service, ordersRepository, stockLedgerService } = build();
+    ordersRepository.lockById.mockResolvedValue({
+      id: 'order-1',
+      status: 'confirmed',
+      locationId: 'loc-1',
+      documentType: 'invoice',
+      invoiceStatus: 'pending',
+      orderNumber: 'ORD-000001',
+      customerNameSnapshot: 'Contoso SA',
+      subtotal: '190.00',
+      discountTotal: '50.00',
+      taxTotal: '0.00',
+      total: '190.00',
+      currency: 'USD',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', META);
+    expect(stockLedgerService.applyMovement).not.toHaveBeenCalled();
+  });
+
+  it('cancel of a confirmed order is rejected — that needs a sales return (FASE 13, §54)', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'confirmed', locationId: 'loc-1' });
+    await expect(service.cancel(TENANT_ID, ACTOR_ID, PERMS, 'order-1', META)).rejects.toThrow(ConflictException);
+  });
+
+  it('cancel of a pending order releases every line reservation', async () => {
+    const { service, ordersRepository, orderItemsRepository, stockLedgerService } = build();
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1' });
+    orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2' }]);
+    ordersRepository.updateStatus.mockResolvedValue({
+      id: 'order-1',
+      status: 'cancelled',
+      locationId: 'loc-1',
+      documentType: 'sales_note',
+      invoiceStatus: null,
+      orderNumber: 'ORD-000001',
+      customerNameSnapshot: 'X',
+      subtotal: '0.00',
+      discountTotal: '0.00',
+      taxTotal: '0.00',
+      total: '0.00',
+      currency: 'USD',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await service.cancel(TENANT_ID, ACTOR_ID, PERMS, 'order-1', META);
+    expect(stockLedgerService.applyMovement).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ movementType: 'RESERVATION_RELEASE' }),
+    );
+  });
+});
