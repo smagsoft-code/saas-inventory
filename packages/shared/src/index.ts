@@ -94,6 +94,8 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'sales.orders.view',
       'sales.orders.create',
       'sales.orders.cancel',
+      'sales.returns.view',
+      'sales.returns.create',
     ],
   },
   Supervisor: {
@@ -118,6 +120,8 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'sales.orders.view',
       'sales.orders.create',
       'sales.orders.cancel',
+      'sales.returns.view',
+      'sales.returns.create',
     ],
   },
   Vendedor: {
@@ -133,20 +137,24 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'sales.orders.view',
       'sales.orders.create',
       'sales.orders.cancel',
+      'sales.returns.view',
+      'sales.returns.create',
     ],
   },
   Bodega: {
-    description: 'Opera transferencias y recepciones en las ubicaciones asignadas.',
+    description: 'Opera transferencias, recepciones y devoluciones en las ubicaciones asignadas.',
     permissionCodes: [
       'inventory.transfers.request',
       'inventory.transfers.dispatch',
       'inventory.transfers.receive',
+      'inventory.returns.manage',
       'products.view',
       'categories.view',
       'warehouses.view',
       'locations.view',
       'inventory.view',
       'inventory.adjust',
+      'sales.returns.view',
     ],
   },
 };

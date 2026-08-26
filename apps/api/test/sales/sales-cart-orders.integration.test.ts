@@ -118,11 +118,13 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
       expect(bad.statusCode).toBe(400);
     });
 
-    it('a below-min negotiated price is rejected already at the cart (§24-§25, §101)', async () => {
+    it('FASE 13: a below-min negotiated price CAN be staged in the cart (exceptional-discount flow); above-max is still rejected', async () => {
       const f = await seed('Cart Floor Co', 'admin@cart-floor.example', { minPrice: 80, basePrice: 100, maxPrice: 120 });
       await cart(f.admin, 'POST', '', { locationId: f.locationId });
-      const bad = await cart(f.admin, 'POST', '/items', { productVariantId: f.variantId, quantity: 1, negotiatedUnitPrice: 50 });
-      expect(bad.statusCode).toBe(409);
+      const belowMin = await cart(f.admin, 'POST', '/items', { productVariantId: f.variantId, quantity: 1, negotiatedUnitPrice: 50 });
+      expect(belowMin.statusCode, belowMin.body).toBe(200);
+      const aboveMax = await cart(f.admin, 'PATCH', '/items/' + (JSON.parse(belowMin.body) as { items: { id: string }[] }).items[0]!.id, { negotiatedUnitPrice: 500 });
+      expect(aboveMax.statusCode).toBe(400);
     });
 
     it('rejects a cross-tenant variant (§104) and a serialized variant (deferred, §49-§51)', async () => {

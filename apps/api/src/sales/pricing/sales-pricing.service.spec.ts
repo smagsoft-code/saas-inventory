@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, UnprocessableEntityException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
 import { SalesPricingService } from './sales-pricing.service';
 
@@ -25,33 +25,57 @@ describe('SalesPricingService', () => {
     });
   });
 
-  describe('assertAllowed', () => {
+  describe('resolveUnitPrice', () => {
     it('falls back to base price when no negotiation is proposed', () => {
-      expect(service.assertAllowed(undefined, CTX, 'SKU-1')).toBe(100);
-      expect(service.assertAllowed(null, CTX, 'SKU-1')).toBe(100);
+      expect(service.resolveUnitPrice(undefined, CTX, 'SKU-1')).toEqual({ unitPrice: 100, classification: 'within_range' });
+      expect(service.resolveUnitPrice(null, CTX, 'SKU-1')).toEqual({ unitPrice: 100, classification: 'within_range' });
     });
 
     it('returns a valid negotiated price unchanged', () => {
-      expect(service.assertAllowed(90, CTX, 'SKU-1')).toBe(90);
-      expect(service.assertAllowed(80, CTX, 'SKU-1')).toBe(80);
+      expect(service.resolveUnitPrice(90, CTX, 'SKU-1')).toEqual({ unitPrice: 90, classification: 'within_range' });
+    });
+
+    it('permits a below-minimum price, classified as exceptional (FASE 13 — no longer a 409 here)', () => {
+      expect(service.resolveUnitPrice(50, CTX, 'SKU-1')).toEqual({ unitPrice: 50, classification: 'below_min' });
     });
 
     it('rejects a price above the maximum (400)', () => {
-      expect(() => service.assertAllowed(130, CTX, 'SKU-1')).toThrow(BadRequestException);
-    });
-
-    it('rejects a price below the minimum as a controlled conflict — never bypassed (§25)', () => {
-      expect(() => service.assertAllowed(50, CTX, 'SKU-1')).toThrow(ConflictException);
-      try {
-        service.assertAllowed(50, CTX, 'SKU-1');
-      } catch (error) {
-        expect((error as Error).message).toMatch(/exceptional discount approval is required/i);
-      }
+      expect(() => service.resolveUnitPrice(130, CTX, 'SKU-1')).toThrow(BadRequestException);
     });
 
     it('rejects a negative or non-finite proposed price (400)', () => {
-      expect(() => service.assertAllowed(-1, CTX, 'SKU-1')).toThrow(BadRequestException);
-      expect(() => service.assertAllowed(Number.NaN, CTX, 'SKU-1')).toThrow(BadRequestException);
+      expect(() => service.resolveUnitPrice(-1, CTX, 'SKU-1')).toThrow(BadRequestException);
+      expect(() => service.resolveUnitPrice(Number.NaN, CTX, 'SKU-1')).toThrow(BadRequestException);
+    });
+  });
+
+  describe('assertWithinHardFloor', () => {
+    it('no-op when the tenant sets no hard floor (null)', () => {
+      expect(() => service.assertWithinHardFloor(1, 80, null, 'SKU-1')).not.toThrow();
+    });
+
+    it('no-op for a within-range price regardless of the floor', () => {
+      expect(() => service.assertWithinHardFloor(90, 80, 10, 'SKU-1')).not.toThrow();
+    });
+
+    it('permits a below-min price still within the configured percentage', () => {
+      // 20% below min (80) => hard floor 64; 70 is allowed.
+      expect(() => service.assertWithinHardFloor(70, 80, 20, 'SKU-1')).not.toThrow();
+    });
+
+    it('rejects a below-min price beyond the configured percentage (422)', () => {
+      // 20% below min (80) => hard floor 64; 60 is rejected outright.
+      expect(() => service.assertWithinHardFloor(60, 80, 20, 'SKU-1')).toThrow(UnprocessableEntityException);
+    });
+  });
+
+  describe('assertNotAboveMax (cart soft validation)', () => {
+    it('permits a below-min price (cart may stage an exceptional line)', () => {
+      expect(() => service.assertNotAboveMax(50, CTX, 'SKU-1')).not.toThrow();
+    });
+
+    it('still rejects an above-max price', () => {
+      expect(() => service.assertNotAboveMax(130, CTX, 'SKU-1')).toThrow(BadRequestException);
     });
   });
 });

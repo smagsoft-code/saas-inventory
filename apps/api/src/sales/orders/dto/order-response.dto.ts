@@ -48,6 +48,13 @@ export class OrderItemResponseDto {
   @ApiProperty({ type: Number, description: '(maxPrice - unitPrice) * quantity — informational.' })
   discountAmount!: number;
 
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'true when unitPrice is below the variant min_price at the moment of sale — the order cannot be confirmed until a price_approvals request for this line is approved (FASE 13).',
+  })
+  isExceptionalDiscount!: boolean;
+
   @ApiProperty({ type: Number, description: 'unitPrice * quantity.' })
   lineTotal!: number;
 }

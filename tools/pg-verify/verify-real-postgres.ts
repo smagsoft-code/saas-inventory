@@ -434,7 +434,7 @@ async function verifyPoolingLeakage(): Promise<void> {
 }
 
 async function verifyPermissionsCatalog(): Promise<void> {
-  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin + Prompt 07 warehouses/locations admin + Prompt 08 inventory balances/movements admin + FASE 11 administration codes + FASE 12 sales codes)');
+  section('14. permissions catalog — exact match against database.md (Prompt 02-A/02-B/02-D + Prompt 05-A core admin + Prompt 06 catalog admin + Prompt 07 warehouses/locations admin + Prompt 08 inventory balances/movements admin + FASE 11 administration codes + FASE 12 sales codes + FASE 13 sales-returns codes)');
   const expected = [
     'catalog.attributes.manage',
     'catalog.qr.manage',
@@ -493,13 +493,19 @@ async function verifyPermissionsCatalog(): Promise<void> {
     'sales.orders.view',
     'sales.orders.create',
     'sales.orders.cancel',
+    // FASE 13 (migration 0027) — SALES sales-returns lifecycle. Only the two SALES-owned
+    // administrative return actions are new; inspect/resolve reuse `inventory.returns.manage` and
+    // the exceptional-pricing workflow reuses `pricing.discount.request`/`.approve` (all from
+    // migration 0001). Same `module.resource.action` pattern, no ADR needed for the catalog rows.
+    'sales.returns.view',
+    'sales.returns.create',
   ].sort();
 
   const sql = postgres(MIGRATOR_URL, { max: 1 });
   try {
     const rows = await sql<{ code: string }[]>`select code from permissions order by code`;
     const actual = rows.map((r) => r.code).sort();
-    check('permissions catalog has exactly 39 rows', actual.length === 39, `found ${actual.length}`);
+    check('permissions catalog has exactly 41 rows', actual.length === 41, `found ${actual.length}`);
     check('permissions catalog matches database.md exactly, no narrative examples added', JSON.stringify(actual) === JSON.stringify(expected));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       console.log('  expected:', expected);

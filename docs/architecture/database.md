@@ -773,6 +773,34 @@ platform-admin (SuperAdmin) endpoints — those are gated structurally (`@Platfo
 | `administration.settings.view` | Ver `tenant_settings` (zona horaria, horario de atención) del tenant actual | Configuración | Bajo | — |
 | `administration.settings.manage` | Actualizar `tenant_settings` del tenant actual | Configuración | Medio | Upsert transparente — la primera escritura crea la fila |
 
+**FASE 12** adds the SALES customers/cart/orders permission codes (migration `0026`), same
+`module.resource.action` pattern, no ADR. `pricing.floor.view` and `pricing.discount.request`
+(migration 0001) are reused as-is — no new pricing codes.
+
+| Code | Capacidad | Alcance | Riesgo | Observación |
+| --- | --- | --- | --- | --- |
+| `sales.customers.view` | Listar y ver los clientes del tenant actual | Operativo | Bajo | — |
+| `sales.customers.manage` | Crear y actualizar clientes del tenant actual | Operativo | Medio | `tax_id` único por tenant; soft-delete, nunca borrado físico |
+| `sales.carts.manage` | Operar el carrito de venta (crear, ítems, negociar precio) | Operativo | Bajo | Un carrito abierto por vendedor |
+| `sales.orders.view` | Listar y ver las órdenes de venta del tenant actual | Operativo | Bajo | — |
+| `sales.orders.create` | Checkout y confirmación de una orden (reserva y compromete inventario) | Operativo / Sensible | Alto | Agrupa `POST /orders` y `POST /orders/:id/confirm` |
+| `sales.orders.cancel` | Cancelar una orden antes de la confirmación (libera la reserva) | Operativo | Medio | Una orden `confirmed` sólo se revierte con una devolución |
+
+**FASE 13** adds the SALES sales-returns lifecycle permission codes (migration `0027`), same
+pattern, no ADR. The stock-affecting half of the return lifecycle (inspect + resolve) reuses
+`inventory.returns.manage` (migration 0001); the exceptional-pricing workflow reuses
+`pricing.discount.request` / `pricing.discount.approve` (migration 0001) — no new pricing codes.
+
+| Code | Capacidad | Alcance | Riesgo | Observación |
+| --- | --- | --- | --- | --- |
+| `sales.returns.view` | Listar y ver las devoluciones de venta del tenant actual | Operativo | Bajo | — |
+| `sales.returns.create` | Crear y cancelar una solicitud de devolución (contra una orden confirmada) | Operativo | Medio | Separado de `inventory.returns.manage` (inspección/disposición física) — separación de funciones, ADR-0021 |
+
+Default role templates (`packages/shared/src/index.ts`): `sales.returns.view` + `sales.returns.create`
+go to Administrador / Supervisor / Vendedor; Bodega additionally receives `inventory.returns.manage`
+(physical return processing at its assigned locations, alongside its existing
+`inventory.transfers.*` / `inventory.adjust`) plus `sales.returns.view`.
+
 **No mobile-specific permission codes exist, or are needed.** Per
 [mobile.md#backend-as-the-sole-authority](mobile.md#backend-as-the-sole-authority), Flutter calls the
 identical permission-gated `/api/v1` endpoints web does — the same code above governs both clients.
@@ -2376,8 +2404,8 @@ it. This document only fixes the schema-level `CHECK` list of valid status value
 to `confirmed` while any of its `order_items` has an unresolved (`pending`) row in `price_approvals`
 ([§Pricing](#pricing-history-tenant-policy-and-exceptional-discount-approval)) — domain logic, checked
 via `price_approvals`' `(tenant_id, order_id, status)` index
-([§Indexes](#indexes)), not a new schema construct. (FASE 12 does not create `price_approvals` rows
-at all — a below-`min_price` line is rejected outright until FASE 13; see below.)
+([§Indexes](#indexes)), not a new schema construct. FASE 12 does not create `price_approvals` rows
+at all; FASE 13 does — see [§FASE 13 application behavior](#fase-13-application-behavior) below.
 
 ### FASE 12 application behavior
 
@@ -2433,7 +2461,8 @@ orders.total                   = subtotal + tax_total
 ```
 
 `is_exceptional_discount` is always `false` in FASE 12 (below-`min_price` lines are rejected, never
-sold).
+sold); FASE 13 sets it `true` for a below-`min_price` line and gates confirmation on an approval —
+see [§FASE 13 application behavior](#fase-13-application-behavior).
 
 **Order numbering** (`orders.order_number`) — `ORD-` + a 6-digit zero-padded per-tenant sequence,
 generated inside the checkout transaction as `pg_advisory_xact_lock(hashtext('sales.order_number:' ||
@@ -2456,12 +2485,43 @@ idempotency-success write. Once the order is created, `customer_name_snapshot` /
 `customer_address_snapshot` are frozen from the validated `customers` row and never change if the
 customer is later edited.
 
-**Serialized / lot-tracked variants** — selling them is **rejected** (`422`) in FASE 12: no approved
-model links `order_items` to `product_serials`/`product_lots`, and `inventory_movements` has no
-serial/lot column (the same "not fully pinned" gap [§Serialized and lot-tracked
+**Serialized / lot-tracked variants** — selling them is **rejected** (`422`) in FASE 12/13: no
+approved model links `order_items` to `product_serials`/`product_lots`, and `inventory_movements`
+has no serial/lot column (the same "not fully pinned" gap [§Serialized and lot-tracked
 rows](#serialized-and-lot-tracked-rows) and FASE 8/10 already flag). A future phase needs its own
 design pass (an `order_item_serials` link + a movement-level column, or equivalent) before this can
-be lifted.
+be lifted — it is not assigned to any phase yet.
+
+### FASE 13 application behavior
+
+FASE 13 adds the two SALES-dependent workflows this schema has carried since Prompt 03. Both write
+`audit_log` records only — no `event_outbox` write (FASE 14), no Telegram/n8n (FASE 15).
+
+**Exceptional-discount approvals (`price_approvals`), order-first.** The `price_approvals` schema
+FK-references `order_id` + `order_item_id` (both `NOT NULL`), so an approval cannot exist before the
+order — the workflow is:
+
+| Command | Transition / effect |
+| --- | --- |
+| `POST /orders` with a line where `unit_price < min_price` | The line is **no longer rejected**. `resolveUnitPrice` classifies it `below_min`; `assertWithinHardFloor` rejects it outright (`422`, no order) only if it is more than `tenant_price_policies.max_discount_below_min_percent` under the floor (a `NULL` policy value = no extra floor). Otherwise the order is created `pending` with `order_items.is_exceptional_discount = true` and the normal `RESERVATION` per line. |
+| `POST /api/v1/price-approvals` (`pricing.discount.request`, body `{ orderItemId, reason, requestedPrice? }`) | Locks the parent `orders` row (a concurrent `confirm` / second request serializes here), requires it `pending` and the line exceptional, then inserts a `pending` `price_approvals` row. `requested_price` / `min_price_at_request` / `max_price_at_request` are copied from the frozen `order_items` snapshot — the optional client `requestedPrice` is only a cross-check (`422` on mismatch), never the authority. `discount_amount = (max_price_at_request − requested_price) × quantity` (computed against `max_price`, so a caller without `pricing.floor.view` cannot back out the floor). The partial unique index `(tenant_id, order_item_id) WHERE status = 'pending'` is the DB backstop against a duplicate open request. |
+| `POST /api/v1/price-approvals/:id/approve` \| `/reject` (`pricing.discount.approve`) | Conditional `UPDATE price_approvals SET status = ?, approved_by = ?, resolved_at = now() WHERE id = ? AND status = 'pending'` — 0 rows on a double-click (already resolved) → idempotent return or `409`. The **requester can never resolve their own request** (`403`) — separation of duties, enforced in the service (the schema does not force it, per ADR-0022). |
+| `POST /orders/:id/confirm` | After locking the `orders` row, `assertExceptionalDiscountsApproved` reads `tenant_price_policies.exceptional_discount_requires_approval` (default `true`, **read-only this phase** — no configuration endpoint) and, when set, `lockByOrder`-row-locks every `price_approvals` row for the order: a `pending` one → `409`; an exceptional line with no `approved` row whose `requested_price` matches the frozen `unit_price_snapshot` → `409`. Never a permission-based bypass. Lock order: `orders` → `price_approvals` → `inventory_balances`. |
+| `POST /orders/:id/cancel` | Also marks any still-`pending` `price_approvals` for the order `cancelled` (nothing left to authorize). |
+
+**Sales returns / disposition (`sales_returns` / `sales_return_items`).** A reversal traced to a
+**`confirmed`** order — never a second negative order, never a cancellation (a `pending` order is
+cancelled, not returned).
+
+| Command | Transition / effect |
+| --- | --- |
+| `POST /api/v1/sales-returns` (`sales.returns.create`, `Idempotency-Key`, scope `sales_return.create`) | Locks the `orders` row, then for each line checks `requested ≤ returnable`, where `returnable = order_items.quantity − Σ(sales_return_items.quantity_returned for returns whose status ≠ 'cancelled')` — the aggregate check ADR-0021 leaves to application code, evaluated under the order-row lock so two concurrent requests that together over-return cannot both win. → `requested`, no inventory effect. |
+| `POST /api/v1/sales-returns/:id/inspect` (`inventory.returns.manage`) | Sets each line's `disposition` + `disposition_location_id` (+ `inspected_by`/`inspected_at`/`notes`, and `received_by` on the header). ADR-0021 enforced: `restock` requires an `is_sellable = true` location, every other disposition requires a non-sellable one. Location authorization (`LocationAuthorizationService`) checked against each `disposition_location_id`. → `inspecting`. |
+| `POST /api/v1/sales-returns/:id/resolve` (`inventory.returns.manage`, `Idempotency-Key`, scope `sales_return.disposition`) | Locks the return row (concurrent processing is exactly-once), requires every line inspected, re-checks location authorization, then writes **one `RETURN` `inventory_movements` row per line** through `StockLedgerService.applyMovement` at `disposition_location_id` (`reference_type = 'sales_return_item'`, deterministic ledger key `sales-return:<itemId>`) — SALES never writes `inventory_balances` directly. `restock` → the sellable location's physical stock rises; `quarantine`/`damaged`/`scrap` → a non-sellable location's physical stock rises (fully ledgered, never counted as available anywhere). → `resolved`. |
+| `POST /api/v1/sales-returns/:id/cancel` (`sales.returns.create`) | `requested`/`inspecting` → `cancelled` (a `resolved` return cannot be cancelled). Frees the returned quantity back to `returnable`. |
+
+Returns never `UPDATE` `orders` / `order_items` (the latter has no `UPDATE` grant) — the original
+sale's snapshot and quantities are immutable.
 
 ---
 
@@ -2641,6 +2701,10 @@ happened to that sale, same reasoning as `orders` itself
 **Idempotency:** return creation and disposition recording both go through the general
 `idempotency_keys` table (`scope = 'sales_return.create'` / `'sales_return.disposition'`), matching
 every other genuinely user-retriable action in this schema.
+
+Application behavior (the command lifecycle, the returnable-quantity check, the ADR-0021 sellable /
+non-sellable location enforcement, the exactly-once `RETURN` movement) is implemented in FASE 13 —
+see [§FASE 13 application behavior](#fase-13-application-behavior).
 
 ---
 

@@ -79,6 +79,13 @@ function build() {
   const locationAuthorizationService = { assertAccess: vi.fn() };
   const stockLedgerService = { applyMovement: vi.fn().mockResolvedValue({}) };
   const idempotencyRepository = { find: vi.fn().mockResolvedValue(undefined), create: vi.fn() };
+  const pricePoliciesRepository = {
+    getEffective: vi.fn().mockResolvedValue({ exceptionalDiscountRequiresApproval: true, maxDiscountBelowMinPercent: null }),
+  };
+  const priceApprovalsRepository = {
+    lockByOrder: vi.fn().mockResolvedValue([]),
+    cancelPendingByOrder: vi.fn().mockResolvedValue(0),
+  };
   const auditLogService = { record: vi.fn() };
 
   const createdOrder = {
@@ -119,6 +126,8 @@ function build() {
     stockLedgerService as never,
     new SalesPricingService(),
     idempotencyRepository as never,
+    pricePoliciesRepository as never,
+    priceApprovalsRepository as never,
     auditLogService as never,
   );
   return {
@@ -132,6 +141,8 @@ function build() {
     locationsRepository,
     stockLedgerService,
     idempotencyRepository,
+    pricePoliciesRepository,
+    priceApprovalsRepository,
     createdOrder,
   };
 }
@@ -217,12 +228,32 @@ describe('OrdersService.checkout', () => {
     }
   });
 
-  it('rejects a below-min negotiated price on any line — never bypassed (§25)', async () => {
-    const { service, cartItemsRepository } = build();
+  it('FASE 13: a below-min negotiated price creates a pending order with an exceptional line (no longer a 409)', async () => {
+    const { service, cartItemsRepository, orderItemsRepository } = build();
+    cartItemsRepository.listByCart.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '1', negotiatedUnitPrice: '70' }]);
+    await service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY);
+    const itemValues = (orderItemsRepository.createMany.mock.calls[0]![1] as Record<string, unknown>[])[0] as Record<string, unknown>;
+    expect(itemValues.unitPriceSnapshot).toBe('70.00');
+    expect(itemValues.isExceptionalDiscount).toBe(true);
+  });
+
+  it('FASE 13: a below-min price beyond the tenant hard floor is rejected outright (422, no order)', async () => {
+    const { service, cartItemsRepository, pricePoliciesRepository, ordersRepository } = build();
+    pricePoliciesRepository.getEffective.mockResolvedValue({ exceptionalDiscountRequiresApproval: true, maxDiscountBelowMinPercent: 10 });
+    // min 80, 10% hard floor => 72; 40 is below it.
     cartItemsRepository.listByCart.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '1', negotiatedUnitPrice: '40' }]);
     await expect(
       service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY),
-    ).rejects.toThrow(ConflictException);
+    ).rejects.toThrow(UnprocessableEntityException);
+    expect(ordersRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('still rejects a price above the maximum (400)', async () => {
+    const { service, cartItemsRepository } = build();
+    cartItemsRepository.listByCart.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '1', negotiatedUnitPrice: '200' }]);
+    await expect(
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('rejects a serialized / lot-tracked variant (deferred, §49-§51)', async () => {

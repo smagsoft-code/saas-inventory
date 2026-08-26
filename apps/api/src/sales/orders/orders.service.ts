@@ -16,8 +16,11 @@ import type { CreateOrderItemValues, OrderItemRow } from '../repositories/order-
 import { OrderItemsRepository } from '../repositories/order-items.repository';
 import type { OrderRow } from '../repositories/orders.repository';
 import { OrdersRepository } from '../repositories/orders.repository';
+import { PriceApprovalsRepository } from '../repositories/price-approvals.repository';
 import { SalesCatalogLookupRepository } from '../repositories/sales-catalog-lookup.repository';
 import { SalesIdempotencyRepository } from '../repositories/sales-idempotency.repository';
+import type { EffectivePricePolicy } from '../repositories/tenant-price-policies.repository';
+import { TenantPricePoliciesRepository } from '../repositories/tenant-price-policies.repository';
 import type { AuditMeta } from '../sales-audit-meta';
 import { moneyString, roundMoney } from '../sales-money';
 import { SalesPricingService } from '../pricing/sales-pricing.service';
@@ -48,6 +51,10 @@ interface ResolvedLine {
   unitCost: string | null;
   discountAmount: number;
   lineTotal: number;
+  /** `unit_price` is below the variant's `min_price` — an exceptional discount. The order line is
+   * created with `is_exceptional_discount = true` and its order cannot be confirmed until a
+   * `price_approvals` row for it is `approved` (when the tenant policy requires approval). */
+  isExceptional: boolean;
 }
 
 /**
@@ -65,9 +72,15 @@ interface ResolvedLine {
  *
  * SALES never writes `inventory_balances` directly (§42) — every stock effect goes through
  * `StockLedgerService.applyMovement`, INVENTORY's one locking convoy, which is what makes two
- * simultaneous sales of the last unit safe (§44). No `price_approvals` rows, no `tenant_price_policies`
- * reads — exceptional pricing is FASE 13; a below-min price is rejected here in a controlled way
- * (SalesPricingService), never bypassed (§25).
+ * simultaneous sales of the last unit safe (§44).
+ *
+ * FASE 13 — exceptional pricing (order-first, per ADR-0022 / database.md#orders): a below-`min_price`
+ * line is no longer rejected at checkout. It creates the order `pending` with
+ * `order_items.is_exceptional_discount = true` (subject to the tenant hard floor,
+ * `tenant_price_policies.max_discount_below_min_percent`, read via `TenantPricePoliciesRepository`);
+ * `POST /price-approvals` then files the `price_approvals` request against that line, and
+ * `confirm` is gated (`assertExceptionalDiscountsApproved`) on every exceptional line having an
+ * `approved` request — never a permission-based bypass (§59). Above `max_price` is still a 400.
  */
 @Injectable()
 export class OrdersService {
@@ -83,6 +96,8 @@ export class OrdersService {
     private readonly stockLedgerService: StockLedgerService,
     private readonly pricingService: SalesPricingService,
     private readonly idempotencyRepository: SalesIdempotencyRepository,
+    private readonly pricePoliciesRepository: TenantPricePoliciesRepository,
+    private readonly priceApprovalsRepository: PriceApprovalsRepository,
     private readonly auditLogService: AuditLogService,
   ) {}
 
@@ -171,7 +186,8 @@ export class OrdersService {
       }
       await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, cart.locationId);
 
-      const lines = await this.resolveLines(tx, tenantId, cartItems);
+      const pricePolicy = await this.pricePoliciesRepository.getEffective(tx, tenantId);
+      const lines = await this.resolveLines(tx, tenantId, cartItems, pricePolicy);
 
       const subtotal = roundMoney(lines.reduce((sum, line) => sum + line.lineTotal, 0));
       const discountTotal = roundMoney(lines.reduce((sum, line) => sum + line.discountAmount, 0));
@@ -220,7 +236,7 @@ export class OrdersService {
         unitCostSnapshot: line.unitCost,
         quantity: String(line.quantity),
         discountAmount: moneyString(line.discountAmount),
-        isExceptionalDiscount: false,
+        isExceptionalDiscount: line.isExceptional,
         lineTotal: moneyString(line.lineTotal),
       }));
       await this.orderItemsRepository.createMany(tx, itemValues);
@@ -255,7 +271,13 @@ export class OrdersService {
         actorId,
         actionCode: 'order.created',
         entityId: orderId,
-        afterState: { orderNumber, documentType: dto.documentType, total: moneyString(total), lineCount: lines.length },
+        afterState: {
+          orderNumber,
+          documentType: dto.documentType,
+          total: moneyString(total),
+          lineCount: lines.length,
+          exceptionalLineCount: lines.filter((line) => line.isExceptional).length,
+        },
         meta,
       });
 
@@ -289,6 +311,8 @@ export class OrdersService {
 
       await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, order.locationId);
       const items = await this.orderItemsRepository.listByOrder(tx, tenantId, id);
+
+      await this.assertExceptionalDiscountsApproved(tx, tenantId, order.id, items);
 
       for (const item of items) {
         const quantity = Number(item.quantity);
@@ -369,6 +393,11 @@ export class OrdersService {
         }
       }
 
+      // A pending exceptional-discount request has nothing left to authorize once the order is
+      // cancelled — mark it `cancelled` in the same transaction (uses the `price_approvals`
+      // `cancelled` status, database.md#soft-delete-policy "Status, not delete").
+      await this.priceApprovalsRepository.cancelPendingByOrder(tx, tenantId, id);
+
       const updated = await this.ordersRepository.updateStatus(tx, tenantId, id, { status: 'cancelled' });
       if (!updated) {
         throw new NotFoundException('Order not found.');
@@ -400,7 +429,61 @@ export class OrdersService {
     }
   }
 
-  private async resolveLines(tx: TenantTransaction, tenantId: string, cartItems: { productVariantId: string; quantity: string; negotiatedUnitPrice: string | null }[]): Promise<ResolvedLine[]> {
+  /**
+   * FASE 13 confirmation gate (database.md#orders "Prompt 02-A: confirmation is gated on price
+   * approvals" + ADR-0022): an order with a below-`min_price` line
+   * (`order_items.is_exceptional_discount = true`) cannot move `pending` → `confirmed` unless every
+   * such line has an `approved` `price_approvals` row and none is still `pending` — when the tenant
+   * policy requires approval (the default). Runs inside the transaction that already holds the
+   * `orders` row lock (`lockById` at the top of `confirm`); `lockByOrder` additionally row-locks the
+   * `price_approvals` rows so a concurrent approve/reject serializes against this check (§102 lock
+   * order: orders → price_approvals → inventory_balances). No bypass for a Supervisor caller — the
+   * `pricing.discount.approve` permission authorizes *resolving* a request, never skipping the
+   * record (§59).
+   */
+  private async assertExceptionalDiscountsApproved(
+    tx: TenantTransaction,
+    tenantId: string,
+    orderId: string,
+    items: OrderItemRow[],
+  ): Promise<void> {
+    const exceptionalItemIds = items.filter((item) => item.isExceptionalDiscount).map((item) => item.id);
+    if (exceptionalItemIds.length === 0) {
+      return;
+    }
+    const policy = await this.pricePoliciesRepository.getEffective(tx, tenantId);
+    if (!policy.exceptionalDiscountRequiresApproval) {
+      return;
+    }
+    const approvals = await this.priceApprovalsRepository.lockByOrder(tx, tenantId, orderId);
+    for (const itemId of exceptionalItemIds) {
+      const forItem = approvals.filter((approval) => approval.orderItemId === itemId);
+      if (forItem.some((approval) => approval.status === 'pending')) {
+        throw new ConflictException(
+          'This order has an exceptional-discount request still awaiting approval — it cannot be confirmed yet.',
+        );
+      }
+      const item = items.find((candidate) => candidate.id === itemId);
+      const approved = forItem.find(
+        (approval) =>
+          approval.status === 'approved' &&
+          item !== undefined &&
+          Number(approval.requestedPrice) === Number(item.unitPriceSnapshot),
+      );
+      if (!approved) {
+        throw new ConflictException(
+          'This order has a below-minimum price with no approved exceptional-discount request — request approval (POST /price-approvals) or cancel the order.',
+        );
+      }
+    }
+  }
+
+  private async resolveLines(
+    tx: TenantTransaction,
+    tenantId: string,
+    cartItems: { productVariantId: string; quantity: string; negotiatedUnitPrice: string | null }[],
+    pricePolicy: EffectivePricePolicy,
+  ): Promise<ResolvedLine[]> {
     const lines: ResolvedLine[] = [];
     for (const cartItem of cartItems) {
       const variant = await this.catalogLookup.findVariantById(tx, tenantId, cartItem.productVariantId);
@@ -419,7 +502,19 @@ export class OrdersService {
       const basePrice = Number(variant.basePrice);
       const minPrice = Number(variant.minPrice);
       const negotiated = cartItem.negotiatedUnitPrice === null ? undefined : Number(cartItem.negotiatedUnitPrice);
-      const unitPrice = this.pricingService.assertAllowed(negotiated, { maxPrice, basePrice, minPrice }, variant.sku);
+      // FASE 13: a below-`min_price` line is no longer rejected here — it is classified as an
+      // exceptional discount. The tenant's hard floor still rejects a price too far below the
+      // minimum outright (it could never be authorized by an approval). Above `max_price` is
+      // still a 400.
+      const { unitPrice, classification } = this.pricingService.resolveUnitPrice(
+        negotiated,
+        { maxPrice, basePrice, minPrice },
+        variant.sku,
+      );
+      const isExceptional = classification === 'below_min';
+      if (isExceptional) {
+        this.pricingService.assertWithinHardFloor(unitPrice, minPrice, pricePolicy.maxDiscountBelowMinPercent, variant.sku);
+      }
       const quantity = Number(cartItem.quantity);
       const lineTotal = roundMoney(unitPrice * quantity);
       const discountAmount = roundMoney(Math.max(0, (maxPrice - unitPrice) * quantity));
@@ -435,6 +530,7 @@ export class OrdersService {
         unitCost: variant.cost,
         discountAmount,
         lineTotal,
+        isExceptional,
       });
     }
     return lines;
@@ -482,6 +578,7 @@ export class OrdersService {
       basePrice: Number(item.basePriceSnapshot),
       ...(canViewFloor ? { minPrice: Number(item.minPriceSnapshot) } : {}),
       discountAmount: Number(item.discountAmount),
+      isExceptionalDiscount: item.isExceptionalDiscount,
       lineTotal: Number(item.lineTotal),
     };
   }

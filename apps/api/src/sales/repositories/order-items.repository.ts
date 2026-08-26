@@ -49,6 +49,14 @@ export interface CreateOrderItemValues {
  */
 @Injectable()
 export class OrderItemsRepository {
+  async findById(tx: TenantTransaction, tenantId: string, id: string): Promise<OrderItemRow | undefined> {
+    const [row] = await tx
+      .select()
+      .from(orderItems)
+      .where(and(eq(orderItems.tenantId, tenantId), eq(orderItems.id, id)));
+    return row;
+  }
+
   async listByOrder(tx: TenantTransaction, tenantId: string, orderId: string): Promise<OrderItemRow[]> {
     return tx
       .select()

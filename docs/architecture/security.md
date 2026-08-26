@@ -108,14 +108,32 @@ location-scoped authorization check on the cart's `location_id` (ADR-0024). Ever
 here — a foreign-tenant id resolves as "not found." The cart is user-scoped on top of that: a
 vendor only ever reaches their own open cart, addressed as a singular `/cart`, never by id.
 `POST /orders` is idempotent (`idempotency_keys`, `scope = 'orders.create'`) and every stock effect
-goes through INVENTORY's one locking convoy — SALES never writes `inventory_balances` directly, and
-a below-`min_price` price is rejected, never bypassed (the exceptional-discount approval workflow is
-FASE 13). Closing a sale — `invoice` **or** `sales_note` — requires the customer's complete
+goes through INVENTORY's one locking convoy — SALES never writes `inventory_balances` directly.
+Closing a sale — `invoice` **or** `sales_note` — requires the customer's complete
 commercial record (name, identification, email, phone, address); the two document types differ only
 by document type / invoice status, never by required buyer data (PROMPT 012-A). `confirm` and
 `cancel` serialize on a `SELECT ... FOR UPDATE` of the `orders` row, so concurrent transitions on
 one order produce exactly-once inventory and audit effects — PostgreSQL, not an in-memory lock, is
 the serialization point (works across API instances).
+
+**SALES (FASE 13)** adds `sales.returns.view`/`.create` (migration 0027) and reuses
+`inventory.returns.manage` (return inspection/disposition) and
+`pricing.discount.request`/`.approve` (all migration 0001). **Exceptional pricing:** a
+below-`min_price` line is no longer rejected at checkout — it creates a `pending` order with
+`is_exceptional_discount = true` (subject to the tenant hard floor
+`tenant_price_policies.max_discount_below_min_percent`), and `POST /orders/:id/confirm` is blocked
+(409) until a `price_approvals` request for that line is `approved`. The `pricing.discount.approve`
+permission authorizes *resolving* a request, **never** skipping the record — there is no
+Supervisor bypass. A requester can **never** approve their own request (403). `min_price` in a
+`price_approvals` response is gated on `pricing.floor.view` and `discount_amount` is computed
+against `max_price`, so the floor never leaks (ADR-0028). **Sales returns:** only a `confirmed`
+order can be returned; `returnable = sold − Σ(non-cancelled returns)` is checked under a
+`SELECT ... FOR UPDATE` of the `orders` row (concurrent over-return is serialized); the `RETURN`
+inventory re-entry at `resolve` goes through `StockLedgerService` and an
+`inventory.returns.manage` + location-authorization check against each `disposition_location_id`.
+Every FASE 13 route is tenant-scoped (a foreign-tenant id is a 404), passes the live
+tenant-status / user-status guard (011-A/011-B), and rejects mass-assignment of
+`status`/`approvedBy`/`tenantId`/`minPrice`/etc. via the DTO allow-list.
 
 **Platform-admin (SuperAdmin) authentication (FASE 11)** — a second, structurally independent
 authentication mechanism from everything above, never sharing a code path or a permission catalog

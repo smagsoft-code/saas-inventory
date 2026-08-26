@@ -107,16 +107,37 @@ export function makeClient(app: NestFastifyApplication) {
     return (JSON.parse(response.body) as { id: string }).id;
   }
 
-  async function createLocation(admin: Session, warehouseId: string, code: string): Promise<string> {
+  async function createLocation(
+    admin: Session,
+    warehouseId: string,
+    code: string,
+    opts: { isSellable?: boolean } = {},
+  ): Promise<string> {
     const value = asCode(code);
     const response = await inject({
       method: 'POST',
       url: '/api/v1/locations',
       headers: writeHeaders(admin),
-      payload: { warehouseId, name: `Loc ${value}`, code: value },
+      payload: {
+        warehouseId,
+        name: `Loc ${value}`,
+        code: value,
+        ...(opts.isSellable === undefined ? {} : { isSellable: opts.isSellable }),
+      },
     });
     expect(response.statusCode, response.body).toBe(201);
     return (JSON.parse(response.body) as { id: string }).id;
+  }
+
+  /** Restrict a user to exactly the given locations (ADR-0024: zero rows = unrestricted). */
+  async function setUserLocations(admin: Session, userId: string, locationIds: string[]): Promise<void> {
+    const response = await inject({
+      method: 'PUT',
+      url: `/api/v1/users/${userId}/locations`,
+      headers: writeHeaders(admin),
+      payload: { locationIds },
+    });
+    expect(response.statusCode, response.body).toBe(200);
   }
 
   async function createProductVariant(
@@ -195,6 +216,7 @@ export function makeClient(app: NestFastifyApplication) {
     createAndLoginAs,
     createWarehouse,
     createLocation,
+    setUserLocations,
     createProductVariant,
     receiveStock,
     createCustomer,

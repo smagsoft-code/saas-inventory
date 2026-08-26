@@ -455,9 +455,10 @@ not re-subtracted). `order_number` is `ORD-` + a 6-digit per-tenant sequence
 FASE 12 assumption — no tenant currency config exists). Document type: `invoice` sets
 `invoice_status = 'pending'` and requires the customer to have taxId/email/phone/address;
 `sales_note` carries NULL `invoice_status`; the platform never issues a fiscal document (ADR-0023).
-A negotiated price within `[min_price, max_price]` completes; **below `min_price` is rejected
-(`409`), never bypassed** — the exceptional-discount approval workflow (`price_approvals`) is
-FASE 13. **Deliberately not built** (each a later phase): selling serialized/lot-tracked variants
+A negotiated price within `[min_price, max_price]` completes; in FASE 12 **below `min_price` was
+rejected (`409`), never bypassed** — FASE 13 replaces that with the order-first
+`price_approvals` workflow (see the FASE 13 paragraph below). **Deliberately not built in FASE 12**
+(each a later phase): selling serialized/lot-tracked variants
 (rejected `422` — no approved `order_items` ↔ `product_serials`/`product_lots` model, and
 `inventory_movements` has no serial/lot column, the same "not fully pinned" gap FASE 8/10 flagged),
 `price_approvals`/`sales_returns` (FASE 13), any `event_outbox` write (FASE 14), Telegram/n8n
@@ -495,3 +496,77 @@ rollback test via a mid-transition `ForbiddenException`, all counting `inventory
 `audit_log` rows directly from the DB) and the C1-C7 customer-data cases in
 `sales-cart-orders.integration.test.ts`. No new migration, table, permission code, ADR, or endpoint
 — both are clarifications of already-approved rules.
+
+FASE 13 added the two SALES-dependent workflows the `0009_sales` schema has carried, unused, since
+Prompt 03 — **no schema table was added or changed**. Two new permission codes
+(`sales.returns.view`/`sales.returns.create`, migration `0027`, `module.resource.action` pattern,
+same gap-filling precedent as 0014-0017/0023/0026); `inventory.returns.manage`,
+`pricing.discount.request`, `pricing.discount.approve` are reused as-is (all migration 0001).
+`DEFAULT_ROLE_TEMPLATES` (`packages/shared`) gives the two new codes to Administrador/Supervisor/
+Vendedor and additionally grants Bodega `inventory.returns.manage` (physical return processing is a
+warehouse task, alongside its existing `inventory.transfers.*`/`inventory.adjust`) + `sales.returns.view`.
+**Exceptional-discount pricing** (`apps/api/src/sales/pricing/price-approvals.*`,
+`repositories/price-approvals.repository.ts`, `repositories/tenant-price-policies.repository.ts`) is
+**order-first**, per ADR-0022 / database.md#orders ("confirmation is gated on price approvals") and
+the `price_approvals` schema (`order_id`/`order_item_id` `NOT NULL`, no cart/variant column): a
+below-`min_price` line is no longer rejected at checkout — `SalesPricingService.resolveUnitPrice`
+classifies it `below_min`, `assertWithinHardFloor` rejects it outright (`422`, no order) only if it
+is more than `tenant_price_policies.max_discount_below_min_percent` under the floor (read-only this
+phase — `TenantPricePoliciesRepository.getEffective` returns documented defaults when no row exists,
+there is no configuration endpoint), otherwise the order is created `pending` with
+`order_items.is_exceptional_discount = true` and the normal `RESERVATION`. `POST /price-approvals`
+(`pricing.discount.request`) locks the parent `orders` row, requires it `pending` + the line
+exceptional, and inserts a `pending` `price_approvals` row whose price/tier fields are copied from
+the frozen `order_items` snapshot — the optional client `requestedPrice` is a cross-check only
+(`422` on mismatch), never the authority (§50). `discount_amount` is computed against `max_price`
+(not `min_price`) so a caller without `pricing.floor.view` cannot back out the floor;
+`minPriceAtRequest` is omitted from the response for such a caller (ADR-0028, explicit DTO
+construction). `POST /price-approvals/:id/approve`|`/reject` (`pricing.discount.approve`) are
+conditional `UPDATE … WHERE status = 'pending'` transitions; the **requester can never resolve their
+own request** (`403`) — separation of duties, enforced in the service (the schema does not force it,
+per ADR-0022). `OrdersService.confirm` gained `assertExceptionalDiscountsApproved`: after locking
+the `orders` row it reads `tenant_price_policies.exceptional_discount_requires_approval` (default
+`true`) and, when set, `PriceApprovalsRepository.lockByOrder`-row-locks every approval for the order
+— a `pending` one → `409`, an exceptional line with no `approved` row matching its frozen
+`unit_price_snapshot` → `409`. **No permission-based bypass** (`pricing.discount.approve` authorizes
+*resolving* a request, never skipping the record — §59). Lock order everywhere: `orders` →
+`price_approvals` → `inventory_balances`. `OrdersService.cancel` additionally marks a cancelled
+order's still-`pending` approvals `cancelled`. Carts now accept a below-`min_price`
+`negotiatedUnitPrice` (`SalesPricingService.assertNotAboveMax` — only above-`max_price` is rejected
+early), since checkout turns it into the approval flow. **Sales returns / disposition**
+(`apps/api/src/sales/returns/returns.*`, `repositories/sales-returns.repository.ts`,
+`repositories/sales-return-items.repository.ts`) is a reversal traced to a **`confirmed`** order
+(`fulfilled` accepted for forward-compat but unreachable) — never a second negative order, never a
+cancellation. `POST /sales-returns` (`sales.returns.create`, `Idempotency-Key`, scope
+`sales_return.create`) locks the `orders` row and validates every line against `returnable =
+order_items.quantity − Σ(sales_return_items.quantity_returned for returns whose status ≠
+'cancelled')` under that lock — the aggregate check ADR-0021 leaves to application code, evaluated
+so two concurrent requests that together over-return cannot both win (`409`). `POST
+/sales-returns/:id/inspect` (`inventory.returns.manage`) sets each line's `disposition` +
+`disposition_location_id` (+ `inspected_by`/`inspected_at`/`notes`, and `received_by` on the
+header), enforcing ADR-0021 (`restock` → an `is_sellable = true` location, `quarantine`/`damaged`/
+`scrap` → a non-sellable one) and `LocationAuthorizationService` against each
+`disposition_location_id`; → `inspecting`. `POST /sales-returns/:id/resolve`
+(`inventory.returns.manage`, `Idempotency-Key`, scope `sales_return.disposition`) locks the return
+row (concurrent processing is exactly-once), requires every line inspected, re-checks location
+authorization, then writes **one `RETURN` `inventory_movements` row per line** through
+`StockLedgerService.applyMovement` at `disposition_location_id` (`reference_type =
+'sales_return_item'`, deterministic ledger key `sales-return:<itemId>`) — SALES never writes
+`inventory_balances` directly. `restock` raises the sellable location's physical stock;
+`quarantine`/`damaged`/`scrap` raise a non-sellable location's (fully ledgered, never counted as
+available anywhere — ADR-0021's non-sellable-location mechanism, chosen over "no movement at all").
+→ `resolved`. `POST /sales-returns/:id/cancel` (`sales.returns.create`) `requested`/`inspecting` →
+`cancelled` (a `resolved` return cannot be cancelled), freeing the quantity back to `returnable`.
+Returns never `UPDATE` `orders`/`order_items` — the original sale's snapshot and quantities are
+immutable. **Deliberately still not built** (each a later phase): any `event_outbox` write
+(FASE 14), Telegram/n8n (FASE 15), any frontend (FASE 16/17); selling serialized/lot-tracked
+variants stays a `422` (no approved `order_items` ↔ `product_serials`/`product_lots` model, no
+serial/lot column on `inventory_movements`) — not assigned to any phase yet. Verified end to end
+against real PostgreSQL via `tools/pg-verify` (279 integration tests, 0 skipped — including the
+P1-P18 exceptional-pricing suite and the R1-R12 returns suite: order-first below-min checkout,
+hard-floor rejection, self-approval block, cross-tenant 404, concurrent confirm of an approved
+exceptional order, min_price/cost visibility, concurrent over-return, restock vs quarantine
+re-entry, retry + concurrent resolve idempotency, location authorization, historical-order
+immutability). `pnpm --filter @saas-inventory/web build` still fails on the pre-existing Windows
+`EPERM` symlink error in Next.js standalone output-tracing (unchanged — `apps/web` untouched). No
+frontend UI for SALES exists yet (FASE 16/17).

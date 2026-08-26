@@ -73,11 +73,28 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   `price_approvals`, `sales_returns`, event-outbox writes and any frontend remain out of scope.
   *(done)*
 
-## Future phases
+- **FASE 13 — Sales Returns & Exceptional Pricing** — the two SALES-dependent workflows the
+  `0009_sales` schema has carried since Prompt 03, implemented in `apps/api/src/sales/`.
+  **Sales returns** (`sales_returns`/`sales_return_items`): a reversal traced to a **confirmed**
+  order (never a second negative order, never a cancellation), `requested → inspecting → resolved`
+  (or `→ cancelled`); `create` locks the `orders` row and validates every line against
+  `returnable = sold − already-returned` under that lock; `inspect` records each line's disposition
+  + re-entry location (ADR-0021: `restock` → a sellable location, `quarantine`/`damaged`/`scrap` →
+  a non-sellable one); `resolve` writes one `RETURN` `inventory_movements` row per line through
+  `StockLedgerService` (SALES never writes `inventory_balances` directly), idempotent via
+  `idempotency_keys` (`scope = 'sales_return.disposition'`) + a deterministic ledger key. Two new
+  permission codes (`sales.returns.view`/`sales.returns.create`, migration `0027`); `inspect`/
+  `resolve` reuse `inventory.returns.manage`. **Exceptional-discount approvals**
+  (`price_approvals`): order-first — a below-`min_price` line now creates the order `pending` with
+  `order_items.is_exceptional_discount = true` (subject to the tenant hard floor,
+  `tenant_price_policies.max_discount_below_min_percent`, read-only with defaults this phase);
+  `POST /price-approvals` files the request bound to that line; `POST /orders/:id/confirm` is gated
+  on every exceptional line having an `approved` request (never a permission-based bypass). Reuses
+  `pricing.discount.request`/`pricing.discount.approve`; the requester can never approve their own
+  request. No `event_outbox`/Telegram/n8n (FASE 14/15), no frontend (FASE 16/17); selling
+  serialized/lot-tracked variants stays deferred. *(done)*
 
-- **FASE 13 — Sales Returns & Exceptional Pricing** — sales returns/disposition and the
-  SALES-dependent exceptional-discount approval workflow, including price approvals and their
-  integration with inventory and the established audit/outbox architecture.
+## Future phases
 
 - **FASE 14 — Events & Outbox** — transactional domain-event publishing through the existing
   `event_outbox` design, reliable event claiming/retry behavior and the Event Processor.
@@ -199,8 +216,13 @@ explicit review/commit.
 
 ## Current status
 
-FASE 0–12 are completed and committed.
+FASE 0–13 are completed and committed.
 
-FASE 13 (Sales Returns & Exceptional Pricing) is the next phase to be started.
+FASE 14 (Events & Outbox) is the next phase to be started.
 
-No future phase has been started merely by defining its database schema or architecture.
+No future phase has been started merely by defining its database schema or architecture. In
+particular, `event_outbox` (FASE 14) has existed, fully migrated, since Prompt 03, and still has
+no application code — FASE 13 writes audit records but no domain events. Selling serialized /
+lot-tracked variants remains a pending explicit design (no approved `order_items` ↔
+`product_serials`/`product_lots` model, no serial/lot column on `inventory_movements`) — it is not
+assigned to any phase yet.

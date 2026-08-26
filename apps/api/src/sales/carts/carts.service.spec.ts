@@ -118,14 +118,26 @@ describe('CartsService', () => {
       ).rejects.toThrow(/serialized or lot-tracked/i);
     });
 
-    it('rejects a negotiated price below the floor (§24-§25)', async () => {
+    it('FASE 13: allows staging a below-floor negotiated price (checkout turns it into an exceptional-discount flow)', async () => {
+      const { service, cartsRepository, cartItemsRepository, catalogLookup } = buildService();
+      cartsRepository.findOpenByUser.mockResolvedValue(OPEN_CART);
+      cartsRepository.lockById.mockResolvedValue(OPEN_CART);
+      catalogLookup.findVariantById.mockResolvedValue(ACTIVE_VARIANT);
+      await service.addItem(TENANT_ID, USER_ID, PERMS, { productVariantId: 'variant-1', quantity: 1, negotiatedUnitPrice: 50 }, META);
+      expect(cartItemsRepository.upsert).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ negotiatedUnitPrice: 50 }),
+      );
+    });
+
+    it('still rejects a negotiated price above the maximum (400)', async () => {
       const { service, cartsRepository, catalogLookup } = buildService();
       cartsRepository.findOpenByUser.mockResolvedValue(OPEN_CART);
       cartsRepository.lockById.mockResolvedValue(OPEN_CART);
       catalogLookup.findVariantById.mockResolvedValue(ACTIVE_VARIANT);
       await expect(
-        service.addItem(TENANT_ID, USER_ID, PERMS, { productVariantId: 'variant-1', quantity: 1, negotiatedUnitPrice: 50 }, META),
-      ).rejects.toThrow(ConflictException);
+        service.addItem(TENANT_ID, USER_ID, PERMS, { productVariantId: 'variant-1', quantity: 1, negotiatedUnitPrice: 500 }, META),
+      ).rejects.toThrow(/maximum authorized price/i);
     });
 
     it('accepts a negotiated price within the authorized range and upserts the line', async () => {

@@ -143,10 +143,11 @@ export class CartsService {
       const variant = await this.loadSellableVariant(tx, tenantId, dto.productVariantId);
 
       // Soft, early guidance-level price validation (§101) — the authoritative check re-runs under
-      // lock at checkout (§20). Same rules as checkout so the vendor never stages a line the sale
-      // can't complete.
+      // lock at checkout (§20). A below-`min_price` line is now allowed to stage in the cart
+      // (FASE 13: checkout turns it into an exceptional order + approval flow); only an
+      // above-`max_price` price is rejected this early.
       if (dto.negotiatedUnitPrice !== undefined) {
-        this.pricingService.assertAllowed(
+        this.pricingService.assertNotAboveMax(
           dto.negotiatedUnitPrice,
           { maxPrice: Number(variant.maxPrice), basePrice: Number(variant.basePrice), minPrice: Number(variant.minPrice) },
           variant.sku,
@@ -197,7 +198,7 @@ export class CartsService {
 
       if (dto.negotiatedUnitPrice !== undefined && dto.negotiatedUnitPrice !== null) {
         const variant = await this.loadSellableVariant(tx, tenantId, item.productVariantId);
-        this.pricingService.assertAllowed(
+        this.pricingService.assertNotAboveMax(
           dto.negotiatedUnitPrice,
           { maxPrice: Number(variant.maxPrice), basePrice: Number(variant.basePrice), minPrice: Number(variant.minPrice) },
           variant.sku,

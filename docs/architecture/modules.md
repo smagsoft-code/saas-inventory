@@ -164,7 +164,7 @@ and [database.md#sales-returns-and-disposition](database.md#sales-returns-and-di
 [ADR-0023](../decisions/0023-document-type-and-external-invoicing.md)).
 
 - `customers`, `carts`/`cart_items`, `orders`/`order_items` (FASE 12). `price_approvals`,
-  `sales_returns`/`sales_return_items` — schema-ready, application behavior is FASE 13.
+  `sales_returns`/`sales_return_items` — application behavior added in FASE 13 (below).
 
 **Depends on:** CORE (tenant scoping, audit), CATALOG (reads `product_variants`/`products` directly
 for price + sellability — SALES must validate a negotiated price against `min_price` server-side
@@ -199,19 +199,47 @@ locking convoy; `LocationAuthorizationService` — ADR-0024; `LocationsRepositor
   (ADR-0023). Both document types require the **same** complete commercial customer record
   (display_name/taxId/email/phone/address) to close the sale — they differ only by document type /
   invoice status, never by required buyer data (PROMPT 012-A).
-- **Pricing** — a per-line negotiated price within `[min_price, max_price]` completes now; a price
-  below `min_price` is an exceptional discount whose approval workflow is FASE 13 — FASE 12 rejects
-  it in a controlled way (409), never silently bypassing the floor. Above `max_price` is always
-  invalid (400). No `price_approvals` rows, no `tenant_price_policies` reads in this phase.
+- **Pricing** — a per-line negotiated price within `[min_price, max_price]` completes. Above
+  `max_price` is always invalid (400). A price **below `min_price`** — from FASE 13 — is an
+  exceptional discount: it creates the order `pending` with `order_items.is_exceptional_discount =
+  true` (never silently bypassing the floor), subject to the tenant hard floor
+  (`tenant_price_policies.max_discount_below_min_percent`), and its order cannot be confirmed until
+  a `price_approvals` request for that line is approved. See **FASE 13** below.
 
-**Deliberately not built in FASE 12** (each scoped to a later phase): selling serialized/lot-tracked
-variants (no approved `order_items` ↔ `product_serials`/`product_lots` linkage exists, and
-`inventory_movements` has no serial/lot column — the same "not fully pinned" gap FASE 8/10 flagged;
-FASE 12 rejects such lines with a controlled `422`); the `price_approvals` exceptional-discount
-workflow and `sales_returns` (FASE 13); any `event_outbox` write (FASE 14); Telegram/n8n
-(FASE 15); any frontend (FASE 16/17). Its exceptional-price approvals will notify a
-supervisor/administrator via the same outbox → n8n → Telegram path as any other event
-([events.md](events.md)), never a direct Telegram integration inside SALES itself.
+**Added in FASE 13** (`apps/api/src/sales/pricing/`, `apps/api/src/sales/returns/`):
+
+- **Exceptional-discount approvals** — order-first (ADR-0022, database.md#orders "confirmation is
+  gated on price approvals"). `POST /price-approvals` (`pricing.discount.request`) files a request
+  bound to one `order_items` row of a still-`pending` order; the server derives the price / tier
+  snapshots from that frozen line (never from the client). `POST /price-approvals/:id/approve` and
+  `/reject` (`pricing.discount.approve`) are conditional `UPDATE ... WHERE status = 'pending'`
+  transitions; the requester can **never** resolve their own request (separation of duties,
+  enforced in the service — the schema does not force it). `OrdersService.confirm` reads
+  `tenant_price_policies.exceptional_discount_requires_approval` (default `true`, read-only this
+  phase) and, when set, blocks confirmation (409) unless every exceptional line has an `approved`
+  request and none is `pending` — `lockByOrder` row-locks the approvals so a concurrent
+  approve/reject serializes against confirmation (lock order: `orders` → `price_approvals` →
+  `inventory_balances`). `min_price` in an approval response is gated on `pricing.floor.view`
+  (ADR-0028); `discount_amount` is computed against `max_price` so it never leaks the floor.
+- **Sales returns / disposition** — a reversal traced to a **confirmed** order, never a second
+  negative order, never a cancellation. `POST /sales-returns` (`sales.returns.create`,
+  `Idempotency-Key`) locks the `orders` row and validates every line against
+  `returnable = sold − Σ(non-cancelled returns)` under that lock. `POST /sales-returns/:id/inspect`
+  (`inventory.returns.manage`) records each line's `disposition` + `disposition_location_id`
+  (ADR-0021: `restock` → an `is_sellable` location, `quarantine`/`damaged`/`scrap` → a
+  non-sellable one — enforced) and location authorization. `POST /sales-returns/:id/resolve`
+  (`inventory.returns.manage`, `Idempotency-Key`) writes one `RETURN` `inventory_movements` row per
+  line through `StockLedgerService` (SALES never writes `inventory_balances` directly), locking the
+  return row so concurrent processing is exactly-once. `POST /sales-returns/:id/cancel`
+  (`sales.returns.create`). Returns never mutate the original order / `order_items`.
+
+**Still deliberately not built** (each a later phase): selling serialized/lot-tracked variants (no
+approved `order_items` ↔ `product_serials`/`product_lots` linkage, no serial/lot column on
+`inventory_movements` — the same "not fully pinned" gap FASE 8/10/12 flagged; a `422`); any
+`event_outbox` write (FASE 14); Telegram/n8n (FASE 15); any frontend (FASE 16/17). The
+exceptional-price approval and sales-return events will reach a supervisor/administrator via the
+same outbox → n8n → Telegram path as any other event ([events.md](events.md)), never a direct
+Telegram integration inside SALES — FASE 13 writes the required `audit_log` records only.
 
 ## NOTIFICATIONS
 
@@ -370,10 +398,11 @@ The event write happens in the **same database transaction** as the inventory ch
 
 ## Order flow (conceptual — SALES not implemented yet)
 
-> **Implemented in FASE 12** — heading kept for anchor stability. The diagram below is the
-> checkout half; FASE 12 splits it into a `pending` (reservation) phase and a `confirm` (commit)
-> phase, and never creates a `price_approvals` row (below-`min_price` is rejected until FASE 13).
-> See [SALES](#sales) and
+> **Implemented in FASE 12, extended in FASE 13** — heading kept for anchor stability. The diagram
+> below is the checkout half; FASE 12 splits it into a `pending` (reservation) phase and a
+> `confirm` (commit) phase. FASE 13: a below-`min_price` line creates the `pending` order with
+> `is_exceptional_discount = true` and a `price_approvals` request must be `approved` before
+> `confirm`. See [SALES](#sales) and
 > [database.md#fase-12-application-behavior](database.md#fase-12-application-behavior).
 
 ```mermaid
