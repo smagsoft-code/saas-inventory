@@ -87,6 +87,7 @@ function build() {
     cancelPendingByOrder: vi.fn().mockResolvedValue(0),
   };
   const auditLogService = { record: vi.fn() };
+  const domainEventPublisher = { append: vi.fn() };
 
   const createdOrder = {
     id: 'order-1',
@@ -129,6 +130,7 @@ function build() {
     pricePoliciesRepository as never,
     priceApprovalsRepository as never,
     auditLogService as never,
+    domainEventPublisher as never,
   );
   return {
     service,

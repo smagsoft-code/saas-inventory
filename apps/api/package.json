@@ -8,6 +8,8 @@
     "start": "node dist/main.js",
     "worker:import:dev": "tsx watch src/import-worker/main.ts",
     "worker:import:start": "node dist/import-worker/main.js",
+    "worker:events:dev": "tsx watch src/event-processor/main.ts",
+    "worker:events:start": "node dist/event-processor/main.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
     "test": "vitest run",

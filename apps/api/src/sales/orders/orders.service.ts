@@ -4,6 +4,9 @@ import { generateId } from '@saas-inventory/shared';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { sql } from 'drizzle-orm';
 import { AuditLogService } from '../../common/audit/audit-log.service';
+import { DomainEventPublisher } from '../../common/events/domain-event-publisher.service';
+import type { OrderCancelledData, OrderConfirmedData } from '../../common/events/domain-event.contracts';
+import { EVENT_TYPES } from '../../common/events/event-types';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
 import { LocationsRepository } from '../../inventory/repositories/locations.repository';
@@ -99,6 +102,7 @@ export class OrdersService {
     private readonly pricePoliciesRepository: TenantPricePoliciesRepository,
     private readonly priceApprovalsRepository: PriceApprovalsRepository,
     private readonly auditLogService: AuditLogService,
+    private readonly domainEventPublisher: DomainEventPublisher,
   ) {}
 
   async list(tenantId: string, permissions: string[], query: ListOrdersQueryDto): Promise<PaginatedResult<OrderResponseDto>> {
@@ -355,6 +359,18 @@ export class OrdersService {
       }
 
       await this.writeAudit(tx, { tenantId, actorId, actionCode: 'order.confirmed', entityId: id, meta });
+      // Domain event — the physical sale is committed (§16). Written in THIS transaction, so it
+      // exists iff the confirmation does (§26/§97/§98). Only the real pending -> confirmed path
+      // reaches here; an idempotent retry returned early above and emits nothing (§16/§35/§99).
+      await this.domainEventPublisher.append<OrderConfirmedData>(tx, {
+        eventType: EVENT_TYPES.ORDER_CONFIRMED,
+        tenantId,
+        aggregateType: 'order',
+        aggregateId: id,
+        correlationId: meta.correlationId,
+        actor: { type: 'user', id: actorId },
+        data: this.buildOrderConfirmedData(updated, items),
+      });
       return this.toResponse(tx, tenantId, updated, permissions);
     });
   }
@@ -404,8 +420,54 @@ export class OrdersService {
       }
 
       await this.writeAudit(tx, { tenantId, actorId, actionCode: 'order.cancelled', entityId: id, meta });
+      // Domain event — a still-pending reservation was released (§15). Only the real transition
+      // reaches here; an already-cancelled order returned early above and emits nothing (§35/§100).
+      await this.domainEventPublisher.append<OrderCancelledData>(tx, {
+        eventType: EVENT_TYPES.ORDER_CANCELLED,
+        tenantId,
+        aggregateType: 'order',
+        aggregateId: id,
+        correlationId: meta.correlationId,
+        actor: { type: 'user', id: actorId },
+        data: { orderId: id, orderNumber: order.orderNumber, documentType: order.documentType },
+      });
       return this.toResponse(tx, tenantId, updated, permissions);
     });
+  }
+
+  private buildOrderConfirmedData(order: OrderRow, items: OrderItemRow[]): OrderConfirmedData {
+    return {
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      documentType: order.documentType,
+      invoiceStatus: order.invoiceStatus,
+      currency: order.currency,
+      subtotal: Number(order.subtotal),
+      discountTotal: Number(order.discountTotal),
+      taxTotal: Number(order.taxTotal),
+      total: Number(order.total),
+      locationId: order.locationId,
+      placedByUserId: order.placedByUserId,
+      hasExceptionalDiscount: items.some((item) => item.isExceptionalDiscount),
+      customer: {
+        name: order.customerNameSnapshot,
+        taxId: order.customerTaxIdSnapshot,
+        email: order.customerEmailSnapshot,
+        phone: order.customerPhoneSnapshot,
+        address: (order.customerAddressSnapshot ?? null) as Record<string, unknown> | null,
+      },
+      // Data minimisation (ADR-0028, §32): no min/base/cost/max snapshots, only what a notification
+      // consumer needs.
+      lines: items.map((item) => ({
+        productVariantId: item.productVariantId,
+        sku: item.skuSnapshot,
+        productName: item.productNameSnapshot,
+        quantity: Number(item.quantity),
+        unitPrice: Number(item.unitPriceSnapshot),
+        discountAmount: Number(item.discountAmount),
+        lineTotal: Number(item.lineTotal),
+      })),
+    };
   }
 
   /**

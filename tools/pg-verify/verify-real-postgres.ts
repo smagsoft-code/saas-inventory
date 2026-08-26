@@ -38,6 +38,10 @@ const APP_PUBLIC_RESOLVER_PASSWORD = 'verify-app-public-resolver-ephemeral';
 // test/import/import-worker.integration.test.ts's real-PostgreSQL claim-query suite, including
 // this prompt's new suspended-tenant claim/reclaim cases, every time this script runs.
 const APP_IMPORT_WORKER_PASSWORD = 'verify-app-import-worker-ephemeral';
+// FASE 14: the Event Processor's own claiming role (migrations 0000/0010). Bootstrapped here so
+// test/events/event-processor.integration.test.ts's real-PostgreSQL claim/retry/stale suite runs
+// as part of the standard verify pass (0 skipped, §127/§177), never a separate manual run.
+const APP_EVENT_PROCESSOR_PASSWORD = 'verify-app-event-processor-ephemeral';
 const DATA_DIR = path.resolve(process.cwd(), '.verify-pgdata');
 const API_DIR = path.resolve(process.cwd(), '../../apps/api');
 
@@ -46,6 +50,7 @@ const APP_TENANT_URL = `postgresql://app_tenant:${APP_TENANT_PASSWORD}@127.0.0.1
 const APP_PLATFORM_URL = `postgresql://app_platform:${APP_PLATFORM_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_PUBLIC_RESOLVER_URL = `postgresql://app_public_resolver:${APP_PUBLIC_RESOLVER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_IMPORT_WORKER_URL = `postgresql://app_import_worker:${APP_IMPORT_WORKER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
+const APP_EVENT_PROCESSOR_URL = `postgresql://app_event_processor:${APP_EVENT_PROCESSOR_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 
 let failures = 0;
 
@@ -131,13 +136,14 @@ async function main(): Promise<void> {
     section('3. Re-running migrations (must be a safe no-op, not corrupt/duplicate anything)');
     run('db:migrate (second run)', ['run', 'db:migrate'], { MIGRATOR_DATABASE_URL: MIGRATOR_URL });
 
-    section('4. Bootstrapping app_tenant / app_platform / app_public_resolver / app_import_worker role passwords');
+    section('4. Bootstrapping app_tenant / app_platform / app_public_resolver / app_import_worker / app_event_processor role passwords');
     run('db:bootstrap-dev-roles', ['run', 'db:bootstrap-dev-roles'], {
       MIGRATOR_DATABASE_URL: MIGRATOR_URL,
       APP_TENANT_PASSWORD,
       APP_PLATFORM_PASSWORD,
       APP_PUBLIC_RESOLVER_PASSWORD,
       APP_IMPORT_WORKER_PASSWORD,
+      APP_EVENT_PROCESSOR_PASSWORD,
     });
 
     await verifySchema();
@@ -179,6 +185,10 @@ async function main(): Promise<void> {
       // test/import/import-worker.integration.test.ts's real app_import_worker claim-query suite
       // now runs as part of the standard pass instead of a separate manual run.
       TEST_APP_IMPORT_WORKER_DATABASE_URL: APP_IMPORT_WORKER_URL,
+      // FASE 14: enables eventProcessorIntegrationTestsEnabled, so test/events/*.integration.test.ts
+      // (transactional outbox atomicity, SALES event exactly-once, and the Event Processor
+      // claim/retry/stale/crash-window suite) all run here — 0 skipped (§127/§177).
+      TEST_APP_EVENT_PROCESSOR_DATABASE_URL: APP_EVENT_PROCESSOR_URL,
     });
   } finally {
     section('Stopping PostgreSQL (data directory is wiped — persistent: false)');
@@ -329,6 +339,50 @@ async function verifyRoles(): Promise<void> {
     check('app_tenant CANNOT grant itself another role (no privilege escalation)', grantRejected);
   } finally {
     await asAppTenant.end();
+  }
+
+  section('8c. app_event_processor real capabilities (FASE 14 — least privilege, blast radius = event_outbox only)');
+  const asEventProcessor = postgres(APP_EVENT_PROCESSOR_URL, { max: 1 });
+  try {
+    const outboxSelect = await asEventProcessor`select count(*)::int as c from event_outbox`;
+    check('app_event_processor CAN SELECT event_outbox (cross-tenant, no app.tenant_id set)', outboxSelect.length === 1);
+
+    let updateOk = true;
+    try {
+      // affects 0 rows on an empty table — we only care that UPDATE is granted, not that a row changed
+      await asEventProcessor`update event_outbox set claimed_by = 'verify' where false`;
+    } catch {
+      updateOk = false;
+    }
+    check('app_event_processor CAN UPDATE event_outbox', updateOk);
+
+    for (const table of ['orders', 'customers', 'order_items', 'inventory_balances', 'product_variants', 'users']) {
+      let denied = false;
+      try {
+        await asEventProcessor.unsafe(`select 1 from ${table} limit 1`);
+      } catch {
+        denied = true;
+      }
+      check(`app_event_processor CANNOT read ${table} (no grant — §44/§164)`, denied);
+    }
+
+    let insertDenied = false;
+    try {
+      await asEventProcessor`insert into event_outbox (id, aggregate_type, aggregate_id, event_type, payload) values (gen_random_uuid(), 'x', gen_random_uuid(), 'x', '{}'::jsonb)`;
+    } catch {
+      insertDenied = true;
+    }
+    check('app_event_processor CANNOT INSERT into event_outbox (producers do that as app_tenant)', insertDenied);
+
+    let setRoleDenied = false;
+    try {
+      await asEventProcessor`set role app_platform`;
+    } catch {
+      setRoleDenied = true;
+    }
+    check('app_event_processor CANNOT `SET ROLE app_platform` (§43)', setRoleDenied);
+  } finally {
+    await asEventProcessor.end();
   }
 }
 

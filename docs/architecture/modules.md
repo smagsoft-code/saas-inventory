@@ -241,31 +241,49 @@ locking convoy; `LocationAuthorizationService` — ADR-0024; `LocationsRepositor
   only on the winning transition) — see
   [database.md#fase-13-application-behavior](database.md#fase-13-application-behavior).
 
+**FASE 14 — domain events.** `OrdersService`/`PriceApprovalsService`/`ReturnsService` now call
+`DomainEventPublisher.append(tx, ...)` inside their existing `withTenantTransaction` on every real
+state transition (`sales.order.confirmed`/`.cancelled`, `sales.price_approval.requested`/`.approved`/
+`.rejected`, `sales.return.requested`/`.resolved`/`.cancelled` — one per *logical* transition, not
+per HTTP request), so the `event_outbox` row commits or rolls back atomically with the sale. SALES
+still has no knowledge of n8n/Telegram — it publishes a generic, Telegram-agnostic, data-minimised
+envelope (no `min_price`/`cost` — ADR-0028) and the Event Processor delivers it later. Payloads and
+the full catalog: [events.md#event-catalog](events.md#event-catalog).
+
 **Still deliberately not built** (each a later phase): selling serialized/lot-tracked variants (no
 approved `order_items` ↔ `product_serials`/`product_lots` linkage, no serial/lot column on
-`inventory_movements` — the same "not fully pinned" gap FASE 8/10/12 flagged; a `422`); any
-`event_outbox` write (FASE 14); Telegram/n8n (FASE 15); any frontend (FASE 16/17). The
-exceptional-price approval and sales-return events will reach a supervisor/administrator via the
-same outbox → n8n → Telegram path as any other event ([events.md](events.md)), never a direct
-Telegram integration inside SALES — FASE 13 writes the required `audit_log` records only.
+`inventory_movements` — the same "not fully pinned" gap FASE 8/10/12 flagged; a `422`); Telegram/n8n
+and external delivery (FASE 15); any frontend (FASE 16/17).
 
 ## NOTIFICATIONS
 
 **Responsibility:** turning domain events into outbound notifications without coupling any other
 module to *how* a notification is delivered. See [events.md](events.md) in full and
-[database.md#outbox](database.md#outbox) (Prompt 02) for the `event_outbox` table shape and the
+[database.md#outbox](database.md#outbox) for the `event_outbox` table shape and the
 `FOR UPDATE SKIP LOCKED` claiming pattern that lets multiple Event Processor instances share the
 queue safely.
 
-- `event_outbox` (the outbox table), delivery/retry bookkeeping.
+> **Status:** **FASE 14** built the transactional write path and the Event Processor deployable
+> (claim / retry / backoff / stale recovery / dead-letter). **External delivery to n8n/Telegram is
+> FASE 15** — the Event Processor ships with an empty delivery-handler registry and never marks any
+> event `delivered` until FASE 15 registers a real adapter.
+
+- `event_outbox` (the outbox table) — owned here. `DomainEventPublisher` +
+  `OutboxRepository` ([`apps/api/src/common/events/`](../../apps/api/src/common/events/)) are the
+  **single** shared write API; producer modules get them as providers (like `AuditLogService`),
+  never via a module import — so there is no `SALES → NOTIFICATIONS` edge.
+- Event Processor: `apps/api/src/event-processor/` + its own deployable
+  (`event-processor/main.ts`, `worker:events:start`), authenticating as the dedicated
+  `app_event_processor` Postgres role (blast radius = `event_outbox` only).
 
 **Depends on:** nothing (it only reads events written by other modules' transactions). The Event
-Processor is a distinct process from IMPORT's Import Worker below (Prompt 02-D,
-[ADR-0029](../decisions/0029-import-worker-separation.md)) — they share the same claiming pattern but
-never the same deployable, so a large import can never delay a notification or vice versa.
+Processor is a distinct process from IMPORT's Import Worker below
+([ADR-0029](../decisions/0029-import-worker-separation.md)) — they share the same claiming pattern
+but never the same deployable, DB role, or claim repository, so a large import can never delay a
+notification or vice versa.
 
 **Consumed by:** nothing inside the backend — its only consumer is the external Event Processor
-that forwards to n8n.
+deployable, which (from FASE 15) forwards to n8n.
 
 ## REPORTS (future — not built in this phase)
 

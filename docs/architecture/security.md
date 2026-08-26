@@ -263,6 +263,36 @@ platform configuration (`N8N_WEBHOOK_URL`), not tenant-supplied, which limits th
 outbox path specifically; the general rule applies to any future feature that does accept a
 tenant-supplied URL.
 
+## Events and the outbox (FASE 14)
+
+The domain-event / outbox path ([events.md](events.md#security-model)) has four distinct
+authorization layers, each enforced by a different mechanism:
+
+- **Producer authorization** = the business route's own guard chain (JwtAuthGuard → TenantGuard →
+  CsrfGuard → PermissionsGuard). An `event_outbox` row is only ever written as a transactional side
+  effect of an already-authorized mutation — there is **no public outbox API**, no `GET /outbox`,
+  no manual-retry endpoint.
+- **Outbox tenant isolation** = RLS. The producer writes as `app_tenant` (`SELECT, INSERT` on
+  `event_outbox`, filtered to its own `tenant_id`); the `prevent_tenant_id_change` trigger blocks
+  re-homing a row. One tenant can never read another tenant's event payload (which may contain
+  customer PII).
+- **Processor authorization** = the dedicated `app_event_processor` Postgres role. It has
+  `SELECT, UPDATE` on `event_outbox` **only** — no grant on `orders`/`customers`/`inventory`/any
+  other table, not `BYPASSRLS`, cannot `SET ROLE`. A compromised Event Processor's blast radius is
+  exactly the outbox. It reads the self-describing event envelope and never queries a domain table
+  to reconstruct context.
+- **External recipient authorization** = FASE 15 (n8n/Telegram routing).
+
+**PII and price-sensitive data:** event payloads are data-minimised — the customer snapshot on
+`sales.order.confirmed` is the minimum a "new sale" notification needs, and **no** `unit_cost` /
+`min_price` / `base_price` / `max_price` snapshot is ever included (ADR-0028). `last_error` and
+every Event Processor log line pass through a sanitizer that redacts bearer tokens, API keys,
+passwords, URL credentials and JWTs and truncates — the full payload is never logged.
+
+**At-least-once, not exactly-once:** external delivery may redeliver the same `eventId` after a
+crash-before-ack; FASE 15 consumers must dedupe on it. Business side effects remain exactly-once
+(transaction + `SELECT … FOR UPDATE` state locks + `idempotency_keys`).
+
 ## File upload security
 
 Product images (and any future upload) are validated on: content-type (checked against actual

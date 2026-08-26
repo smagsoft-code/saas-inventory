@@ -8,6 +8,9 @@ import {
 import { generateId } from '@saas-inventory/shared';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { AuditLogService } from '../../common/audit/audit-log.service';
+import { DomainEventPublisher } from '../../common/events/domain-event-publisher.service';
+import type { PriceApprovalRequestedData, PriceApprovalResolvedData } from '../../common/events/domain-event.contracts';
+import { EVENT_TYPES } from '../../common/events/event-types';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { OrderItemsRepository } from '../repositories/order-items.repository';
 import { OrdersRepository } from '../repositories/orders.repository';
@@ -50,8 +53,11 @@ function isUniqueViolation(error: unknown): boolean {
  *                                                  update; a rejected request can never authorize a
  *                                                  confirm (§65 / test P12).
  *
- * `min_price` in the response is gated on `pricing.floor.view` (ADR-0028, §45 / test P15). No
- * Telegram / n8n / event_outbox writes (§66-§68) — audit only.
+ * `min_price` in the response is gated on `pricing.floor.view` (ADR-0028, §45 / test P15).
+ *
+ * FASE 14: `request` / `approve` / `reject` each publish one domain event to `event_outbox` in the
+ * same transaction (`DomainEventPublisher`) — `approve`/`reject` only when the `resolveIfPending`
+ * CAS actually won. Still no Telegram / n8n (FASE 15).
  */
 @Injectable()
 export class PriceApprovalsService {
@@ -60,6 +66,7 @@ export class PriceApprovalsService {
     private readonly ordersRepository: OrdersRepository,
     private readonly orderItemsRepository: OrderItemsRepository,
     private readonly auditLogService: AuditLogService,
+    private readonly domainEventPublisher: DomainEventPublisher,
   ) {}
 
   async list(
@@ -168,6 +175,33 @@ export class PriceApprovalsService {
         afterState: { orderId: order.id, orderItemId: orderItem.id, requestedPrice: moneyString(requestedPrice), reason: dto.reason },
         meta,
       });
+      // Domain event — a supervisor/administrator now has a request to act on (§17). One event per
+      // logical request: a retry hits the `alreadyPending` / 23505 guard above and never reaches
+      // here. `minPriceAtRequest` is NOT in the payload — ADR-0028 / §32 (the approver sees the
+      // floor in-app with their own `pricing.floor.view`).
+      await this.domainEventPublisher.append<PriceApprovalRequestedData>(tx, {
+        eventType: EVENT_TYPES.PRICE_APPROVAL_REQUESTED,
+        tenantId,
+        aggregateType: 'price_approval',
+        aggregateId: row.id,
+        correlationId: meta.correlationId,
+        actor: { type: 'user', id: actorId },
+        data: {
+          approvalId: row.id,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          orderItemId: orderItem.id,
+          productVariantId: orderItem.productVariantId,
+          sku: orderItem.skuSnapshot,
+          productName: orderItem.productNameSnapshot,
+          quantity,
+          requestedPrice,
+          maxPriceAtRequest: maxPrice,
+          discountAmount,
+          reason: dto.reason,
+          requestedByUserId: actorId,
+        },
+      });
       return this.toResponse(tx, tenantId, row, permissions);
     });
   }
@@ -235,6 +269,26 @@ export class PriceApprovalsService {
         beforeState: { status: 'pending' },
         afterState: { status, approvedBy: actorId },
         meta,
+      });
+      // Domain event — only when the conditional `WHERE status = 'pending'` CAS actually won
+      // (`updated` is set): an `approve || reject` race resolves to exactly one of the two, and it
+      // is that one winner that emits its single event (§38/§103). Idempotent re-resolution
+      // returned early above and emits nothing.
+      await this.domainEventPublisher.append<PriceApprovalResolvedData>(tx, {
+        eventType: status === 'approved' ? EVENT_TYPES.PRICE_APPROVAL_APPROVED : EVENT_TYPES.PRICE_APPROVAL_REJECTED,
+        tenantId,
+        aggregateType: 'price_approval',
+        aggregateId: id,
+        correlationId: meta.correlationId,
+        actor: { type: 'user', id: actorId },
+        data: {
+          approvalId: id,
+          orderId: existing.orderId,
+          orderItemId: existing.orderItemId,
+          status,
+          resolvedByUserId: actorId,
+          requestedByUserId: existing.requestedBy,
+        },
       });
       return this.toResponse(tx, tenantId, updated, permissions);
     });

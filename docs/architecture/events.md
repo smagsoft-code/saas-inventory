@@ -2,113 +2,266 @@
 
 Related: [ADR-0010](../decisions/0010-outbox-pattern.md),
 [ADR-0011](../decisions/0011-n8n-external-automation.md),
-[ADR-0012](../decisions/0012-telegram-through-n8n.md).
+[ADR-0012](../decisions/0012-telegram-through-n8n.md),
+[ADR-0029](../decisions/0029-import-worker-separation.md).
+
+> **Status:** implemented in **FASE 14** — the transactional write path (`DomainEventPublisher` →
+> `event_outbox`) and the **Event Processor** deployable (claim / retry / backoff / stale recovery /
+> dead-letter). External delivery to **n8n / Telegram is NOT built** — that is FASE 15. The Event
+> Processor ships with an empty delivery-handler registry, so it never marks any event delivered
+> until FASE 15 registers a real adapter.
+
+## Four distinct things — never conflated
+
+| | Audit log | Domain event (outbox) | Application log | External notification |
+| --- | --- | --- | --- | --- |
+| **What** | "who did what", compliance record | a business fact that already happened | operational debug line | a Telegram/e-mail message |
+| **Where** | `audit_log` table | `event_outbox` table | stdout / aggregator | n8n → Telegram |
+| **Owner** | CORE | NOTIFICATIONS | ops | n8n (FASE 15) |
+| **Write semantics** | best-effort (a failure never blocks the operation) | **transactional** — commits or rolls back with the business mutation | fire-and-forget | asynchronous, at-least-once |
+| **Consumer** | a human running a query | the Event Processor, once | a log search | the tenant's staff |
+
+The Event Processor **never** reads `audit_log`, `orders`, `inventory_movements`, or any domain
+table to "discover what happened" — the producing module writes a self-describing event and the
+processor works only from that.
 
 ## Why Outbox
 
-Notifications are never sent as a side effect *inside* the same code path that performs a business
-operation. If "create order" directly called out to n8n (or Telegram) before returning, then:
+Notifications are never sent as a side effect *inside* the code path that performs a business
+operation. If "confirm order" called out to n8n before returning, a slow/down n8n would make order
+confirmation slow or fail, and a crash between "the sale committed" and "the notification was sent"
+would lose the notification (or notify about a sale that then rolled back).
 
-- A slow or down n8n would make order creation slow or fail, even though the order itself has
-  nothing to do with whether a notification can currently be delivered.
-- A crash between "the order was saved" and "the notification was sent" would either lose the
-  notification silently, or (if the notification call happened first) notify about an order that
-  then failed to save.
-
-The **transactional outbox pattern** avoids both failure modes: the domain event is written to an
-`event_outbox` table **in the same database transaction** as the business change. Either both the
-order and the event are committed, or neither is — there is no window where one exists without the
-other. Delivery to n8n is then a completely separate, asynchronous concern.
+The **transactional outbox pattern** removes both failure modes: the domain event is written to
+`event_outbox` **in the same database transaction** as the business change. Either both commit or
+neither does — there is no window where one exists without the other. Delivery is then a completely
+separate, asynchronous concern.
 
 ```mermaid
-flowchart LR
-    subgraph "Single DB transaction"
-        Op["Business operation\n(e.g. create order)"]
-        Outbox["INSERT into event_outbox"]
+flowchart TB
+    subgraph tx["Single DB transaction (withTenantTransaction)"]
+        Op["Business mutation\n(order pending → confirmed)"]
+        Inv["Inventory effect\n(RESERVATION_RELEASE + SALE)"]
+        Aud["audit_log row"]
+        Evt["event_outbox row\n(DomainEventPublisher.append)"]
     end
-    Op --> Outbox
-    Outbox -->|"COMMIT"| DB[("PostgreSQL")]
-    DB -.->|"polled/streamed asynchronously"| Processor["Event Processor"]
-    Processor -->|"webhook, with retry"| N8N["n8n"]
-    N8N --> Telegram["Telegram"]
-    Processor -->|"on repeated failure"| DLQ[("Dead-letter queue/table")]
+    Op --> Inv --> Aud --> Evt
+    Evt -->|COMMIT| DB[("PostgreSQL\nevent_outbox")]
+    DB -.->|"FOR UPDATE SKIP LOCKED\n(polling)"| EP["Event Processor\n(separate deployable,\napp_event_processor role)"]
+    EP -->|"dispatch"| Port["Delivery Port\n(EventHandler registry)"]
+    Port -.->|"FASE 15"| N8N["n8n adapter → n8n → Telegram"]
+    EP -->|"repeated failure"| DL["status = 'dead_letter'\n(kept, never deleted)"]
 ```
 
-If n8n is down, the order still exists — it was already committed. The event sits in the outbox
-until the Event Processor can deliver it. Business operations never block on, or fail because of,
-notification delivery. See [ADR-0011](../decisions/0011-n8n-external-automation.md).
+If the delivery target is down, the sale still happened — it was committed. The event waits in the
+outbox until the Event Processor can deliver it. Business operations never block on, or fail because
+of, notification delivery.
+
+## Event envelope
+
+The `event_outbox.payload` column holds a **self-describing, versioned, JSON-serialisable
+envelope** — the exact object that will be delivered to a consumer once FASE 15 exists. The row's
+own columns (`event_type`, `aggregate_type`, `aggregate_id`, `correlation_id`, `tenant_id`,
+`created_at`) are denormalised copies of envelope fields, kept for claiming and indexing.
+
+| Field | Notes |
+| --- | --- |
+| `eventId` | `= event_outbox.id`. Generated once (UUIDv7, application-side), **never regenerated on retry**. A consumer dedupes on this. |
+| `eventType` | `module.aggregate.action`, past tense — e.g. `sales.order.confirmed`. |
+| `eventVersion` | integer, starts at `1`. A payload shape change **must** bump this (see [versioning](#event-versioning)). |
+| `occurredAt` | ISO-8601 UTC — when the business fact happened. ≈ `created_at` (same transaction), semantically distinct. |
+| `tenantId` | present for every tenant-scoped fact; `null` only for a platform-global event (none in FASE 14). |
+| `aggregateType` / `aggregateId` | `order` / `price_approval` / `sales_return` and its id. |
+| `correlationId` | the originating request's `Correlation-Id` (api.md#correlation-id), UUID-validated — `null` if the header was not UUID-shaped. |
+| `actor` | `{ type: 'user' \| 'system', id }` — captured at the moment of the fact, never resolved later from `users`. |
+| `data` | the typed, event-specific payload (below). |
+
+Typed contracts live in
+[`apps/api/src/common/events/domain-event.contracts.ts`](../../apps/api/src/common/events/domain-event.contracts.ts);
+the catalog constants + current versions in
+[`event-types.ts`](../../apps/api/src/common/events/event-types.ts). `Record<string, any>` is not a
+contract.
+
+## Event catalog
+
+FASE 14 publishes only the SALES facts a known future integration needs. Other modules'
+events (`INVENTORY_ADJUSTED`, `LOW_STOCK`, `TENANT_CREATED`, `USER_CREATED` — named in earlier
+drafts of this doc as conceptual examples) are added to this table by the phase that has a real
+consumer for them, not speculatively.
+
+| `eventType` | v | Producer | Aggregate | Business transition | `data` (data-minimised — ADR-0028) |
+| --- | --- | --- | --- | --- | --- |
+| `sales.order.confirmed` | 1 | `OrdersService.confirm` | `order` | `pending → confirmed` (the physical sale commit) | order id/number, document type, invoice status, currency, subtotal/discountTotal/taxTotal/total, location id, placed-by user, `hasExceptionalDiscount`, customer snapshot (name/taxId/email/phone/address), lines (variant id, sku, name, qty, **unitPrice**, discountAmount, lineTotal) |
+| `sales.order.cancelled` | 1 | `OrdersService.cancel` | `order` | `draft/pending → cancelled` | order id/number, document type |
+| `sales.price_approval.requested` | 1 | `PriceApprovalsService.request` | `price_approval` | new `pending` request | approval/order/orderItem ids, order number, variant id, sku, name, qty, requestedPrice, **maxPriceAtRequest**, discountAmount, reason, requested-by user |
+| `sales.price_approval.approved` | 1 | `PriceApprovalsService.resolve` | `price_approval` | `pending → approved` (CAS win) | approval/order/orderItem ids, status, resolved-by user, requested-by user |
+| `sales.price_approval.rejected` | 1 | `PriceApprovalsService.resolve` | `price_approval` | `pending → rejected` (CAS win) | (as above) |
+| `sales.return.requested` | 1 | `ReturnsService.create` | `sales_return` | new `→ requested` | return/order ids, order number, location id, reason, requested-by user, lines (orderItem id, variant id, sku, qtyReturned) |
+| `sales.return.resolved` | 1 | `ReturnsService.resolve` | `sales_return` | `inspecting → resolved` (RETURN movements written) | return/order ids, location id, lines (orderItem id, variant id, qtyReturned, disposition, dispositionLocationId) |
+| `sales.return.cancelled` | 1 | `ReturnsService.cancel` | `sales_return` | `requested/inspecting → cancelled` | return/order ids, status |
+
+**Deliberately not events:** `return.inspected` (an internal re-inspection, no external meaning);
+a `pending` order's creation (not a completed-sale fact — the meaningful event is
+`sales.order.confirmed`).
+
+### Data minimisation and PII
+
+- `data` carries only what an approved consumer needs. **Never included:** `unit_cost` /
+  `min_price` / `base_price` / `max_price` snapshots (ADR-0028 field-level pricing), password
+  hashes, session tokens, JWTs, CSRF tokens, secrets, binary blobs, whole catalog/inventory
+  snapshots.
+- `sales.price_approval.requested` carries `maxPriceAtRequest` and `discountAmount` (both computed
+  against the list ceiling) but **not** `minPriceAtRequest` — the notification's job is "there is a
+  request to act on"; the approver opens the app, where their own `pricing.floor.view` decides what
+  they see. The event is Telegram-agnostic and a Telegram channel is not an authorization boundary.
+- `sales.order.confirmed` carries the customer snapshot (name/taxId/email/phone/address) — the
+  minimum a "new sale" notification needs. That is PII; it is not logged (see
+  [observability](#observability)).
+
+## Event versioning
+
+`eventType` + `eventVersion` together identify a contract. Bumping a payload's shape **must** bump
+`eventVersion` and add a matching handler branch downstream — never silently change a v1 payload.
+The Event Processor treats an event whose version it does not recognise as **terminal**
+(`dead_letter`), not as something to retry or mis-process.
 
 ## Event Processor
 
-A separate process/worker (not inline in the request path) that:
+A separate process/deployable (`apps/api/src/event-processor/main.ts`,
+`pnpm --filter @saas-inventory/api worker:events:start`) — **not** the API, and **not** the Import
+Worker (ADR-0029). It starts via `NestFactory.createApplicationContext(AppModule)` (no HTTP
+listener, no port), connects as the dedicated `app_event_processor` Postgres role, and runs
+`EventProcessorService.runOnce()` in a poll loop with graceful SIGTERM/SIGINT shutdown.
 
-1. Reads undelivered rows from `event_outbox` (oldest first, or via `LISTEN`/`NOTIFY` for lower
-   latency — `PENDING DECISION` on polling vs. `LISTEN`/`NOTIFY`, an implementation detail decided
-   when this is built).
-2. Calls the configured n8n webhook with the event payload.
-3. Marks the row delivered on success, or increments a retry counter with backoff on failure.
-4. After a configured maximum retry count, moves the event to a dead-letter state — it stops being
-   retried automatically but is not deleted, so it can be inspected and manually replayed if
-   needed.
+### Claiming
 
-Because the Event Processor is already decoupled from the request/response cycle and from the rest
-of the backend's modules (see [modules.md](modules.md) — NOTIFICATIONS has no other module
-depending on it), it is a natural first candidate if a module ever needs to be extracted into its
-own deployable — see [scalability.md](scalability.md).
+One atomic statement — a CTE with `FOR UPDATE SKIP LOCKED` feeding an `UPDATE ... RETURNING`
+(`event-claim.repository.ts`):
 
-## Idempotency and retries
+```sql
+WITH claimable AS (
+  SELECT id, status FROM event_outbox
+  WHERE event_type = ANY(:supportedTypes)        -- only types with a registered handler
+    AND attempts < :maxAttempts
+    AND (
+      (status = 'pending' AND (claimed_at IS NULL
+        OR claimed_at < now() - LEAST(:retryMaxMs, :retryBaseMs * power(:retryFactor, attempts))
+                                * interval '1 ms'))
+      OR (status = 'processing' AND claimed_at < now() - :staleClaimMs * interval '1 ms')
+    )
+  ORDER BY created_at
+  FOR UPDATE SKIP LOCKED
+  LIMIT :batchSize
+)
+UPDATE event_outbox e
+SET status = 'processing', claimed_at = now(), claimed_by = :workerId,
+    attempts = e.attempts + (CASE WHEN c.status = 'processing' THEN 1 ELSE 0 END)
+FROM claimable c WHERE e.id = c.id
+RETURNING e.id, e.tenant_id, e.event_type, e.attempts, e.created_at, e.payload;
+```
 
-Each outbox event carries a stable `event_id` (not just an auto-increment row number). n8n's
-webhook — and anything downstream of it — is expected to treat a redelivery of the same `event_id`
-as a duplicate, not a new occurrence, since at-least-once delivery (not exactly-once) is what the
-retry mechanism guarantees. Retries use exponential backoff with a capped maximum delay and a
-capped maximum attempt count before an event is dead-lettered, so a persistently-down n8n does not
-result in unbounded retry traffic.
+- `FOR UPDATE SKIP LOCKED` is what makes multiple Event Processor instances safe: each skips rows
+  another instance already locked. Horizontal scaling needs no separate distributed lock.
+- **`event_type = ANY(:supportedTypes)`** — `supportedTypes` is the dispatcher's registered-handler
+  set. In FASE 14 production that set is **empty**, so nothing is ever claimed and no event can be
+  marked delivered before FASE 15.
+- `claimed_at` doubles as the *last-attempt timestamp* — backoff is `claimed_at + delay(attempts)`,
+  computed in SQL. **No schema column** is needed for retry scheduling (see
+  [database.md#outbox](database.md#outbox)).
+- The claim transaction is short; dispatch (and, from FASE 15, the webhook call) happens **after**
+  it commits — a row lock is never held across a delivery.
 
-## Event catalog (initial — extended as modules are built)
+### Retry / backoff / terminal
 
-| Event | Emitted by | Payload (conceptual) |
-| --- | --- | --- |
-| `TENANT_CREATED` | CORE (SuperAdmin action) | tenant id, name |
-| `USER_CREATED` | CORE | user id, tenant id |
-| `INVENTORY_ADJUSTED` | INVENTORY | product id, warehouse/location id, delta, resulting balance |
-| `LOW_STOCK` | INVENTORY | product id, warehouse/location id, current available stock, threshold |
-| `ORDER_CREATED` | SALES (future) | order id, tenant id, customer id, **document type (invoice/sales note), customer snapshot (name/id/email/phone/address), line items with product/quantity/unit price, discount, totals, whether any line used an exceptional discount and that request's approval status (pending/approved/not required), placed-by user, fulfillment location** — see [database.md#pricing-history-tenant-policy-and-exceptional-discount-approval](database.md#pricing-history-tenant-policy-and-exceptional-discount-approval) for where each field comes from |
-| `ORDER_CANCELLED` | SALES (future) | order id, cancellation reason |
-| `PRICE_APPROVAL_REQUESTED` | SALES (future) | order id, order item id, product, requested price, min/max price at request, discount amount, reason, requested-by user — notifies a supervisor/administrator there is a pending exceptional-discount request to act on; see [database.md#pricing-history-tenant-policy-and-exceptional-discount-approval](database.md#pricing-history-tenant-policy-and-exceptional-discount-approval) |
+| Outcome | Effect |
+| --- | --- |
+| handler returned success | `status = 'delivered'`, `processed_at = now()`, `last_error = NULL` |
+| handler threw (transient) | `attempts += 1`, `last_error` = sanitized message, `claimed_at = now()`; `status = 'pending'` unless `attempts ≥ maxAttempts` → `'dead_letter'` |
+| unknown version / malformed envelope | `status = 'dead_letter'` immediately — retrying cannot help |
+| worker crashed mid-dispatch | row stays `processing`; a later poll reclaims it once `claimed_at` is stale, incrementing `attempts`; `reapStale()` dead-letters it once `attempts ≥ maxAttempts` |
 
-Every event payload includes `tenantId` (except platform-global events like `TENANT_CREATED`
-itself) and the `correlationId` of the request that produced it (see
-[api.md](api.md#correlation-id)), so a downstream n8n workflow — and any future debugging — can
-trace an event back to the exact request that caused it.
+Backoff: `delay(attempts) = min(retryMaxMs, retryBaseMs · retryFactor^attempts)` — exponential,
+capped, configurable (`EVENT_PROCESSOR_RETRY_*`). A `dead_letter` event is **never deleted**
+(retention is an operational question for a later phase); it can be inspected and replayed manually
+later.
 
-**Three distinct layers, per Prompt 02-A — not to be conflated:** (1) **persisted data** — the actual
-`orders`/`order_items`/`price_approvals` rows in Postgres, the durable source of truth
-([database.md](database.md)); (2) **the domain event** — `ORDER_CREATED`'s JSON payload above, a
-read-only projection of that data written to `event_outbox` in the same transaction, generic and
-Telegram-agnostic; (3) **the notification** — the actual Telegram message text/formatting, which is
-entirely n8n's concern (message layout, which chat/channel, language) and never exists as backend
-code or a backend template. The backend produces (1) and (2) only; n8n turns (2) into (3).
+### Configuration
 
-## n8n and Telegram
+`getOptionalEnvVar` + defaults, same convention as `IMPORT_WORKER_*` (see `.env.example`):
+`APP_EVENT_PROCESSOR_DATABASE_URL`, `EVENT_PROCESSOR_POLL_INTERVAL_MS` (2000),
+`EVENT_PROCESSOR_CLAIM_BATCH_SIZE` (50), `EVENT_PROCESSOR_STALE_CLAIM_MS` (300000),
+`EVENT_PROCESSOR_MAX_ATTEMPTS` (10), `EVENT_PROCESSOR_RETRY_BASE_MS` (1000),
+`EVENT_PROCESSOR_RETRY_MAX_MS` (3600000), `EVENT_PROCESSOR_RETRY_FACTOR` (2),
+`EVENT_PROCESSOR_ID` (optional).
 
-n8n is external infrastructure, not a dependency the backend's domain logic knows about — the
-backend calls a generic webhook URL with a generic event payload; it has no n8n-specific or
-Telegram-specific code. Per [CLAUDE.md §7.4](../../CLAUDE.md#74-security) and
-[ADR-0012](../decisions/0012-telegram-through-n8n.md):
+## Delivery semantics: at-least-once
 
-- The backend never stores a Telegram bot token, in the database or anywhere else.
-- The backend never imports a Telegram SDK or calls the Telegram API directly.
-- The frontend never sees a Telegram token.
-- n8n owns the entire Telegram integration: which chat/channel a notification goes to, message
-  formatting, and the bot token itself (held in n8n's own credential store).
+The classic window: a handler succeeds, then the process crashes **before** the DB is marked
+`delivered`. On restart the row is still `processing`; stale reclaim redelivers it — **with the same
+`eventId`**.
 
-**Per-tenant notification configuration** (e.g. "this tenant wants low-stock alerts in their own
-Telegram channel") is modeled as tenant-owned settings that identify *which n8n workflow/webhook
-configuration* applies to that tenant — not the Telegram destination directly. The mapping from
-"tenant X's low-stock events" to "tenant X's Telegram channel" lives inside n8n's own
-configuration, keyed by a tenant identifier the backend already sends in the event payload. Exact
-mechanism (one shared webhook with tenant routing inside n8n, vs. per-tenant webhook URLs) is a
-`PENDING DECISION` made when tenant-configurable notifications are actually built (see
-[roadmap.md](../roadmap/roadmap.md), later phase) — architecturally, either way keeps the backend
-Telegram-agnostic.
+- **Business side effects are exactly-once** — guaranteed by the transaction, the `SELECT … FOR
+  UPDATE` state locks, and `idempotency_keys`. One `pending → confirmed` transition, one `SALE`, one
+  `sales.order.confirmed` event, no matter how many times the client retries `POST
+  /orders/:id/confirm` or how many requests race.
+- **Outbox delivery is at-least-once** — never exactly-once. FASE 15 consumers **must** dedupe on
+  `eventId`. This is documented here now so FASE 15 builds on it.
+
+## Delivery Port
+
+`EventHandler` (`event-delivery.port.ts`) is the abstraction between the Event Processor and
+whatever forwards an event outward. FASE 15 implements an n8n-webhook adapter against it. FASE 14
+registers **no** production handler — `EventProcessorModule` binds the `EVENT_HANDLERS` token to
+`[]`. Behaviour with no handler: the event is **not claimed**, **not delivered**, **not
+dead-lettered** — it waits, intact, for FASE 15. Tests register in-memory fakes; those are never
+production adapters.
+
+## Tenant suspension
+
+The Event Processor processes **facts that already committed**. Unlike the Import Worker (which
+runs *new* business mutations and therefore excludes suspended tenants from its claim query,
+PROMPT 011-B), the Event Processor's claim query **does not** join `tenants` or filter on
+`tenants.status`. Whether an outbound *notification* is delivered to a suspended tenant is a FASE 15
+routing decision, not an outbox concern.
+
+## Ordering
+
+There is **no global ordering guarantee**. `ORDER BY created_at` in the claim query is
+best-effort fairness (roughly oldest-first, UUIDv7-friendly), not a contract. With `SKIP LOCKED`,
+multiple workers, and per-event retry/backoff, events for one aggregate can be delivered out of
+order. Consumers must be idempotent and state-aware (which the `eventId` + the event's own
+`status`/transition data allow).
+
+## Security model
+
+| Concern | Mechanism |
+| --- | --- |
+| **Producer authorization** | the business route's own guard chain (JwtAuthGuard → TenantGuard → CsrfGuard → PermissionsGuard). An event is only ever written as a side effect of an authorized mutation; there is no public outbox API. |
+| **Outbox tenant isolation** | RLS. `app_tenant` (the producer's connection) has `SELECT, INSERT` on `event_outbox` filtered to its own `tenant_id`; a `prevent_tenant_id_change` trigger blocks re-homing a row. |
+| **Processor authorization** | the dedicated `app_event_processor` role: `SELECT, UPDATE` on `event_outbox` only (one permissive cross-tenant policy), **no grant on any other table** — a compromised Event Processor cannot read `orders`/`customers`/`inventory`. It is not `BYPASSRLS` and cannot `SET ROLE`. |
+| **Error sanitisation** | `last_error` and every log line pass through `sanitizeError` — bearer tokens, API keys, passwords, URL credentials and JWTs redacted, truncated to ~500 chars. |
+| **External recipient authorization** | FASE 15. |
+
+## Import Worker vs Event Processor
+
+Same technical pattern (`FOR UPDATE SKIP LOCKED`, stale-claim recovery, polling), **never the same
+deployable** (ADR-0029): different entry point, different Postgres role, different claim
+repository, different table (`import_jobs` vs `event_outbox`). Neither reads the other's table; no
+shared in-process state. A large import can never delay notification delivery and vice versa.
+
+## FASE 15 boundary
+
+Not built in FASE 14, and explicitly out of scope: n8n integration, the n8n webhook URL/secret,
+Telegram (the backend never stores a bot token or calls Telegram — ADR-0012), external HTTP
+delivery, per-tenant notification preferences / recipient routing, message templates, a manual
+retry/replay admin tool, event-outbox retention/purge, and any frontend or reporting on events.
+
+## n8n and Telegram (FASE 15 — unchanged design)
+
+n8n is external infrastructure the backend's domain logic knows nothing about — the Event Processor
+will call a generic webhook URL with the generic envelope above; no n8n-specific or Telegram-specific
+code, no bot token in the database or anywhere else. Per-tenant notification configuration will be
+modelled as tenant-owned settings identifying *which n8n workflow/webhook configuration* applies,
+keyed by the `tenantId` already in every envelope — the mapping to a Telegram channel lives inside
+n8n. Exact mechanism (one shared webhook with tenant routing vs. per-tenant URLs) is a
+`PENDING DECISION` for FASE 15.

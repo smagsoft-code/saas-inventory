@@ -63,13 +63,15 @@ function build() {
   const ordersRepository = { lockById: vi.fn().mockResolvedValue({ id: 'order-1', status: 'pending', tenantId: TENANT }) };
   const orderItemsRepository = { findById: vi.fn().mockResolvedValue(ORDER_ITEM) };
   const auditLogService = { record: vi.fn() };
+  const domainEventPublisher = { append: vi.fn() };
   const service = new PriceApprovalsService(
     priceApprovalsRepository as never,
     ordersRepository as never,
     orderItemsRepository as never,
     auditLogService as never,
+    domainEventPublisher as never,
   );
-  return { service, priceApprovalsRepository, ordersRepository, orderItemsRepository };
+  return { service, priceApprovalsRepository, ordersRepository, orderItemsRepository, domainEventPublisher };
 }
 
 describe('PriceApprovalsService.request', () => {

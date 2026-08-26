@@ -10,6 +10,13 @@ import { generateId } from '@saas-inventory/shared';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { sql } from 'drizzle-orm';
 import { AuditLogService } from '../../common/audit/audit-log.service';
+import { DomainEventPublisher } from '../../common/events/domain-event-publisher.service';
+import type {
+  SalesReturnCancelledData,
+  SalesReturnRequestedData,
+  SalesReturnResolvedData,
+} from '../../common/events/domain-event.contracts';
+import { EVENT_TYPES } from '../../common/events/event-types';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
 import { LocationsRepository } from '../../inventory/repositories/locations.repository';
@@ -68,7 +75,11 @@ function hashRequest(body: unknown): string {
  *                                                  inventory effect.
  *
  * Returns never mutate the original order / order_items (§26 / test R12) — they only read the
- * frozen snapshot. No Telegram / n8n / event_outbox (§67-§68) — audit only.
+ * frozen snapshot.
+ *
+ * FASE 14: `create` / `resolve` / `cancel` each publish one domain event to `event_outbox` in the
+ * same transaction (`DomainEventPublisher`). `inspect` does not — an internal re-inspection is not
+ * an externally-meaningful fact (§18). Still no Telegram / n8n (FASE 15).
  */
 @Injectable()
 export class ReturnsService {
@@ -82,6 +93,7 @@ export class ReturnsService {
     private readonly stockLedgerService: StockLedgerService,
     private readonly idempotencyRepository: SalesIdempotencyRepository,
     private readonly auditLogService: AuditLogService,
+    private readonly domainEventPublisher: DomainEventPublisher,
   ) {}
 
   async list(tenantId: string, query: ListReturnsQueryDto): Promise<PaginatedResult<ReturnResponseDto>> {
@@ -207,6 +219,33 @@ export class ReturnsService {
         entityId: returnId,
         afterState: { orderId: order.id, locationId: dto.locationId, lineCount: dto.items.length },
         meta,
+      });
+      // Domain event — one per logical return: the Idempotency-Key short-circuit above returns the
+      // cached response and never reaches here, so a retry emits nothing (§18/§104).
+      await this.domainEventPublisher.append<SalesReturnRequestedData>(tx, {
+        eventType: EVENT_TYPES.SALES_RETURN_REQUESTED,
+        tenantId,
+        aggregateType: 'sales_return',
+        aggregateId: returnId,
+        correlationId: meta.correlationId,
+        actor: { type: 'user', id: actorId },
+        data: {
+          returnId,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          locationId: dto.locationId,
+          reason: dto.reason,
+          requestedByUserId: actorId,
+          lines: dto.items.map((line) => {
+            const orderItem = orderItemsById.get(line.orderItemId)!;
+            return {
+              orderItemId: line.orderItemId,
+              productVariantId: orderItem.productVariantId,
+              sku: orderItem.skuSnapshot,
+              quantityReturned: line.quantity,
+            };
+          }),
+        },
       });
 
       const response = await this.toResponse(tx, tenantId, created);
@@ -398,6 +437,30 @@ export class ReturnsService {
         },
         meta,
       });
+      // Domain event — one RETURN movement per line was committed in this transaction (§18/§105).
+      // Only the real inspecting -> resolved path reaches here; the idempotency short-circuit and
+      // the already-`resolved` early return emit nothing (§35/§107). If any line's ledger write
+      // throws, the whole transaction (movements + status + this event) rolls back (§106).
+      await this.domainEventPublisher.append<SalesReturnResolvedData>(tx, {
+        eventType: EVENT_TYPES.SALES_RETURN_RESOLVED,
+        tenantId,
+        aggregateType: 'sales_return',
+        aggregateId: id,
+        correlationId: meta.correlationId,
+        actor: { type: 'user', id: actorId },
+        data: {
+          returnId: id,
+          orderId: ret.orderId,
+          locationId: ret.locationId,
+          lines: items.map((item) => ({
+            orderItemId: item.orderItemId,
+            productVariantId: item.productVariantId,
+            quantityReturned: Number(item.quantityReturned),
+            disposition: item.disposition,
+            dispositionLocationId: item.dispositionLocationId,
+          })),
+        },
+      });
 
       const response = await this.toResponse(tx, tenantId, updated);
       await this.idempotencyRepository.create(tx, {
@@ -432,6 +495,17 @@ export class ReturnsService {
         throw new NotFoundException('Sales return not found.');
       }
       await this.writeAudit(tx, { tenantId, actorId, actionCode: 'sales_return.cancelled', entityId: id, meta });
+      // Domain event — only the real requested/inspecting -> cancelled transition reaches here; an
+      // already-`cancelled` return returned early above (§35/§108).
+      await this.domainEventPublisher.append<SalesReturnCancelledData>(tx, {
+        eventType: EVENT_TYPES.SALES_RETURN_CANCELLED,
+        tenantId,
+        aggregateType: 'sales_return',
+        aggregateId: id,
+        correlationId: meta.correlationId,
+        actor: { type: 'user', id: actorId },
+        data: { returnId: id, orderId: ret.orderId, status: 'cancelled' },
+      });
       return this.toResponse(tx, tenantId, updated);
     });
   }

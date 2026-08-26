@@ -152,6 +152,35 @@ services:
       minio-init:
         condition: service_completed_successfully
 
+  # The Event Processor deployable (ADR-0010 / events.md) — a separate process/container from both
+  # `api` and `import-worker`, never the same one (ADR-0029). Claims rows from `event_outbox` with
+  # `FOR UPDATE SKIP LOCKED`, retries with backoff, dead-letters poison events. It talks to NOTHING
+  # external in FASE 14 (no n8n/Telegram — FASE 15); it only marks rows `delivered` once a
+  # registered handler succeeds, and no handler is registered yet.
+  event-processor:
+    image: node:20-alpine
+    working_dir: /repo
+    command: sh -c "corepack enable && pnpm install && pnpm --filter @saas-inventory/api worker:events:dev"
+    environment:
+      NODE_ENV: development
+      # app_event_processor — the Event Processor's own cross-tenant claiming connection
+      # (migrations 0000/0010). Password set by the same `db:bootstrap-dev-roles` step, from
+      # APP_EVENT_PROCESSOR_PASSWORD.
+      APP_EVENT_PROCESSOR_DATABASE_URL: postgresql://app_event_processor:${APP_EVENT_PROCESSOR_PASSWORD:?set APP_EVENT_PROCESSOR_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-saas_inventory}
+      EVENT_PROCESSOR_POLL_INTERVAL_MS: ${EVENT_PROCESSOR_POLL_INTERVAL_MS:-2000}
+      EVENT_PROCESSOR_CLAIM_BATCH_SIZE: ${EVENT_PROCESSOR_CLAIM_BATCH_SIZE:-50}
+      EVENT_PROCESSOR_STALE_CLAIM_MS: ${EVENT_PROCESSOR_STALE_CLAIM_MS:-300000}
+      EVENT_PROCESSOR_MAX_ATTEMPTS: ${EVENT_PROCESSOR_MAX_ATTEMPTS:-10}
+      EVENT_PROCESSOR_RETRY_BASE_MS: ${EVENT_PROCESSOR_RETRY_BASE_MS:-1000}
+      EVENT_PROCESSOR_RETRY_MAX_MS: ${EVENT_PROCESSOR_RETRY_MAX_MS:-3600000}
+      EVENT_PROCESSOR_RETRY_FACTOR: ${EVENT_PROCESSOR_RETRY_FACTOR:-2}
+    volumes:
+      - .:/repo
+      - api_node_modules:/repo/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   web:
     image: node:20-alpine
     working_dir: /repo

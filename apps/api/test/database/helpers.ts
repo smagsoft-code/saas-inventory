@@ -37,11 +37,18 @@ const TEST_APP_PUBLIC_RESOLVER_DATABASE_URL = getOptionalEnvVar('TEST_APP_PUBLIC
  * migration 0019/0020, ADR-0029) — every other suite, including the rest of the IMPORT suite that
  * only exercises the synchronous HTTP path, is unaffected if this is unset. */
 const TEST_APP_IMPORT_WORKER_DATABASE_URL = getOptionalEnvVar('TEST_APP_IMPORT_WORKER_DATABASE_URL', '');
+/** Needed by test/events/event-processor.integration.test.ts (the app_event_processor connection,
+ * migrations 0000/0010, FASE 14) — the transactional-outbox suites that only WRITE events go
+ * through buildApp() and gate on appPlatformIntegrationTestsEnabled instead. tools/pg-verify DOES
+ * set this, so the Event Processor claim/retry/stale suite runs as part of the standard pass
+ * (0 skipped). */
+const TEST_APP_EVENT_PROCESSOR_DATABASE_URL = getOptionalEnvVar('TEST_APP_EVENT_PROCESSOR_DATABASE_URL', '');
 
 export const integrationTestsEnabled = TEST_MIGRATOR_DATABASE_URL !== '' && TEST_APP_TENANT_DATABASE_URL !== '';
 export const appPlatformIntegrationTestsEnabled =
   integrationTestsEnabled && TEST_APP_PLATFORM_DATABASE_URL !== '' && TEST_APP_PUBLIC_RESOLVER_DATABASE_URL !== '';
 export const importWorkerIntegrationTestsEnabled = appPlatformIntegrationTestsEnabled && TEST_APP_IMPORT_WORKER_DATABASE_URL !== '';
+export const eventProcessorIntegrationTestsEnabled = appPlatformIntegrationTestsEnabled && TEST_APP_EVENT_PROCESSOR_DATABASE_URL !== '';
 
 const APP_ROLES = ['app_migrator', 'app_tenant', 'app_platform', 'app_event_processor', 'app_public_resolver', 'app_import_worker'];
 
@@ -184,6 +191,26 @@ async function bootstrapAppImportWorkerPassword(): Promise<void> {
   }
 }
 
+/** Mirrors bootstrapAppTenantPassword() for app_event_processor — only runs when
+ * TEST_APP_EVENT_PROCESSOR_DATABASE_URL is actually set (migration 0000 creates the role). */
+async function bootstrapAppEventProcessorPassword(): Promise<void> {
+  if (TEST_APP_EVENT_PROCESSOR_DATABASE_URL === '') {
+    return;
+  }
+  const parsed = new URL(TEST_APP_EVENT_PROCESSOR_DATABASE_URL);
+  const password = decodeURIComponent(parsed.password);
+  const bootstrap = postgres(TEST_MIGRATOR_DATABASE_URL, { max: 1 });
+  try {
+    const [quoted] = await bootstrap<{ quoted_password: string }[]>`select quote_literal(${password}) as quoted_password`;
+    if (!quoted) {
+      throw new Error('quote_literal() returned no row for app_event_processor password');
+    }
+    await bootstrap.unsafe(`ALTER ROLE app_event_processor WITH PASSWORD ${quoted.quoted_password}`);
+  } finally {
+    await bootstrap.end();
+  }
+}
+
 /** Resets the target database to empty and applies every migration — call once per test file in
  * beforeAll(), never inside individual `it`s (each migration run is relatively expensive). */
 export async function resetAndMigrate(): Promise<void> {
@@ -193,6 +220,7 @@ export async function resetAndMigrate(): Promise<void> {
   await bootstrapAppPlatformPassword();
   await bootstrapAppPublicResolverPassword();
   await bootstrapAppImportWorkerPassword();
+  await bootstrapAppEventProcessorPassword();
 }
 
 export function getMigratorDb() {
@@ -214,6 +242,10 @@ export function getAppPublicResolverDatabaseUrl(): string {
 
 export function getAppImportWorkerDatabaseUrl(): string {
   return TEST_APP_IMPORT_WORKER_DATABASE_URL;
+}
+
+export function getAppEventProcessorDatabaseUrl(): string {
+  return TEST_APP_EVENT_PROCESSOR_DATABASE_URL;
 }
 
 /** The exact SET LOCAL / set_config pattern the running API uses (tenant-context.ts) — opens an

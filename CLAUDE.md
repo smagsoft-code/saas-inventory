@@ -602,3 +602,45 @@ never commits against a `rejected` approval — `confirm` always 409, stays bloc
 verified), table, permission code, ADR, or endpoint — the guarantees derive entirely from the
 existing state machine's `FOR UPDATE` locks. Real-PostgreSQL: **294 integration tests, 0 skipped**;
 lint / typecheck / API build pass; web build unchanged (`EPERM`).
+
+FASE 14 added transactional domain-event publishing and the **Event Processor** — the `event_outbox`
+table (migrated since Prompt 03) and the `app_event_processor` role (migration `0000`) get their
+first application code; **no schema table or column was added, no migration**. Write path
+(`apps/api/src/common/events/`, provided into `SalesModule` like `AuditLogService` — no
+`SALES → NOTIFICATIONS` import): `OutboxRepository` (the single `event_outbox` writer) +
+`DomainEventPublisher.append(tx, input)`, called inside the existing `withTenantTransaction` of
+`OrdersService.confirm`/`.cancel`, `PriceApprovalsService.request`/`.resolve`,
+`ReturnsService.create`/`.resolve`/`.cancel` — **not** best-effort (unlike audit): a failure throws
+and rolls the business transaction back. Eight versioned events, `module.aggregate.action` past
+tense (`sales.order.confirmed`/`.cancelled`, `sales.price_approval.requested`/`.approved`/
+`.rejected`, `sales.return.requested`/`.resolved`/`.cancelled`), one per **logical** transition —
+the idempotent early-returns and CAS-losers publish nothing, so HTTP retry / `confirm‖confirm` /
+`approve‖reject` / `resolve‖resolve` / `resolve‖cancel` each yield exactly one event. The
+`event_outbox.payload` holds a self-describing versioned envelope (`eventId` = row id, never
+regenerated; `eventType`/`eventVersion`/`occurredAt`/`tenantId`/`aggregate*`/`correlationId`/`actor`/
+`data`). Payloads are data-minimised — `sales.order.confirmed` carries the customer PII snapshot a
+notification needs but **no** `min_price`/`unit_cost`/`base_price`/`max_price` (ADR-0028);
+`sales.price_approval.requested` omits `minPriceAtRequest` entirely. **Event Processor**
+(`apps/api/src/event-processor/` + the separate `worker:events:dev`/`worker:events:start` deployable,
+`NestFactory.createApplicationContext(AppModule)`, never `.listen()` — mirrors the Import Worker,
+ADR-0029): a poll loop over `EventProcessorService.runOnce()` that claims via one atomic
+`FOR UPDATE SKIP LOCKED` CTE over the dedicated `app_event_processor` connection
+(`event-processor-client.ts`, `APP_EVENT_PROCESSOR_DATABASE_URL`). `claimed_at` doubles as the
+last-attempt timestamp so exponential capped backoff (`EVENT_PROCESSOR_RETRY_*`) is computed in SQL
+with no new column; a stale `processing` row (crashed worker) is reclaimed (incrementing `attempts`)
+and `reapStale` dead-letters it once `attempts` hits `EVENT_PROCESSOR_MAX_ATTEMPTS`; a `dead_letter`
+row is never deleted. **Delivery is at-least-once** (crash-after-success-before-ack redelivers the
+same `eventId`) — documented for FASE 15 consumers; business side effects stay exactly-once. The
+claim query filters `event_type = ANY(:supportedTypes)` where `supportedTypes` is the dispatcher's
+registered-handler set — **empty in FASE 14 production** (`EventProcessorModule` binds
+`EVENT_HANDLERS` to `[]`), so nothing is claimed and **no event is ever falsely marked
+`delivered`** before FASE 15's n8n adapter. An unknown `eventVersion` / malformed envelope is
+terminal, not retried. `app_event_processor` has `SELECT, UPDATE` on `event_outbox` only — no grant
+on any other table, not `BYPASSRLS`, cannot `SET ROLE` (verified as `app_event_processor` for real).
+`last_error` and every log line pass through a token/credential/JWT sanitizer. `tools/pg-verify` now
+bootstraps `app_event_processor` and passes `TEST_APP_EVENT_PROCESSOR_DATABASE_URL`, so the new
+`test/events/*` suites run in the standard pass: **324 integration tests, 26 files, 0 skipped**
+(up from 294/23). Deliberately **not** built (FASE 15+): n8n, Telegram, external webhook delivery,
+notification preferences, message templates, manual retry/replay tooling, outbox retention/purge,
+any frontend or reporting on events. `pnpm --filter @saas-inventory/web build` still fails on the
+pre-existing Windows `EPERM` symlink error (`apps/web` untouched).

@@ -2783,10 +2783,10 @@ The persistence contract [ADR-0010](../decisions/0010-outbox-pattern.md) and
 event_outbox
   id                uuid PK        -- this IS the stable event_id from events.md
   tenant_id         uuid NULL FK -> tenants(id)   -- NULL for platform-global events (e.g. TENANT_CREATED)
-  aggregate_type    text NOT NULL   -- e.g. 'inventory_movement', 'order'
+  aggregate_type    text NOT NULL   -- e.g. 'order', 'price_approval', 'sales_return'
   aggregate_id      uuid NOT NULL
-  event_type        text NOT NULL   -- e.g. 'INVENTORY_ADJUSTED', from the events.md catalog
-  payload           jsonb NOT NULL
+  event_type        text NOT NULL   -- dotted module.aggregate.action, e.g. 'sales.order.confirmed' (events.md#event-catalog)
+  payload           jsonb NOT NULL   -- the full versioned event envelope (events.md#event-envelope)
   correlation_id    uuid NULL
   status            text NOT NULL CHECK IN ('pending','processing','delivered','dead_letter'), DEFAULT 'pending'
   attempts          integer NOT NULL DEFAULT 0
@@ -2797,21 +2797,29 @@ event_outbox
   created_at        timestamptz NOT NULL DEFAULT now()
 ```
 
-**Locking/claiming for multiple Event Processor instances**, answering this prompt's explicit
-requirement:
+**Locking/claiming for multiple Event Processor instances — implemented in FASE 14**
+([`event-claim.repository.ts`](../../apps/api/src/event-processor/event-claim.repository.ts)):
 
 ```sql
-WITH claimed AS (
-    SELECT id FROM event_outbox
-    WHERE status = 'pending'
+WITH claimable AS (
+    SELECT id, status FROM event_outbox
+    WHERE event_type = ANY(:supported_types)        -- only types with a registered handler
+      AND attempts < :max_attempts
+      AND (
+        (status = 'pending' AND (claimed_at IS NULL
+          OR claimed_at < now() - LEAST(:retry_max_ms, :retry_base_ms * power(:factor, attempts))
+                                  * interval '1 ms'))
+        OR (status = 'processing' AND claimed_at < now() - :stale_ms * interval '1 ms')
+      )
     ORDER BY created_at
     FOR UPDATE SKIP LOCKED
-    LIMIT 50
+    LIMIT :batch_size
 )
-UPDATE event_outbox
-SET status = 'processing', claimed_at = now(), claimed_by = :worker_id
-WHERE id IN (SELECT id FROM claimed)
-RETURNING *;
+UPDATE event_outbox e
+SET status = 'processing', claimed_at = now(), claimed_by = :worker_id,
+    attempts = e.attempts + (CASE WHEN c.status = 'processing' THEN 1 ELSE 0 END)
+FROM claimable c WHERE e.id = c.id
+RETURNING e.id, e.tenant_id, e.event_type, e.attempts, e.created_at, e.payload;
 ```
 
 `FOR UPDATE SKIP LOCKED` is what makes this safe with more than one Event Processor instance running
@@ -2819,12 +2827,24 @@ at once (per [scalability.md](scalability.md), horizontal scaling is a stated gr
 worker's poll query skips rows another worker already has locked, instead of blocking on them or
 double-claiming — no separate distributed lock needed.
 
+**No schema column was needed for retry scheduling.** `claimed_at` doubles as the *last-attempt
+timestamp*, so the next-eligible time is `claimed_at + backoff(attempts)`, computed in the claim
+`WHERE` clause. Backoff = `min(retry_max_ms, retry_base_ms · factor^attempts)`, exponential and
+capped (`EVENT_PROCESSOR_RETRY_*`). A `processing` row whose `claimed_at` is older than
+`EVENT_PROCESSOR_STALE_CLAIM_MS` is treated as abandoned by a crashed worker and reclaimed
+(incrementing `attempts`); once `attempts` reaches `EVENT_PROCESSOR_MAX_ATTEMPTS` the row becomes
+terminal `dead_letter` (via a per-poll `reapStale` sweep or the `markFailed` path) and is **never
+deleted**. This is exactly what [events.md](events.md#retry--backoff--terminal) already said:
+attempts/backoff/dead-lettering are Event Processor *behaviour*, not schema — the table only carries
+the state that behaviour reads and writes, and FASE 14 added **no migration**.
+
+**`event_type = ANY(:supported_types)`** — `supported_types` is the set of event types the Event
+Processor has a registered delivery handler for. In FASE 14 that set is empty in production (no n8n
+adapter until FASE 15), so nothing is ever claimed and no event is falsely marked `delivered`.
+
 **Idempotency:** `id` is generated once, by application code, at the moment the event is written
-(same transaction as the business operation) and never regenerated on retry — a redelivery to n8n
-resends the same row with the same `id`, which is exactly the "n8n treats a redelivery of the same
-`event_id` as a duplicate" contract [events.md#idempotency-and-retries](events.md#idempotency-and-retries)
-already specifies. Attempts/backoff/dead-lettering are Event Processor *behavior* (FASE 11), not
-schema — this table only carries the state that behavior reads and writes.
+(same transaction as the business operation) and never regenerated on retry — a redelivery resends
+the same row with the same `id`, the `eventId` a FASE 15 consumer dedupes on.
 
 Retention/archival of delivered events past some window is explicitly **not decided** here — flagged
 as an open item in [§Open decisions carried forward](#open-decisions-carried-forward), since it's an

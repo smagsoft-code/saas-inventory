@@ -66,6 +66,7 @@ function build() {
   const stockLedgerService = { applyMovement: vi.fn().mockResolvedValue({}) };
   const idempotencyRepository = { find: vi.fn().mockResolvedValue(undefined), create: vi.fn() };
   const auditLogService = { record: vi.fn() };
+  const domainEventPublisher = { append: vi.fn() };
 
   const service = new ReturnsService(
     returnsRepository as never,
@@ -77,6 +78,7 @@ function build() {
     stockLedgerService as never,
     idempotencyRepository as never,
     auditLogService as never,
+    domainEventPublisher as never,
   );
   return {
     service,

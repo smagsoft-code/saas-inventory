@@ -100,11 +100,25 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   against a pending/rejected approval — **no functional bug found, no code change**, only new
   concurrency tests. *(done)*
 
-## Future phases
+- **FASE 14 — Events & Outbox** — transactional domain-event publishing and the Event Processor.
+  `DomainEventPublisher` + `OutboxRepository` (`apps/api/src/common/events/`) are the single shared
+  write API — `OrdersService`/`PriceApprovalsService`/`ReturnsService` call
+  `append(tx, ...)` inside their existing `withTenantTransaction` on every real state transition, so
+  the `event_outbox` row and the business mutation commit or roll back atomically. Eight versioned
+  SALES events (`sales.order.confirmed`/`.cancelled`, `sales.price_approval.requested`/`.approved`/
+  `.rejected`, `sales.return.requested`/`.resolved`/`.cancelled`), one per *logical* transition —
+  HTTP retry / concurrent transitions never duplicate. Payloads are data-minimised (no
+  `min_price`/`cost` — ADR-0028). The **Event Processor** (`apps/api/src/event-processor/` + its own
+  `worker:events` deployable, `NestFactory.createApplicationContext`, no HTTP) claims via
+  `FOR UPDATE SKIP LOCKED` over the dedicated `app_event_processor` role (blast radius =
+  `event_outbox` only), with exponential capped backoff, stale-claim recovery, and a terminal
+  `dead_letter` state — **no schema change, no migration** (`claimed_at` doubles as the last-attempt
+  timestamp; ADR-0010 already accepted). It ships with an **empty delivery-handler registry**, so no
+  event is ever marked `delivered` until FASE 15 registers an adapter — nothing is claimed while the
+  registry is empty. Import Worker ≠ Event Processor (ADR-0029): separate entry point, DB role, and
+  claim repository. pg-verify: 324 integration tests, 26 files, 0 skipped. *(done)*
 
-- **FASE 14 — Events & Outbox** — transactional domain-event publishing through the existing
-  `event_outbox` design, reliable event claiming/retry behavior and the Event Processor.
-  This phase must remain separate from the IMPORT Worker.
+## Future phases
 
 - **FASE 15 — n8n Integration & Notifications** — external automation through n8n, webhook
   consumption and Telegram notifications. Domain modules must not integrate directly with Telegram;
@@ -222,13 +236,15 @@ explicit review/commit.
 
 ## Current status
 
-FASE 0–13 are completed and committed.
+FASE 0–14 are completed and committed.
 
-FASE 14 (Events & Outbox) is the next phase to be started.
+FASE 15 (n8n Integration & Notifications) is the next phase to be started.
 
-No future phase has been started merely by defining its database schema or architecture. In
-particular, `event_outbox` (FASE 14) has existed, fully migrated, since Prompt 03, and still has
-no application code — FASE 13 writes audit records but no domain events. Selling serialized /
-lot-tracked variants remains a pending explicit design (no approved `order_items` ↔
+No future phase has been started merely by defining its database schema or architecture. FASE 14
+gave `event_outbox` (migrated since Prompt 03) its first application code — transactional publishing
+from SALES and the Event Processor deployable — but **external delivery to n8n/Telegram is FASE
+15**: the Event Processor has no delivery handler registered, so it never marks an event
+`delivered`, and the backend still stores no Telegram token and calls no external service. Selling
+serialized / lot-tracked variants remains a pending explicit design (no approved `order_items` ↔
 `product_serials`/`product_lots` model, no serial/lot column on `inventory_movements`) — it is not
 assigned to any phase yet.
