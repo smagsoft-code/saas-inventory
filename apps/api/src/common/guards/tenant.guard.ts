@@ -2,6 +2,7 @@ import { ForbiddenException, Injectable, type CanActivate, type ExecutionContext
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
 import { TenantsPlatformRepository } from '../../auth/repositories/tenants-platform.repository';
+import { UsersRepository } from '../../auth/repositories/users.repository';
 import { withTenantTransaction } from '../../database/tenant-context';
 import { IS_PLATFORM_ONLY_KEY } from '../decorators/platform-only.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -33,12 +34,25 @@ import { loadEffectivePermissions } from '../permissions/load-effective-permissi
  * working the moment that tenant is suspended, not merely from its next login/refresh — this is
  * the single central enforcement point for that, so no controller anywhere re-checks
  * `tenants.status` on its own.
+ *
+ * PROMPT 011-B: the identical live-read principle applies to the *user*, not only the tenant.
+ * `login()`/`refresh()`/`me()` (auth.service.ts) already re-fetch the user and check
+ * `user.status === 'active'` on every one of those calls — but nothing previously did the same
+ * for an already-issued access token's ordinary tenant-scoped requests: `loadEffectivePermissions`
+ * only ever reads `user_roles`/`role_permissions`, never `users`, so a disabled user's still-valid
+ * token kept working until it naturally expired. Fixed here, in the same transaction that already
+ * loads permissions, via `UsersRepository.findById` (tenant- *and* user-id-scoped — this is also
+ * what structurally guarantees `user.tenant_id == tenant.id`, per §15: a user row from a different
+ * tenant can never match this WHERE clause, so nothing further is needed to rule that out) —
+ * indexed on the same `(tenant_id, id)` primary key every other tenant-scoped lookup in this
+ * codebase already uses, not a new query shape.
  */
 @Injectable()
 export class TenantGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly tenantsPlatformRepository: TenantsPlatformRepository,
+    private readonly usersRepository: UsersRepository,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -80,9 +94,21 @@ export class TenantGuard implements CanActivate {
       throw new ForbiddenException('Tenant is not active.');
     }
 
-    const permissions = await withTenantTransaction(principal.tenantId, (tx) =>
-      loadEffectivePermissions(tx, principal.userId),
-    );
+    const permissions = await withTenantTransaction(principal.tenantId, async (tx) => {
+      // Live user-status check (PROMPT 011-B) — same rationale as the tenant check above, applied
+      // to `users.status`: a disabled/invited (or deleted — findById already excludes
+      // deleted_at IS NOT NULL rows) user must stop being able to use an already-issued token from
+      // this point on, not merely from their next login/refresh.
+      const user = await this.usersRepository.findById(tx, principal.tenantId, principal.userId);
+      if (!user || user.status !== 'active') {
+        return undefined;
+      }
+      return loadEffectivePermissions(tx, principal.userId);
+    });
+
+    if (!permissions) {
+      throw new ForbiddenException('User is not active.');
+    }
 
     request.tenantContext = {
       userId: principal.userId,

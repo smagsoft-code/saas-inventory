@@ -257,6 +257,17 @@ edge and IMPORT carries the (legitimate, narrower) multi-module dependency inste
 
 **Consumed by:** nothing depends on IMPORT — like QR, it is a leaf module.
 
+**PROMPT 011-B** closed a real gap: the Import Worker never passes through `TenantGuard` (it is a
+background process, not an HTTP path), so nothing previously stopped it from claiming or continuing
+to process a job belonging to a tenant a SuperAdmin had since suspended. `ImportWorkerClaimRepository`'s
+claim query now excludes any job whose tenant is not `active`; `ImportValidationService`/
+`ImportExecutionService` re-check the same live status before starting each batch of an already-claimed
+job. Either check leaves the job in its current, resumable status (never `failed`, never falsely
+finalized to `completed`) — see [security.md#tenant-isolation](security.md#tenant-isolation) for
+the full design and [database.md#row-level-security](database.md#row-level-security) for the one
+narrow grant (`GRANT SELECT (id, status) ON tenants TO app_import_worker`, migration 0025) this
+required.
+
 ## Inventory and locations summary
 
 Full detail: [database.md](database.md) (conceptual model) and the Inventory Flow diagram below.

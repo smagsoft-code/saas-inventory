@@ -128,6 +128,27 @@ one tenant has no effect on any other tenant's sessions, isolation (RLS), or the
 identity's own ability to keep managing it — `@PlatformOnly()` routes never resolve a tenant context
 at all, so they are structurally unaffected by any tenant's status.
 
+**The identical live-read principle applies to `users.status` (PROMPT 011-B), and to the Import
+Worker's own execution path.** `login()`/`refresh()`/`me()` already re-fetched the user and checked
+`status === 'active'` on every one of those calls, but nothing previously re-checked it for an
+already-issued access token's ordinary tenant-scoped requests — `TenantGuard` now does, via
+`UsersRepository.findById(tx, tenantId, userId)` (tenant- *and* user-id-scoped, which is also what
+structurally guarantees a user can never resolve against a different tenant than the one in its own
+token), inside the same transaction that already loads effective permissions — one extra indexed
+lookup, not a new query shape. A disabled user's still-valid token stops working from the very next
+request the same way a suspended tenant's does, and is left un-revoked, so reactivation restores it
+immediately, with no forced re-login. Separately, the Import Worker (`apps/api/src/import-worker/`)
+never passes through `TenantGuard` at all — it is a background process, not an HTTP path — so it
+needed its own, independent enforcement: `ImportWorkerClaimRepository`'s claim query now excludes
+any job whose tenant is not `active` (a `JOIN tenants ... AND t.status = 'active'`, locking only
+`import_jobs` rows via `FOR UPDATE OF ij` so this read can never block a platform-admin
+suspend/activate call), and `ImportValidationService`/`ImportExecutionService` re-check the same
+live status before starting every batch of an already-claimed job — never mid-batch, never
+aborting work already committed, only preventing the *next* batch from starting. Either check
+leaves the job in its current, resumable, non-terminal status (never `failed`, never falsely
+finalized to `completed`) — see [modules.md#import](modules.md#import-prompt-02-b) for the full
+worker-side design.
+
 **Field-level authorization (Prompt 02-D)** — route-level permission checks are not always enough:
 `cost` and `min_price` need to be withheld from an authenticated caller who lacks the specific
 permission for them, even though that caller is otherwise authorized to view the product. See

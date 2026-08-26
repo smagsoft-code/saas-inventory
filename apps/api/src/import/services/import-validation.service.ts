@@ -1,5 +1,6 @@
-import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { getOptionalEnvVar } from '@saas-inventory/config';
+import { TenantsPlatformRepository } from '../../auth/repositories/tenants-platform.repository';
 import { AttributeValidationService } from '../../catalog/products/attribute-validation.service';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
@@ -43,6 +44,8 @@ interface FileWideMaps {
  */
 @Injectable()
 export class ImportValidationService {
+  private readonly logger = new Logger(ImportValidationService.name);
+
   constructor(
     private readonly importJobsRepository: ImportJobsRepository,
     private readonly importJobRowsRepository: ImportJobRowsRepository,
@@ -50,18 +53,34 @@ export class ImportValidationService {
     private readonly locationAuthorizationService: LocationAuthorizationService,
     private readonly catalogLookup: ImportCatalogLookupRepository,
     private readonly attributePartitionService: ImportAttributePartitionService,
+    private readonly tenantsPlatformRepository: TenantsPlatformRepository,
   ) {}
 
   /** Processes every `pending` row for a job, batch by batch (own transaction per batch, per
    * database.md#committing's identical batching rationale applied to validation), then finalizes
    * the job's counters and transitions `validating -> ready`. Safe to call again on a job that
    * already has some `valid`/`warning`/`invalid` rows (resumed after a crash) — those rows are
-   * simply not `pending` any more and are skipped. */
+   * simply not `pending` any more and are skipped.
+   *
+   * PROMPT 011-B: `tenants.status` is re-checked live before every batch (never only at the
+   * initial HTTP-level TenantGuard check, which the Import Worker's own poll loop never passes
+   * through at all — §32/§33 of that prompt: a worker execution policy, not a reused HTTP guard).
+   * If the tenant is no longer `active`, this returns early *without* running the finalize block
+   * below — the job is left exactly as it was (`validating`, whatever rows already got a result),
+   * never marked `failed` for a suspension that isn't an import error, and never falsely finalized
+   * to `ready` before every row actually has a result. `nextPendingBatch` never re-selects an
+   * already-validated row, so resuming after reactivation picks up exactly where this left off. */
   async validateJob(tenantId: string, jobId: string, actorUserId: string): Promise<void> {
     const size = batchSize();
     const fileWideMaps = await this.buildFileWideMaps(tenantId, jobId);
 
     for (;;) {
+      const tenant = await this.tenantsPlatformRepository.findById(tenantId);
+      if (!tenant || tenant.status !== 'active') {
+        this.logger.warn(`Import job ${jobId} (tenant ${tenantId}) paused mid-validation — tenant is not active.`);
+        return;
+      }
+
       const batchRows = await withTenantTransaction(tenantId, (tx) => this.importJobRowsRepository.nextPendingBatch(tx, tenantId, jobId, size));
       if (batchRows.length === 0) break;
 

@@ -33,6 +33,11 @@ const DB_NAME = 'saas_inventory_verify';
 const APP_TENANT_PASSWORD = 'verify-app-tenant-ephemeral';
 const APP_PLATFORM_PASSWORD = 'verify-app-platform-ephemeral';
 const APP_PUBLIC_RESOLVER_PASSWORD = 'verify-app-public-resolver-ephemeral';
+// PROMPT 011-B: previously left to a separate, manual throwaway run (FASE 10's final report) —
+// now bootstrapped here too so the standard verify pass actually exercises
+// test/import/import-worker.integration.test.ts's real-PostgreSQL claim-query suite, including
+// this prompt's new suspended-tenant claim/reclaim cases, every time this script runs.
+const APP_IMPORT_WORKER_PASSWORD = 'verify-app-import-worker-ephemeral';
 const DATA_DIR = path.resolve(process.cwd(), '.verify-pgdata');
 const API_DIR = path.resolve(process.cwd(), '../../apps/api');
 
@@ -40,6 +45,7 @@ const MIGRATOR_URL = `postgresql://${SUPERUSER}:${SUPERUSER_PASSWORD}@127.0.0.1:
 const APP_TENANT_URL = `postgresql://app_tenant:${APP_TENANT_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_PLATFORM_URL = `postgresql://app_platform:${APP_PLATFORM_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_PUBLIC_RESOLVER_URL = `postgresql://app_public_resolver:${APP_PUBLIC_RESOLVER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
+const APP_IMPORT_WORKER_URL = `postgresql://app_import_worker:${APP_IMPORT_WORKER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 
 let failures = 0;
 
@@ -125,12 +131,13 @@ async function main(): Promise<void> {
     section('3. Re-running migrations (must be a safe no-op, not corrupt/duplicate anything)');
     run('db:migrate (second run)', ['run', 'db:migrate'], { MIGRATOR_DATABASE_URL: MIGRATOR_URL });
 
-    section('4. Bootstrapping app_tenant / app_platform / app_public_resolver role passwords');
+    section('4. Bootstrapping app_tenant / app_platform / app_public_resolver / app_import_worker role passwords');
     run('db:bootstrap-dev-roles', ['run', 'db:bootstrap-dev-roles'], {
       MIGRATOR_DATABASE_URL: MIGRATOR_URL,
       APP_TENANT_PASSWORD,
       APP_PLATFORM_PASSWORD,
       APP_PUBLIC_RESOLVER_PASSWORD,
+      APP_IMPORT_WORKER_PASSWORD,
     });
 
     await verifySchema();
@@ -168,6 +175,10 @@ async function main(): Promise<void> {
       TEST_APP_TENANT_DATABASE_URL: APP_TENANT_URL,
       TEST_APP_PLATFORM_DATABASE_URL: APP_PLATFORM_URL,
       TEST_APP_PUBLIC_RESOLVER_DATABASE_URL: APP_PUBLIC_RESOLVER_URL,
+      // PROMPT 011-B: enables importWorkerIntegrationTestsEnabled (test/database/helpers.ts), so
+      // test/import/import-worker.integration.test.ts's real app_import_worker claim-query suite
+      // now runs as part of the standard pass instead of a separate manual run.
+      TEST_APP_IMPORT_WORKER_DATABASE_URL: APP_IMPORT_WORKER_URL,
     });
   } finally {
     section('Stopping PostgreSQL (data directory is wiped — persistent: false)');

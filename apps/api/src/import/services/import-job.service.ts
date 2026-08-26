@@ -212,12 +212,25 @@ export class ImportJobService {
 
   /** Shared by the synchronous path above and ImportWorkerService. */
   async runCommit(tenantId: string, jobId: string, actorId: string): Promise<ImportJobResponseDto> {
+    let completed: boolean;
     try {
-      await this.executionService.commitJob(tenantId, jobId, actorId);
+      completed = await this.executionService.commitJob(tenantId, jobId, actorId);
     } catch (error) {
       await this.markFailedAndAudit(tenantId, jobId);
       throw error;
     }
+
+    if (!completed) {
+      // PROMPT 011-B: commitJob stopped early because the tenant is no longer active — the job
+      // stays `importing` (not finalized, not failed), resumable once reactivated. Finalizing it
+      // here regardless would falsely mark a partially-committed job as done.
+      return withTenantTransaction(tenantId, async (tx) => {
+        const current = await this.importJobsRepository.findById(tx, tenantId, jobId);
+        if (!current) throw new NotFoundException('Import job not found.');
+        return toJobResponse(current);
+      });
+    }
+
     return withTenantTransaction(tenantId, async (tx) => {
       const current = await this.importJobsRepository.findById(tx, tenantId, jobId);
       if (!current) throw new NotFoundException('Import job not found.');

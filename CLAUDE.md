@@ -390,3 +390,36 @@ decision), no controller-by-controller check, and `@PlatformOnly()` routes are s
 unaffected (they never resolve a tenant context at all). See
 [security.md#tenant-isolation](docs/architecture/security.md#tenant-isolation) and
 [multi-tenancy.md#enforcement-layers-defense-in-depth](docs/architecture/multi-tenancy.md#enforcement-layers-defense-in-depth).
+
+PROMPT 011-B (a second post-FASE-11 controlled correction) closed the two gaps 011-A's own audit
+had flagged but left open: `TenantGuard` re-checked `tenants.status` but never `users.status` — a
+disabled user's still-valid access token kept working on every tenant-scoped route until it
+expired, since `loadEffectivePermissions` only ever reads `user_roles`/`role_permissions`, never
+`users`. Fixed the same way as the tenant check: `TenantGuard` now also calls
+`UsersRepository.findById(tx, tenantId, userId)` (tenant- *and* user-id-scoped, so a user from a
+different tenant can never match) inside the transaction that already loads permissions, rejecting
+with `403 ("User is not active.")` if the row is missing or not `active` — `login()`/`refresh()`
+already had this check, unchanged. Second: the Import Worker (`apps/api/src/import-worker/`) never
+passes through `TenantGuard` at all (no HTTP request, no guard chain) — nothing previously stopped
+it from claiming or continuing a job belonging to a tenant a SuperAdmin had since suspended.
+`ImportWorkerClaimRepository`'s claim query (`import-worker-claim.repository.ts`) now `JOIN`s
+`tenants` and excludes any job whose tenant is not `active` — locking only `import_jobs` via `FOR
+UPDATE OF ij`, deliberately never `tenants`, so this read can never block (or be blocked by) a
+platform-admin suspend/activate call — requiring one narrow new grant, `GRANT SELECT (id, status)
+ON tenants TO app_import_worker` (migration 0025; `tenants` has no RLS, access is by-GRANT alone).
+An already-claimed job's own batch loop (`ImportValidationService.validateJob`/
+`ImportExecutionService.commitJob`) now re-checks the same live status before starting every batch
+via the existing `TenantsPlatformRepository` (no new grant needed there — `app_platform` already
+reads `tenants` unrestricted) — a batch already in flight is allowed to finish (no mid-transaction
+abort), only the *next* batch is prevented from starting, and the job is left in its current,
+resumable status rather than being finalized. This required propagating a
+`commitJob(): Promise<boolean>` "did it actually finish" signal up to
+`ImportJobService.runCommit`, which previously finalized the job to `completed`/
+`completed_with_errors` unconditionally after `commitJob` returned — a real bug this prompt's own
+tracing caught before it could ship: without that signal, a job merely paused by a suspension would
+have been incorrectly marked done. `tools/pg-verify` now also bootstraps `app_import_worker` and
+passes `TEST_APP_IMPORT_WORKER_DATABASE_URL`, so `test/import/import-worker.integration.test.ts`
+(previously a separate manual run per FASE 10's own report) runs as part of the standard verify
+pass. No new ADR (both are gap-closures in already-approved status/lifecycle semantics), no new
+table, no new permission code, no controller-by-controller or per-service-by-service check outside
+the two central points named above.

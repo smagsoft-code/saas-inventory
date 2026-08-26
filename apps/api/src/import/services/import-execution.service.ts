@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { generateId } from '@saas-inventory/shared';
 import { getOptionalEnvVar } from '@saas-inventory/config';
+import { TenantsPlatformRepository } from '../../auth/repositories/tenants-platform.repository';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { ProductsRepository } from '../../catalog/repositories/products.repository';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
@@ -54,6 +55,7 @@ export class ImportExecutionService {
     private readonly catalogLookup: ImportCatalogLookupRepository,
     private readonly attributePartitionService: ImportAttributePartitionService,
     private readonly auditLogService: AuditLogService,
+    private readonly tenantsPlatformRepository: TenantsPlatformRepository,
   ) {}
 
   /** Processes every `valid`/`warning` row not yet `imported`, batch by batch — §26's "validate ->
@@ -61,11 +63,29 @@ export class ImportExecutionService {
    * `nextCommittableBatch` never re-selects an already-`imported` row (§21, no separate idempotency
    * mechanism needed). Stops (leaving the job `importing`, to be picked back up on retry) if an
    * unexpected error escapes a whole batch — the caller (ImportJobService/ImportWorkerService)
-   * decides the resulting job status. */
-  async commitJob(tenantId: string, jobId: string, actorId: string): Promise<void> {
+   * decides the resulting job status.
+   *
+   * PROMPT 011-B: also stops — the same "leave it `importing`, resumable" way, never `failed` —
+   * the moment `tenants.status` is no longer `active`, checked live before every batch. A batch
+   * already fetched/committing is allowed to finish (§24 of that prompt: no mid-flight abort is
+   * required or attempted); only the *next* batch is prevented from starting. The final
+   * imported/invalid-row-count update below is skipped in that case too, so nothing about the
+   * job's row-level state is touched beyond what already-committed batches actually did.
+   *
+   * Returns whether the job actually ran to completion (`true`) or stopped early because the
+   * tenant is no longer active (`false`) — `ImportJobService.runCommit` must not transition the
+   * job to a terminal `completed`/`completed_with_errors` status on a `false` return; doing so
+   * would falsely mark a partially-processed job as finished. */
+  async commitJob(tenantId: string, jobId: string, actorId: string): Promise<boolean> {
     const size = batchSize();
 
     for (;;) {
+      const tenant = await this.tenantsPlatformRepository.findById(tenantId);
+      if (!tenant || tenant.status !== 'active') {
+        this.logger.warn(`Import job ${jobId} (tenant ${tenantId}) paused mid-commit — tenant is not active.`);
+        return false;
+      }
+
       const batchRows = await withTenantTransaction(tenantId, (tx) => this.importJobRowsRepository.nextCommittableBatch(tx, tenantId, jobId, size));
       if (batchRows.length === 0) break;
 
@@ -85,6 +105,7 @@ export class ImportExecutionService {
         invalidRows: counts['invalid'] ?? 0,
       });
     });
+    return true;
   }
 
   private async commitOneRow(tx: TenantTransaction, tenantId: string, actorId: string, job: ImportJobRow, row: ImportJobRowRow): Promise<void> {

@@ -2,6 +2,7 @@ import { Global, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { TenantsPlatformRepository } from '../auth/repositories/tenants-platform.repository';
+import { UsersRepository } from '../auth/repositories/users.repository';
 import { AUTH_CONFIG, getAuthConfig } from './config/auth-config';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -22,11 +23,12 @@ import { ObjectStorageService } from './storage/object-storage.service';
   imports: [JwtModule.register({})],
   providers: [
     { provide: AUTH_CONFIG, useFactory: getAuthConfig },
-    // TenantsPlatformRepository: TenantGuard's PROMPT-011-A tenant-status check needs it — same
-    // "each module gets its own stateless instance" convention CoreModule/AdministrationModule
-    // already use for this exact class (it has no dependency beyond the globally-provided
-    // PLATFORM_DATABASE token), not a new pattern.
+    // TenantsPlatformRepository/UsersRepository: TenantGuard's PROMPT-011-A (tenant-status) and
+    // PROMPT-011-B (user-status) live checks need them — same "each module gets its own stateless
+    // instance" convention CoreModule/AdministrationModule already use for these exact classes
+    // (neither has a dependency beyond the globally-provided database tokens), not a new pattern.
     TenantsPlatformRepository,
+    UsersRepository,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },

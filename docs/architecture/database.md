@@ -421,6 +421,21 @@ switch, held for the rest of the batch) and `app_migrator` itself has no `CREATE
 'importing')`) the worker's cross-tenant claim query needs, mirroring
 `event_outbox_pending_created_idx`.
 
+**PROMPT 011-B adds one narrow read grant** (migration 0025): `GRANT SELECT (id, status) ON
+tenants TO app_import_worker` — the claim query now `JOIN`s `tenants` to exclude any job whose
+tenant is not `active`, so a suspended tenant's job is never (re-)claimed. Column-scoped, not a
+blanket `GRANT SELECT ON tenants`, since the raw claim query only ever reads those two columns.
+`tenants` itself still has no RLS (a platform table, access-by-`GRANT`-alone per this document's
+own convention above) — this is the identical shape as `app_platform`'s own (unrestricted) read
+access to the same table. The query locks only `import_jobs` (`FOR UPDATE OF ij`, not a bare `FOR
+UPDATE`) specifically so this read of `tenants` can never block — or be blocked by — `POST
+/platform/tenants/:id/suspend`'s own `UPDATE tenants SET status = ...`, which would otherwise
+silently delay PROMPT 011-A's "suspension takes effect on the very next request" guarantee. See
+[security.md#tenant-isolation](security.md#tenant-isolation) for the corresponding
+`ImportValidationService`/`ImportExecutionService` batch-loop check, which reuses the existing
+`TenantsPlatformRepository` (`app_platform` connection, already unrestricted on `tenants`) rather
+than needing a grant of its own.
+
 ### Setting tenant context: `SET LOCAL`, transactions, and connection pooling
 
 **The tenant context must be set with `SET LOCAL` (or the equivalent `set_config(name, value, true)`

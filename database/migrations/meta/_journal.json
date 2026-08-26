@@ -176,6 +176,13 @@
       "when": 1787693683879,
       "tag": "0024_tenant_settings_composite_key",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1787701008313,
+      "tag": "0025_import_worker_tenant_status_grant",
+      "breakpoints": true
     }
   ]
 }

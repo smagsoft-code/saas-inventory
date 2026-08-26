@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TenantsPlatformRepository } from '../auth/repositories/tenants-platform.repository';
 import { CatalogModule } from '../catalog/catalog.module';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { InventoryModule } from '../inventory/inventory.module';
@@ -34,6 +35,11 @@ import { ImportWorkerService } from './services/import-worker.service';
   controllers: [ImportJobsController, ImportMappingTemplatesController],
   providers: [
     AuditLogService,
+    // TenantsPlatformRepository: ImportValidationService/ImportExecutionService's PROMPT-011-B
+    // between-batch tenant-status check needs it (via the same app_platform connection those
+    // services already have global access to) — same "each module gets its own stateless
+    // instance" convention as CommonModule/CoreModule/AdministrationModule for this exact class.
+    TenantsPlatformRepository,
     ImportJobsRepository,
     ImportJobRowsRepository,
     ImportMappingTemplatesRepository,

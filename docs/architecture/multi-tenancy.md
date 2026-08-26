@@ -72,7 +72,11 @@ result in cross-tenant data exposure:
    concern from isolation: it governs *whether* a tenant may operate at all, not which rows it
    may see — see [security.md](security.md#tenant-isolation) for the full enforcement design and
    [database.md#core-tenants-users-platform-admins](database.md#core-tenants-users-platform-admins)
-   for `tenants.status`'s values (`active`/`suspended`/`archived`).
+   for `tenants.status`'s values (`active`/`suspended`/`archived`). **It applies the identical
+   live-read check to the requesting user's own `users.status`** (PROMPT 011-B), and the Import
+   Worker — the one tenant-scoped write path with no HTTP request and therefore no Tenant Guard at
+   all — enforces the tenant-status half of this same rule independently, in its own claim query
+   and batch loop (see [security.md](security.md#tenant-isolation)).
 2. **Repository/data-access layer** — every query against a tenant-owned table includes
    `WHERE tenant_id = :tenantId` (or the ORM-level equivalent). This is a repository-level
    convention, not something left to individual call sites to remember — see
