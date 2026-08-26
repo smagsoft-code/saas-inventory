@@ -41,8 +41,9 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?set JWT_REFRESH_SECRET}
       CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS}
-      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
-      N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET}
+      # n8n event delivery (FASE 15) runs in the separate Event Processor deployable, not `api` —
+      # the full production worker service (with N8N_EVENTS_*) is wired up in FASE 21. The API
+      # process itself makes no outbound n8n/Telegram call (ADR-0011/ADR-0012).
     # No published ports: only reachable via the reverse proxy.
     depends_on:
       postgres:

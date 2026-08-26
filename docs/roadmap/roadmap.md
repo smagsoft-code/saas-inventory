@@ -118,11 +118,35 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   registry is empty. Import Worker ≠ Event Processor (ADR-0029): separate entry point, DB role, and
   claim repository. pg-verify: 324 integration tests, 26 files, 0 skipped. *(done)*
 
-## Future phases
+- **FASE 15 — n8n Integration & Notifications** — the last segment of the notification path:
+  `event_outbox → Event Processor → n8n delivery adapter → n8n → Telegram`. The **n8n delivery
+  adapter** (`apps/api/src/event-processor/n8n/`) registers one `EventHandler` per SALES event
+  (each pinned to `eventVersion = 1`, no `sales.*` wildcard) that `POST`s the unchanged v1 envelope
+  to **one** generic n8n webhook (`N8N_EVENTS_WEBHOOK_URL`) over HTTPS, authenticated by a
+  dedicated shared bearer secret (`N8N_EVENTS_AUTH_TOKEN`, sent only as `Authorization: Bearer`,
+  runtime-env only — never Git/logs/payload/query string). `EventProcessorModule` binds
+  `EVENT_HANDLERS` from config: `N8N_EVENTS_ENABLED=false` (default) → `[]` (nothing claimed,
+  events stay `pending`); `=true` → fail-closed startup validation of URL/secret. Per-call
+  `AbortController` timeout; `redirect: 'manual'` (a 3xx is never followed — the token is never
+  resent to another host); only `2xx` is success; failures classified **retryable**
+  (408/425/429/5xx, network/DNS/TLS/timeout — FASE 14 backoff/dead-letter unchanged) vs
+  **permanent** (other 4xx, redirect → `PermanentDeliveryError` → `dead_letter` now); error bodies
+  sanitised + truncated. The adapter does **no** domain lookups and adds **no** Postgres grant,
+  **no** `tenants` join, **no** schema change / migration — `app_event_processor` keeps its
+  `event_outbox`-only least privilege; a suspended tenant's already-committed events are still
+  delivered (explicit FASE 15 decision). Domain modules
+  (`OrdersService`/`ReturnsService`/`PriceApprovalsService`) are untouched — no HTTP call added,
+  the only `SaaS → n8n` call is from the Event Processor deployable. **Telegram stays entirely in
+  n8n** (ADR-0012): the backend stores no bot token, does no recipient routing, composes no
+  message. **`notification_preferences` `PENDING DECISION` resolved:** routing lives in n8n keyed
+  by the envelope's `tenantId`/`eventType` — no backend preference schema/endpoints, no frontend.
+  At-least-once external delivery — the n8n workflow must dedupe durably on `eventId`; exactly-once
+  Telegram is **not** claimed. New contract doc [integrations/n8n.md](../integrations/n8n.md).
+  pg-verify: 339 integration tests, 27 files, 0 skipped (up from 324/26). Real n8n smoke test
+  against the user's production instance: *(pending — dedicated safe workflow + env config)*.
+  *(done — implementation; real n8n smoke test pending)*
 
-- **FASE 15 — n8n Integration & Notifications** — external automation through n8n, webhook
-  consumption and Telegram notifications. Domain modules must not integrate directly with Telegram;
-  they publish events and the notification path consumes them through the outbox architecture.
+## Future phases
 
 - **FASE 16 — Frontend Foundation** — Next.js App Router frontend foundation, API client,
   authentication/session integration, tenant context, permissions/RBAC integration, application
@@ -236,15 +260,20 @@ explicit review/commit.
 
 ## Current status
 
-FASE 0–14 are completed and committed.
+FASE 0–15 are completed and committed (FASE 15 implementation is complete and verified locally; a
+real n8n smoke test against the user's production instance is the only remaining external
+validation).
 
-FASE 15 (n8n Integration & Notifications) is the next phase to be started.
+FASE 16 (Frontend Foundation) is the next phase to be started.
 
 No future phase has been started merely by defining its database schema or architecture. FASE 14
 gave `event_outbox` (migrated since Prompt 03) its first application code — transactional publishing
-from SALES and the Event Processor deployable — but **external delivery to n8n/Telegram is FASE
-15**: the Event Processor has no delivery handler registered, so it never marks an event
-`delivered`, and the backend still stores no Telegram token and calls no external service. Selling
-serialized / lot-tracked variants remains a pending explicit design (no approved `order_items` ↔
-`product_serials`/`product_lots` model, no serial/lot column on `inventory_movements`) — it is not
-assigned to any phase yet.
+from SALES and the Event Processor deployable. **FASE 15 closed the loop**: the Event Processor now
+registers an n8n delivery handler (`apps/api/src/event-processor/n8n/`) that `POST`s each claimed
+envelope to one generic n8n webhook over authenticated HTTPS — no schema change, no migration, no
+new Postgres grant. The backend still stores **no** Telegram token and makes no direct Telegram
+call — n8n owns the Telegram credential and all routing/composition (ADR-0012). With
+`N8N_EVENTS_ENABLED=false` the handler is not registered and nothing is claimed, exactly as in
+FASE 14. Selling serialized / lot-tracked variants remains a pending explicit design (no approved
+`order_items` ↔ `product_serials`/`product_lots` model, no serial/lot column on
+`inventory_movements`) — it is not assigned to any phase yet.

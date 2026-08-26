@@ -5,11 +5,13 @@ Related: [ADR-0010](../decisions/0010-outbox-pattern.md),
 [ADR-0012](../decisions/0012-telegram-through-n8n.md),
 [ADR-0029](../decisions/0029-import-worker-separation.md).
 
-> **Status:** implemented in **FASE 14** — the transactional write path (`DomainEventPublisher` →
-> `event_outbox`) and the **Event Processor** deployable (claim / retry / backoff / stale recovery /
-> dead-letter). External delivery to **n8n / Telegram is NOT built** — that is FASE 15. The Event
-> Processor ships with an empty delivery-handler registry, so it never marks any event delivered
-> until FASE 15 registers a real adapter.
+> **Status:** implemented in **FASE 14** (the transactional write path `DomainEventPublisher` →
+> `event_outbox`, and the **Event Processor** deployable — claim / retry / backoff / stale recovery /
+> dead-letter) and **FASE 15** (the **n8n delivery adapter** — the Event Processor now registers a
+> production handler that `POST`s each claimed envelope to a generic n8n webhook over authenticated
+> HTTPS; n8n owns routing / message composition / the Telegram credential). With
+> `N8N_EVENTS_ENABLED=false` the registry is still empty and no event is claimed. See
+> [integrations/n8n.md](../integrations/n8n.md) for the full webhook contract.
 
 ## Four distinct things — never conflated
 
@@ -210,19 +212,56 @@ The classic window: a handler succeeds, then the process crashes **before** the 
 ## Delivery Port
 
 `EventHandler` (`event-delivery.port.ts`) is the abstraction between the Event Processor and
-whatever forwards an event outward. FASE 15 implements an n8n-webhook adapter against it. FASE 14
-registers **no** production handler — `EventProcessorModule` binds the `EVENT_HANDLERS` token to
-`[]`. Behaviour with no handler: the event is **not claimed**, **not delivered**, **not
-dead-lettered** — it waits, intact, for FASE 15. Tests register in-memory fakes; those are never
-production adapters.
+whatever forwards an event outward — `{ eventType, eventVersion, deliver(envelope) }`. `deliver`
+throws on failure; the dispatcher maps a thrown `PermanentDeliveryError` to `terminal`
+(dead-letter now) and anything else to `retry`.
+
+**FASE 15 — n8n delivery adapter** (`apps/api/src/event-processor/n8n/`). `EventProcessorModule`
+now binds `EVENT_HANDLERS` from configuration:
+
+- `N8N_EVENTS_ENABLED=false` (default) → `[]`: no handler, `supportedTypes()` empty, nothing
+  claimed, every event stays `pending` — exactly the FASE 14 behaviour.
+- `N8N_EVENTS_ENABLED=true` → one `EventHandler` per known event type (the 8 SALES events, each
+  pinned to `eventVersion = 1` — **no `sales.*` wildcard**, §19), all sharing one `N8nWebhookClient`.
+  `loadN8nDeliveryConfig()` throws in the module factory if the URL/secret is missing or the URL is
+  an insecure remote endpoint, so a misconfigured processor **fails at startup** rather than
+  running without delivering (fail closed).
+
+`N8nWebhookClient.post(envelope)`: `POST` the unchanged envelope as JSON to
+`N8N_EVENTS_WEBHOOK_URL`; `Authorization: Bearer <N8N_EVENTS_AUTH_TOKEN>` (never in the body/URL) +
+non-secret `X-Event-*` trace headers; `AbortController` timeout (`N8N_EVENTS_TIMEOUT_MS`);
+`redirect: 'manual'` (a 3xx is never followed — the token is never resent to another host); only
+`2xx` is success. Failures are classified `retryable` (408/425/429/5xx, network/DNS/TLS/timeout) or
+`permanent` (other 4xx, redirect → `PermanentDeliveryError` → dead-letter). Error-response bodies
+are sanitised + truncated before they can reach `last_error`/logs. The adapter does **no** domain
+lookups — the envelope is self-sufficient (§38), preserving `app_event_processor`'s
+`event_outbox`-only least privilege.
+
+Tests register in-memory fakes; those are never production adapters.
+
+### HTTP failure classification
+
+| n8n responds / connection | Outcome | Row effect |
+| --- | --- | --- |
+| `2xx` | success | `delivered` |
+| `408` / `425` / `429` / `5xx` | retryable | backoff + retry → `dead_letter` after `maxAttempts` |
+| network / DNS / TLS error, timeout (abort) | retryable | as above |
+| `400` / `401` / `403` / `404` / `405` / `410` / `422` / other `4xx` | permanent | `dead_letter` now |
+| `3xx` redirect | permanent | `dead_letter` now (never followed) |
 
 ## Tenant suspension
 
 The Event Processor processes **facts that already committed**. Unlike the Import Worker (which
 runs *new* business mutations and therefore excludes suspended tenants from its claim query,
 PROMPT 011-B), the Event Processor's claim query **does not** join `tenants` or filter on
-`tenants.status`. Whether an outbound *notification* is delivered to a suspended tenant is a FASE 15
-routing decision, not an outbox concern.
+`tenants.status`.
+
+**FASE 15 decision:** an already-committed event **is delivered to n8n regardless of the tenant's
+current suspension status**. Suspension gates *new* tenant business operations; it does not
+invalidate or suppress domain events that were transactionally committed before the suspension.
+The n8n adapter therefore adds **no** `tenants` query, **no** `JOIN tenants`, and **no** new grant
+— `app_event_processor` keeps its `event_outbox`-only least privilege. A future explicit
+security-quarantine policy could override external delivery, but that is out of scope here.
 
 ## Ordering
 
@@ -239,8 +278,8 @@ order. Consumers must be idempotent and state-aware (which the `eventId` + the e
 | **Producer authorization** | the business route's own guard chain (JwtAuthGuard → TenantGuard → CsrfGuard → PermissionsGuard). An event is only ever written as a side effect of an authorized mutation; there is no public outbox API. |
 | **Outbox tenant isolation** | RLS. `app_tenant` (the producer's connection) has `SELECT, INSERT` on `event_outbox` filtered to its own `tenant_id`; a `prevent_tenant_id_change` trigger blocks re-homing a row. |
 | **Processor authorization** | the dedicated `app_event_processor` role: `SELECT, UPDATE` on `event_outbox` only (one permissive cross-tenant policy), **no grant on any other table** — a compromised Event Processor cannot read `orders`/`customers`/`inventory`. It is not `BYPASSRLS` and cannot `SET ROLE`. |
-| **Error sanitisation** | `last_error` and every log line pass through `sanitizeError` — bearer tokens, API keys, passwords, URL credentials and JWTs redacted, truncated to ~500 chars. |
-| **External recipient authorization** | FASE 15. |
+| **Error sanitisation** | `last_error`, n8n error-response bodies, and every log line pass through `sanitizeError` — bearer tokens, API keys, passwords, URL credentials and JWTs redacted, truncated to ~500 chars. |
+| **External recipient authorization** | n8n. The adapter POSTs the envelope to one operator-configured webhook authenticated by `Authorization: Bearer` (`N8N_EVENTS_AUTH_TOKEN`, runtime-only); which Telegram chat/channel a tenant's alerts reach — and the Telegram bot token — live entirely inside n8n (ADR-0012). The backend does no recipient routing. |
 
 ## Import Worker vs Event Processor
 
@@ -249,19 +288,24 @@ deployable** (ADR-0029): different entry point, different Postgres role, differe
 repository, different table (`import_jobs` vs `event_outbox`). Neither reads the other's table; no
 shared in-process state. A large import can never delay notification delivery and vice versa.
 
-## FASE 15 boundary
-
-Not built in FASE 14, and explicitly out of scope: n8n integration, the n8n webhook URL/secret,
-Telegram (the backend never stores a bot token or calls Telegram — ADR-0012), external HTTP
-delivery, per-tenant notification preferences / recipient routing, message templates, a manual
-retry/replay admin tool, event-outbox retention/purge, and any frontend or reporting on events.
-
-## n8n and Telegram (FASE 15 — unchanged design)
+## n8n and Telegram (FASE 15 — implemented)
 
 n8n is external infrastructure the backend's domain logic knows nothing about — the Event Processor
-will call a generic webhook URL with the generic envelope above; no n8n-specific or Telegram-specific
-code, no bot token in the database or anywhere else. Per-tenant notification configuration will be
-modelled as tenant-owned settings identifying *which n8n workflow/webhook configuration* applies,
-keyed by the `tenantId` already in every envelope — the mapping to a Telegram channel lives inside
-n8n. Exact mechanism (one shared webhook with tenant routing vs. per-tenant URLs) is a
-`PENDING DECISION` for FASE 15.
+calls **one generic webhook URL** with the generic envelope above; no n8n-specific or
+Telegram-specific code, no bot token in the database or anywhere else. **Topology decision:** a
+single shared webhook (`N8N_EVENTS_WEBHOOK_URL`), with per-`eventType` / per-tenant routing done
+*inside* n8n keyed by the `tenantId` / `eventType` already in every envelope — **not** per-tenant
+URLs, and **not** a backend `notification_preferences` model. FASE 15 deliberately does **not**
+build tenant notification-preference schema or endpoints (the `PENDING DECISION` FASE 11 deferred
+here): routing lives entirely in n8n. The full webhook contract, the n8n workflow responsibilities
+(auth, envelope validation, `eventVersion` check, durable `eventId` dedupe, `Switch(eventType)`,
+Telegram composition, response-after-completion), secret handling, and the at-least-once /
+not-exactly-once semantics are in [integrations/n8n.md](../integrations/n8n.md).
+
+### Still out of scope (later phases)
+
+Incoming Telegram commands / approval via Telegram / any `n8n → SaaS` mutation path (would need its
+own security ADR), a SaaS DB connection from n8n, tenant-configurable notification preferences,
+message templates in the backend, a manual retry/replay admin tool, event-outbox retention/purge,
+delivery dashboards/reporting, electronic invoicing. Selling serialized / lot-tracked variants
+remains deferred (no approved `order_items` ↔ `product_serials`/`product_lots` model).

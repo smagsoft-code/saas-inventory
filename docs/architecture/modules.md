@@ -264,9 +264,12 @@ module to *how* a notification is delivered. See [events.md](events.md) in full 
 queue safely.
 
 > **Status:** **FASE 14** built the transactional write path and the Event Processor deployable
-> (claim / retry / backoff / stale recovery / dead-letter). **External delivery to n8n/Telegram is
-> FASE 15** — the Event Processor ships with an empty delivery-handler registry and never marks any
-> event `delivered` until FASE 15 registers a real adapter.
+> (claim / retry / backoff / stale recovery / dead-letter). **FASE 15** added the **n8n delivery
+> adapter** (`apps/api/src/event-processor/n8n/`): with `N8N_EVENTS_ENABLED=true` the Event
+> Processor registers one handler per SALES event and `POST`s each claimed envelope to a single
+> generic n8n webhook over authenticated HTTPS. n8n owns routing, message composition, and the
+> Telegram credential (ADR-0012). With the adapter disabled the registry is empty and nothing is
+> claimed. See [integrations/n8n.md](../integrations/n8n.md).
 
 - `event_outbox` (the outbox table) — owned here. `DomainEventPublisher` +
   `OutboxRepository` ([`apps/api/src/common/events/`](../../apps/api/src/common/events/)) are the
@@ -275,6 +278,11 @@ queue safely.
 - Event Processor: `apps/api/src/event-processor/` + its own deployable
   (`event-processor/main.ts`, `worker:events:start`), authenticating as the dedicated
   `app_event_processor` Postgres role (blast radius = `event_outbox` only).
+- n8n delivery adapter (FASE 15): `apps/api/src/event-processor/n8n/` — one `EventHandler` per
+  SALES event forwarding the claimed envelope to `N8N_EVENTS_WEBHOOK_URL` over authenticated
+  HTTPS. No new Postgres grant, no `tenants` join, no schema change. Telegram routing + credential
+  are entirely n8n's (ADR-0012). FASE 15 did **not** add `notification_preferences` — routing
+  lives in n8n. See [integrations/n8n.md](../integrations/n8n.md).
 
 **Depends on:** nothing (it only reads events written by other modules' transactions). The Event
 Processor is a distinct process from IMPORT's Import Worker below
@@ -304,10 +312,11 @@ later, etc.) and system-level configuration that only a SuperAdmin can change.
 view`/`.manage`, migration `0023`), backed by a new singleton-per-tenant `tenant_settings` table
 (migration `0022`) — see
 [database.md#administration-tenant-settings-and-platform-admin-sessions](database.md#administration-tenant-settings-and-platform-admin-sessions).
-`notification_preferences`/`branding` are deliberately not built this phase: the former's mechanism
-is an explicit `PENDING DECISION` [events.md](events.md#n8n-and-telegram) defers to the phase that
-actually builds tenant-configurable notifications (FASE 15); the latter modules.md itself already
-names "later." System-level administration — the SuperAdmin (`platform_admins`) authentication
+`notification_preferences`/`branding` are deliberately not built: **FASE 15 resolved the
+`notification_preferences` `PENDING DECISION` by deciding routing lives entirely in n8n** (keyed by
+the `tenantId`/`eventType` in every event envelope) — no backend preference schema or endpoints,
+no frontend. See [events.md#n8n-and-telegram-fase-15--implemented](events.md#n8n-and-telegram-fase-15--implemented)
+and [integrations/n8n.md](../integrations/n8n.md). `branding` remains "later." System-level administration — the SuperAdmin (`platform_admins`) authentication
 mechanism ADR-0030/Prompt 04 deliberately left unbuilt, plus the one concrete system-level
 capability this phase found grounded in the existing architecture (tenant lifecycle management:
 `GET /platform/tenants`, `GET /platform/tenants/:tenantId`, `POST /platform/tenants/:tenantId/

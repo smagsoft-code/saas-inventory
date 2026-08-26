@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { DomainEventEnvelope } from '../common/events/domain-event.contracts';
 import { isKnownEventType } from '../common/events/event-types';
 import { EVENT_HANDLERS, type EventHandler } from './event-delivery.port';
+import { isPermanentDeliveryError } from './delivery-failure';
 
 /**
  * The outcome of trying to deliver one event:
@@ -62,7 +63,13 @@ export class EventDispatcher {
       await handler.deliver(envelope);
       return { kind: 'delivered' };
     } catch (error) {
-      return { kind: 'retry', error: error instanceof Error ? error.message : String(error) };
+      const message = error instanceof Error ? error.message : String(error);
+      // A permanent delivery failure (contract / config / auth — §34) is dead-lettered now;
+      // retrying cannot help. Anything else a handler throws is a transient failure (§33).
+      if (isPermanentDeliveryError(error)) {
+        return { kind: 'terminal', error: message };
+      }
+      return { kind: 'retry', error: message };
     }
   }
 }

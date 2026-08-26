@@ -23,14 +23,17 @@
 ## n8n
 
 n8n is treated as separate infrastructure, not a service in either compose file here — it is not
-coupled to the backend's build or lifecycle. The backend only needs `N8N_WEBHOOK_URL` and
-`N8N_WEBHOOK_SECRET` to call out to it; it never receives or stores the Telegram bot token, which
-n8n owns exclusively.
+coupled to the backend's build or lifecycle. The **Event Processor** deployable (FASE 15) needs
+`N8N_EVENTS_ENABLED`, `N8N_EVENTS_WEBHOOK_URL`, `N8N_EVENTS_AUTH_TOKEN` and
+`N8N_EVENTS_TIMEOUT_MS` to forward events to it (the `api` service itself makes no outbound n8n
+call); it never receives or stores the Telegram bot token, which n8n owns exclusively (ADR-0012).
+The full production worker service is wired up in FASE 21. See
+[integrations/n8n.md](../integrations/n8n.md).
 
 ## Secrets
 
 Neither compose file contains real secret values. Required secrets (`POSTGRES_PASSWORD`,
-`JWT_SECRET`, `JWT_REFRESH_SECRET`, `N8N_WEBHOOK_SECRET`, ...) are read from the environment via
+`JWT_SECRET`, `JWT_REFRESH_SECRET`, `N8N_EVENTS_AUTH_TOKEN`, ...) are read from the environment via
 `${VAR:?set VAR}`, which makes `docker compose` fail fast with a clear error if a required secret
 is missing, instead of silently starting with an empty value. Production secrets are provided
 through the deployment environment (e.g. an `.env` file outside version control, or a secret

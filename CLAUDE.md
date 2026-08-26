@@ -644,3 +644,43 @@ bootstraps `app_event_processor` and passes `TEST_APP_EVENT_PROCESSOR_DATABASE_U
 notification preferences, message templates, manual retry/replay tooling, outbox retention/purge,
 any frontend or reporting on events. `pnpm --filter @saas-inventory/web build` still fails on the
 pre-existing Windows `EPERM` symlink error (`apps/web` untouched).
+
+FASE 15 added the **n8n event-delivery adapter** (`apps/api/src/event-processor/n8n/`) — the last
+segment of `event_outbox → Event Processor → n8n → Telegram`. **No schema change, no migration, no
+new Postgres grant, no `tenants` join** — `app_event_processor` keeps its `event_outbox`-only
+blast radius. `EventProcessorModule` now binds `EVENT_HANDLERS` from config via a factory:
+`N8N_EVENTS_ENABLED=false` (default) → `[]` (FASE 14 behaviour exactly — nothing claimed, events
+stay `pending`); `=true` → `loadN8nDeliveryConfig()` fail-closed-validates
+`N8N_EVENTS_WEBHOOK_URL` (HTTPS except `localhost` dev, no embedded creds) + `N8N_EVENTS_AUTH_TOKEN`
+(≥16 chars) at module init / worker startup, then registers one `EventHandler` per known event
+type — the 8 SALES events, each pinned to `eventVersion = 1`, **no `sales.*` wildcard** — all
+sharing one `N8nWebhookClient`. `N8nWebhookClient.post` uses the Node built-in `fetch` (no
+Axios/undici dep added): `POST` the **unchanged** v1 envelope as JSON; `Authorization: Bearer
+<token>` (never in body/URL/query) + non-secret `X-Event-*` trace headers; `AbortController`
+timeout (`N8N_EVENTS_TIMEOUT_MS`, default 10000); `redirect: 'manual'` (a 3xx is a permanent
+misconfiguration, never followed — the token is never resent to another host); only `2xx` is
+success. Failures are classified **retryable** (408/425/429/5xx, network/DNS/TLS/timeout — FASE
+14's backoff/`dead_letter`/stale-claim machinery is untouched) vs **permanent** (other 4xx,
+redirect → a typed `PermanentDeliveryError` that `EventDispatcher` maps to `terminal` →
+`dead_letter` now, no infinite retry); n8n error-response bodies are sanitised + truncated (reusing
+`sanitizeError`) before they can reach `last_error`/logs. The adapter does **no** domain lookups —
+the envelope is self-sufficient. The only `SaaS → n8n` call is from the Event Processor
+deployable; `OrdersService`/`ReturnsService`/`PriceApprovalsService` are untouched (no HTTP call
+added). **Telegram stays entirely in n8n** (ADR-0012) — the backend stores no bot token, does no
+recipient routing, composes no message. The **`notification_preferences` `PENDING DECISION`
+(deferred here since FASE 11) is resolved**: routing lives entirely in n8n keyed by the envelope's
+`tenantId`/`eventType` — no backend preference schema/endpoints, no frontend. **Suspended-tenant
+policy:** an already-committed event is delivered regardless of `tenants.status` (suspension gates
+new operations, not committed facts). External delivery is **at-least-once** — the n8n workflow
+must dedupe durably on `eventId`; exactly-once Telegram is **not** claimed. New contract doc
+`docs/integrations/n8n.md` (webhook method/auth/headers, envelope, success/retry/permanent
+classification, `eventId` dedupe, Telegram routing responsibilities, secret rotation). `.env.example`
+`N8N_WEBHOOK_URL`/`N8N_WEBHOOK_SECRET` replaced by `N8N_EVENTS_{ENABLED,WEBHOOK_URL,AUTH_TOKEN,TIMEOUT_MS}`;
+`docker-compose.dev.yml`'s `event-processor` service carries them (disabled by default). Verified
+against real PostgreSQL via `tools/pg-verify`: **339 integration tests, 27 files, 0 skipped** (up
+from 324/26 — `test/events/n8n-delivery.integration.test.ts` runs the outbox → real local HTTP
+receiver → delivered/retry/`dead_letter` matrix), plus new unit specs for config validation, HTTP
+failure classification, the webhook client (against a `node:http` fake), and the handler set.
+Lint/typecheck/API build pass; web build unchanged (`EPERM`). A real n8n smoke test against the
+user's production instance (dedicated safe workflow + env config) is the only remaining external
+validation — **FASE 15 COMPLETADO CON PENDIENTE** until then.

@@ -154,9 +154,10 @@ services:
 
   # The Event Processor deployable (ADR-0010 / events.md) — a separate process/container from both
   # `api` and `import-worker`, never the same one (ADR-0029). Claims rows from `event_outbox` with
-  # `FOR UPDATE SKIP LOCKED`, retries with backoff, dead-letters poison events. It talks to NOTHING
-  # external in FASE 14 (no n8n/Telegram — FASE 15); it only marks rows `delivered` once a
-  # registered handler succeeds, and no handler is registered yet.
+  # `FOR UPDATE SKIP LOCKED`, retries with backoff, dead-letters poison events. FASE 15 registers
+  # the n8n delivery handler: with N8N_EVENTS_ENABLED=true it POSTs each claimed envelope to the
+  # generic n8n webhook over authenticated HTTPS (never Telegram directly — ADR-0012). Left
+  # disabled by default here so local dev works with no n8n instance.
   event-processor:
     image: node:20-alpine
     working_dir: /repo
@@ -174,6 +175,12 @@ services:
       EVENT_PROCESSOR_RETRY_BASE_MS: ${EVENT_PROCESSOR_RETRY_BASE_MS:-1000}
       EVENT_PROCESSOR_RETRY_MAX_MS: ${EVENT_PROCESSOR_RETRY_MAX_MS:-3600000}
       EVENT_PROCESSOR_RETRY_FACTOR: ${EVENT_PROCESSOR_RETRY_FACTOR:-2}
+      # FASE 15 — n8n event delivery. Disabled by default; set N8N_EVENTS_ENABLED=true plus the
+      # URL/secret in .env to forward events to a real n8n instance. Never a Telegram token here.
+      N8N_EVENTS_ENABLED: ${N8N_EVENTS_ENABLED:-false}
+      N8N_EVENTS_WEBHOOK_URL: ${N8N_EVENTS_WEBHOOK_URL:-}
+      N8N_EVENTS_AUTH_TOKEN: ${N8N_EVENTS_AUTH_TOKEN:-}
+      N8N_EVENTS_TIMEOUT_MS: ${N8N_EVENTS_TIMEOUT_MS:-10000}
     volumes:
       - .:/repo
       - api_node_modules:/repo/node_modules

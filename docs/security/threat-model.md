@@ -130,17 +130,22 @@ grows.
   [database.md#security-of-the-uploaded-file](../architecture/database.md#security-of-the-uploaded-file).
 - **Priority:** P1.
 
-## Webhook abuse (outbound to n8n)
+## Webhook abuse (outbound to n8n) — FASE 15
 
 - **Risk:** the outbox → n8n webhook call is coerced into hitting an unintended target (SSRF), or
-  a malicious/compromised n8n endpoint is treated as trusted.
-- **Impact:** medium — the webhook target is platform configuration (`N8N_WEBHOOK_URL`), not
-  tenant-supplied, which limits this today; the risk grows if/when tenant-configurable webhook
-  destinations are ever introduced.
-- **Mitigation:** `N8N_WEBHOOK_SECRET` authenticates the call; target URL validation against
-  private/internal address ranges applies to any future feature accepting a tenant-supplied URL.
-  See [security.md#ssrf](../architecture/security.md#ssrf) and
-  [events.md](../architecture/events.md#n8n-and-telegram).
+  a malicious/compromised n8n endpoint is treated as trusted; the shared bearer secret leaks.
+- **Impact:** medium — the webhook target is operator configuration (`N8N_EVENTS_WEBHOOK_URL`),
+  never tenant-supplied (§121/§122), which limits this today; the risk grows if/when
+  tenant-configurable webhook destinations are ever introduced.
+- **Mitigation:** `N8N_EVENTS_AUTH_TOKEN` (sent only as `Authorization: Bearer`, never in the body
+  or query string) authenticates the call; the URL is validated at startup (HTTPS required except
+  `localhost` in dev, no embedded credentials, min-length secret) and the adapter uses
+  `redirect: 'manual'` so a 3xx is never followed and the bearer token is never resent to another
+  host. Error-response bodies are sanitised + truncated before reaching `last_error`/logs. Target
+  URL validation against private/internal address ranges applies to any future feature accepting a
+  tenant-supplied URL. See [security.md#ssrf](../architecture/security.md#ssrf),
+  [events.md](../architecture/events.md#n8n-delivery-adapter-fase-15) and
+  [integrations/n8n.md](../integrations/n8n.md).
 - **Priority:** P2 today; revisit as P1 if tenant-configurable webhook targets are built.
 
 ## Replay attack

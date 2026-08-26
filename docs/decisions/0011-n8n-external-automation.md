@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted
+Accepted — implemented in FASE 15 (`apps/api/src/event-processor/n8n/`, see
+[integrations/n8n.md](../integrations/n8n.md)).
 
 ## Context
 
@@ -15,11 +16,15 @@ be made fragile by, or blocked on, an external automation system's availability.
 
 n8n runs as separate infrastructure (not a service defined in `docker-compose.dev.yml` /
 `docker-compose.prod.yml` — see [docker.md](../deployment/docker.md#n8n)) and is called only via
-outbound webhook from the Event Processor, authenticated by `N8N_WEBHOOK_SECRET`. The backend has
-no n8n-specific code beyond "POST this event payload to this configured URL." If n8n is
+outbound webhook from the Event Processor, authenticated by a dedicated shared bearer secret
+(`N8N_EVENTS_AUTH_TOKEN`, sent only as `Authorization: Bearer`, runtime-env only). The backend has
+no n8n-specific code beyond "POST this event envelope to this one configured URL." If n8n is
 unreachable, the business operation that produced the event has already committed successfully
 (see [ADR-0010](0010-outbox-pattern.md)) — only notification delivery is delayed, and it is
-retried automatically.
+retried automatically (permanent 4xx/redirect failures are dead-lettered rather than retried
+forever). Topology (FASE 15): **one** generic events webhook, per-tenant/per-event routing done
+inside n8n keyed by the envelope's `tenantId`/`eventType` — not per-tenant URLs, not a backend
+`notification_preferences` model.
 
 ## Alternatives considered
 

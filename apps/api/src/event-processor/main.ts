@@ -8,6 +8,7 @@ import { AppModule } from '../app.module';
 import { closeEventProcessorPostgresClient } from '../database/event-processor-client';
 import { closePostgresClient } from '../database/client';
 import { loadEventProcessorConfig } from './event-processor.config';
+import { loadN8nDeliveryConfig } from './n8n/n8n-delivery.config';
 import { EventProcessorService } from './event-processor.service';
 
 const logger = new Logger('EventProcessor');
@@ -32,6 +33,8 @@ function sleep(ms: number): Promise<void> {
  */
 async function bootstrap(): Promise<void> {
   const config = loadEventProcessorConfig(); // fail fast on a bad EVENT_PROCESSOR_* value (§163)
+  const n8nConfig = loadN8nDeliveryConfig(); // fail fast: enabled but missing URL/secret → exit now (§21)
+  logger.log(`n8n delivery: ${n8nConfig.enabled ? 'ENABLED' : 'DISABLED'}`);
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn', 'log'] });
   const service = app.get(EventProcessorService);
   const workerId = getOptionalEnvVar('EVENT_PROCESSOR_ID', `${hostname()}:${String(process.pid)}:${randomUUID()}`);

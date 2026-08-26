@@ -258,12 +258,15 @@ instance — a shared (Redis) store is the documented follow-up for horizontal s
 Any feature where the backend fetches a URL supplied (directly or indirectly) by a tenant —
 notably the outbound webhook call to n8n, and any future "tenant configures their own webhook
 URL" feature — validates the target is not a private/internal address (no `localhost`, no RFC1918
-ranges, no cloud-metadata endpoints) before making the request. The n8n webhook URL itself is
-platform configuration (`N8N_WEBHOOK_URL`), not tenant-supplied, which limits this risk for the
-outbox path specifically; the general rule applies to any future feature that does accept a
-tenant-supplied URL.
+ranges, no cloud-metadata endpoints) before making the request. The n8n events webhook URL itself
+is operator configuration (`N8N_EVENTS_WEBHOOK_URL`), never tenant-supplied (FASE 15 deliberately
+did **not** add a `tenant.webhook_url`), which limits this risk for the outbox path specifically;
+it is validated at startup (HTTPS-only outside `localhost` dev, no embedded credentials) and the
+Event Processor's n8n adapter sets `redirect: 'manual'` so a redirect response is never followed
+and the bearer token is never resent to a different host. The general rule applies to any future
+feature that does accept a tenant-supplied URL.
 
-## Events and the outbox (FASE 14)
+## Events and the outbox (FASE 14 / FASE 15 delivery)
 
 The domain-event / outbox path ([events.md](events.md#security-model)) has four distinct
 authorization layers, each enforced by a different mechanism:
@@ -281,17 +284,41 @@ authorization layers, each enforced by a different mechanism:
   other table, not `BYPASSRLS`, cannot `SET ROLE`. A compromised Event Processor's blast radius is
   exactly the outbox. It reads the self-describing event envelope and never queries a domain table
   to reconstruct context.
-- **External recipient authorization** = FASE 15 (n8n/Telegram routing).
+- **External recipient authorization** = FASE 15. The Event Processor's **n8n delivery adapter**
+  (`apps/api/src/event-processor/n8n/`) is the *only* place the backend makes an outbound call for
+  notifications, and it runs solely inside the Event Processor deployable — never in
+  `OrdersService`/`ReturnsService`/`PriceApprovalsService`, never in a business transaction. It
+  `POST`s the unchanged v1 envelope to one operator-configured generic webhook
+  (`N8N_EVENTS_WEBHOOK_URL`) over HTTPS, authenticated by a dedicated shared bearer secret
+  (`N8N_EVENTS_AUTH_TOKEN`) sent only as `Authorization: Bearer` — never in the body, never in the
+  URL/query string. The secret lives only in the runtime environment/secret store (never Git,
+  logs, payloads, tests, `.env.example`). Which Telegram chat/channel a tenant's alerts reach, and
+  the Telegram bot token itself, live **entirely inside n8n** (ADR-0012) — the backend stores no
+  Telegram token and does no recipient routing. Adding no `app_event_processor` grant, no
+  `tenants` join: a suspended tenant's already-committed events are still delivered (an explicit
+  FASE 15 decision — suspension gates *new* business operations, not facts that already happened;
+  a future security-quarantine policy could override this).
+
+**HTTP hardening:** every call has an `AbortController` timeout (`N8N_EVENTS_TIMEOUT_MS`);
+`redirect: 'manual'` (a 3xx is a permanent misconfiguration, never followed); only `2xx` is
+success; failures are classified `retryable` (408/425/429/5xx, network/DNS/TLS/timeout) vs
+`permanent` (other 4xx → dead-letter now, no infinite retry).
 
 **PII and price-sensitive data:** event payloads are data-minimised — the customer snapshot on
 `sales.order.confirmed` is the minimum a "new sale" notification needs, and **no** `unit_cost` /
-`min_price` / `base_price` / `max_price` snapshot is ever included (ADR-0028). `last_error` and
-every Event Processor log line pass through a sanitizer that redacts bearer tokens, API keys,
-passwords, URL credentials and JWTs and truncates — the full payload is never logged.
+`min_price` / `base_price` / `max_price` / `minPriceAtRequest` snapshot is ever included
+(ADR-0028); the n8n adapter forwards the payload verbatim and performs **no domain lookups** to
+enrich it. `last_error`, error-response bodies and every Event Processor log line pass through a
+sanitizer that redacts bearer tokens, API keys, passwords, URL credentials and JWTs and truncates
+— the full payload and customer PII are never logged. n8n's own execution history may retain the
+delivered PII payload; its retention policy is an operator concern (see
+[integrations/n8n.md](../integrations/n8n.md)).
 
 **At-least-once, not exactly-once:** external delivery may redeliver the same `eventId` after a
-crash-before-ack; FASE 15 consumers must dedupe on it. Business side effects remain exactly-once
-(transaction + `SELECT … FOR UPDATE` state locks + `idempotency_keys`).
+crash-before-ack; the n8n workflow **must** dedupe on `eventId` (durably, not in process memory).
+Even with dedupe, a Telegram-send-then-n8n-crash window means external notification delivery is
+"at-least-once-safe" — exactly-once Telegram is **not** claimed. Business side effects remain
+exactly-once (transaction + `SELECT … FOR UPDATE` state locks + `idempotency_keys`).
 
 ## File upload security
 
