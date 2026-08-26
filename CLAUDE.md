@@ -570,3 +570,35 @@ re-entry, retry + concurrent resolve idempotency, location authorization, histor
 immutability). `pnpm --filter @saas-inventory/web build` still fails on the pre-existing Windows
 `EPERM` symlink error in Next.js standalone output-tracing (unchanged — `apps/web` untouched). No
 frontend UI for SALES exists yet (FASE 16/17).
+
+PROMPT 013-A (post-FASE-13 controlled correction) audited the state-transition concurrency FASE 13's
+own report proved only for `resolve` vs `resolve` / concurrent over-return / concurrent exceptional
+`confirm`, and found **NO FUNCTIONAL CONCURRENCY BUG** in either subdomain — no code change to any
+transition. `ReturnsService.inspect`/`resolve`/`cancel` already all begin with
+`SalesReturnsRepository.lockById` (`SELECT ... FOR UPDATE` on the one `sales_returns` row, first DB
+op; for `resolve`, after the per-`Idempotency-Key` advisory lock + idempotency-table check), status
+re-read under the lock, every mutation + `audit_log` write in one transaction, consistent lock
+ordering (`sales_returns` → `locations` read → `inventory_balances` via `StockLedgerService`).
+`PriceApprovalsService`'s `approve`/`reject` already use `PriceApprovalsRepository.lockById`
+(`FOR UPDATE`) **and** a `resolveIfPending` CAS (`UPDATE ... WHERE status = 'pending' RETURNING`),
+audit written only when the CAS returns a row; `OrdersService.confirm` locks the approvals with
+`lockByOrder` (`FOR UPDATE`) inside the txn already holding the `orders` row lock (lock order
+`orders` → `price_approvals` → `inventory_balances`; `approve`/`reject` never touch `orders` or
+`inventory_balances`, so no deadlock with `confirm`). The gap was **test coverage**: added
+`test/sales/sales-transition-concurrency.integration.test.ts` — R13 (`inspect` || `inspect`: both
+200, every item ends coherent, never field-mixed), R14 (`inspect` || `cancel`: exactly one leaves
+`requested`, final `cancelled`, no partial inspection, no inventory), R15 (`resolve` || `cancel`,
+repeated: `resolved`+1-`RETURN`-per-line **xor** `cancelled`+0, audit matches status, balance
+matches status), R16 (`cancel` || `cancel`: one logical cancel, one audit), R16b (`resolve` ||
+`resolve` regression: exactly-once), R17 (terminal-state immutability), R18 (multi-line
+`resolve` || `cancel`: all-lines or zero, never partial), R19 (`resolve` mid-loop failure via a
+location-auth denial on a later line → full rollback, stays `inspecting`, then completes cleanly);
+P19 (`approve` || `reject`, repeated: one final status, one resolution audit), P20/P21 (`approve` ||
+`approve` / `reject` || `reject`: one logical resolution + one audit, second idempotent), P22
+(terminal approval immutability), P23 (`approve` || `confirm`: `SALE` only ever with an `approved`
+approval; if `confirm` loses it 409s and a retry succeeds), P24 (`reject` || `confirm`: a `SALE`
+never commits against a `rejected` approval — `confirm` always 409, stays blocked), P25
+(self-approval still 403 under the CAS). No new migration (`db:migrate` from empty + re-run no-op
+verified), table, permission code, ADR, or endpoint — the guarantees derive entirely from the
+existing state machine's `FOR UPDATE` locks. Real-PostgreSQL: **294 integration tests, 0 skipped**;
+lint / typecheck / API build pass; web build unchanged (`EPERM`).

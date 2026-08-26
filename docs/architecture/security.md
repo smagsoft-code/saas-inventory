@@ -133,7 +133,14 @@ inventory re-entry at `resolve` goes through `StockLedgerService` and an
 `inventory.returns.manage` + location-authorization check against each `disposition_location_id`.
 Every FASE 13 route is tenant-scoped (a foreign-tenant id is a 404), passes the live
 tenant-status / user-status guard (011-A/011-B), and rejects mass-assignment of
-`status`/`approvedBy`/`tenantId`/`minPrice`/etc. via the DTO allow-list.
+`status`/`approvedBy`/`tenantId`/`minPrice`/etc. via the DTO allow-list. **PROMPT 013-A** verified
+the state-transition concurrency: `inspect`/`resolve`/`cancel` on one return, and `approve`/`reject`
+on one approval, are serialized by `SELECT ... FOR UPDATE` (approvals also carry a
+`WHERE status = 'pending'` CAS), status re-read under the lock — so incompatible transitions can
+never both take effect, a cancelled return can never carry an inventory `RETURN`, a resolved return
+can never be cancelled, and a `SALE` never commits against a pending/rejected approval. No code
+change — the guarantees already followed from the existing locks; PROMPT 013-A only added the
+concurrency tests.
 
 **Platform-admin (SuperAdmin) authentication (FASE 11)** — a second, structurally independent
 authentication mechanism from everything above, never sharing a code path or a permission catalog

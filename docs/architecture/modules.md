@@ -232,6 +232,14 @@ locking convoy; `LocationAuthorizationService` — ADR-0024; `LocationsRepositor
   line through `StockLedgerService` (SALES never writes `inventory_balances` directly), locking the
   return row so concurrent processing is exactly-once. `POST /sales-returns/:id/cancel`
   (`sales.returns.create`). Returns never mutate the original order / `order_items`.
+  **PROMPT 013-A** verified that `inspect`/`resolve`/`cancel` all take the same `SELECT ... FOR
+  UPDATE` on the `sales_returns` row as their first DB op (status re-read under the lock), so two
+  incompatible transitions on one return are serialized by PostgreSQL — `resolve` vs `cancel`
+  yields `resolved`+inventory **xor** `cancelled`+none, never a mix; a terminal return is
+  immutable; `inspect` is atomic; a failed `resolve` rolls back every `RETURN` it wrote. Same for
+  `price_approvals` (`approve`/`reject` = `FOR UPDATE` + a `WHERE status = 'pending'` CAS, audit
+  only on the winning transition) — see
+  [database.md#fase-13-application-behavior](database.md#fase-13-application-behavior).
 
 **Still deliberately not built** (each a later phase): selling serialized/lot-tracked variants (no
 approved `order_items` ↔ `product_serials`/`product_lots` linkage, no serial/lot column on

@@ -92,7 +92,13 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   on every exceptional line having an `approved` request (never a permission-based bypass). Reuses
   `pricing.discount.request`/`pricing.discount.approve`; the requester can never approve their own
   request. No `event_outbox`/Telegram/n8n (FASE 14/15), no frontend (FASE 16/17); selling
-  serialized/lot-tracked variants stays deferred. *(done)*
+  serialized/lot-tracked variants stays deferred. **PROMPT 013-A** (controlled correction) then
+  verified the state-transition concurrency — `inspect`/`resolve`/`cancel` and `approve`/`reject`
+  all serialize on `SELECT ... FOR UPDATE` (approvals also via a `WHERE status = 'pending'` CAS),
+  so incompatible transitions on one return / one approval can never both win, a cancelled return
+  never has inventory applied, a resolved return can never be cancelled, and a `SALE` never commits
+  against a pending/rejected approval — **no functional bug found, no code change**, only new
+  concurrency tests. *(done)*
 
 ## Future phases
 

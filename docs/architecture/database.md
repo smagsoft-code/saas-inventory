@@ -2523,6 +2523,28 @@ cancelled, not returned).
 Returns never `UPDATE` `orders` / `order_items` (the latter has no `UPDATE` grant) — the original
 sale's snapshot and quantities are immutable.
 
+**State-transition concurrency (PROMPT 013-A).** `inspect`, `resolve` and `cancel` each begin their
+`withTenantTransaction` with `SalesReturnsRepository.lockById` — `SELECT ... FOR UPDATE` on the one
+`sales_returns` row (for `resolve`, after the per-`Idempotency-Key` advisory lock + idempotency-table
+check, which are per-key, not per-row). The status is re-read **under that lock**, so two
+incompatible transitions on one return are serialized by PostgreSQL: the loser blocks, re-reads the
+now-terminal status, and either fails (`409`) or no-ops idempotently (`cancel` on an
+already-`cancelled` return, `resolve` on an already-`resolved` one). Consequences, all verified
+against real PostgreSQL by repeating each race: `resolve` vs `cancel` yields exactly one winner —
+`resolved` with exactly one `RETURN` movement per line **or** `cancelled` with zero, never a mix,
+never `cancelled` + inventory applied; a `resolved` return can never be `cancelled` and a
+`cancelled` return can never be `inspect`ed or `resolve`d; `inspect` is atomic (every line of the
+request gets its full `disposition`/`disposition_location_id`/`inspected_by`/`inspected_at` set, or
+the whole call rolls back — never line A's location with line B's disposition); a `resolve` that
+throws part-way through its per-line loop (e.g. a location-authorization failure on a later line)
+rolls back every `RETURN` it had already written and leaves the return `inspecting`. Same
+serialization for `price_approvals`: `approve`/`reject` take `PriceApprovalsRepository.lockById`
+(`FOR UPDATE`) **and** a `UPDATE ... WHERE status = 'pending' RETURNING` CAS in `resolveIfPending`,
+writing the `audit_log` row only when the CAS returns a row — so `approve` vs `reject` on one
+request resolves to exactly one terminal status with exactly one resolution audit, a terminal
+approval can never be re-resolved, and (with `confirm` locking the approvals via `lockByOrder`) a
+`SALE` never commits while the line's approval is `pending` or `rejected`.
+
 ---
 
 ## Pricing: history, tenant policy, and exceptional-discount approval
