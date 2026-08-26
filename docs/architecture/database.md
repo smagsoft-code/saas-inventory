@@ -2394,6 +2394,32 @@ from [modules.md#order-flow](modules.md#order-flow-conceptual--sales-not-impleme
 `fulfilled` is a valid schema status but has no FASE 12 transition into it (no goods-handover
 tracking is designed yet).
 
+**Transition concurrency (PROMPT 012-A).** `confirm` and `cancel` both begin their
+`withTenantTransaction` with `SELECT ... FOR UPDATE` on the single `orders` row
+(`OrdersRepository.lockById`) — the row lock is the serialization point:
+
+```
+BEGIN
+  SELECT * FROM orders WHERE (tenant_id, id) FOR UPDATE   -- a concurrent transition blocks here
+  re-read status under the lock
+    status = 'confirmed'  → confirm returns idempotently / cancel → 409
+    status = 'cancelled'  → cancel returns idempotently / confirm → 409
+    status = 'pending'    → assertAccess, then the RESERVATION_RELEASE / SALE loop, then UPDATE status
+  write audit
+COMMIT   -- lock released; the blocked transition now re-reads the terminal status
+```
+
+The order-row lock is taken **before** any `inventory_balances` row lock, and `cancel` follows the
+same order — so `confirm` vs `cancel` on one order never deadlocks (one is blocked on the order row
+before the other touches a balance). Effects are exactly-once: two concurrent `confirm`s produce
+one `SALE` + one `RESERVATION_RELEASE` per line and one `order.confirmed` audit; `confirm` vs
+`cancel` yields exactly one terminal transition, never a `confirmed`-then-`cancelled` order or a
+double `RESERVATION_RELEASE`. The whole transition (status re-read → inventory movements → status
+update → audit) is one transaction — a failure at any step rolls back every write in that call, so
+a `RESERVATION_RELEASE` is never left without its `SALE`. This is the same PostgreSQL-managed
+serialization (no in-memory locks — works across API instances/processes) that
+`inventory/transfers` already uses for its state transitions.
+
 **Totals** (`order_items` and `orders`), one rounding policy — half-up to 2 decimals, applied to
 every monetary result (there is no tax engine — `tax_total` is always `0`):
 
@@ -2419,10 +2445,16 @@ the migration path — not needed at current scale.
 **Currency** — `orders.currency` is set to `'USD'` (a documented FASE 12 assumption: no tenant
 currency configuration exists yet; the schema already assumes single-currency-per-tenant).
 
-**Customer data for a document** — a `document_type = 'invoice'` checkout additionally requires the
-cart's customer to have `tax_id`, `email`, `phone`, and a non-empty `address`; a `sales_note` needs
-only the always-present `display_name`. Both freeze the `customer_*_snapshot` columns from the
-validated `customers` row.
+**Customer data for a sale (PROMPT 012-A).** A checkout of **either** `document_type` requires the
+cart's customer to have the complete commercial record — `tax_id`, `email`, `phone`, a non-empty
+`address`, plus the always-present `display_name` (i.e. nombre completo, identificación, correo,
+teléfono, dirección). `invoice` and `sales_note` differ **only** by `document_type` /
+`invoice_status`, never by how much buyer data the sale requires. A missing field fails the checkout
+with `422` (naming the fields) **before** any order / `order_items` / inventory reservation /
+idempotency-success write. Once the order is created, `customer_name_snapshot` /
+`customer_tax_id_snapshot` / `customer_email_snapshot` / `customer_phone_snapshot` /
+`customer_address_snapshot` are frozen from the validated `customers` row and never change if the
+customer is later edited.
 
 **Serialized / lot-tracked variants** — selling them is **rejected** (`422`) in FASE 12: no approved
 model links `order_items` to `product_serials`/`product_lots`, and `inventory_movements` has no

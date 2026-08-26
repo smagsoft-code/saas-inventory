@@ -110,7 +110,12 @@ vendor only ever reaches their own open cart, addressed as a singular `/cart`, n
 `POST /orders` is idempotent (`idempotency_keys`, `scope = 'orders.create'`) and every stock effect
 goes through INVENTORY's one locking convoy — SALES never writes `inventory_balances` directly, and
 a below-`min_price` price is rejected, never bypassed (the exceptional-discount approval workflow is
-FASE 13).
+FASE 13). Closing a sale — `invoice` **or** `sales_note` — requires the customer's complete
+commercial record (name, identification, email, phone, address); the two document types differ only
+by document type / invoice status, never by required buyer data (PROMPT 012-A). `confirm` and
+`cancel` serialize on a `SELECT ... FOR UPDATE` of the `orders` row, so concurrent transitions on
+one order produce exactly-once inventory and audit effects — PostgreSQL, not an in-memory lock, is
+the serialization point (works across API instances).
 
 **Platform-admin (SuperAdmin) authentication (FASE 11)** — a second, structurally independent
 authentication mechanism from everything above, never sharing a code path or a permission catalog

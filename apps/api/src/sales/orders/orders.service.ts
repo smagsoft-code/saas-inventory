@@ -160,7 +160,7 @@ export class OrdersService {
       if (!customer) {
         throw new NotFoundException('The cart customer no longer exists.');
       }
-      this.assertCustomerDataForDocument(customer, dto.documentType);
+      this.assertCustomerCommercialData(customer);
 
       const location = await this.locationsRepository.findById(tx, tenantId, cart.locationId);
       if (!location) {
@@ -379,10 +379,16 @@ export class OrdersService {
     });
   }
 
-  private assertCustomerDataForDocument(customer: CustomerRow, documentType: string): void {
-    if (documentType !== 'invoice') {
-      return;
-    }
+  /**
+   * PROMPT 012-A: the commercial customer data a sale must freeze (§6, and FASE 12's own §34:
+   * "nombre, identificación, correo, teléfono, dirección") is required for **both** document types,
+   * not just `invoice`. `invoice` vs `sales_note` differ only by `document_type` / `invoice_status`
+   * (§9), never by how complete the buyer's record must be. `display_name` is always present
+   * (NOT NULL + DTO min length), so it is not re-checked here. No inventory / order / order_items /
+   * idempotency-success side effect happens before this — it runs before `resolveLines` and every
+   * write (§10).
+   */
+  private assertCustomerCommercialData(customer: CustomerRow): void {
     const missing: string[] = [];
     if (!customer.taxId) missing.push('taxId');
     if (!customer.email) missing.push('email');
@@ -390,7 +396,7 @@ export class OrdersService {
     const address = customer.address as Record<string, unknown> | null;
     if (!address || Object.keys(address).length === 0) missing.push('address');
     if (missing.length > 0) {
-      throw new UnprocessableEntityException(`Customer is missing data required for an invoice: ${missing.join(', ')}.`);
+      throw new UnprocessableEntityException(`Customer is missing data required to create a sales order: ${missing.join(', ')}.`);
     }
   }
 

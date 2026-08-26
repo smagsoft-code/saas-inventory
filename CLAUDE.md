@@ -467,3 +467,31 @@ location authorization, price-field visibility, historical snapshots, the last-u
 idempotent order creation under HTTP retry + concurrent same-key + payload mismatch, and the
 011-A/011-B tenant-suspension / user-deactivation regressions applied to SALES routes). No frontend
 UI for SALES exists yet (FASE 16/17).
+
+PROMPT 012-A (post-FASE-12 controlled correction) closed two points the FASE 12 review flagged.
+**(1) Customer data.** FASE 12 required the full commercial customer record (`tax_id`, `email`,
+`phone`, non-empty `address`, plus the always-present `display_name`) only for `document_type =
+'invoice'`; a `sales_note` needed only `display_name`. The approved rule (this prompt's §6, and
+FASE 12's own §34) is that **both** document types require the same complete buyer record to close
+a sale — `invoice` vs `sales_note` differ only by `document_type` / `invoice_status`, never by
+required customer data. `OrdersService.assertCustomerDataForDocument(customer, documentType)` became
+`assertCustomerCommercialData(customer)` (no document-type branch), still run before `resolveLines`
+and every write, still `422` naming the missing fields, still zero order / `order_items` /
+inventory-reservation / idempotency-success side effect on failure. **(2) Order transition
+concurrency.** Audited `confirm` vs `confirm` and `confirm` vs `cancel` on one `pending` order:
+**no functional bug** — both `OrdersService.confirm` and `.cancel` already begin their
+`withTenantTransaction` with `OrdersRepository.lockById` (`SELECT … FOR UPDATE` on the single
+`orders` row), which serializes concurrent transitions: the second blocks on the row lock, then
+re-reads the now-terminal status under READ COMMITTED and returns idempotently (`confirm` on an
+already-`confirmed` order) or `409`. Effects are exactly-once (one `SALE` + one
+`RESERVATION_RELEASE` per line, one `order.confirmed` audit; never a `confirmed`-then-`cancelled`
+order or a double release), and the transition + its movements + the audit are one transaction — a
+throw anywhere rolls back every write in that call. No code change to the transition logic (per the
+prompt's "do not refactor if already correct"); the gap was **test coverage** — FASE 12 proved
+`checkout` vs `checkout` and same-`Idempotency-Key` races but not transition-vs-transition. Added
+`test/sales/sales-order-transitions.integration.test.ts` (T1/T5 confirm/confirm, T2/T10
+confirm/cancel run repeatedly, T6/T7/T8 sequential terminal transitions, T9 multi-line, plus a
+rollback test via a mid-transition `ForbiddenException`, all counting `inventory_movements` and
+`audit_log` rows directly from the DB) and the C1-C7 customer-data cases in
+`sales-cart-orders.integration.test.ts`. No new migration, table, permission code, ADR, or endpoint
+— both are clarifications of already-approved rules.

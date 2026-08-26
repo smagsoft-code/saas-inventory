@@ -169,14 +169,21 @@ export function makeClient(app: NestFastifyApplication) {
     return (JSON.parse(response.body) as { id: string }).id;
   }
 
-  const fullCustomer = (suffix: string) => ({
-    type: 'business',
-    displayName: `Customer ${suffix}`,
-    taxId: `179${suffix.replace(/\D/g, '').padStart(10, '0').slice(0, 10)}`,
-    email: `customer-${suffix}@example.com`,
-    phone: '+59322222222',
-    address: { line1: 'Av. Siempre Viva 742', city: 'Quito', country: 'EC' },
-  });
+  /** A customer with the full commercial data every sale (invoice AND sales_note) requires
+   * (PROMPT 012-A). `taxId` is made unique per call so two full customers in the same tenant never
+   * collide on `customers_tenant_id_tax_id_key`. */
+  let taxIdSeq = 0;
+  const fullCustomer = (suffix: string) => {
+    taxIdSeq += 1;
+    return {
+      type: 'business',
+      displayName: `Customer ${suffix}`,
+      taxId: `179${String(Date.now()).slice(-7)}${String(taxIdSeq).padStart(3, '0')}`,
+      email: `customer-${suffix}-${taxIdSeq}@example.com`,
+      phone: '+59322222222',
+      address: { line1: 'Av. Siempre Viva 742', city: 'Quito', country: 'EC' },
+    };
+  };
 
   return {
     inject,

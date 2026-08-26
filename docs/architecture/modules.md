@@ -190,10 +190,15 @@ locking convoy; `LocationAuthorizationService` — ADR-0024; `LocationsRepositor
   `RESERVATION_RELEASE` + `SALE` per line (the inventory commit boundary) and moves to `confirmed`;
   `cancel` releases a still-`pending` reservation (`RESERVATION_RELEASE`) and moves to `cancelled` —
   a `confirmed` order can only be reversed by a sales return (FASE 13), never cancelled.
+  `confirm`/`cancel` serialize on a `SELECT ... FOR UPDATE` of the `orders` row (PROMPT 012-A), so
+  concurrent transitions on one order are exactly-once — see
+  [database.md#fase-12-application-behavior](database.md#fase-12-application-behavior).
   `sales.orders.view`/`.create`/`.cancel`.
 - **Document type** — `invoice` records `invoice_status = 'pending'` for a later external process;
   `sales_note` carries a NULL `invoice_status`. The platform never issues a fiscal document
-  (ADR-0023). An `invoice` order additionally requires the customer to have taxId/email/phone/address.
+  (ADR-0023). Both document types require the **same** complete commercial customer record
+  (display_name/taxId/email/phone/address) to close the sale — they differ only by document type /
+  invoice status, never by required buyer data (PROMPT 012-A).
 - **Pricing** — a per-line negotiated price within `[min_price, max_price]` completes now; a price
   below `min_price` is an exceptional discount whose approval workflow is FASE 13 — FASE 12 rejects
   it in a controlled way (409), never silently bypassing the floor. Above `max_price` is always

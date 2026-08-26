@@ -227,46 +227,121 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
     });
   });
 
-  describe('document type + customer data (§32-§34, §108, §143)', () => {
-    it('sales_note works without full customer data; invoice requires it and records invoice_status=pending', async () => {
-      const admin = await c.registerTenant('Doc Type Co', 'admin@doc-type.example');
-      const wh = await c.createWarehouse(admin, `WH-${Date.now()}`);
-      const loc = await c.createLocation(admin, wh, `L-${Date.now()}`);
-      const { variantId } = await c.createProductVariant(admin, { sku: `SKU-${Date.now()}` });
+  describe('document type + customer data (§32-§34, §108, §143; PROMPT 012-A §6-§18)', () => {
+    // PROMPT 012-A: the SAME complete commercial customer data (taxId, email, phone, address) is
+    // required for BOTH invoice and sales_note — the two differ only by document_type /
+    // invoice_status, never by customer completeness.
+
+    async function checkoutFor(admin: Session, loc: string, variantId: string, customerId: string, documentType: 'invoice' | 'sales_note') {
+      const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(admin), payload: { locationId: loc, customerId } });
+      expect(created.statusCode, created.body).toBe(201);
+      const cartId = (JSON.parse(created.body) as { id: string }).id;
+      await c.inject({ method: 'PATCH', url: '/api/v1/cart', headers: c.writeHeaders(admin), payload: { customerId } });
+      await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(admin), payload: { productVariantId: variantId, quantity: 1 } });
+      return { cartId, response: await checkout(admin, cartId, documentType) };
+    }
+
+    async function docTypeFixture(company: string, email: string) {
+      const admin = await c.registerTenant(company, email);
+      const wh = await c.createWarehouse(admin, `WH-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+      const loc = await c.createLocation(admin, wh, `L-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+      const { variantId } = await c.createProductVariant(admin, { sku: `SKU-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` });
       await c.receiveStock(admin, variantId, loc, 20);
+      return { admin, loc, variantId };
+    }
 
-      const sparseCustomer = await c.createCustomer(admin, { type: 'individual', displayName: 'Walk-in' });
-      const noteCartId = await openCartWithCustomer(admin, loc, sparseCustomer, variantId);
-      const note = await checkout(admin, noteCartId, 'sales_note');
-      expect(note.statusCode, note.body).toBe(201);
-      expect((JSON.parse(note.body) as { invoiceStatus?: string }).invoiceStatus).toBeUndefined();
+    async function noSideEffects(admin: Session, variantId: string): Promise<void> {
+      const bal = await balance(admin, variantId);
+      expect(bal.quantityReserved).toBe(0);
+      const orders = await c.inject({ method: 'GET', url: '/api/v1/orders', headers: c.readHeaders(admin) });
+      expect((JSON.parse(orders.body) as { data: unknown[] }).data).toHaveLength(0);
+    }
 
-      const invoiceTry = await checkoutCartFor(admin, loc, sparseCustomer, variantId, 'invoice');
-      expect(invoiceTry.statusCode).toBe(422);
+    /** A full customer payload with one field removed — for the "missing field -> 422" cases. */
+    function withoutField(suffix: string, field: 'taxId' | 'email' | 'phone' | 'address'): Record<string, unknown> {
+      const payload: Record<string, unknown> = { ...c.fullCustomer(suffix) };
+      delete payload[field];
+      return payload;
+    }
 
-      const fullCustomer = await c.createCustomer(admin, c.fullCustomer('doc-full'));
-      const invoiceOk = await checkoutCartFor(admin, loc, fullCustomer, variantId, 'invoice');
-      expect(invoiceOk.statusCode, invoiceOk.body).toBe(201);
-      const body = JSON.parse(invoiceOk.body) as { documentType: string; invoiceStatus: string; customer: { name: string; taxId: string } };
-      expect(body.documentType).toBe('invoice');
-      expect(body.invoiceStatus).toBe('pending');
-      expect(body.customer.name).toBe('Customer doc-full');
+    it('C1: sales_note + complete customer -> 201, invoice_status null, snapshot complete', async () => {
+      const f = await docTypeFixture('DocType C1 Co', 'admin@dt-c1.example');
+      const customerId = await c.createCustomer(f.admin, c.fullCustomer('c1'));
+      const { response } = await checkoutFor(f.admin, f.loc, f.variantId, customerId, 'sales_note');
+      expect(response.statusCode, response.body).toBe(201);
+      const body = JSON.parse(response.body) as { documentType: string; invoiceStatus?: string; customer: { name: string; taxId?: string; email?: string; phone?: string; address?: unknown } };
+      expect(body.documentType).toBe('sales_note');
+      expect(body.invoiceStatus).toBeUndefined();
+      expect(body.customer).toEqual(expect.objectContaining({ name: 'Customer c1', taxId: expect.any(String), email: expect.any(String), phone: expect.any(String) }));
+      expect(body.customer.address).toBeTruthy();
     });
 
-    async function openCartWithCustomer(session: Session, locationId: string, customerId: string, variantId: string): Promise<string> {
-      const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(session), payload: { locationId, customerId } });
-      const cartId = (JSON.parse(created.body) as { id: string }).id;
-      // POST /cart is get-or-create — an earlier failed checkout can leave an open cart with a
-      // different customer, so pin it explicitly.
-      await c.inject({ method: 'PATCH', url: '/api/v1/cart', headers: c.writeHeaders(session), payload: { customerId } });
-      await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(session), payload: { productVariantId: variantId, quantity: 1 } });
-      return cartId;
-    }
+    it('C2: sales_note missing taxId -> 422, no order, no reservation', async () => {
+      const f = await docTypeFixture('DocType C2 Co', 'admin@dt-c2.example');
+      const customerId = await c.createCustomer(f.admin, withoutField('c2', 'taxId'));
+      const { response } = await checkoutFor(f.admin, f.loc, f.variantId, customerId, 'sales_note');
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body).message).toMatch(/taxId/);
+      await noSideEffects(f.admin, f.variantId);
+    });
 
-    async function checkoutCartFor(session: Session, locationId: string, customerId: string, variantId: string, documentType: 'invoice' | 'sales_note') {
-      const cartId = await openCartWithCustomer(session, locationId, customerId, variantId);
-      return checkout(session, cartId, documentType);
-    }
+    it('C3: sales_note missing email -> 422, no side effects', async () => {
+      const f = await docTypeFixture('DocType C3 Co', 'admin@dt-c3.example');
+      const customerId = await c.createCustomer(f.admin, withoutField('c3', 'email'));
+      const { response } = await checkoutFor(f.admin, f.loc, f.variantId, customerId, 'sales_note');
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body).message).toMatch(/email/);
+      await noSideEffects(f.admin, f.variantId);
+    });
+
+    it('C4: sales_note missing phone -> 422, no side effects', async () => {
+      const f = await docTypeFixture('DocType C4 Co', 'admin@dt-c4.example');
+      const customerId = await c.createCustomer(f.admin, withoutField('c4', 'phone'));
+      const { response } = await checkoutFor(f.admin, f.loc, f.variantId, customerId, 'sales_note');
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body).message).toMatch(/phone/);
+      await noSideEffects(f.admin, f.variantId);
+    });
+
+    it('C5: sales_note missing address -> 422, no side effects', async () => {
+      const f = await docTypeFixture('DocType C5 Co', 'admin@dt-c5.example');
+      const customerId = await c.createCustomer(f.admin, withoutField('c5', 'address'));
+      const { response } = await checkoutFor(f.admin, f.loc, f.variantId, customerId, 'sales_note');
+      expect(response.statusCode).toBe(422);
+      expect(JSON.parse(response.body).message).toMatch(/address/);
+      await noSideEffects(f.admin, f.variantId);
+    });
+
+    it('C6: invoice regression — complete -> 201 invoice_status=pending; incomplete -> 422', async () => {
+      const f = await docTypeFixture('DocType C6 Co', 'admin@dt-c6.example');
+      const partialId = await c.createCustomer(f.admin, withoutField('c6-partial', 'email'));
+      const bad = await checkoutFor(f.admin, f.loc, f.variantId, partialId, 'invoice');
+      expect(bad.response.statusCode).toBe(422);
+      await noSideEffects(f.admin, f.variantId);
+
+      const fullId = await c.createCustomer(f.admin, c.fullCustomer('c6-full'));
+      const ok = await checkoutFor(f.admin, f.loc, f.variantId, fullId, 'invoice');
+      expect(ok.response.statusCode, ok.response.body).toBe(201);
+      expect((JSON.parse(ok.response.body) as { invoiceStatus: string }).invoiceStatus).toBe('pending');
+    });
+
+    it('C7: historical snapshot — a valid sales_note keeps its frozen customer data after the customer is edited', async () => {
+      const f = await docTypeFixture('DocType C7 Co', 'admin@dt-c7.example');
+      const customerId = await c.createCustomer(f.admin, c.fullCustomer('c7'));
+      const { response } = await checkoutFor(f.admin, f.loc, f.variantId, customerId, 'sales_note');
+      expect(response.statusCode, response.body).toBe(201);
+      const order = JSON.parse(response.body) as { id: string; customer: { name: string; email: string; phone: string } };
+
+      await c.inject({
+        method: 'PATCH',
+        url: `/api/v1/customers/${customerId}`,
+        headers: c.writeHeaders(f.admin),
+        payload: { displayName: 'CHANGED', email: 'changed@example.com', phone: '+000' },
+      });
+
+      const reread = JSON.parse((await c.inject({ method: 'GET', url: `/api/v1/orders/${order.id}`, headers: c.readHeaders(f.admin) })).body) as { customer: { name: string; email: string; phone: string } };
+      expect(reread.customer).toEqual(order.customer);
+    });
   });
 
   describe('historical snapshots (§13-§14, §27-§28, §106, §107)', () => {

@@ -182,19 +182,39 @@ describe('OrdersService.checkout', () => {
     ).rejects.toThrow(NotFoundException);
   });
 
-  it('rejects an invoice when the customer is missing required data (§34)', async () => {
-    const { service, customersRepository } = build();
-    customersRepository.findById.mockResolvedValue({ ...CUSTOMER, taxId: null, email: null });
+  // PROMPT 012-A §6: the SAME complete commercial customer data is required for BOTH document types.
+  it.each([
+    ['invoice', { taxId: null }, /taxId/],
+    ['invoice', { email: null }, /email/],
+    ['sales_note', { taxId: null }, /taxId/],
+    ['sales_note', { email: null }, /email/],
+    ['sales_note', { phone: null }, /phone/],
+    ['sales_note', { address: null }, /address/],
+    ['sales_note', { address: {} }, /address/],
+  ] as const)('rejects %s when the customer is missing %o -> 422, no order (§10, §13-§16)', async (documentType, patch, messagePattern) => {
+    const { service, customersRepository, ordersRepository, stockLedgerService, idempotencyRepository } = build();
+    customersRepository.findById.mockResolvedValue({ ...CUSTOMER, ...patch });
     await expect(
-      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'invoice' }, META, KEY),
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType }, META, KEY),
     ).rejects.toThrow(UnprocessableEntityException);
+    try {
+      await service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType }, META, KEY);
+    } catch (error) {
+      expect((error as Error).message).toMatch(messagePattern);
+    }
+    expect(ordersRepository.create).not.toHaveBeenCalled();
+    expect(stockLedgerService.applyMovement).not.toHaveBeenCalled();
+    expect(idempotencyRepository.create).not.toHaveBeenCalled();
   });
 
-  it('allows a sales_note for a customer without full invoice data', async () => {
-    const { service, customersRepository, ordersRepository } = build();
-    customersRepository.findById.mockResolvedValue({ ...CUSTOMER, taxId: null, email: null, address: null });
-    await service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, KEY);
-    expect(ordersRepository.create).toHaveBeenCalled();
+  it('accepts a complete customer for sales_note (invoice_status null) and for invoice (invoice_status pending)', async () => {
+    for (const documentType of ['sales_note', 'invoice'] as const) {
+      const { service, ordersRepository } = build();
+      await service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType }, META, KEY);
+      const values = ordersRepository.create.mock.calls[0]![1] as { invoiceStatus: string | null; documentType: string };
+      expect(values.documentType).toBe(documentType);
+      expect(values.invoiceStatus).toBe(documentType === 'invoice' ? 'pending' : null);
+    }
   });
 
   it('rejects a below-min negotiated price on any line — never bypassed (§25)', async () => {
