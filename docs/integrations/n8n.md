@@ -187,16 +187,18 @@ embedded PostgreSQL, synthetic events, wiped after the run).
 
 | property | value |
 | --- | --- |
-| mechanism | n8n **Data Table** `saas_event_dedupe`; columns `eventId`, `status` (`processing`\|`completed`), `eventType`, `updatedAt` (ISO, written by the workflow) |
+| mechanism | n8n **Data Table** `saas_event_dedupe`; **custom** columns `eventId`, `status` (`processing`\|`completed`), `eventType`, `processingUpdatedAt` (ISO-8601). n8n Data Tables also keep their own internal `id` / `createdAt` / `updatedAt` fields; the workflow does **not** use those for dedupe or stale detection — the custom `processingUpdatedAt` column is authoritative and is written by the workflow on every claim and on completion. |
 | key | `eventId` (= `event_outbox.id`) |
 | durable | **yes** — persisted in the Data Table store; survives executions and n8n restarts |
 | atomic / unique-insert guarantee | **no.** The lookup (Get Row) and the claim write (Upsert on `eventId`) are separate node operations; the Upsert narrows the window to one call but n8n does not document it as an atomic insert-if-absent and no unique constraint on `eventId` was established. Two executions receiving the *same* `eventId` in the same sub-millisecond window before either upserts could both proceed. |
 | why that race is not reached in practice | the Event Processor dispatches one `event_outbox` row at a time and only retries seconds later after recording an outcome; `FOR UPDATE SKIP LOCKED` prevents two workers claiming the same row at once. The realistic concurrent case — a retry arriving while a slow first execution still runs — is handled by the **in-flight (HTTP 425)** path, not by the upsert. |
-| `completed` state | written **only after** the Telegram send succeeds |
+| `Claim Processing` (new or stale event) | Upsert by `eventId` → `status = processing`, `processingUpdatedAt = now`, **before** any Telegram send |
+| `Dedupe Decide` age check | `age = now − processingUpdatedAt` of the existing row |
+| `Mark Completed` | **only after** the Telegram send succeeds → `status = completed`, `processingUpdatedAt = now` → Respond 200 |
 | duplicate + `completed` | workflow responds **HTTP 200** `{"status":"duplicate-ignored"}`, **no** Telegram |
-| recent `processing` (age < `STALE_MS` = 120000) | workflow responds **HTTP 425**; the Event Processor classifies 425 as retryable and retries after backoff; **no** Telegram |
-| stale `processing` (age ≥ 120 s) | reclaimed (Upsert refreshes `updatedAt`) and reprocessed — recovery from a crashed execution |
-| remaining crash window | Telegram send succeeds → n8n dies before the `completed` update → row stays `processing` → after 120 s a retry reprocesses → **Telegram re-sent**. Hence: **at-least-once-safe, not exactly-once.** |
+| recent `processing` (`age < STALE_MS = 120000`) | workflow responds **HTTP 425**; the Event Processor classifies 425 as retryable and retries after backoff; **no** Telegram |
+| stale `processing` (`age ≥ 120 s`) | reclaimed (Upsert refreshes `processingUpdatedAt`) and reprocessed — recovery from a crashed execution |
+| remaining crash window | Telegram send succeeds → n8n dies before the `Mark Completed` update → row stays `processing` → after 120 s a retry reprocesses → **Telegram re-sent**. Hence: **at-least-once-safe, not exactly-once.** |
 
 > `STALE_MS = 120000` (120 s): comfortably above one execution's real duration (Telegram call + 2
 > Data Table writes, normally < 10 s) and below the Event Processor's later retry intervals, so a
