@@ -3,11 +3,12 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { ApiError, apiFetch } from '../../../lib/api-client';
-
-interface RegisterResponse {
-  user: { tenantSlug: string };
-}
+import { apiFetch } from '../../../lib/api/client';
+import { ApiError } from '../../../lib/api/errors';
+import { Button } from '../../../components/ui/button';
+import { Field } from '../../../components/ui/field';
+import { Input } from '../../../components/ui/input';
+import { Alert } from '../../../components/ui/alert';
 
 export default function RegisterPage(): React.JSX.Element {
   const router = useRouter();
@@ -23,16 +24,18 @@ export default function RegisterPage(): React.JSX.Element {
     setError(null);
     setSubmitting(true);
     try {
-      // Server-side validation (DTOs) is the actual authority — this client-side minlength is
-      // only fast feedback, per frontend.md#state-forms-and-validation.
-      await apiFetch<RegisterResponse>('/api/v1/auth/register', {
+      // Server-side DTO validation is the authority — the client `minLength` hints are only fast
+      // feedback (frontend.md#state-forms-and-validation).
+      await apiFetch('/api/v1/auth/register', {
         method: 'POST',
         body: { companyName, email, password, fullName },
       });
-      router.push('/');
+      router.replace('/');
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not create your account. Please try again.');
+      setError(
+        err instanceof ApiError ? err.message : 'Could not create your account. Please try again.',
+      );
     } finally {
       setSubmitting(false);
     }
@@ -44,69 +47,56 @@ export default function RegisterPage(): React.JSX.Element {
         <h1 className="text-xl font-semibold text-slate-900">Create your company</h1>
         <p className="text-sm text-slate-500">You&apos;ll become the workspace administrator.</p>
       </div>
-      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
-          Company name
-          <input
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+        <Field label="Company name" required>
+          <Input
+            name="companyName"
             required
             minLength={2}
             value={companyName}
             onChange={(event) => setCompanyName(event.target.value)}
-            className="rounded border border-slate-300 px-3 py-2"
             autoComplete="organization"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
-          Your full name
-          <input
+        </Field>
+        <Field label="Your full name" required>
+          <Input
+            name="fullName"
             required
             minLength={2}
             value={fullName}
             onChange={(event) => setFullName(event.target.value)}
-            className="rounded border border-slate-300 px-3 py-2"
             autoComplete="name"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
-          Email
-          <input
-            required
+        </Field>
+        <Field label="Email" required>
+          <Input
+            name="email"
             type="email"
+            required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="rounded border border-slate-300 px-3 py-2"
             autoComplete="email"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
-          Password
-          <input
-            required
+        </Field>
+        <Field label="Password" required hint="Minimum 10 characters.">
+          <Input
+            name="password"
             type="password"
+            required
             minLength={10}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="rounded border border-slate-300 px-3 py-2"
             autoComplete="new-password"
           />
-          <span className="text-xs text-slate-400">Minimum 10 characters.</span>
-        </label>
-        {error && (
-          <p role="alert" className="text-sm text-red-600">
-            {error}
-          </p>
-        )}
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded bg-slate-900 px-3 py-2 text-white disabled:opacity-50"
-        >
-          {submitting ? 'Creating…' : 'Create company'}
-        </button>
+        </Field>
+        {error && <Alert tone="error">{error}</Alert>}
+        <Button type="submit" loading={submitting}>
+          Create company
+        </Button>
       </form>
       <p className="text-sm text-slate-500">
         Already have an account?{' '}
-        <Link href="/login" className="underline">
+        <Link href="/login" className="font-medium text-slate-900 underline">
           Sign in
         </Link>
       </p>

@@ -2,12 +2,17 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { ApiError, apiFetch } from '../../../../lib/api-client';
-import type { Role } from '../../../../lib/core-types';
+import { apiFetch } from '../../../../lib/api/client';
+import { httpErrorMessage } from '../../../../lib/api/errors';
+import type { Role } from '../../../../lib/types/core';
+import { Button } from '../../../../components/ui/button';
+import { Field } from '../../../../components/ui/field';
+import { Input, Select } from '../../../../components/ui/input';
+import { Alert } from '../../../../components/ui/alert';
 
-/** `roles` is only passed in when the caller holds core.roles.assign — §13: assigning a role at
- * creation time requires that permission in addition to core.users.create, enforced server-side;
- * this only decides whether to render the control at all. */
+/** `roles` is passed in only when the caller holds `core.roles.assign` — assigning a role at
+ * creation requires that permission in addition to `core.users.create`, enforced server-side;
+ * this only decides whether to render the control. */
 export function CreateUserForm({ roles }: { roles: Role[] }): React.JSX.Element {
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -29,78 +34,58 @@ export function CreateUserForm({ roles }: { roles: Role[] }): React.JSX.Element 
       router.push('/users');
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not create the user. Please try again.');
+      setError(httpErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex max-w-sm flex-col gap-3">
-      <label className="flex flex-col gap-1 text-sm text-slate-700">
-        Full name
-        <input
+    <form onSubmit={handleSubmit} noValidate className="flex max-w-sm flex-col gap-4">
+      <Field label="Full name" required>
+        <Input
           required
           minLength={2}
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
-          className="rounded border border-slate-300 px-3 py-2"
           autoComplete="name"
         />
-      </label>
-      <label className="flex flex-col gap-1 text-sm text-slate-700">
-        Email
-        <input
-          required
+      </Field>
+      <Field label="Email" required>
+        <Input
           type="email"
+          required
           value={email}
           onChange={(event) => setEmail(event.target.value)}
-          className="rounded border border-slate-300 px-3 py-2"
           autoComplete="email"
         />
-      </label>
-      <label className="flex flex-col gap-1 text-sm text-slate-700">
-        Temporary password
-        <input
-          required
+      </Field>
+      <Field label="Temporary password" required hint="Minimum 10 characters.">
+        <Input
           type="password"
+          required
           minLength={10}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
-          className="rounded border border-slate-300 px-3 py-2"
           autoComplete="new-password"
         />
-        <span className="text-xs text-slate-400">Minimum 10 characters.</span>
-      </label>
+      </Field>
       {roles.length > 0 && (
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
-          Role
-          <select
-            value={roleId}
-            onChange={(event) => setRoleId(event.target.value)}
-            className="rounded border border-slate-300 px-3 py-2"
-          >
+        <Field label="Role">
+          <Select value={roleId} onChange={(event) => setRoleId(event.target.value)}>
             <option value="">No role (assign later)</option>
             {roles.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Field>
       )}
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="w-fit rounded bg-slate-900 px-3 py-2 text-white disabled:opacity-50"
-      >
-        {submitting ? 'Creating…' : 'Create user'}
-      </button>
+      {error && <Alert tone="error">{error}</Alert>}
+      <Button type="submit" loading={submitting} className="w-fit">
+        Create user
+      </Button>
     </form>
   );
 }

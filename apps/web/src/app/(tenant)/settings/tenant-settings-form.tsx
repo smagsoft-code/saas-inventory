@@ -2,12 +2,17 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { ApiError, apiFetch } from '../../../lib/api-client';
-import type { Tenant } from '../../../lib/core-types';
+import { apiFetch } from '../../../lib/api/client';
+import { httpErrorMessage } from '../../../lib/api/errors';
+import type { Tenant } from '../../../lib/types/core';
+import { Button } from '../../../components/ui/button';
+import { Field } from '../../../components/ui/field';
+import { Input } from '../../../components/ui/input';
+import { Alert } from '../../../components/ui/alert';
 
-/** Only `name` is ever sent — §7/§9: slug/status/isDemo are system-managed and have no field
- * here at all, so there is nothing client-side that could even attempt to send them. The backend
- * DTO whitelist rejects them regardless (defense in depth, not the only line of defense). */
+/** Only `name` is ever sent — slug/status/isDemo are system-managed and have no field here, so
+ * nothing client-side can attempt to send them; the backend DTO whitelist rejects them regardless
+ * (defense in depth). */
 export function TenantSettingsForm({ tenant }: { tenant: Tenant }): React.JSX.Element {
   const router = useRouter();
   const [name, setName] = useState(tenant.name);
@@ -25,37 +30,26 @@ export function TenantSettingsForm({ tenant }: { tenant: Tenant }): React.JSX.El
       setSuccess(true);
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update the company name. Please try again.');
+      setError(httpErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex max-w-sm flex-col gap-3">
-      <label className="flex flex-col gap-1 text-sm text-slate-700">
-        Company name
-        <input
+    <form onSubmit={handleSubmit} noValidate className="flex max-w-sm flex-col gap-4">
+      <Field label="Company name" required error={error}>
+        <Input
           required
           minLength={2}
           value={name}
           onChange={(event) => setName(event.target.value)}
-          className="rounded border border-slate-300 px-3 py-2"
         />
-      </label>
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
-      {success && <p className="text-sm text-green-600">Saved.</p>}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="w-fit rounded bg-slate-900 px-3 py-2 text-white disabled:opacity-50"
-      >
-        {submitting ? 'Saving…' : 'Save'}
-      </button>
+      </Field>
+      {success && <Alert tone="success">Saved.</Alert>}
+      <Button type="submit" loading={submitting} className="w-fit">
+        Save
+      </Button>
     </form>
   );
 }

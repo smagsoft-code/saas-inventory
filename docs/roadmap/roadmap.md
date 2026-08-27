@@ -157,11 +157,45 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   exactly-once**. No code change (a throwaway seed-script bug was found and fixed in the harness
   only; the real Drizzle producer is unaffected). *(done)*
 
-## Future phases
+- **FASE 16 — Frontend Foundation** — the reusable `apps/web` base for the authenticated SaaS
+  admin app. **Same-origin transport:** `next.config.ts` now rewrites `/api/*` to `API_URL`, so
+  browser session cookies are first-party in every environment (matching the Caddy prod topology,
+  docs/deployment/docker.md) — the pre-existing cross-origin assumption that left the authenticated
+  area unreachable in dev is gone; `NEXT_PUBLIC_API_URL` remains only as a cross-origin override.
+  **API client** (`src/lib/api/`): one `apiFetch` for Server Components (forwards `cookies()`) and
+  Client Components (`credentials: 'include'` + double-submit CSRF header on mutations); a
+  normalised `ApiError` (`status`/`code`/`message`/`correlationId`) with per-status UX text that
+  never echoes a 5xx body; `AbortSignal`, empty-body (204), `query`. **401 → single-flight
+  `POST /auth/refresh` → one retry** on the browser only; never on 403/400/404/409/422/429/5xx,
+  never the refresh call itself, never twice; a failed refresh emits one `session-expired` event
+  and a single listener redirects to `/login?returnTo=…` (open-redirect-safe `safeReturnTo`).
+  **Auth/session:** `getSession()` (React `cache()`-deduped `/auth/me`) gates the `(tenant)`
+  layout for UX; `login-form.tsx` attempts one silent refresh (loop-guarded) before showing the
+  form, so an expired-access/valid-refresh hard navigation restores without a flash of private
+  content; a presence-only `middleware.ts` short-circuits obviously-unauthenticated navigations
+  (never authorization). **Permissions:** `createPermissionChecker(session.permissions)` →
+  `can`/`canAny`/`canAll` against the real backend codes (mirrored in `permission-codes.ts`);
+  navigation is permission-filtered server-side; the backend stays the authority and a 403 is
+  handled as a normal error. **App shell** (`src/components/shell/`): persistent desktop sidebar,
+  mobile slide-over drawer (Esc/overlay/route-change close, scroll lock), header with tenant name
+  and an accessible account menu (name/email/tenant, real backend logout). **UI foundation**
+  (`src/components/ui/`): Button/ButtonLink, Input/Select/Textarea, Field (label/hint/error id
+  wiring), Card, Alert, Badge, Spinner, Skeleton, EmptyState, ErrorState, PageHeader,
+  PageContainer — small, composed, keyboard-accessible, no design-system dependency added.
+  **Routing:** the `app/page.tsx` ↔ `(tenant)/page.tsx` `/` collision is resolved (dashboard owns
+  `/`); `(tenant)` has `loading` (skeleton) / `error` (ErrorState) / `not-found`; root
+  `not-found` + `global-error`. Existing `/settings`, `/users`, `/users/new`, `/users/[id]` now
+  render through the shell + primitives with **no functional-scope change**. No new runtime
+  dependency; no backend / DB / migration / n8n / worker change. web unit tests 12 → 33 (api
+  errors, api client incl. refresh-retry & single-flight, permission checker, `safeReturnTo`,
+  navigation filtering/active-path, login-form). Regression: `pg-verify` **339 integration tests,
+  27 files, 0 skipped — PASS** (unchanged from FASE 15); api unit 459, typecheck + lint green;
+  `pnpm --filter @saas-inventory/web build` compiles, type-checks and statically generates all 9
+  routes, then fails at *Collecting build traces* on the **pre-existing Windows `EPERM` symlink**
+  in Next.js standalone output-tracing (unchanged environmental issue, not introduced here).
+  *(done)*
 
-- **FASE 16 — Frontend Foundation** — Next.js App Router frontend foundation, API client,
-  authentication/session integration, tenant context, permissions/RBAC integration, application
-  shell, navigation, layouts, error handling, forms, tables and reusable UI primitives.
+## Future phases
 
 - **FASE 17 — Frontend Main Modules** — frontend implementation of the principal application
   modules using the established API contracts: administration, catalog, warehouses/locations,
@@ -275,13 +309,21 @@ explicit review/commit.
 
 ## Current status
 
-FASE 0–15 are completed and committed. FASE 15 is closed: the implementation is verified locally
+FASE 0–16 are completed and committed. FASE 15 is closed: the implementation is verified locally
 (pg-verify 339/27/0) **and** the full path was validated end to end against the operator's real
 n8n instance and a test Telegram destination in PROMPT 015-A (synthetic data, throwaway local
 database, no production SaaS DB) — see
 [integrations/n8n.md#real-validation--prompt-015-a](../integrations/n8n.md#real-validation--prompt-015-a).
+PROMPT 015-B aligned the n8n dedupe-timestamp documentation.
 
-FASE 16 (Frontend Foundation) is the next phase to be started.
+FASE 16 is closed: `apps/web` now has the authenticated application foundation — same-origin API
+transport, a centralised API client with normalised errors and single-flight 401 refresh/retry,
+`getSession()`/permission helpers, the responsive app shell + navigation registry, reusable UI
+primitives, and route-level loading/error/not-found boundaries — with the existing tenant/user
+pages moved onto it and no functional-scope change. No backend, database, migration, n8n or
+worker change; pg-verify unchanged at 339/27/0.
+
+FASE 17 (Frontend Main Modules) is the next phase to be started.
 
 No future phase has been started merely by defining its database schema or architecture. FASE 14
 gave `event_outbox` (migrated since Prompt 03) its first application code — transactional publishing

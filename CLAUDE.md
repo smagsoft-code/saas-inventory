@@ -697,4 +697,46 @@ path; external delivery is **at-least-once-safe, not exactly-once**. **No produc
 015-A (a throwaway seed-script `jsonb` double-encoding bug was found and fixed in the smoke harness
 only; the real Drizzle-based `OutboxRepository` write is unaffected). A FASE 17 note was recorded:
 sales history should show a notification status and let an admin retry a failed notification over
-the existing `event_outbox` row. **FASE 15 CLOSED.**
+the existing `event_outbox` row. **FASE 15 CLOSED.** PROMPT 015-B then aligned the n8n
+dedupe-timestamp documentation (`processingUpdatedAt`, docs only).
+
+FASE 16 built the **frontend foundation** in `apps/web` — the reusable base FASE 17's business
+modules render on. **No `apps/api/**`, `database/**`, migration, n8n, Event Processor or Import
+Worker change; no new runtime dependency.** **Same-origin transport:** `next.config.ts` now
+rewrites `/api/*` → `API_URL`, so browser session cookies are first-party in every environment
+(matching the Caddy prod topology, docs/deployment/docker.md) — the previous cross-origin
+assumption left `getSession()` unable to see the session cookies in dev, so the authenticated
+area was unreachable; `NEXT_PUBLIC_API_URL` stays only as a cross-origin override. **API client**
+(`src/lib/api/`): one `apiFetch` for Server Components (`serverApiFetch` forwards `cookies()`) and
+Client Components (`credentials:'include'` + double-submit `X-CSRF-Token` on mutations); a
+normalised `ApiError` (`status`/`code`/`message`/`correlationId`, matching
+`http-exception.filter.ts` exactly — no invented fields) with `httpErrorMessage()` per-status UX
+text that never echoes a 5xx body; `AbortSignal`, 204/empty, `query`; a per-request
+`Correlation-Id`. **401 → single-flight `POST /auth/refresh` → one retry** on the browser only,
+deduplicated across concurrent callers; never on 403/400/404/409/422/429/5xx, never the refresh
+call itself, never twice; a failed refresh emits one `session-expired` event and a single
+`SessionExpiryListener` redirects to `/login?returnTo=…` via open-redirect-safe `safeReturnTo`.
+**Auth/session:** `getSession()` = React `cache()`-deduped `/auth/me` gating the `(tenant)` layout
+for UX (a non-401 failure goes to `error.tsx`, not `/login`); `login-form.tsx` tries one
+`sessionStorage`-loop-guarded silent refresh before showing the form so an expired-access/valid-
+refresh hard navigation restores with no flash of private content; presence-only `middleware.ts`
+short-circuits obviously-unauthenticated navigations (never authorization). **Permissions:**
+`createPermissionChecker(session.permissions)` → `can`/`canAny`/`canAll` over the real backend
+codes (mirrored in `permission-codes.ts`, authority = `packages/shared` `DEFAULT_ROLE_TEMPLATES` +
+`*_permissions` migrations); navigation is permission-filtered server-side; the backend stays the
+authority and a 403-anyway is a normal error. **App shell** (`src/components/shell/`): persistent
+desktop sidebar + mobile slide-over drawer (Esc/overlay/route-change close, scroll lock), header
+with tenant name and an accessible account menu (name/email/tenant, real backend logout), one
+`SessionProvider` + `SessionExpiryListener`. **UI foundation** (`src/components/ui/`):
+Button/ButtonLink, Input/Select/Textarea, Field (label/hint/error id wiring), Card, Alert, Badge,
+Spinner, Skeleton, EmptyState, ErrorState, PageHeader, PageContainer — real `<button>`/`<a>`,
+labeled controls, visible focus; Tailwind unchanged, no component library added. **Routing:** the
+`app/page.tsx` ↔ `(tenant)/page.tsx` `/` collision is resolved (dashboard owns `/`); `(tenant)`
+gains `loading`/`error`/`not-found`, plus root `not-found` + `global-error`. `/settings`,
+`/users`, `/users/new`, `/users/[id]` now render through the shell + primitives with **no
+functional-scope change**. Tests: web unit 12 → 33; api unit 459; typecheck + lint green;
+`pg-verify` **339 integration tests / 27 files / 0 skipped — PASS** (unchanged from FASE 15).
+`pnpm --filter @saas-inventory/web build` compiles, type-checks and statically generates all 9
+routes, then fails at *Collecting build traces* on the **pre-existing Windows `EPERM` symlink** in
+Next.js standalone output-tracing — the same environmental issue documented since FASE 12,
+not introduced here. **FASE 16 CLOSED.** FASE 17 (Frontend Main Modules) is next.

@@ -194,10 +194,13 @@ services:
     command: sh -c "corepack enable && pnpm install && pnpm --filter @saas-inventory/web dev"
     environment:
       NODE_ENV: development
+      # The browser reaches the API through apps/web's own origin — `next.config.ts` rewrites
+      # `/api/*` here — so session cookies stay first-party (frontend.md#transport--same-origin).
+      # Server Components use this value directly (Docker-internal `api` hostname). `dev` runs
+      # inside the container, so this resolves fine; the rewrite target is evaluated server-side.
       API_URL: http://api:4000
-      # The browser calls the API directly (frontend.md#authentication-and-route-protection), so
-      # this must be reachable from the host, not the Docker-internal `api` hostname above.
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+      # NEXT_PUBLIC_API_URL is deliberately unset — see .env.example. Set it only for a
+      # cross-origin deployment with matching CORS + cookie flags.
     ports:
       - '127.0.0.1:3000:3000'
     volumes:

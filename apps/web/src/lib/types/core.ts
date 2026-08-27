@@ -1,5 +1,5 @@
 /** Mirrors apps/api/src/core's response DTOs — kept local to the frontend (no shared package for
- * API response shapes exists yet, same convention as lib/current-user.ts's CurrentUser). */
+ * API response shapes exists yet, same convention as lib/types/session.ts's Session). */
 
 export interface Tenant {
   id: string;

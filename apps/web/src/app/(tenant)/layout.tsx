@@ -1,44 +1,48 @@
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
-import { getCurrentUser } from '../../lib/current-user';
-import { LogoutButton } from './logout-button';
+import { AppShell } from '../../components/shell/app-shell';
+import { getSession } from '../../lib/auth/session';
+import { createPermissionChecker } from '../../lib/auth/permissions';
+import { serverApiFetch } from '../../lib/api/server';
+import { isApiError } from '../../lib/api/errors';
+import { filterNavigation, NAVIGATION } from '../../lib/navigation';
+import type { Tenant } from '../../lib/types/core';
 
 /**
- * Authenticated tenant-user area (frontend.md#app-router-structure). Enforces session presence
- * for UX — redirect to /login if there is none — never as the actual authorization boundary; the
- * API re-checks every request regardless (CLAUDE.md §7.6).
+ * Authenticated tenant-user area (frontend.md#app-router-structure). Fetches the session once,
+ * renders the app shell, and passes the session + permission-filtered navigation down. This is a
+ * UX gate — an unauthenticated request is redirected to `/login` — never the authorization
+ * boundary: the API re-checks every request regardless (CLAUDE.md §7.6).
  */
-export default async function TenantLayout({ children }: { children: ReactNode }): Promise<React.JSX.Element> {
-  const user = await getCurrentUser();
-  if (!user) {
+export default async function TenantLayout({
+  children,
+}: {
+  children: ReactNode;
+}): Promise<React.JSX.Element> {
+  const session = await getSession();
+  if (!session) {
     redirect('/login');
   }
 
-  const canReadUsers = user.permissions.includes('core.users.read');
+  const checker = createPermissionChecker(session.permissions);
+  const navSections = filterNavigation(NAVIGATION, checker);
+
+  // The tenant record carries the display name for the shell. If it briefly fails (transient API
+  // error) fall back to the slug rather than blocking the whole app.
+  let tenantName = session.tenantSlug;
+  try {
+    const tenant = await serverApiFetch<Tenant>('/api/v1/tenant');
+    tenantName = tenant.name;
+  } catch (error) {
+    if (isApiError(error) && error.status === 401) {
+      redirect('/login');
+    }
+    // else: keep the slug fallback
+  }
 
   return (
-    <div className="min-h-screen bg-white">
-      <header className="flex items-center justify-between border-b border-slate-200 px-6 py-3">
-        <nav className="flex items-center gap-4 text-sm text-slate-600">
-          <Link href="/" className="hover:text-slate-900">
-            Dashboard
-          </Link>
-          {canReadUsers && (
-            <Link href="/users" className="hover:text-slate-900">
-              Users
-            </Link>
-          )}
-          <Link href="/settings" className="hover:text-slate-900">
-            Settings
-          </Link>
-        </nav>
-        <span className="flex items-center gap-3 text-sm text-slate-700">
-          {user.fullName} · <span className="text-slate-400">{user.tenantSlug}</span>
-          <LogoutButton />
-        </span>
-      </header>
-      <main className="p-8">{children}</main>
-    </div>
+    <AppShell session={session} tenantName={tenantName} navSections={navSections}>
+      {children}
+    </AppShell>
   );
 }

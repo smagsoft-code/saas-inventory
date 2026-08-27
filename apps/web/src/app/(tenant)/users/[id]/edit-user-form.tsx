@@ -2,8 +2,13 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
-import { ApiError, apiFetch } from '../../../../lib/api-client';
-import type { Role, TenantUser } from '../../../../lib/core-types';
+import { apiFetch } from '../../../../lib/api/client';
+import { httpErrorMessage } from '../../../../lib/api/errors';
+import type { Role, TenantUser } from '../../../../lib/types/core';
+import { Button } from '../../../../components/ui/button';
+import { Field } from '../../../../components/ui/field';
+import { Input, Select } from '../../../../components/ui/input';
+import { Alert } from '../../../../components/ui/alert';
 
 interface Props {
   targetUser: TenantUser;
@@ -14,10 +19,9 @@ interface Props {
   currentRoleId: string;
 }
 
-/** Which fields are even editable is decided by the server component (self vs. others, and which
- * permissions the caller holds — §16/§21) and passed in as flags; this form never re-derives that
- * itself. The API re-checks all of it regardless — this only avoids showing controls that would
- * fail anyway (CLAUDE.md §7.6). */
+/** Which fields are editable is decided by the server component (self vs. others, which
+ * permissions the caller holds) and passed in as flags; this form never re-derives that. The API
+ * re-checks all of it regardless (CLAUDE.md §7.6). */
 export function EditUserForm({
   targetUser,
   canEditFullName,
@@ -49,73 +53,55 @@ export function EditUserForm({
       setSuccess(true);
       router.refresh();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not update this user. Please try again.');
+      setError(httpErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   }
 
   if (!canEditFullName && !canEditStatus && !canEditRole) {
-    return <p className="text-sm text-slate-500">You don&apos;t have permission to edit this user.</p>;
+    return (
+      <p className="text-sm text-slate-500">You don&apos;t have permission to edit this user.</p>
+    );
   }
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex max-w-sm flex-col gap-3">
-      <label className="flex flex-col gap-1 text-sm text-slate-700">
-        Full name
-        <input
+    <form onSubmit={handleSubmit} noValidate className="flex max-w-sm flex-col gap-4">
+      <Field label="Full name" required>
+        <Input
           required
           minLength={2}
           disabled={!canEditFullName}
           value={fullName}
           onChange={(event) => setFullName(event.target.value)}
-          className="rounded border border-slate-300 px-3 py-2 disabled:bg-slate-50 disabled:text-slate-400"
         />
-      </label>
+      </Field>
       {canEditStatus && (
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
-          Status
-          <select
-            value={status}
-            onChange={(event) => setStatus(event.target.value)}
-            className="rounded border border-slate-300 px-3 py-2"
-          >
+        <Field label="Status">
+          <Select value={status} onChange={(event) => setStatus(event.target.value)}>
             <option value="invited">Invited</option>
             <option value="active">Active</option>
             <option value="disabled">Disabled</option>
-          </select>
-        </label>
+          </Select>
+        </Field>
       )}
       {canEditRole && (
-        <label className="flex flex-col gap-1 text-sm text-slate-700">
-          Role
-          <select
-            value={roleId}
-            onChange={(event) => setRoleId(event.target.value)}
-            className="rounded border border-slate-300 px-3 py-2"
-          >
+        <Field label="Role">
+          <Select value={roleId} onChange={(event) => setRoleId(event.target.value)}>
             <option value="">No role</option>
             {roles.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
               </option>
             ))}
-          </select>
-        </label>
+          </Select>
+        </Field>
       )}
-      {error && (
-        <p role="alert" className="text-sm text-red-600">
-          {error}
-        </p>
-      )}
-      {success && <p className="text-sm text-green-600">Saved.</p>}
-      <button
-        type="submit"
-        disabled={submitting}
-        className="w-fit rounded bg-slate-900 px-3 py-2 text-white disabled:opacity-50"
-      >
-        {submitting ? 'Saving…' : 'Save'}
-      </button>
+      {error && <Alert tone="error">{error}</Alert>}
+      {success && <Alert tone="success">Saved.</Alert>}
+      <Button type="submit" loading={submitting} className="w-fit">
+        Save
+      </Button>
     </form>
   );
 }
