@@ -316,6 +316,9 @@ delivered PII payload; its retention policy is an operator concern (see
 
 **At-least-once, not exactly-once:** external delivery may redeliver the same `eventId` after a
 crash-before-ack; the n8n workflow **must** dedupe on `eventId` (durably, not in process memory).
+The PROMPT 015-A workflow does this with an n8n Data Table keyed by `eventId` with an explicit
+`processing`/`completed` state (`completed` written only after the Telegram send) — durable, but
+not a proven-atomic first-insert; a recent in-flight duplicate is answered HTTP 425 (retryable).
 Even with dedupe, a Telegram-send-then-n8n-crash window means external notification delivery is
 "at-least-once-safe" — exactly-once Telegram is **not** claimed. Business side effects remain
 exactly-once (transaction + `SELECT … FOR UPDATE` state locks + `idempotency_keys`).

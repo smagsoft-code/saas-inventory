@@ -10,8 +10,10 @@ Related: [ADR-0010](../decisions/0010-outbox-pattern.md),
 > dead-letter) and **FASE 15** (the **n8n delivery adapter** — the Event Processor now registers a
 > production handler that `POST`s each claimed envelope to a generic n8n webhook over authenticated
 > HTTPS; n8n owns routing / message composition / the Telegram credential). With
-> `N8N_EVENTS_ENABLED=false` the registry is still empty and no event is claimed. See
-> [integrations/n8n.md](../integrations/n8n.md) for the full webhook contract.
+> `N8N_EVENTS_ENABLED=false` the registry is still empty and no event is claimed. Validated end to
+> end against a real n8n (v2.36.7) + test Telegram destination in **PROMPT 015-A**. See
+> [integrations/n8n.md](../integrations/n8n.md) for the full webhook contract and the real-validation
+> record.
 
 ## Four distinct things — never conflated
 

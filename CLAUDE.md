@@ -681,6 +681,20 @@ against real PostgreSQL via `tools/pg-verify`: **339 integration tests, 27 files
 from 324/26 — `test/events/n8n-delivery.integration.test.ts` runs the outbox → real local HTTP
 receiver → delivered/retry/`dead_letter` matrix), plus new unit specs for config validation, HTTP
 failure classification, the webhook client (against a `node:http` fake), and the handler set.
-Lint/typecheck/API build pass; web build unchanged (`EPERM`). A real n8n smoke test against the
-user's production instance (dedicated safe workflow + env config) is the only remaining external
-validation — **FASE 15 COMPLETADO CON PENDIENTE** until then.
+Lint/typecheck/API build pass; web build unchanged (`EPERM`). **PROMPT 015-A** then validated the
+whole path against the operator's **real n8n** (v2.36.7): a dedicated `SaaS Inventory — Event
+Notifications` workflow (HTTPS webhook + Header Auth Bearer, envelope + `eventVersion==1` checks,
+durable **n8n Data Table** `eventId` dedupe with `processing`/`completed` state — `completed` only
+after the Telegram send, recent in-flight duplicate → HTTP 425, stale → reclaim, `STALE_MS`=120s)
+and a **test-only** Telegram destination. Synthetic `sales.order.confirmed` /
+`sales.price_approval.requested` events seeded into a throwaway local `event_outbox` and delivered
+by the **real `dist/event-processor/main.js`** both reached Telegram; `event_outbox` → `delivered`
++ `processed_at` set + `eventId` preserved; no `minPrice`/`cost` leak; no secret/URL in any log; a
+re-sent identical `eventId` → HTTP 200 `duplicate-ignored` with no second message. Dedupe is
+**durable but not proven-atomic** on a concurrent first insert (n8n does not document its Data
+Table upsert as atomic insert-if-absent) — the realistic concurrent case is covered by the 425
+path; external delivery is **at-least-once-safe, not exactly-once**. **No product code change** in
+015-A (a throwaway seed-script `jsonb` double-encoding bug was found and fixed in the smoke harness
+only; the real Drizzle-based `OutboxRepository` write is unaffected). A FASE 17 note was recorded:
+sales history should show a notification status and let an admin retry a failed notification over
+the existing `event_outbox` row. **FASE 15 CLOSED.**

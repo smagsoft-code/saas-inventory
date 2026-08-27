@@ -142,9 +142,20 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   by the envelope's `tenantId`/`eventType` — no backend preference schema/endpoints, no frontend.
   At-least-once external delivery — the n8n workflow must dedupe durably on `eventId`; exactly-once
   Telegram is **not** claimed. New contract doc [integrations/n8n.md](../integrations/n8n.md).
-  pg-verify: 339 integration tests, 27 files, 0 skipped (up from 324/26). Real n8n smoke test
-  against the user's production instance: *(pending — dedicated safe workflow + env config)*.
-  *(done — implementation; real n8n smoke test pending)*
+  pg-verify: 339 integration tests, 27 files, 0 skipped (up from 324/26). **PROMPT 015-A**
+  validated the whole path end to end against the operator's **real n8n** (v2.36.7) with a
+  dedicated `SaaS Inventory — Event Notifications` workflow and a **test-only** Telegram
+  destination — synthetic events seeded into a throwaway local `event_outbox`, delivered by the
+  **real `dist/event-processor/main.js`**: `sales.order.confirmed` and
+  `sales.price_approval.requested` both reached Telegram (`event_outbox` → `delivered`,
+  `processed_at` set, `eventId` preserved, no price-floor/cost leak, no secret in any log); a
+  re-sent identical `eventId` hit the workflow's **durable n8n Data Table dedupe** (`processing`/
+  `completed` per `eventId`, `completed` written only after Telegram) → HTTP 200
+  `duplicate-ignored`, no second message; a recent in-flight duplicate → HTTP 425 (retryable), no
+  message. Dedupe is **durable but not proven-atomic** on concurrent first insert — the realistic
+  concurrent case is covered by the 425 path; external delivery is **at-least-once-safe, not
+  exactly-once**. No code change (a throwaway seed-script bug was found and fixed in the harness
+  only; the real Drizzle producer is unaffected). *(done)*
 
 ## Future phases
 
@@ -154,7 +165,11 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
 
 - **FASE 17 — Frontend Main Modules** — frontend implementation of the principal application
   modules using the established API contracts: administration, catalog, warehouses/locations,
-  inventory, QR, import, customers, sales/orders and related operational workflows.
+  inventory, QR, import, customers, sales/orders and related operational workflows. Includes (noted
+  during PROMPT 015-A) a **notification status** indicator on the sales history / order detail view
+  (`sent` / `pending` / `not sent`, derived from the order's `event_outbox` state) and an
+  authorized-admin **"retry notification"** action that re-enqueues / re-delivers the existing
+  `event_outbox` row — never recreating the sale, its inventory movements, or the domain event.
 
 - **FASE 18 — Dashboards & Reports** — REPORTS bounded context, dashboards, operational reports,
   inventory reports, sales reports and cross-domain read-side queries. Reporting must remain
@@ -260,9 +275,11 @@ explicit review/commit.
 
 ## Current status
 
-FASE 0–15 are completed and committed (FASE 15 implementation is complete and verified locally; a
-real n8n smoke test against the user's production instance is the only remaining external
-validation).
+FASE 0–15 are completed and committed. FASE 15 is closed: the implementation is verified locally
+(pg-verify 339/27/0) **and** the full path was validated end to end against the operator's real
+n8n instance and a test Telegram destination in PROMPT 015-A (synthetic data, throwaway local
+database, no production SaaS DB) — see
+[integrations/n8n.md#real-validation--prompt-015-a](../integrations/n8n.md#real-validation--prompt-015-a).
 
 FASE 16 (Frontend Foundation) is the next phase to be started.
 

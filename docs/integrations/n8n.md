@@ -6,10 +6,11 @@ Related: [ADR-0010](../decisions/0010-outbox-pattern.md),
 [ADR-0028](../decisions/0028-field-level-price-authorization.md),
 [events.md](../architecture/events.md), [security.md](../architecture/security.md#events-and-the-outbox-fase-14--fase-15-delivery).
 
-> **Status:** implemented in **FASE 15**. The Event Processor forwards each claimed `event_outbox`
-> envelope to a single generic n8n webhook over authenticated HTTPS. n8n owns all routing, message
-> composition, and the Telegram credential. The backend stores **no** Telegram bot token and makes
-> **no** direct Telegram call (ADR-0012).
+> **Status:** implemented in **FASE 15** and **validated end-to-end against a real n8n + Telegram
+> test destination in PROMPT 015-A** (see [Real validation](#real-validation--prompt-015-a) below).
+> The Event Processor forwards each claimed `event_outbox` envelope to a single generic n8n webhook
+> over authenticated HTTPS. n8n owns all routing, message composition, and the Telegram credential.
+> The backend stores **no** Telegram bot token and makes **no** direct Telegram call (ADR-0012).
 
 ```text
 Committed business event
@@ -164,9 +165,71 @@ The n8n instance is **separate infrastructure** — not a service in `docker-com
 unrelated workflow. Its execution-history retention (which may contain delivered PII payloads) is
 an operator concern and was not changed by this phase.
 
+## REAL VALIDATION — PROMPT 015-A
+
+End-to-end validated against the operator's real n8n instance with a dedicated test workflow and a
+test-only Telegram destination. No production SaaS database, no real customer data (throwaway
+embedded PostgreSQL, synthetic events, wiped after the run).
+
+| | |
+| --- | --- |
+| validation date | 2026-08-27 |
+| n8n version | 2.36.7 |
+| production n8n instance used | yes (a **dedicated** workflow created for this validation; no existing workflow touched, no credential rotated, n8n not upgraded) |
+| workflow | `SaaS Inventory — Event Notifications` — Webhook → Validate envelope → `eventVersion == 1` check → Data Table dedupe lookup → Switch(route) → Data Table Upsert (`processing`) → Switch(`eventType`) → build message (n8n) → Telegram (test chat) → Data Table Update (`completed`) → Respond 200 |
+| webhook transport | HTTPS |
+| authentication | n8n **Header Auth** on `Authorization: Bearer <secret>` (the secret = `N8N_EVENTS_AUTH_TOKEN`; same value both sides, runtime-env only) |
+| supported contract | the 8 SALES events, `eventVersion = 1`; an unknown `eventType` → `422`, an unknown version → not routed |
+| Telegram credential | stored **only** in n8n's credential store; the backend holds no bot token |
+| messages | prefixed `[TEST SaaS Inventory]`; composed in n8n from the v1 payload only |
+
+### Durable dedupe — as actually implemented
+
+| property | value |
+| --- | --- |
+| mechanism | n8n **Data Table** `saas_event_dedupe`; columns `eventId`, `status` (`processing`\|`completed`), `eventType`, `updatedAt` (ISO, written by the workflow) |
+| key | `eventId` (= `event_outbox.id`) |
+| durable | **yes** — persisted in the Data Table store; survives executions and n8n restarts |
+| atomic / unique-insert guarantee | **no.** The lookup (Get Row) and the claim write (Upsert on `eventId`) are separate node operations; the Upsert narrows the window to one call but n8n does not document it as an atomic insert-if-absent and no unique constraint on `eventId` was established. Two executions receiving the *same* `eventId` in the same sub-millisecond window before either upserts could both proceed. |
+| why that race is not reached in practice | the Event Processor dispatches one `event_outbox` row at a time and only retries seconds later after recording an outcome; `FOR UPDATE SKIP LOCKED` prevents two workers claiming the same row at once. The realistic concurrent case — a retry arriving while a slow first execution still runs — is handled by the **in-flight (HTTP 425)** path, not by the upsert. |
+| `completed` state | written **only after** the Telegram send succeeds |
+| duplicate + `completed` | workflow responds **HTTP 200** `{"status":"duplicate-ignored"}`, **no** Telegram |
+| recent `processing` (age < `STALE_MS` = 120000) | workflow responds **HTTP 425**; the Event Processor classifies 425 as retryable and retries after backoff; **no** Telegram |
+| stale `processing` (age ≥ 120 s) | reclaimed (Upsert refreshes `updatedAt`) and reprocessed — recovery from a crashed execution |
+| remaining crash window | Telegram send succeeds → n8n dies before the `completed` update → row stays `processing` → after 120 s a retry reprocesses → **Telegram re-sent**. Hence: **at-least-once-safe, not exactly-once.** |
+
+> `STALE_MS = 120000` (120 s): comfortably above one execution's real duration (Telegram call + 2
+> Data Table writes, normally < 10 s) and below the Event Processor's later retry intervals, so a
+> genuinely-dead execution is recovered without undue delay. Tune if n8n executions can legitimately
+> run longer.
+
+### Smoke results
+
+| scenario | path | result |
+| --- | --- | --- |
+| **S1** `sales.order.confirmed` v1 (synthetic) | seeded `event_outbox` → **real `dist/event-processor/main.js`** → HTTPS n8n → Telegram test chat | `event_outbox.status = delivered`, `processed_at` set, `attempts = 0`, `eventId` unchanged; **one** `[TEST] Venta confirmada` received (order number, document type, total/currency, customer name/id/email/phone/address, product line) |
+| **S2** `sales.price_approval.requested` v1 (synthetic) | same | `delivered`; **one** `[TEST] Solicitud de descuento excepcional` received (order, product, SKU, qty, `requestedPrice`, `maxPriceAtRequest`, `discountAmount`, `reason`); **no** `minPrice` / `minPriceAtRequest` / `cost` / `unitCost` / `basePrice` present |
+| **S3** duplicate `eventId` | re-POST S1's exact envelope (same `eventId`) to the webhook | HTTP **200** `{"status":"duplicate-ignored"}`; Data Table shows a single row for that `eventId`; **no** second Telegram |
+| in-flight duplicate | (verified manually by the operator) | HTTP **425**, no Telegram |
+
+Event Processor logs during the run: `n8n delivery: ENABLED`, `8 event type(s) registered (secret
+redacted)`, `… delivered` — **no** secret, token, or webhook URL in any log line.
+
+### n8n execution history
+
+n8n's execution history may retain the delivered event payload — which, for
+`sales.order.confirmed`, contains customer PII by business requirement. Retention policy is an
+operator concern; PROMPT 015-A did not change it.
+
 ## Not in FASE 15
 
 Incoming Telegram commands (`/approve`, inline buttons), approval via Telegram, any `n8n → SaaS`
 mutation path, a SaaS DB connection from n8n, tenant-configurable notification preferences /
 recipient tables, a manual dead-letter replay UI, outbox retention/purge, delivery dashboards,
 electronic invoicing. Selling serialized / lot-tracked variants remains deferred.
+
+**Future frontend requirement (FASE 17, not built here):** the sales history / order detail view
+should surface a friendly notification status (`sent` / `pending` / `not sent`) derived from the
+event's `event_outbox` state, and let an authorized administrator **retry a failed notification**
+without recreating the sale, its inventory movements, or the domain event — i.e. a re-enqueue /
+re-deliver action over the existing `event_outbox` row, never a new business transaction.
