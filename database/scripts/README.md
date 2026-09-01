@@ -20,3 +20,12 @@ pnpm --filter @saas-inventory/api db:reset-demo
 
 Reset **cadence** (on-demand vs. scheduled vs. reset-on-login) is an explicit `PENDING DECISION`
 deferred to FASE 14 (ADR-0014) — this script only fixes the reset *mechanism*.
+
+- `report-identity-backfill.sql` — read-only report for reviewing the 016-B / [ADR-0033](../../docs/decisions/0033-global-identity-tenant-memberships.md)
+  identities backfill (migration `0029`) against a real environment with existing data: summary
+  counts, `pending_credential` conflicts (internal ids only, never a password), any excluded
+  (empty/invalid-email) `users` rows, and a structural consistency check. Never modifies anything.
+
+```sh
+psql "$APP_PLATFORM_DATABASE_URL" -f database/scripts/report-identity-backfill.sql
+```

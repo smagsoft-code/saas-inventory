@@ -66,6 +66,7 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0030](0030-authentication-foundation.md) | Authentication Foundation — Session Transport, Token Model, and Login/Registration Contract | Accepted |
 | [0031](0031-role-assignment-escalation-prevention.md) | Role-Assignment Authorization and Self-Escalation Prevention | Accepted |
 | [0032](0032-platform-admin-authentication.md) | Platform-Admin (SuperAdmin) Authentication | Accepted |
+| [0033](0033-global-identity-tenant-memberships.md) | Global Identity + Tenant Memberships (database layer) | Accepted |
 
 ADRs 0001–0015 were produced in Prompt 01 (architecture phase) alongside
 [docs/architecture/](../architecture/) and [docs/security/threat-model.md](../security/threat-model.md).
@@ -96,4 +97,7 @@ refresh-token-storage `PENDING DECISION` on
 ([ADR-0009](0009-rbac-permissions.md)) never itself defined. ADR-0032 was produced in FASE 11
 (ADMINISTRATION — tenant configuration and system-level administration), closing the
 platform-admin (SuperAdmin) authentication mechanism ADR-0030/Prompt 04 deliberately left
-unbuilt — see [modules.md#administration](../architecture/modules.md#administration).
+unbuilt — see [modules.md#administration](../architecture/modules.md#administration). ADR-0033 was
+produced in 016-B (database layer for global identity + tenant memberships), following the
+016-AUDIT/016-A audit and architectural-design pass over FASE 16's `tenantSlug`-based login — see
+[database.md#global-identity-and-tenant-memberships](../architecture/database.md#global-identity-and-tenant-memberships).

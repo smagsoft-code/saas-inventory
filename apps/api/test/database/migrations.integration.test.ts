@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 import { TENANT_TABLE_NAMES } from '../../src/database/tenant-tables';
-import { getMigratorDb, integrationTestsEnabled } from './helpers';
+import { getAppTenantClient, getMigratorDb, integrationTestsEnabled } from './helpers';
 
 /**
  * Migration verification — Prompt 03 §18.D: an empty database can be initialized, every
@@ -87,6 +87,8 @@ describe.skipIf(!integrationTestsEnabled)('migrations', () => {
         'auth_refresh_tokens',
         'tenant_settings',
         'platform_admin_refresh_tokens',
+        'identities',
+        'tenant_memberships',
       ];
       for (const table of expectedTables) {
         expect(actualTables.has(table), `expected table "${table}" to exist`).toBe(true);
@@ -153,14 +155,29 @@ describe.skipIf(!integrationTestsEnabled)('migrations', () => {
         SELECT relname, relrowsecurity FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE n.nspname = 'public' AND c.relkind = 'r'
-          AND c.relname = ANY(ARRAY['tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens'])
+          AND c.relname = ANY(ARRAY['tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens', 'identities', 'tenant_memberships'])
       `);
-      expect(rows).toHaveLength(5);
+      expect(rows).toHaveLength(7);
       for (const row of rows) {
         expect(row.relrowsecurity, `${row.relname} should not have RLS enabled`).toBe(false);
       }
     } finally {
       await client.end();
+    }
+  });
+
+  it('app_tenant has no grant at all on identities/tenant_memberships (016-B, ADR-0033)', async () => {
+    // Same posture as `tenants` itself — a tenant-scoped connection must not be able to even
+    // attempt a query against the global-identity tables, regardless of RLS. Asserted as an actual
+    // permission-denied query via the real app_tenant connection, not just a catalog lookup, so
+    // this fails the same way the RLS suite's DELETE-grant checks do if a future migration ever
+    // adds a GRANT here by accident.
+    const appTenant = getAppTenantClient();
+    try {
+      await expect(appTenant.unsafe('select 1 from identities limit 1')).rejects.toThrow(/permission denied/);
+      await expect(appTenant.unsafe('select 1 from tenant_memberships limit 1')).rejects.toThrow(/permission denied/);
+    } finally {
+      await appTenant.end();
     }
   });
 

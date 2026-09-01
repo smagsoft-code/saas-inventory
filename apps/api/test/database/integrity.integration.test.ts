@@ -289,4 +289,189 @@ describe.skipIf(!integrationTestsEnabled)('integrity', () => {
       await client.end();
     }
   });
+
+  describe('global identity + tenant memberships (016-B, ADR-0033)', () => {
+    it('identities.email is unique case-insensitively', async () => {
+      const { client, db } = getMigratorDb();
+      try {
+        await db.insert(schema.identities).values({
+          id: generateId(),
+          email: 'case.test@example.com',
+          passwordHash: 'hash-a',
+          fullName: 'Case Test',
+        });
+        await expect(
+          db.insert(schema.identities).values({
+            id: generateId(),
+            // Different case, same normalized address — must collide on the lower(email) index.
+            email: 'Case.Test@Example.com',
+            passwordHash: 'hash-b',
+            fullName: 'Case Test Duplicate',
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('identities_credential_check rejects an active identity with no password_hash', async () => {
+      const { client, db } = getMigratorDb();
+      try {
+        await expect(
+          db.insert(schema.identities).values({
+            id: generateId(),
+            email: `no-credential-${generateId()}@example.com`,
+            passwordHash: null,
+            status: 'active',
+            fullName: 'No Credential',
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('identities_credential_check allows pending_credential with a NULL password_hash', async () => {
+      const { client, db } = getMigratorDb();
+      try {
+        await expect(
+          db.insert(schema.identities).values({
+            id: generateId(),
+            email: `pending-${generateId()}@example.com`,
+            passwordHash: null,
+            status: 'pending_credential',
+            fullName: 'Pending Credential',
+          }),
+        ).resolves.not.toThrow();
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('rejects a second membership for the same (identity, tenant) pair', async () => {
+      const { client, db } = getMigratorDb();
+      try {
+        const identityId = generateId();
+        await db.insert(schema.identities).values({
+          id: identityId,
+          email: `dup-membership-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Dup Membership',
+        });
+        const userId = generateId();
+        await db.insert(schema.users).values({
+          id: userId,
+          tenantId,
+          email: `dup-membership-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Dup Membership User',
+        });
+        await db.insert(schema.tenantMemberships).values({ id: generateId(), identityId, tenantId, userId });
+
+        const secondUserId = generateId();
+        await db.insert(schema.users).values({
+          id: secondUserId,
+          tenantId,
+          email: `dup-membership-2-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Dup Membership User 2',
+        });
+        await expect(
+          db.insert(schema.tenantMemberships).values({ id: generateId(), identityId, tenantId, userId: secondUserId }),
+        ).rejects.toThrow();
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('rejects a second membership for the same user (UNIQUE(user_id))', async () => {
+      const { client, db } = getMigratorDb();
+      try {
+        const identityId = generateId();
+        await db.insert(schema.identities).values({
+          id: identityId,
+          email: `dup-user-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Dup User',
+        });
+        const otherIdentityId = generateId();
+        await db.insert(schema.identities).values({
+          id: otherIdentityId,
+          email: `dup-user-2-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Dup User 2',
+        });
+        const userId = generateId();
+        await db.insert(schema.users).values({
+          id: userId,
+          tenantId,
+          email: `dup-user-3-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Dup User Profile',
+        });
+        await db.insert(schema.tenantMemberships).values({ id: generateId(), identityId, tenantId, userId });
+
+        await expect(
+          db.insert(schema.tenantMemberships).values({ id: generateId(), identityId: otherIdentityId, tenantId, userId }),
+        ).rejects.toThrow();
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('the composite user FK rejects a membership pointing at a user from a different tenant', async () => {
+      const { client, db } = getMigratorDb();
+      try {
+        const otherTenantId = generateId();
+        await db.insert(schema.tenants).values({ id: otherTenantId, name: 'Other Co (identity FK test)', slug: `other-co-identity-fk-${generateId()}` });
+        const identityId = generateId();
+        await db.insert(schema.identities).values({
+          id: identityId,
+          email: `cross-tenant-fk-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Cross Tenant FK',
+        });
+        const userId = generateId();
+        await db.insert(schema.users).values({
+          id: userId,
+          tenantId: otherTenantId,
+          email: `cross-tenant-fk-2-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Cross Tenant FK User',
+        });
+        // userId genuinely belongs to otherTenantId — claiming tenantId (the outer suite's tenant)
+        // here must violate the composite (tenant_id, user_id) -> users(tenant_id, id) FK.
+        await expect(
+          db.insert(schema.tenantMemberships).values({ id: generateId(), identityId, tenantId, userId }),
+        ).rejects.toThrow();
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('ON DELETE RESTRICT: an identity referenced by a membership cannot be hard-deleted', async () => {
+      const { client, db } = getMigratorDb();
+      try {
+        const identityId = generateId();
+        await db.insert(schema.identities).values({
+          id: identityId,
+          email: `restrict-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Restrict Identity',
+        });
+        const userId = generateId();
+        await db.insert(schema.users).values({
+          id: userId,
+          tenantId,
+          email: `restrict-2-${generateId()}@example.com`,
+          passwordHash: 'hash',
+          fullName: 'Restrict Identity User',
+        });
+        await db.insert(schema.tenantMemberships).values({ id: generateId(), identityId, tenantId, userId });
+        await expect(db.delete(schema.identities).where(eq(schema.identities.id, identityId))).rejects.toThrow();
+      } finally {
+        await client.end();
+      }
+    });
+  });
 });

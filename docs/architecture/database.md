@@ -190,6 +190,8 @@ These apply to every table unless a section below states an explicit exception.
 | `idempotency_keys` | Tenant | cross-cutting (owned by whichever module's transaction writes it) | yes | yes |
 | `tenant_settings` | Tenant | ADMINISTRATION (FASE 11, see [§Administration](#administration-tenant-settings-and-platform-admin-sessions)) | yes | yes |
 | `platform_admin_refresh_tokens` | Platform | ADMINISTRATION (see [ADR-0032](../decisions/0032-platform-admin-authentication.md)) | no | no |
+| `identities` | Platform | CORE (016-B, see [ADR-0033](../decisions/0033-global-identity-tenant-memberships.md) and [§Global identity](#global-identity-and-tenant-memberships)) | no | no |
+| `tenant_memberships` | Platform (carries `tenant_id` only as a FK, never as an RLS key) | CORE (016-B, [ADR-0033](../decisions/0033-global-identity-tenant-memberships.md)) | yes (FK only) | no |
 
 **Notes on the "mixed" rows:** `audit_log` and `event_outbox` carry `tenant_id` for almost every row
 (a tenant action, an `INVENTORY_ADJUSTED` event, ...) but must also hold platform-only rows with no
@@ -215,6 +217,16 @@ exists to preserve — see [§Dynamic attributes](#dynamic-attributes-governance
 [ADR-0032](../decisions/0032-platform-admin-authentication.md)) — the server-side session store for
 platform-admin logins, with no tenant dimension of its own, access restricted to `app_platform`
 (and `app_migrator` for schema) exactly like `platform_admins` itself.
+
+**016-B adds `identities` and `tenant_memberships` to the same group** (see
+[ADR-0033](../decisions/0033-global-identity-tenant-memberships.md) and
+[§Global identity](#global-identity-and-tenant-memberships)) — `identities` has no tenant dimension
+at all (it is the global person record); `tenant_memberships` carries `tenant_id` as an ordinary
+foreign key (part of its composite FK into `users`) but is **not** RLS-scoped by it — access to
+both is by GRANT alone, restricted to `app_platform` (and `app_migrator` for schema/backfill).
+`app_tenant` has no GRANT on either table, so a tenant-scoped connection can never enumerate
+identities or memberships belonging to other tenants — the same "a tenant connection never lists
+across tenants" invariant `tenants` itself already relies on.
 
 ---
 
@@ -606,6 +618,107 @@ users
 at `ana@gmail.com` is normal and must not collide (see [§Constraints](#constraints)). No password
 reset/session tables here — those belong to FASE 4 (Authentication), out of this prompt's scope; this
 table only carries what identity/RBAC needs.
+
+**016-B note:** `users` above is unchanged by 016-B — `email`/`password_hash` stay exactly as
+documented and the current `tenantSlug`-based login keeps reading them unmodified. What 016-B adds
+is a global layer *above* `users` — see immediately below.
+
+---
+
+## Global identity and tenant memberships
+
+[ADR-0033](../decisions/0033-global-identity-tenant-memberships.md), 016-B. Database layer only —
+no auth/JWT/guard/RLS/frontend change accompanies this. `users` remains exactly as described above
+and is the tenant-scoped profile every existing relation (`user_roles`,
+`user_location_assignments`, `auth_refresh_tokens`, `audit_log.actor_id`, every business FK) keeps
+being keyed by. Two new tables, both platform-scoped (no RLS — see
+[§Data classification](#data-classification-platform-scoped-vs-tenant-scoped)):
+
+```
+identities
+  id                uuid PK
+  email             text NOT NULL, UNIQUE on lower(email) (case-insensitive, global)
+  password_hash     text NULL                 -- the ONE credential for this person, once consolidated
+  status            text NOT NULL CHECK IN ('active','pending_credential','disabled'), DEFAULT 'active'
+  full_name         text NOT NULL
+  last_login_at     timestamptz NULL
+  created_at        timestamptz NOT NULL DEFAULT now()
+  updated_at        timestamptz NOT NULL DEFAULT now()
+  deleted_at        timestamptz NULL
+
+  CHECK (password_hash IS NOT NULL OR status = 'pending_credential')
+```
+
+`email` is the single, global, case-insensitive identifier for a person — enforced by a functional
+unique index (`lower(email)`), not a second normalization scheme (the application already
+normalizes with `trim().toLowerCase()`, `auth/util/normalize.ts`). `password_hash` is nullable
+specifically to represent `pending_credential` (below); the CHECK makes "active with no password"
+structurally impossible. Nothing in the current authentication path reads or writes this table yet
+— it is populated only by the migration `0029` backfill (below) until a later prompt builds the
+email+password login on top of it.
+
+```
+tenant_memberships
+  id                uuid PK
+  identity_id       uuid NOT NULL FK -> identities(id)
+  tenant_id         uuid NOT NULL FK -> tenants(id)
+  user_id           uuid NOT NULL, FK (tenant_id, user_id) -> users(tenant_id, id)   -- composite, ADR-0018 shape
+  status            text NOT NULL CHECK IN ('active','disabled'), DEFAULT 'active'
+  created_at        timestamptz NOT NULL DEFAULT now()
+  updated_at        timestamptz NOT NULL DEFAULT now()
+
+  UNIQUE (identity_id, tenant_id)
+  UNIQUE (user_id)
+```
+
+The bridge from a global identity to a company. `user_id` is deliberately kept (016-A's design
+decision, restated in ADR-0033): the membership points at the *existing* tenant-scoped `users` row
+rather than every tenant-owned table being rewired from `user_id` to `identity_id` — RBAC, location
+authorization, refresh tokens and audit are completely unaffected. The composite FK
+`(tenant_id, user_id) -> users(tenant_id, id)` guarantees a membership can never point at a `users`
+row belonging to a different tenant than the membership's own `tenant_id`. `UNIQUE (user_id)` makes
+the relationship 1:1 in that direction — each tenant-scoped profile belongs to exactly one
+identity. A person who belongs to two companies has **two** `users` rows (one per tenant, exactly
+as before 016-B) and **two** `tenant_memberships` rows linking them to the same `identities` row.
+
+**Status semantics:** `identities.status = 'disabled'` blocks the person everywhere (every
+membership); `tenant_memberships.status = 'disabled'` revokes access to that **one** tenant without
+touching the identity's other memberships or its credential. `identities.status =
+'pending_credential'` means migration `0029` found this email attached to more than one distinct
+`password_hash` and refused to pick one — see below.
+
+### Backfill (migration `0029`)
+
+Deterministic, additive, idempotent under both a byte-identical re-run and concurrent modification
+of `users` by other sessions — the identities insert targets `ON CONFLICT (lower(email))`; the
+memberships insert additionally skips any user that already has a membership
+(`NOT EXISTS (... WHERE tm.user_id = u.id)`, since `tenant_memberships_user_id_key` allows at most
+one, ever) and falls back to a bare `ON CONFLICT DO NOTHING` (either unique constraint) as a
+last-resort race guard. Grouping is by **normalized email**, never by tenant:
+
+| Case | Condition | Result |
+| --- | --- | --- |
+| A | one `users` row for a normalized email | 1 identity carrying that row's own hash, 1 membership, `active` (`disabled` if that row is) |
+| B | several rows share a normalized email **and** the same `password_hash` | 1 identity carrying that one hash, N memberships, `active` unless every row is `disabled` |
+| C | several rows share a normalized email with **different** `password_hash` values | 1 identity, `password_hash = NULL`, `status = 'pending_credential'` — **never** a pick between the candidates; N memberships are still created (their tenant access is untouched — only the *future* new login will refuse this identity until a single password is set) |
+| D/E | empty, blank, or structurally invalid (`no '@'`) email | excluded entirely — no identity, no membership, the `users` row is left completely untouched (should not occur in practice; `@IsEmail()` validates every write path) |
+
+Soft-deleted `users` rows (`deleted_at IS NOT NULL`) are excluded the same way as D/E. `users`
+(including `users.password_hash`) is never written by this migration — the current login is
+unaffected. See `database/scripts/report-identity-backfill.sql` for a read-only, human-reviewable
+report (counts per case, `pending_credential` conflicts by internal id, any excluded rows) to run
+after migrating a real environment.
+
+**RLS interaction:** `users` has `ENABLE` + `FORCE ROW LEVEL SECURITY` with its only policy
+`TO app_tenant`; `app_migrator` (which owns `users` and runs this migration) does not match that
+policy, so migration `0029` temporarily issues `ALTER TABLE users NO FORCE ROW LEVEL SECURITY`,
+runs its two `INSERT ... SELECT`s, then unconditionally restores `FORCE ROW LEVEL SECURITY` — all
+inside the single transaction Drizzle wraps the whole migration file in, so no other session ever
+observes the intermediate state. Verified by
+`test/database/migrations.integration.test.ts`'s RLS-coverage check.
+
+A future, separate prompt implements the actual email+password authentication flow (identity
+lookup, tenant selection, `switch-tenant`, JWT changes) on top of this data — see ADR-0033.
 
 ---
 
@@ -3115,6 +3228,11 @@ Planned initial sequence (file names illustrative, exact Drizzle Kit naming is a
     `platform_admin_refresh_tokens` (platform-scoped, no RLS — see
     [§Administration](#administration-tenant-settings-and-platform-admin-sessions)), plus a
     follow-up `GRANT INSERT ON audit_log TO app_platform` (ADR-0032).
+15. **Global identity** (016-B, migrations `0028`–`0029`) — `identities` and `tenant_memberships`
+    (both platform-scoped, no RLS — see [§Global identity](#global-identity-and-tenant-memberships)
+    and [ADR-0033](../decisions/0033-global-identity-tenant-memberships.md)), followed by an
+    idempotent backfill migration that consolidates existing `users` rows by normalized email. No
+    change to `users`, auth, RLS on any existing table, or the frontend.
 
 Later migrations add `permissions` rows as new capabilities ship (`INSERT ... ON CONFLICT (code) DO
 NOTHING`) — this is genuinely schema-adjacent, versioned data, not tenant/seed data, so it travels

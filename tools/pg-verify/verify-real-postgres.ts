@@ -211,10 +211,10 @@ async function verifySchema(): Promise<void> {
     const tables = await sql<{ table_name: string }[]>`
       select table_name from information_schema.tables
       where table_schema = 'public' and table_type = 'BASE TABLE'`;
-    // 48, not 46 — tenant_settings + platform_admin_refresh_tokens (migration 0022, FASE 11) were
-    // added after this figure was first written and this check was never updated (same class of
-    // drift as the permissions-catalog count above, and as the 45->46 update it already documents).
-    check('48 tables exist', tables.length === 48, `found ${tables.length}`);
+    // 50, not 48 — identities + tenant_memberships (016-B, migration 0028, ADR-0033) were added
+    // after this figure was first written and this check was never updated (same class of drift
+    // this comment already documents twice — see the 45->46->48 history).
+    check('50 tables exist', tables.length === 50, `found ${tables.length}`);
 
     const fks = await sql<{ count: number }[]>`
       select count(*)::int as count from information_schema.table_constraints
@@ -398,12 +398,12 @@ async function verifyRls(): Promise<void> {
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r'
-        and c.relname not in ('tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens')`;
+        and c.relname not in ('tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens', 'identities', 'tenant_memberships')`;
     // Filtering an empty `rows` is vacuously "zero without RLS" — assert the expected table count
     // explicitly first (same class of false-positive this file already got burned by in §8).
-    // 48 total tables - 5 platform-scoped (tenants, platform_admins, permissions,
-    // measurement_units, platform_admin_refresh_tokens) = 43 tenant-owned tables (see the
-    // 48-tables comment above for why this isn't 42/41 any more).
+    // 50 total tables - 7 platform-scoped (tenants, platform_admins, permissions,
+    // measurement_units, platform_admin_refresh_tokens, identities, tenant_memberships) = 43
+    // tenant-owned tables (see the 50-tables comment above for why this isn't 42/41 any more).
     check('43 tenant-owned tables were found to check', rows.length === 43, `found ${rows.length}`);
     const withoutRls = rows.filter((r) => !r.relrowsecurity);
     const withoutForce = rows.filter((r) => !r.relforcerowsecurity);
@@ -437,8 +437,8 @@ async function verifyRls(): Promise<void> {
       select relname, relrowsecurity from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r'
-        and c.relname in ('tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens')`;
-    check('platform-scoped tables have NO RLS (by design)', platformTables.every((r) => !r.relrowsecurity));
+        and c.relname in ('tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens', 'identities', 'tenant_memberships')`;
+    check('platform-scoped tables have NO RLS (by design)', platformTables.length === 7 && platformTables.every((r) => !r.relrowsecurity));
   } finally {
     await sql.end();
   }

@@ -11,3 +11,4 @@ export * from './10-notifications';
 export * from './11-idempotency';
 export * from './12-auth';
 export * from './13-administration';
+export * from './14-identity';
