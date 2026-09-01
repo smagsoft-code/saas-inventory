@@ -6,6 +6,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../lib/api/client';
 import { ApiError } from '../../../lib/api/errors';
 import { safeReturnTo } from '../../../lib/auth/return-to';
+import type { AvailableTenant, LoginResponse } from '../../../lib/types/session';
 import { Button } from '../../../components/ui/button';
 import { Field } from '../../../components/ui/field';
 import { Input } from '../../../components/ui/input';
@@ -14,6 +15,7 @@ import { Spinner } from '../../../components/ui/spinner';
 
 const REFRESH_PATH = '/api/v1/auth/refresh';
 const LOGIN_PATH = '/api/v1/auth/login';
+const SELECT_TENANT_PATH = '/api/v1/auth/select-tenant';
 /** Loop guard: if the app keeps bouncing here after a "successful" refresh, stop trying. */
 const RESTORE_KEY = 'saas:login-restore-attempts';
 
@@ -40,17 +42,44 @@ async function attemptSilentRestore(): Promise<boolean> {
   }
 }
 
+/** Deliberately generic — the API never says which credential was wrong (security.md §6), and a
+ * 5xx body is never echoed. */
+function loginErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.isNetworkError) return 'Could not reach the server. Check your connection and try again.';
+    if (err.status === 429) return 'Too many attempts. Please wait a moment and try again.';
+    if (err.status >= 500) return 'Something went wrong on our end. Please try again.';
+    return err.message || 'Could not sign in. Please try again.';
+  }
+  return 'Could not sign in. Please try again.';
+}
+
+function selectionErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.isNetworkError) return 'Could not reach the server. Check your connection and try again.';
+    if (err.status === 401) return 'Your sign-in timed out before you picked a company. Please sign in again.';
+    if (err.status === 429) return 'Too many attempts. Please wait a moment and try again.';
+    if (err.status >= 500) return 'Something went wrong on our end. Please try again.';
+    return err.message || 'Could not open that company. Please sign in again.';
+  }
+  return 'Could not open that company. Please sign in again.';
+}
+
 export function LoginForm(): React.JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
   const returnTo = safeReturnTo(searchParams.get('returnTo'));
 
   const [checkingSession, setCheckingSession] = useState(true);
-  const [tenantSlug, setTenantSlug] = useState('');
+  const [view, setView] = useState<'credentials' | 'select-tenant'>('credentials');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  /** The backend-authorised picker list. The only tenants this form can ever select. */
+  const [availableTenants, setAvailableTenants] = useState<AvailableTenant[]>([]);
+  /** Non-null while a `/auth/select-tenant` call is in flight — also the single-selection lock. */
+  const [selectingTenantId, setSelectingTenantId] = useState<string | null>(null);
   const startedRef = useRef(false);
 
   useEffect(() => {
@@ -73,26 +102,68 @@ export function LoginForm(): React.JSX.Element {
     })();
   }, [router, returnTo]);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+  function completeLogin(): void {
+    try {
+      sessionStorage.removeItem(RESTORE_KEY);
+    } catch {
+      /* ignore */
+    }
+    router.replace(returnTo);
+    router.refresh();
+  }
+
+  async function handleCredentialsSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (submitting) {
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
-      // Deliberately generic on failure — the API never distinguishes "wrong tenant" from "wrong
-      // password" (security.md §6), and the frontend does not invent a distinction.
-      await apiFetch(LOGIN_PATH, { method: 'POST', body: { tenantSlug, email, password } });
-      try {
-        sessionStorage.removeItem(RESTORE_KEY);
-      } catch {
-        /* ignore */
+      // 016-C: credentials only. Which company (if the identity has more than one) is chosen
+      // *after* this succeeds — never named here.
+      const result = await apiFetch<LoginResponse>(LOGIN_PATH, {
+        method: 'POST',
+        body: { email, password },
+      });
+      if (result.status === 'authenticated') {
+        completeLogin();
+        return;
       }
-      router.replace(returnTo);
-      router.refresh();
+      // More than one active membership: the httpOnly `tenant_selection` cookie is set; show the
+      // picker built from the backend's authorised list.
+      setAvailableTenants(result.availableTenants);
+      setView('select-tenant');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not sign in. Please try again.');
+      setError(loginErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function handleSelectTenant(tenantId: string): Promise<void> {
+    if (selectingTenantId) {
+      return;
+    }
+    setError(null);
+    setSelectingTenantId(tenantId);
+    try {
+      // Only the id is sent. The selection token travels in the httpOnly cookie the browser
+      // attaches automatically — this form never reads, stores, or forwards it.
+      await apiFetch(SELECT_TENANT_PATH, { method: 'POST', body: { tenantId } });
+      completeLogin();
+    } catch (err) {
+      setError(selectionErrorMessage(err));
+      setSelectingTenantId(null);
+    }
+  }
+
+  function backToCredentials(): void {
+    setView('credentials');
+    setError(null);
+    setAvailableTenants([]);
+    setSelectingTenantId(null);
+    setPassword('');
   }
 
   if (checkingSession) {
@@ -104,19 +175,54 @@ export function LoginForm(): React.JSX.Element {
     );
   }
 
+  if (view === 'select-tenant') {
+    return (
+      <div className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">Choose a company</h2>
+          <p className="text-sm text-slate-500">Pick where you want to work.</p>
+        </div>
+        {error && <Alert tone="error">{error}</Alert>}
+        <ul className="flex flex-col gap-2">
+          {availableTenants.map((tenant) => {
+            const busy = selectingTenantId === tenant.tenantId;
+            return (
+              <li key={tenant.tenantId}>
+                <button
+                  type="button"
+                  disabled={selectingTenantId !== null}
+                  aria-busy={busy || undefined}
+                  onClick={() => void handleSelectTenant(tenant.tenantId)}
+                  className="flex w-full items-center justify-between gap-3 rounded-md border border-slate-300 bg-white px-4 py-3 text-left text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <span>{tenant.name}</span>
+                  {busy ? (
+                    <Spinner className="h-4 w-4 shrink-0" />
+                  ) : (
+                    <span aria-hidden className="text-slate-400">
+                      →
+                    </span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={backToCredentials}
+          disabled={selectingTenantId !== null}
+        >
+          Back to sign in
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <>
-      <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-        <Field label="Workspace" required>
-          <Input
-            name="tenantSlug"
-            required
-            value={tenantSlug}
-            onChange={(event) => setTenantSlug(event.target.value)}
-            autoComplete="organization"
-            placeholder="acme-corp"
-          />
-        </Field>
+      <form onSubmit={handleCredentialsSubmit} noValidate className="flex flex-col gap-4">
         <Field label="Email" required>
           <Input
             name="email"
