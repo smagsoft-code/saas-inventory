@@ -1,0 +1,46 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Fundamentos" },
+    { "id": "page-2", "name": "App Shell + Acceso" },
+    { "id": "page-3", "name": "Ventas" },
+    { "id": "page-4", "name": "Catálogo e inventario" },
+    { "id": "page-5", "name": "Operaciones" }
+  ],
+  "artboards": [
+    { "file": "VisualSystem.dc.html", "page": "page-1", "x": 0, "y": 0, "w": 1500, "h": 4180, "title": "Sistema visual" },
+
+    { "file": "Main.dc.html", "page": "page-2", "x": 0, "y": 0, "w": 1440, "h": 1180, "title": "App Shell — Desktop (Inicio, riel interactivo)", "is_interactive": true },
+    { "file": "AppShellTablet.dc.html", "page": "page-2", "x": 1560, "y": 0, "w": 834, "h": 1180, "title": "App Shell — Tablet" },
+    { "file": "AppShellMobile.dc.html", "page": "page-2", "x": 2500, "y": 0, "w": 390, "h": 900, "title": "App Shell — Móvil (drawer)" },
+    { "file": "LoginDesktop.dc.html", "page": "page-2", "x": 0, "y": 1360, "w": 1440, "h": 1260, "title": "Login — Desktop (estado 1 + estado 2)" },
+    { "file": "LoginMobile.dc.html", "page": "page-2", "x": 1560, "y": 1360, "w": 390, "h": 1420, "title": "Login — Móvil (estado 1 + estado 2)" },
+
+    { "file": "NewSaleDesktop.dc.html", "page": "page-3", "x": 0, "y": 0, "w": 1440, "h": 1160, "title": "Nueva venta — Desktop" },
+    { "file": "NewSaleTablet.dc.html", "page": "page-3", "x": 1560, "y": 0, "w": 834, "h": 1240, "title": "Nueva venta — Tablet" },
+    { "file": "NewSaleMobile.dc.html", "page": "page-3", "x": 2500, "y": 0, "w": 390, "h": 1080, "title": "Nueva venta — Móvil (carrito)" },
+    { "file": "SalesHistoryDesktop.dc.html", "page": "page-3", "x": 0, "y": 1400, "w": 1440, "h": 1160, "title": "Historial de ventas — Desktop" },
+
+    { "file": "ProductsDesktop.dc.html", "page": "page-4", "x": 0, "y": 0, "w": 1440, "h": 1080, "title": "Productos — Desktop" },
+    { "file": "ProductsTablet.dc.html", "page": "page-4", "x": 1560, "y": 0, "w": 834, "h": 1180, "title": "Productos — Tablet" },
+    { "file": "ProductsMobile.dc.html", "page": "page-4", "x": 2500, "y": 0, "w": 390, "h": 1000, "title": "Productos — Móvil" },
+    { "file": "ProductForm.dc.html", "page": "page-4", "x": 0, "y": 1320, "w": 1440, "h": 1420, "title": "Producto — Crear / editar (Desktop)" },
+    { "file": "InventoryDesktop.dc.html", "page": "page-4", "x": 0, "y": 2900, "w": 1440, "h": 1080, "title": "Inventario / Existencias — Desktop" },
+    { "file": "InventoryTablet.dc.html", "page": "page-4", "x": 1560, "y": 2900, "w": 834, "h": 1180, "title": "Inventario — Tablet" },
+    { "file": "InventoryMobile.dc.html", "page": "page-4", "x": 2500, "y": 2900, "w": 390, "h": 1000, "title": "Inventario — Móvil (disclosure)" },
+
+    { "file": "TransfersDesktop.dc.html", "page": "page-5", "x": 0, "y": 0, "w": 1440, "h": 1100, "title": "Transferencias — Desktop" },
+    { "file": "TransfersTablet.dc.html", "page": "page-5", "x": 1560, "y": 0, "w": 834, "h": 1180, "title": "Transferencias — Tablet" },
+    { "file": "TransfersMobile.dc.html", "page": "page-5", "x": 2500, "y": 0, "w": 390, "h": 940, "title": "Transferencias — Móvil" },
+    { "file": "ImportDesktop.dc.html", "page": "page-5", "x": 0, "y": 1340, "w": 1440, "h": 1080, "title": "Importación Excel — Desktop" },
+    { "file": "ReturnsDesktop.dc.html", "page": "page-5", "x": 0, "y": 2560, "w": 1440, "h": 1120, "title": "Devoluciones / Disposición — Desktop" }
+  ],
+  "annotations": [
+    { "id": "note-rail", "page": "page-2", "x": 0, "y": -170, "w": 640, "text": "App Shell — fondo de navegación = primary (token --nav-bg). Riel interactivo: pasa el cursor o tabula dentro para expandirlo de 68 a 232 px superponiéndose al contenido, sin desplazarlo; al salir vuelve a colapsar (160 ms, CSS puro, prefers-reduced-motion). Tablet: riel permanente + botón de fijar (overlay + scrim). Móvil: botón de menú -> drawer con el mismo fondo primary." },
+    { "id": "note-login", "page": "page-2", "x": 0, "y": 1180, "w": 640, "text": "Login 016-C: POST /auth/login pide solo { email, password } (sin tenantSlug). 1 empresa -> sesion directa. Varias -> tenant_selection_required + availableTenants + cookie httpOnly tenant_selection, y un segundo paso 'Elegir empresa' (POST /auth/select-tenant { tenantId }). El selectionToken no se muestra ni se guarda. 'Recordarme' y 'restablecer contraseña' no tienen ruta backend. 'Crear organizacion' se conserva (POST /auth/register existe)." },
+    { "id": "note-sale", "page": "page-3", "x": 0, "y": -180, "w": 660, "text": "Nueva venta (prioritaria). El estado 'precio negociado / requiere aprobación' lo deriva el BACKEND (order_items.is_exceptional_discount) — el frontend NUNCA compara precio < minPrice ni guarda minPrice oculto. Sin motor de impuestos (taxTotal = 0): solo Subtotal / Descuento informativo / Total. Confirmar crea la orden 'pending'; el carrito se autoguarda (uno abierto por vendedor) — no hay 'borrador' de orden. Tablet/móvil: chip de precio -> hoja para precio negociado / aprobación." },
+    { "id": "note-history", "page": "page-3", "x": 0, "y": 1240, "w": 640, "text": "FASE 17 = listado + filtros del contrato (status, documentType, customerId, rango de fechas, paginación) + detalle. Los KPIs y cualquier métrica agregada son FASE 18 (PROTOTYPE ONLY). Sin búsqueda por texto libre en el contrato actual." },
+    { "id": "note-color", "page": "page-1", "x": 0, "y": -140, "w": 640, "text": "Un solo azul de acento + escala neutra + estados semánticos + tokens --nav-* (derivados de primary). Los módulos NO tienen color propio. Todo es token: cambiar acento / fondo / radio / tema no toca componentes. FASE 17 = solo light mode; dark diferido (tokens listos). Elementos sin contrato (búsqueda global, campana, exportar, analítica) = PROTOTYPE ONLY." },
+    { "id": "note-ops", "page": "page-5", "x": 0, "y": -150, "w": 660, "text": "Transferencias, Devoluciones e Importación: los labels/estados/acciones mapean 1:1 a los enums y transiciones REALES del backend (auditados). Importación soporta importación PARCIAL (se importan las filas válidas/warning, las inválidas quedan fuera) — el CTA 'Importar N filas válidas' es correcto. Barras de acción inferiores en móvil: patrón sticky + safe-area en FASE 17, nunca una barra que tape la lista." }
+  ],
+  "launch": { "view": "canvas", "page": "page-2" }
+}

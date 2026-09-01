@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--border:#E3E6EA;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-hover:#2A63D4;--primary-subtle:#EAF1FE;--danger:#D0453B;--danger-bg:#FBE9E7;
+      /* semantic navigation tokens — derived from primary, never hard-coded per screen */
+      --nav-bg:var(--primary);--nav-fg:rgba(255,255,255,.72);--nav-fg-strong:#FFFFFF;
+      --nav-hover:rgba(255,255,255,.12);--nav-active:rgba(255,255,255,.20);
+      --nav-divider:rgba(255,255,255,.16);--nav-focus:#FFFFFF;
+      --nav-logo-bg:#FFFFFF;--nav-logo-fg:var(--primary);
+      --r-sm:6px;--r-md:10px;--r-lg:14px;
+      --sh-md:0 6px 24px rgba(16,24,40,.10),0 2px 6px rgba(16,24,40,.05);
+      --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    a{color:var(--primary);text-decoration:none}a:hover{color:var(--primary-hover)}
+    .wrap{min-height:900px;display:grid;grid-template-columns:1fr 1fr}
+    .aside{background:var(--primary);color:#fff;padding:56px;display:flex;flex-direction:column;justify-content:space-between}
+    .aside .logo{width:40px;height:40px;border-radius:10px;background:rgba(255,255,255,.16);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:18px}
+    .aside h2{font-size:30px;line-height:38px;font-weight:700;letter-spacing:-.02em;margin:0 0 12px;max-width:22ch}
+    .aside p{color:rgba(255,255,255,.82);max-width:34ch;margin:0}
+    .aside .meta{font-size:13px;color:rgba(255,255,255,.7)}
+    .panel{display:flex;align-items:center;justify-content:center;padding:56px}
+    .form{width:100%;max-width:360px}
+    h1{font-size:24px;line-height:30px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}
+    .lead{color:var(--text-2);margin:0 0 28px}
+    label{display:block;font-size:13px;font-weight:600;margin:0 0 6px}
+    .inp{width:100%;height:44px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);padding:0 12px;font:inherit;color:var(--text)}
+    .inp:focus{outline:2px solid var(--primary);outline-offset:1px;border-color:var(--primary)}
+    .field{margin-bottom:18px}
+    .hint{font-size:12px;color:var(--text-3);margin-top:5px}
+    .hint code{font-size:11px}
+    .row{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+    .check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2)}
+    .box{width:16px;height:16px;border:1px solid var(--border);border-radius:4px;background:var(--surface)}
+    .btn{width:100%;height:44px;border-radius:var(--r-sm);border:0;background:var(--primary);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+    .btn:hover{background:var(--primary-hover)}
+    .alt{margin-top:22px;font-size:13px;color:var(--text-2);text-align:center}
+    .err{display:flex;gap:8px;align-items:flex-start;background:var(--danger-bg);color:var(--danger);border-radius:var(--r-sm);padding:10px 12px;font-size:13px;margin-bottom:18px}
+    .panel{flex-direction:column;gap:40px}
+    .state{width:100%;max-width:360px}
+    .state-tag{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin:0 0 10px}
+    .trow{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;border:1px solid var(--border);background:var(--surface);border-radius:var(--r-sm);padding:14px 16px;font-size:14px;font-weight:600;color:var(--text);text-align:left;cursor:pointer;margin-bottom:8px}
+    .trow:hover{background:var(--surface-subtle)}
+    .trow .chev{color:var(--text-3)}
+    .ghost{width:100%;height:40px;border-radius:var(--r-sm);border:0;background:transparent;color:var(--text-2);font:inherit;font-weight:600;cursor:pointer;margin-top:4px}
+  </style>
+</helmet>
+<div class="wrap">
+  <div class="aside">
+    <div class="logo">S</div>
+    <div>
+      <h2>Control total de tu inventario y tus ventas.</h2>
+      <p>Multi-almacén, multi-usuario y multi-sucursal. Una sola fuente de verdad para tu operación.</p>
+    </div>
+    <div class="meta">Datos de demostración · v017-design</div>
+  </div>
+  <div class="panel">
+    <form class="form state">
+      <p class="state-tag">Estado 1 · Credenciales</p>
+      <h1>Iniciar sesión</h1>
+      <p class="lead">Accede con tu correo y contraseña.</p>
+      <div class="err">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16h.01"/></svg>
+        <span>No se pudo iniciar sesión. Revisa el correo y la contraseña.</span>
+      </div>
+      <div class="field">
+        <label for="e">Correo electrónico</label>
+        <input class="inp" id="e" type="email" value="hector@mi-empresa.com">
+      </div>
+      <div class="field">
+        <label for="p">Contraseña</label>
+        <input class="inp" id="p" type="password" value="············">
+      </div>
+      <button class="btn" type="button" style="margin-top:6px">Entrar</button>
+      <p class="alt">¿Tu empresa aún no tiene cuenta? <a href="#">Crear organización</a></p>
+    </form>
+    <div class="state">
+      <p class="state-tag">Estado 2 · Solo si la identidad tiene varias empresas</p>
+      <h1>Selecciona una empresa</h1>
+      <p class="lead">Elige dónde quieres trabajar.</p>
+      <button class="trow" type="button"><span>Comercial Andina</span><span class="chev" aria-hidden>→</span></button>
+      <button class="trow" type="button"><span>Distribuidora del Valle</span><span class="chev" aria-hidden>→</span></button>
+      <button class="ghost" type="button">Volver a iniciar sesión</button>
+      <p class="alt" style="margin-top:14px;font-size:12px;color:var(--text-3)">016-C: <code>POST /auth/login</code> pide solo <code>{ email, password }</code> (sin <code>tenantSlug</code>). Una empresa → sesión directa. Varias → esta lista viene de <code>availableTenants</code> + cookie httpOnly <code>tenant_selection</code>; al elegir, <code>POST /auth/select-tenant { tenantId }</code>. El <code>selectionToken</code> no se muestra ni se guarda.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

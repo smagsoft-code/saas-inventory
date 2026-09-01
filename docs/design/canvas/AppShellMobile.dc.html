@@ -1,0 +1,112 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--border:#E3E6EA;--divider:#ECEEF1;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-subtle:#EAF1FE;
+      --success:#1E874B;--success-bg:#E5F4EC;--warning:#B7791F;--warning-bg:#FBF0DD;--danger:#D0453B;--danger-bg:#FBE9E7;
+      /* semantic navigation tokens — derived from primary, never hard-coded per screen */
+      --nav-bg:var(--primary);--nav-fg:rgba(255,255,255,.72);--nav-fg-strong:#FFFFFF;
+      --nav-hover:rgba(255,255,255,.12);--nav-active:rgba(255,255,255,.20);
+      --nav-divider:rgba(255,255,255,.16);--nav-focus:#FFFFFF;
+      --nav-logo-bg:#FFFFFF;--nav-logo-fg:var(--primary);
+      --r-sm:6px;--r-md:10px;--sh-md:0 8px 28px rgba(16,24,40,.18);
+      --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;line-height:22px;-webkit-font-smoothing:antialiased}
+    .scr{min-height:844px;position:relative;overflow:hidden}
+    .hdr{height:56px;display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .mb{width:44px;height:44px;border-radius:8px;border:0;background:transparent;color:var(--text-2);display:flex;align-items:center;justify-content:center}
+    .htitle{font-weight:600}
+    .av{width:34px;height:34px;border-radius:999px;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;margin-left:auto}
+    .content{padding:16px;display:flex;flex-direction:column;gap:14px}
+    h1{font-size:24px;line-height:30px;font-weight:700;letter-spacing:-.02em;margin:0}
+    .psub{color:var(--text-2);margin:2px 0 0;font-size:14px}
+    .cards2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:14px}
+    .kl{font-size:13px;color:var(--text-2)}
+    .kv{font-size:22px;font-weight:700;margin-top:6px;font-variant-numeric:tabular-nums}
+    .kd{font-size:12px;color:var(--success);margin-top:2px}
+    .sec{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text-3);margin:6px 2px 0}
+    .lr{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--divider);font-size:14px}
+    .lr:last-child{border-bottom:0}
+    .grow{flex:1;min-width:0}
+    .t2{color:var(--text-3);font-size:12px}
+    .badge{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+    .b-warning{color:var(--warning);background:var(--warning-bg)}
+    .b-danger{color:var(--danger);background:var(--danger-bg)}
+    /* drawer */
+    .scrim{position:absolute;inset:0;background:rgba(16,24,40,.4);z-index:20}
+    .drawer{position:absolute;inset:0 auto 0 0;width:284px;background:var(--nav-bg);box-shadow:var(--sh-md);z-index:21;display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+    .dt{height:56px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--nav-divider);font-weight:600;color:#fff}
+    .logo{width:28px;height:28px;border-radius:8px;background:var(--nav-logo-bg);color:var(--nav-logo-fg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+    .dc{margin-left:auto;width:40px;height:40px;border:0;background:transparent;color:rgba(255,255,255,.8)}
+    .dn{flex:1;overflow:auto;padding:8px 12px}
+    .cap{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);padding:14px 10px 4px}
+    .da{display:flex;align-items:center;gap:14px;height:48px;padding:0 12px;border-radius:8px;color:var(--nav-fg);text-decoration:none;font-size:15px}
+    .da:hover{background:var(--nav-hover);color:#fff}
+    .da.active{background:var(--nav-active);color:#fff;font-weight:600}
+    .da svg{width:22px;height:22px}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5M6 10v10h12V10"/></symbol>
+  <symbol id="bx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8 12 4l8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/></symbol>
+  <symbol id="ly" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 3 9l9 5 9-5-9-5Z"/><path d="M3 14l9 5 9-5"/></symbol>
+  <symbol id="sh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13M17 9l-3.5-3M17 9l-3.5 3M20 15H7M7 15l3.5-3M7 15l3.5 3"/></symbol>
+  <symbol id="ct" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h2l2.4 10h9.2L20 8H7"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></symbol>
+  <symbol id="rc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6"/></symbol>
+  <symbol id="gr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 12c0-.5 0-.9-.1-1.3l1.9-1.4-1.9-3.3-2.2 1a7 7 0 0 0-2.3-1.3L14.4 3h-3.8l-.4 2.4A7 7 0 0 0 7.9 6.7l-2.2-1L3.8 9l1.9 1.4a7 7 0 0 0 0 2.6L3.8 15l1.9 3.3 2.2-1a7 7 0 0 0 2.3 1.3l.4 2.4h3.8l.4-2.4a7 7 0 0 0 2.3-1.3l2.2 1L20.2 15l-1.9-1.4c.1-.4.1-.8.1-1.3Z"/></symbol>
+</svg>
+<div class="scr">
+  <header class="hdr">
+    <button class="mb" aria-label="Abrir navegación"><svg width="22" height="22"><use href="#mn"/></svg></button>
+    <span class="htitle">Inicio</span>
+    <div class="av">HM</div>
+  </header>
+  <div class="content">
+    <div><h1>Inicio</h1><p class="psub">Acme Distribución</p></div>
+    <div class="cards2">
+      <div class="card"><div class="kl">Valor inventario</div><div class="kv">$1.28M</div><div class="kd">▲ 2.4%</div></div>
+      <div class="card"><div class="kl">Ítems en stock</div><div class="kv">48,320</div><div class="kd" style="color:var(--text-3)">312 SKU</div></div>
+    </div>
+    <div class="sec">Stock bajo</div>
+    <div class="card" style="padding:0">
+      <div class="lr"><div class="grow">Módulo de lente<div class="t2">CAM-LEN-04 · Almacén A</div></div><span class="badge b-danger">3</span></div>
+      <div class="lr"><div class="grow">Cable USB-C 2m<div class="t2">CBL-USB-2M · Bodega 22</div></div><span class="badge b-warning">12</span></div>
+      <div class="lr"><div class="grow">Cuaderno Moleskine<div class="t2">MOL-BLK-A5 · Almacén B</div></div><span class="badge b-warning">8</span></div>
+    </div>
+  </div>
+
+  <div class="scrim"></div>
+  <nav class="drawer" aria-label="Navegación">
+    <div class="dt"><span class="logo">S</span>SaaS Inventory<button class="dc" aria-label="Cerrar"><svg width="20" height="20"><use href="#x"/></svg></button></div>
+    <div class="dn">
+      <a class="da active" href="#"><svg><use href="#h"/></svg>Inicio</a>
+      <div class="cap">Catálogo</div>
+      <a class="da" href="#"><svg><use href="#bx"/></svg>Productos</a>
+      <div class="cap">Inventario</div>
+      <a class="da" href="#"><svg><use href="#ly"/></svg>Existencias</a>
+      <a class="da" href="#"><svg><use href="#sh"/></svg>Transferencias</a>
+      <div class="cap">Ventas</div>
+      <a class="da" href="#"><svg><use href="#ct"/></svg>Nueva venta</a>
+      <a class="da" href="#"><svg><use href="#rc"/></svg>Historial</a>
+      <div class="cap">Administración</div>
+      <a class="da" href="#"><svg><use href="#gr"/></svg>Configuración</a>
+    </div>
+  </nav>
+</div>
+</x-dc>
+</body>
+</html>

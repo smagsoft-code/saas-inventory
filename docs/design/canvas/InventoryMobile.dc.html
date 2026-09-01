@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--border:#E3E6EA;--divider:#ECEEF1;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-subtle:#EAF1FE;
+      --success:#1E874B;--success-bg:#E5F4EC;--warning:#B7791F;--warning-bg:#FBF0DD;--danger:#D0453B;--danger-bg:#FBE9E7;
+      /* semantic navigation tokens — derived from primary, never hard-coded per screen */
+      --nav-bg:var(--primary);--nav-fg:rgba(255,255,255,.72);--nav-fg-strong:#FFFFFF;
+      --nav-hover:rgba(255,255,255,.12);--nav-active:rgba(255,255,255,.20);
+      --nav-divider:rgba(255,255,255,.16);--nav-focus:#FFFFFF;
+      --nav-logo-bg:#FFFFFF;--nav-logo-fg:var(--primary);
+      --r-sm:6px;--r-md:12px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;line-height:22px;-webkit-font-smoothing:antialiased}
+    .scr{min-height:920px;position:relative}
+    .hdr{height:56px;display:flex;align-items:center;gap:12px;padding:0 12px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .mb{width:44px;height:44px;border-radius:8px;border:0;background:transparent;color:var(--text-2)}
+    .htitle{font-weight:600}
+    .av{width:34px;height:34px;border-radius:999px;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;margin-left:auto}
+    .content{padding:16px;display:flex;flex-direction:column;gap:12px}
+    h1{font-size:24px;line-height:30px;font-weight:700;letter-spacing:-.02em;margin:0}
+    .psub{color:var(--text-2);margin:2px 0 0;font-size:14px}
+    .msearch{height:46px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text-3)}
+    .fbar{display:flex;gap:8px;overflow-x:auto}
+    .chip{flex:none;height:36px;padding:0 12px;border:1px solid var(--border);border-radius:999px;background:var(--surface);display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-2)}
+    .chip.on{border-color:var(--primary);background:var(--primary-subtle);color:var(--primary);font-weight:600}
+    .item{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden}
+    .item-top{display:flex;align-items:center;gap:12px;padding:14px}
+    .pname{font-weight:600}
+    .t3{color:var(--text-3);font-size:13px}
+    .big{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+    .badge{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+    .b-success{color:var(--success);background:var(--success-bg)}
+    .b-warning{color:var(--warning);background:var(--warning-bg)}
+    .b-danger{color:var(--danger);background:var(--danger-bg)}
+    .expand{border-top:1px solid var(--divider);padding:12px 14px;background:var(--surface-subtle);display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;font-size:13px}
+    .expand div span{display:block;color:var(--text-3);font-size:12px}
+    .expand .act{grid-column:1/-1;margin-top:6px}
+    .abtn{width:100%;height:44px;border-radius:8px;border:1px solid var(--primary);background:var(--surface);color:var(--primary);font:inherit;font-weight:600}
+    .disc{margin-left:auto;color:var(--text-3)}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="mn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="s" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="cv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 15 6-6 6 6"/></symbol>
+</svg>
+<div class="scr">
+  <header class="hdr">
+    <button class="mb" aria-label="Abrir navegación"><svg width="22" height="22"><use href="#mn"/></svg></button>
+    <span class="htitle">Existencias</span>
+    <div class="av">HM</div>
+  </header>
+  <div class="content">
+    <div><h1>Existencias</h1><p class="psub">Almacén A · 512 líneas</p></div>
+    <div class="msearch"><svg width="18" height="18"><use href="#s"/></svg>Producto o SKU…</div>
+    <div class="fbar"><span class="chip on">Almacén A <svg width="12" height="12"><use href="#cv"/></svg></span><span class="chip">Stock bajo</span><span class="chip">Agotado</span></div>
+
+    <div class="item">
+      <div class="item-top"><div style="flex:1;min-width:0"><div class="pname">Sony WH-1000XM5</div><div class="t3">AUD-SNY-005 · Pasillo 4 · B12</div></div><div style="text-align:right"><div class="big">142</div></div><span class="badge b-success" style="margin-left:8px">OK</span></div>
+      <div class="expand">
+        <div><span>Disponible</span>142</div><div><span>Reservado</span>8</div><div><span>En tránsito</span>0</div>
+        <div class="act"><button class="abtn">Ajustar existencias</button></div>
+      </div>
+    </div>
+
+    <div class="item">
+      <div class="item-top"><div style="flex:1;min-width:0"><div class="pname">Keychron Q1 Pro</div><div class="t3">KBD-KEY-Q1P · Pasillo 2 · A03</div></div><div style="text-align:right"><div class="big">18</div></div><span class="badge b-warning" style="margin-left:8px">Bajo</span><svg class="disc" width="18" height="18"><use href="#up"/></svg></div>
+    </div>
+    <div class="item">
+      <div class="item-top"><div style="flex:1;min-width:0"><div class="pname">Hub USB-C Satechi</div><div class="t3">ACC-SAT-U8 · Pasillo 1 · C07</div></div><div style="text-align:right"><div class="big">0</div></div><span class="badge b-danger" style="margin-left:8px">Agotado</span><svg class="disc" width="18" height="18"><use href="#up"/></svg></div>
+    </div>
+    <div class="item">
+      <div class="item-top"><div style="flex:1;min-width:0"><div class="pname">HydroFlask 32oz</div><div class="t3">HF-32-BLU · Pasillo 6 · D01</div></div><div style="text-align:right"><div class="big">420</div></div><span class="badge b-success" style="margin-left:8px">OK</span><svg class="disc" width="18" height="18"><use href="#up"/></svg></div>
+    </div>
+    <div class="item">
+      <div class="item-top"><div style="flex:1;min-width:0"><div class="pname">Sensor Smart X1</div><div class="t3">SSX1-00249 · Pasillo 4 · E05</div></div><div style="text-align:right"><div class="big">248</div></div><span class="badge b-success" style="margin-left:8px">OK</span><svg class="disc" width="18" height="18"><use href="#up"/></svg></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

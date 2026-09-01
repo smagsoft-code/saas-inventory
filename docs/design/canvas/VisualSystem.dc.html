@@ -1,0 +1,339 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    .root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--surface-elevated:#FFFFFF;--border:#E3E6EA;--divider:#ECEEF1;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-hover:#2A63D4;--primary-pressed:#2557BC;--primary-subtle:#EAF1FE;--on-primary:#FFFFFF;
+      --success:#1E874B;--success-bg:#E5F4EC;--warning:#B7791F;--warning-bg:#FBF0DD;--danger:#D0453B;--danger-bg:#FBE9E7;
+      /* semantic navigation tokens — derived from primary, never hard-coded per screen */
+      --nav-bg:var(--primary);--nav-fg:rgba(255,255,255,.72);--nav-fg-strong:#FFFFFF;
+      --nav-hover:rgba(255,255,255,.12);--nav-active:rgba(255,255,255,.20);
+      --nav-divider:rgba(255,255,255,.16);--nav-focus:#FFFFFF;
+      --nav-logo-bg:#FFFFFF;--nav-logo-fg:var(--primary);--info:#2F6FED;--info-bg:#EAF1FE;
+      --focus:#2F6FED;
+      --r-sm:6px;--r-md:10px;--r-lg:14px;
+      --sh-sm:0 1px 2px rgba(16,24,40,.05),0 1px 1px rgba(16,24,40,.03);
+      --sh-md:0 6px 20px rgba(16,24,40,.10),0 2px 6px rgba(16,24,40,.05);
+      --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+      min-height:3720px;background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;
+      padding:40px 48px;
+    }
+    body{background:#F6F7F9}
+    .root[data-theme="dark"]{
+      --bg:#14161A;--surface:#1B1E24;--surface-subtle:#23272E;--surface-elevated:#22262E;--border:#2C313A;--divider:#242832;
+      --text:#F2F4F7;--text-2:#A7B0BD;--text-3:#79828F;
+      --primary:#5B93F5;--primary-hover:#6E9FF6;--primary-pressed:#4A83E8;--primary-subtle:#1E2A44;
+      --success:#3DBB78;--success-bg:#16281F;--warning:#D9A441;--warning-bg:#2A2213;--danger:#E9695F;--danger-bg:#2C1A19;--info:#5B93F5;--info-bg:#1E2A44;
+    }
+    .root *{box-sizing:border-box}
+    .h0{font-size:32px;font-weight:800;letter-spacing:-.02em;margin:0}
+    .lead{color:var(--text-2);margin:6px 0 0;max-width:70ch}
+    .sec{margin-top:44px}
+    .sec > h2{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);margin:0 0 16px;padding-bottom:8px;border-bottom:1px solid var(--border)}
+    .grid{display:grid;gap:14px}
+    .c4{grid-template-columns:repeat(4,1fr)}
+    .c6{grid-template-columns:repeat(6,1fr)}
+    .sw{border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden;background:var(--surface)}
+    .sw .chip{height:64px}
+    .sw .meta{padding:8px 10px;font-size:12px}
+    .sw .meta b{display:block;font-size:13px}
+    .sw .meta span{color:var(--text-3);font-variant-numeric:tabular-nums}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:20px}
+    .type-row{display:flex;align-items:baseline;gap:20px;padding:12px 0;border-bottom:1px solid var(--divider)}
+    .type-row:last-child{border:0}
+    .type-row .tag{width:130px;flex:none;color:var(--text-3);font-size:12px}
+    .t-display{font-size:28px;line-height:34px;font-weight:700;letter-spacing:-.02em}
+    .t-section{font-size:17px;line-height:24px;font-weight:600}
+    .t-body{font-size:14px;line-height:20px}
+    .t-bodystrong{font-size:14px;line-height:20px;font-weight:600}
+    .t-secondary{font-size:13px;line-height:18px;color:var(--text-2)}
+    .t-caption{font-size:11px;line-height:14px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3)}
+    .t-num{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+    .space-row{display:flex;align-items:center;gap:16px;padding:8px 0}
+    .space-row .bar{height:16px;background:var(--primary);border-radius:3px}
+    .space-row code{color:var(--text-2);font-size:12px;width:120px}
+    .radii{display:flex;gap:16px}
+    .radii div{width:96px;height:64px;background:var(--primary-subtle);border:1px solid var(--primary);display:flex;align-items:flex-end;justify-content:center;font-size:11px;color:var(--primary);padding-bottom:6px}
+    .shadows{display:flex;gap:28px}
+    .shadows div{width:150px;height:88px;background:var(--surface);border-radius:var(--r-md);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--text-3)}
+    .btn{height:38px;padding:0 16px;border-radius:var(--r-sm);border:1px solid transparent;font:inherit;font-weight:600;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+    .btn-primary{background:var(--primary);color:var(--on-primary)}
+    .btn-primary.hover{background:var(--primary-hover)}
+    .btn-primary.press{background:var(--primary-pressed)}
+    .btn-primary.dis{background:var(--primary);opacity:.45;cursor:not-allowed}
+    .btn-secondary{background:var(--surface);color:var(--text);border-color:var(--border)}
+    .btn-ghost{background:transparent;color:var(--text-2)}
+    .btn-danger{background:var(--danger);color:#fff}
+    .btn.focus{outline:2px solid var(--focus);outline-offset:2px}
+    .btnrow{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+    .inp{height:38px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);padding:0 12px;font:inherit;color:var(--text);min-width:220px}
+    .inp.focus{outline:2px solid var(--focus);outline-offset:1px;border-color:var(--primary)}
+    .inp.err{border-color:var(--danger)}
+    .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
+    .b-success{color:var(--success);background:var(--success-bg)}
+    .b-warning{color:var(--warning);background:var(--warning-bg)}
+    .b-danger{color:var(--danger);background:var(--danger-bg)}
+    .b-info{color:var(--info);background:var(--info-bg)}
+    .b-neutral{color:var(--text-2);background:var(--surface-subtle)}
+    .icons{display:grid;grid-template-columns:repeat(9,1fr);gap:8px}
+    .icell{border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--text-2);font-size:10px;text-align:center;padding:4px}
+    .icell svg{width:22px;height:22px}
+    .railshot{display:flex;gap:24px;align-items:flex-start}
+    .rs{border-radius:var(--r-md);background:var(--nav-bg);overflow:hidden}
+    .rs-collapsed{width:68px}
+    .rs-expanded{width:232px}
+    .rs .rb{height:48px;border-bottom:1px solid var(--nav-divider);display:flex;align-items:center;gap:10px;padding:0 18px;font-weight:600;font-size:13px;color:#fff}
+    .rs .rlogo{width:26px;height:26px;border-radius:7px;background:var(--nav-logo-bg);color:var(--nav-logo-fg);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex:none}
+    .rs .ra{display:flex;align-items:center;gap:12px;height:38px;padding:0 18px;color:var(--nav-fg);font-size:13px;white-space:nowrap}
+    .rs .ra svg{width:18px;height:18px;flex:none}
+    .rs .ra.on{background:var(--nav-active);color:#fff;font-weight:600;box-shadow:inset 3px 0 0 #fff}
+    .kbd{display:inline-block;border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font-size:12px;background:var(--surface);color:var(--text-2)}
+    .two{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    .principle{padding:14px 16px;border:1px solid var(--border);border-radius:var(--r-md);background:var(--surface)}
+    .principle b{display:block;margin-bottom:4px}
+    .principle p{margin:0;color:var(--text-2);font-size:13px}
+    a{color:var(--primary);text-decoration:none}a:hover{color:var(--primary-hover)}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5M6 10v10h12V10"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8 12 4l8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h7l9 9-7 7-9-9V4Z"/><path d="M7.5 7.5h.01"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 3 9l9 5 9-5-9-5Z"/><path d="M3 14l9 5 9-5"/></symbol>
+  <symbol id="i-swapv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4v13M8 4 5 7.5M8 4l3 3.5"/><path d="M16 20V7M16 20l3-3.5M16 20l-3-3.5"/></symbol>
+  <symbol id="i-swaph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13M17 9l-3.5-3M17 9l-3.5 3M20 15H7M7 15l3.5-3M7 15l3.5 3"/></symbol>
+  <symbol id="i-warehouse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-5 9 5v12M3 21h18M8 21v-6h8v6"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12Z"/><circle cx="12" cy="9" r="2.4"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h3v3M20 14v6h-6"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M12 4 8 8M12 4l4 4M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h2l2.4 10h9.2L20 8H7"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+  <symbol id="i-approve" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 14 4.7l2.5-.2.9 2.4 2.1 1.4-.9 2.3.9 2.3-2.1 1.4-.9 2.4-2.5-.2L12 20.8 10 19.3l-2.5.2-.9-2.4-2.1-1.4.9-2.3-.9-2.3 2.1-1.4.9-2.4L10 4.7Z"/><path d="M9.5 12l1.8 1.8L15 10"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M3 20a6 6 0 0 1 12 0M16 5.2a3 3 0 0 1 0 5.6M17.5 20a6 6 0 0 0-3-4.7"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 12c0-.5 0-.9-.1-1.3l1.9-1.4-1.9-3.3-2.2 1a7 7 0 0 0-2.3-1.3L14.4 3h-3.8l-.4 2.4A7 7 0 0 0 7.9 6.7l-2.2-1L3.8 9l1.9 1.4a7 7 0 0 0 0 2.6L3.8 15l1.9 3.3 2.2-1a7 7 0 0 0 2.3 1.3l.4 2.4h3.8l.4-2.4a7 7 0 0 0 2.3-1.3l2.2 1L20.2 15l-1.9-1.4c.1-.4.1-.8.1-1.3Z"/></symbol>
+</svg>
+
+<div class="root" data-theme="{{theme}}">
+  <h1 class="h0">Sistema visual — SaaS Inventory</h1>
+  <p class="lead">Dirección derivada de las referencias del usuario (SaaS administrativo claro, superficies blancas sobre gris frío, azul único de acento, tarjetas discretas, iconografía lineal tipo iOS) y adaptada a los principios de Apple Human Interface Guidelines. Todos los valores se exponen como <code>--color-*</code> / <code>--radius-*</code> / <code>--space-*</code>: cambiar el acento o el fondo en el futuro es una edición de tokens, nunca de componentes. Alterna el chip <b>Tema</b> para ver light y dark.</p>
+
+  <div class="sec">
+    <h2>Principios HIG aplicados</h2>
+    <div class="grid c4">
+      <div class="principle"><b>Claridad</b><p>Jerarquía tipográfica evidente, números tabulares, la acción primaria siempre reconocible por color y posición.</p></div>
+      <div class="principle"><b>Deferencia</b><p>La interfaz acompaña a los datos: gris neutro, un solo acento, sin ornamentación. Las tablas son el protagonista.</p></div>
+      <div class="principle"><b>Profundidad</b><p>Solo dos sombras. Separación por borde y fondo antes que por sombra. La profundidad comunica navegación (riel, drawer, diálogo).</p></div>
+      <div class="principle"><b>Consistencia</b><p>Un registro de navegación, mismos badges semánticos en todos los módulos, mismos controles para las mismas acciones.</p></div>
+      <div class="principle"><b>Feedback</b><p>Todo control tiene hover / pressed / focus / disabled / loading. Estados combinan color + icono + texto.</p></div>
+      <div class="principle"><b>Divulgación progresiva</b><p>Primero lo esencial; el detalle se revela al tocar la fila, abrir el drawer o expandir el riel.</p></div>
+      <div class="principle"><b>Manipulación directa</b><p>Steppers, edición de precio en línea, búsqueda con resultados inmediatos en la Nueva venta.</p></div>
+      <div class="principle"><b>Táctil</b><p>Objetivo mínimo 44×44 en tablet y móvil; controles a 44–48 px de alto fuera del desktop.</p></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Color · Neutros</h2>
+    <div class="grid c6">
+      <div class="sw"><div class="chip" style="background:var(--bg)"></div><div class="meta"><b>background</b><span>#F6F7F9</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--surface);box-shadow:inset 0 0 0 1px var(--border)"></div><div class="meta"><b>surface</b><span>#FFFFFF</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--surface-subtle)"></div><div class="meta"><b>surfaceSubtle</b><span>#F1F3F5</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--border)"></div><div class="meta"><b>border</b><span>#E3E6EA</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--text)"></div><div class="meta"><b>text</b><span>#1A1D21</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--text-2)"></div><div class="meta"><b>textSecondary</b><span>#5B6470</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--text-3)"></div><div class="meta"><b>textMuted</b><span>#8A929E</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--divider)"></div><div class="meta"><b>divider</b><span>#ECEEF1</span></div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Color · Acento único (primary)</h2>
+    <div class="grid c6">
+      <div class="sw"><div class="chip" style="background:var(--primary)"></div><div class="meta"><b>primary</b><span>#2F6FED</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--primary-hover)"></div><div class="meta"><b>primaryHover</b><span>#2A63D4</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--primary-pressed)"></div><div class="meta"><b>primaryPressed</b><span>#2557BC</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--primary-subtle)"></div><div class="meta"><b>primarySubtle</b><span>#EAF1FE</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--focus);opacity:.5"></div><div class="meta"><b>focus</b><span>ring 2px</span></div></div>
+    </div>
+    <p class="t-secondary" style="margin-top:10px">Un solo color de marca. Los módulos <b>no</b> tienen colores propios — se distinguen por icono, texto y estructura.</p>
+  </div>
+
+  <div class="sec">
+    <h2>Color · Navegación (tokens semánticos derivados de primary)</h2>
+    <div class="grid c6">
+      <div class="sw"><div class="chip" style="background:var(--nav-bg)"></div><div class="meta"><b>nav.background</b><span>= primary</span></div></div>
+      <div class="sw"><div class="chip" style="background:#2F6FED"><span style="color:rgba(255,255,255,.72);font-weight:600;display:block;padding:20px 10px">Aa</span></div><div class="meta"><b>nav.foreground</b><span>rgba(#fff,.72)</span></div></div>
+      <div class="sw"><div class="chip" style="background:#2F6FED"><span style="color:#fff;font-weight:600;display:block;padding:20px 10px">Aa</span></div><div class="meta"><b>nav.activeForeground</b><span>#FFFFFF</span></div></div>
+      <div class="sw"><div class="chip" style="background:#2F6FED"><span style="background:rgba(255,255,255,.12);display:block;height:100%"></span></div><div class="meta"><b>nav.hover</b><span>rgba(#fff,.12)</span></div></div>
+      <div class="sw"><div class="chip" style="background:#2F6FED"><span style="background:rgba(255,255,255,.20);display:block;height:100%"></span></div><div class="meta"><b>nav.active</b><span>rgba(#fff,.20)</span></div></div>
+      <div class="sw"><div class="chip" style="background:#2F6FED"><span style="background:var(--nav-logo-bg);width:26px;height:26px;border-radius:7px;display:block;margin:19px auto"></span></div><div class="meta"><b>nav.logo</b><span>surface bg / primary fg</span></div></div>
+    </div>
+    <p class="t-secondary" style="margin-top:10px">El panel de navegación (rail desktop, panel fijado en tablet, drawer móvil) usa <code>--nav-bg = var(--primary)</code>. Si en el futuro cambia <code>--primary</code>, la navegación cambia centralmente — ningún artboard hardcodea el azul. Un solo color: no hay segundo color de marca ni color por módulo.</p>
+  </div>
+
+  <div class="sec">
+    <h2>Color · Estados semánticos (solo para estado, nunca identidad de módulo)</h2>
+    <div class="grid c4">
+      <div class="sw"><div class="chip" style="background:var(--success)"></div><div class="meta"><b>success</b><span>#1E874B / bg #E5F4EC</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--warning)"></div><div class="meta"><b>warning</b><span>#B7791F / bg #FBF0DD</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--danger)"></div><div class="meta"><b>danger</b><span>#D0453B / bg #FBE9E7</span></div></div>
+      <div class="sw"><div class="chip" style="background:var(--info)"></div><div class="meta"><b>info</b><span>= familia primary</span></div></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Tipografía · system font stack, pocos tamaños</h2>
+    <div class="card">
+      <div class="type-row"><span class="tag">Display / título</span><span class="t-display">Existencias por almacén</span><span class="t-secondary">28 / 34 · 700 · -0.02em</span></div>
+      <div class="type-row"><span class="tag">Section title</span><span class="t-section">Resumen de la orden</span><span class="t-secondary">17 / 24 · 600</span></div>
+      <div class="type-row"><span class="tag">Body</span><span class="t-body">Auriculares Sony WH-1000XM5</span><span class="t-secondary">14 / 20 · 400</span></div>
+      <div class="type-row"><span class="tag">Body strong</span><span class="t-bodystrong">Teclado Keychron Q1 Pro</span><span class="t-secondary">14 / 20 · 600</span></div>
+      <div class="type-row"><span class="tag">Secondary</span><span class="t-secondary">SKU AUD-SNY-005 · Almacén A</span><span class="t-secondary">13 / 18 · 400</span></div>
+      <div class="type-row"><span class="tag">Caption / overline</span><span class="t-caption">Movimientos recientes</span><span class="t-secondary">11 / 14 · 600 · 0.06em · uppercase</span></div>
+      <div class="type-row"><span class="tag">Numérico (KPI)</span><span class="t-num">$1,284,900</span><span class="t-secondary">26 · 700 · tabular-nums</span></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Espaciado · base 4</h2>
+    <div class="card">
+      <div class="space-row"><code>space.xs · 4</code><span class="bar" style="width:4px"></span></div>
+      <div class="space-row"><code>space.sm · 8</code><span class="bar" style="width:8px"></span></div>
+      <div class="space-row"><code>space.md · 12</code><span class="bar" style="width:12px"></span></div>
+      <div class="space-row"><code>space.lg · 16</code><span class="bar" style="width:16px"></span></div>
+      <div class="space-row"><code>space.xl · 24</code><span class="bar" style="width:24px"></span></div>
+      <div class="space-row"><code>space.2xl · 32</code><span class="bar" style="width:32px"></span></div>
+      <div class="space-row"><code>space.3xl · 48</code><span class="bar" style="width:48px"></span></div>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="sec" style="margin-top:44px">
+      <h2>Radios</h2>
+      <div class="radii">
+        <div style="border-radius:6px">sm · 6</div>
+        <div style="border-radius:10px">md · 10</div>
+        <div style="border-radius:14px">lg · 14</div>
+        <div style="border-radius:999px">full</div>
+      </div>
+      <p class="t-secondary" style="margin-top:10px">sm: inputs, botones, badges rectangulares. md: tarjetas, menús. lg: drawers, diálogos. full: pills, steppers, avatar.</p>
+    </div>
+    <div class="sec" style="margin-top:44px">
+      <h2>Sombras · solo dos</h2>
+      <div class="shadows">
+        <div style="box-shadow:var(--sh-sm)">shadow.sm</div>
+        <div style="box-shadow:var(--sh-md)">shadow.md — overlay</div>
+      </div>
+      <p class="t-secondary" style="margin-top:10px">La separación estructural se hace con borde y fondo. La sombra queda para lo que flota: riel expandido, drawer, dropdown, diálogo.</p>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Botones · variantes y estados</h2>
+    <div class="card" style="display:flex;flex-direction:column;gap:16px">
+      <div class="btnrow"><span class="btn btn-primary">Primario</span><span class="btn btn-primary hover">Hover</span><span class="btn btn-primary press">Pressed</span><span class="btn btn-primary focus">Focus</span><span class="btn btn-primary dis">Disabled</span><span class="btn btn-primary"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18M5 8l3.5 3.5M12 3l-3.5 5" stroke-linecap="round"/></svg>Cargando…</span></div>
+      <div class="btnrow"><span class="btn btn-secondary">Secundario</span><span class="btn btn-ghost">Ghost</span><span class="btn btn-danger">Destructivo</span><span class="btn btn-secondary focus">Focus</span></div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Formularios y badges</h2>
+    <div class="two">
+      <div class="card" style="display:flex;flex-direction:column;gap:12px">
+        <input class="inp" placeholder="Input normal">
+        <input class="inp focus" value="Input con foco">
+        <input class="inp err" value="Input con error">
+        <div class="t-secondary" style="color:var(--danger)">El SKU ya existe en esta organización.</div>
+      </div>
+      <div class="card" style="display:flex;gap:10px;flex-wrap:wrap;align-content:flex-start">
+        <span class="badge b-success">En stock</span>
+        <span class="badge b-warning">Stock bajo</span>
+        <span class="badge b-danger">Agotado</span>
+        <span class="badge b-info">Pendiente</span>
+        <span class="badge b-neutral">Borrador</span>
+        <span class="badge b-info">Despachada</span>
+        <span class="badge b-warning">Aprob. pendiente</span>
+        <span class="badge b-success">Confirmada</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Iconografía · un solo estilo lineal, trazo 1.75, rejilla de 24</h2>
+    <div class="icons">
+      <div class="icell"><svg><use href="#i-home"/></svg>Inicio</div>
+      <div class="icell"><svg><use href="#i-box"/></svg>Productos</div>
+      <div class="icell"><svg><use href="#i-tag"/></svg>Categorías</div>
+      <div class="icell"><svg><use href="#i-layers"/></svg>Inventario</div>
+      <div class="icell"><svg><use href="#i-swapv"/></svg>Movimientos</div>
+      <div class="icell"><svg><use href="#i-swaph"/></svg>Transferencias</div>
+      <div class="icell"><svg><use href="#i-warehouse"/></svg>Almacenes</div>
+      <div class="icell"><svg><use href="#i-pin"/></svg>Ubicaciones</div>
+      <div class="icell"><svg><use href="#i-qr"/></svg>QR</div>
+      <div class="icell"><svg><use href="#i-upload"/></svg>Importación</div>
+      <div class="icell"><svg><use href="#i-cart"/></svg>Nueva venta</div>
+      <div class="icell"><svg><use href="#i-receipt"/></svg>Historial</div>
+      <div class="icell"><svg><use href="#i-user"/></svg>Clientes</div>
+      <div class="icell"><svg><use href="#i-approve"/></svg>Aprobaciones</div>
+      <div class="icell"><svg><use href="#i-undo"/></svg>Devoluciones</div>
+      <div class="icell"><svg><use href="#i-users"/></svg>Usuarios</div>
+      <div class="icell"><svg><use href="#i-gear"/></svg>Configuración</div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Riel de navegación · colapsado / expandido (desktop)</h2>
+    <div class="railshot">
+      <div class="rs rs-collapsed">
+        <div class="rb"><span class="rlogo">S</span></div>
+        <div class="ra on"><svg><use href="#i-home"/></svg></div>
+        <div class="ra"><svg><use href="#i-box"/></svg></div>
+        <div class="ra"><svg><use href="#i-layers"/></svg></div>
+        <div class="ra"><svg><use href="#i-swaph"/></svg></div>
+        <div class="ra"><svg><use href="#i-cart"/></svg></div>
+        <div class="ra"><svg><use href="#i-gear"/></svg></div>
+      </div>
+      <div class="rs rs-expanded">
+        <div class="rb"><span class="rlogo">S</span>SaaS Inventory</div>
+        <div class="ra on"><svg><use href="#i-home"/></svg>Inicio</div>
+        <div class="ra"><svg><use href="#i-box"/></svg>Productos</div>
+        <div class="ra"><svg><use href="#i-layers"/></svg>Existencias</div>
+        <div class="ra"><svg><use href="#i-swaph"/></svg>Transferencias</div>
+        <div class="ra"><svg><use href="#i-cart"/></svg>Nueva venta</div>
+        <div class="ra"><svg><use href="#i-gear"/></svg>Configuración</div>
+      </div>
+      <div style="max-width:34ch">
+        <p class="t-secondary">Fondo <code>--nav-bg = primary</code>. Colapsado <b>68 px</b> → expandido <b>232 px</b> con <span class="kbd">:hover</span> / <span class="kbd">:focus-within</span>, transición <b>160 ms</b> de <code>width</code> + <code>opacity</code>. El panel expandido se superpone (posición absoluta): la columna de contenido nunca se desplaza. Vuelve a colapsar al salir el puntero. El estado activo se ve incluso colapsado (superficie clara translúcida <code>nav.active</code> + barra izquierda blanca de 3 px). Respeta <span class="kbd">prefers-reduced-motion</span>. Tablet: riel permanente + botón de fijar (superposición + scrim). Móvil: botón de menú → drawer con el mismo fondo primary.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>Modo claro / oscuro</h2>
+    <p class="t-secondary" style="max-width:80ch"><b>FASE 17: solo LIGHT MODE.</b> El mapa de tokens ya está preparado para dark (solo se redefine <code>:root[data-theme="dark"]</code>, incluidos los <code>--nav-*</code>) y este artboard lo demuestra con el chip <b>Tema</b> — pero el theme switcher, la persistencia del tema y el QA completo de dark quedan <b>DIFERIDOS / FUTURE</b>. Los tokens se conservan como prueba de extensibilidad, no como feature comprometida de FASE 17.</p>
+  </div>
+
+  <div class="sec">
+    <h2>Elementos de referencia — no comprometidos en FASE 17</h2>
+    <p class="t-secondary" style="max-width:88ch">Algunos artboards muestran elementos que <b>no tienen contrato backend</b> y por tanto NO obligan a FASE 17 a implementarlos: búsqueda global del header, campana / notificaciones, botón <b>Exportar</b>, y todos los KPIs / gráficos agregados de Home e Historial (analítica → <b>FASE 18 — Dashboards &amp; Reports</b>). Aparecen como referencia visual marcada <b>PROTOTYPE ONLY</b>. FASE 17 no crea endpoints agregados, no calcula KPIs en cliente y no carga todas las ventas para métricas; el Home se mantiene simple hasta FASE 18. Regla general: FASE 17 no crea botones muertos — un control sin soporte real se retira o se marca FUTURE.</p>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Tema"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.dark ? 'dark' : 'light' };
+  }
+}
+</script>
+</body>
+</html>

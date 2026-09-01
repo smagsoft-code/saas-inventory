@@ -1,0 +1,251 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    .root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--border:#E3E6EA;--divider:#ECEEF1;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-hover:#2A63D4;--primary-subtle:#EAF1FE;
+      --success:#1E874B;--success-bg:#E5F4EC;--warning:#B7791F;--warning-bg:#FBF0DD;--danger:#D0453B;--danger-bg:#FBE9E7;
+      /* semantic navigation tokens — derive from primary, never hard-coded per screen */
+      --nav-bg:var(--primary);--nav-fg:rgba(255,255,255,.72);--nav-fg-strong:#FFFFFF;
+      --nav-hover:rgba(255,255,255,.12);--nav-active:rgba(255,255,255,.20);
+      --nav-divider:rgba(255,255,255,.16);--nav-focus:#FFFFFF;
+      --nav-logo-bg:#FFFFFF;--nav-logo-fg:var(--primary);
+      --r-sm:6px;--r-md:10px;--r-lg:14px;
+      --sh-sm:0 1px 2px rgba(16,24,40,.05),0 1px 1px rgba(16,24,40,.03);
+      --sh-md:0 6px 20px rgba(16,24,40,.10),0 2px 6px rgba(16,24,40,.05);
+      --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+      min-height:1080px;background:var(--bg);color:var(--text);font-family:var(--font);
+      font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased;position:relative;
+    }
+    .root[data-theme="dark"]{
+      --bg:#14161A;--surface:#1B1E24;--surface-subtle:#23272E;--border:#2C313A;--divider:#242832;
+      --text:#F2F4F7;--text-2:#A7B0BD;--text-3:#79828F;
+      --primary:#5B93F5;--primary-hover:#6E9FF6;--primary-subtle:#1E2A44;
+      --success:#3DBB78;--success-bg:#16281F;--warning:#D9A441;--warning-bg:#2A2213;--danger:#E9695F;--danger-bg:#2C1A19;
+      --nav-bg:#1B2740;--nav-fg:rgba(255,255,255,.66);--nav-hover:rgba(255,255,255,.08);--nav-active:rgba(91,147,245,.28);
+      --nav-divider:rgba(255,255,255,.10);--nav-logo-bg:var(--primary);--nav-logo-fg:#0F1522;
+    }
+    .root *{box-sizing:border-box}
+    body{background:#F6F7F9}
+    .app{display:grid;grid-template-columns:68px 1fr;min-height:1080px}
+    /* ---- Sidebar rail: CSS-only hover / focus expansion, overlays content (no layout shift) ---- */
+    .rail{position:relative;width:68px}
+    .rail-inner{position:absolute;inset:0;width:68px;background:var(--nav-bg);
+      display:flex;flex-direction:column;overflow:hidden;transition:width .16s ease;z-index:40}
+    .rail-inner:hover,.rail-inner:focus-within{width:232px;box-shadow:var(--sh-md)}
+    .brand{display:flex;align-items:center;gap:10px;height:56px;padding:0 18px;border-bottom:1px solid var(--nav-divider);white-space:nowrap}
+    .logo{width:30px;height:30px;border-radius:8px;background:var(--nav-logo-bg);color:var(--nav-logo-fg);flex:none;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px}
+    .brand b{font-weight:600;color:var(--nav-fg-strong,#fff);opacity:0;transition:opacity .12s ease}
+    .rail-inner:hover .brand b,.rail-inner:focus-within .brand b{opacity:1}
+    .nav{flex:1;overflow-y:auto;padding:8px 12px 16px;display:flex;flex-direction:column;gap:1px}
+    .nav::-webkit-scrollbar{width:0}
+    .cap{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.55);
+      padding:14px 10px 4px;white-space:nowrap;opacity:0;transition:opacity .12s}
+    .rail-inner:hover .cap,.rail-inner:focus-within .cap{opacity:1}
+    .na{display:flex;align-items:center;gap:12px;height:40px;padding:0 10px;border-radius:8px;color:var(--nav-fg);white-space:nowrap;position:relative;text-decoration:none}
+    .na:hover{background:var(--nav-hover);color:var(--nav-fg-strong,#fff)}
+    .na:focus-visible{outline:2px solid var(--nav-focus,#fff);outline-offset:-2px}
+    .na svg{width:20px;height:20px;flex:none}
+    .na .lbl{opacity:0;transition:opacity .12s ease}
+    .rail-inner:hover .na .lbl,.rail-inner:focus-within .na .lbl{opacity:1}
+    .na[aria-current="page"]{background:var(--nav-active);color:var(--nav-fg-strong,#fff);font-weight:600}
+    .na[aria-current="page"]::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:3px;border-radius:0 3px 3px 0;background:#fff}
+    @media (prefers-reduced-motion:reduce){.rail-inner,.brand b,.cap,.na .lbl{transition:none}}
+    /* ---- Main column ---- */
+    .main{min-width:0;display:flex;flex-direction:column}
+    .hdr{position:sticky;top:0;height:56px;display:flex;align-items:center;gap:16px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border);z-index:10}
+    .search{flex:1;max-width:420px;height:38px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface-subtle);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text-3);font-size:13px}
+    .ib{width:38px;height:38px;border-radius:var(--r-sm);border:0;background:transparent;color:var(--text-2);display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .ib:hover{background:var(--surface-subtle)}
+    .spacer{flex:1}
+    .av{width:32px;height:32px;border-radius:999px;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px}
+    .content{padding:24px;display:flex;flex-direction:column;gap:20px;max-width:1180px}
+    .phead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+    h1{font-size:26px;line-height:32px;font-weight:700;letter-spacing:-.02em;margin:0}
+    .psub{color:var(--text-2);margin:4px 0 0}
+    .btn{height:38px;padding:0 16px;border-radius:var(--r-sm);border:1px solid transparent;font:inherit;font-weight:600;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+    .btn svg{width:16px;height:16px}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-primary:hover{background:var(--primary-hover)}
+    .btn-secondary{background:var(--surface);color:var(--text);border-color:var(--border)}
+    .btn-secondary:hover{background:var(--surface-subtle)}
+    .demo{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--warning);background:var(--warning-bg);padding:4px 10px;border-radius:999px}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md)}
+    .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px}
+    .kpi{padding:16px}
+    .kpi .kl{font-size:13px;color:var(--text-2);display:flex;align-items:center;gap:8px}
+    .kpi .kl svg{width:16px;height:16px;color:var(--text-3)}
+    .kpi .kv{font-size:26px;font-weight:700;margin-top:10px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+    .kpi .kd{font-size:12px;margin-top:4px;color:var(--text-3)}
+    .up{color:var(--success)}
+    .grid2{display:grid;grid-template-columns:1.55fr 1fr;gap:16px}
+    .ph{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--divider)}
+    .ph h3{margin:0;font-size:15px;font-weight:600}
+    .ph .tab{font-size:12px;color:var(--text-2);background:var(--surface-subtle);padding:4px 10px;border-radius:999px}
+    .bars{display:flex;align-items:flex-end;gap:14px;height:172px;padding:20px 18px 34px}
+    .bar{flex:1;background:var(--surface-subtle);border-radius:5px 5px 0 0;position:relative}
+    .bar i{position:absolute;left:0;right:0;bottom:0;background:var(--primary);border-radius:5px 5px 0 0;opacity:.9}
+    .bar span{position:absolute;left:0;right:0;bottom:-22px;text-align:center;font-size:11px;color:var(--text-3)}
+    .lr{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--divider);font-size:13px}
+    .lr:last-child{border-bottom:0}
+    .lr .dot{width:8px;height:8px;border-radius:999px;flex:none}
+    .lr .grow{flex:1;min-width:0}
+    .lr .t2{color:var(--text-3);font-size:12px}
+    .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+    .b-success{color:var(--success);background:var(--success-bg)}
+    .b-warning{color:var(--warning);background:var(--warning-bg)}
+    .b-danger{color:var(--danger);background:var(--danger-bg)}
+    .b-neutral{color:var(--text-2);background:var(--surface-subtle)}
+    .quick{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}
+    .qa{padding:16px;border-radius:var(--r-md);border:1px solid var(--border);background:var(--surface);display:flex;flex-direction:column;gap:10px;color:var(--text);text-decoration:none}
+    .qa:hover{border-color:var(--primary);background:var(--primary-subtle)}
+    .qa svg{width:20px;height:20px;color:var(--primary)}
+    .qa b{font-weight:600;font-size:14px}
+    .link{color:var(--primary);font-size:13px;font-weight:600}
+    a.link:hover{color:var(--primary-hover)}
+  </style>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="dc-icons" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></g>
+  </defs>
+  <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v10h12V10"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8 12 4l8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/></symbol>
+  <symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h7l9 9-7 7-9-9V4Z"/><path d="M7.5 7.5h.01"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 3 9l9 5 9-5-9-5Z"/><path d="M3 14l9 5 9-5"/></symbol>
+  <symbol id="i-swapv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4v13M8 4 5 7.5M8 4l3 3.5"/><path d="M16 20V7M16 20l3-3.5M16 20l-3-3.5"/></symbol>
+  <symbol id="i-swaph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13M17 9l-3.5-3M17 9l-3.5 3"/><path d="M20 15H7M7 15l3.5-3M7 15l3.5 3"/></symbol>
+  <symbol id="i-warehouse" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V9l9-5 9 5v12M3 21h18M8 21v-6h8v6"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.5 7-12a7 7 0 0 0-14 0c0 5.5 7 12 7 12Z"/><circle cx="12" cy="9" r="2.4"/></symbol>
+  <symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h3v3M20 14v6h-6"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M12 4 8 8M12 4l4 4"/><path d="M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></symbol>
+  <symbol id="i-cart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h2l2.4 10h9.2L20 8H7"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M5 20a7 7 0 0 1 14 0"/></symbol>
+  <symbol id="i-approve" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 14 4.7l2.5-.2.9 2.4 2.1 1.4-.9 2.3.9 2.3-2.1 1.4-.9 2.4-2.5-.2L12 20.8 10 19.3l-2.5.2-.9-2.4-2.1-1.4.9-2.3-.9-2.3 2.1-1.4.9-2.4L10 4.7Z"/><path d="M9.5 12l1.8 1.8L15 10"/></symbol>
+  <symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.4"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5.2a3 3 0 0 1 0 5.6M17.5 20a6 6 0 0 0-3-4.7"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 12c0-.5 0-.9-.1-1.3l1.9-1.4-1.9-3.3-2.2 1a7 7 0 0 0-2.3-1.3L14.4 3h-3.8l-.4 2.4A7 7 0 0 0 7.9 6.7l-2.2-1L3.8 9l1.9 1.4a7 7 0 0 0 0 2.6L3.8 15l1.9 3.3 2.2-1a7 7 0 0 0 2.3 1.3l.4 2.4h3.8l.4-2.4a7 7 0 0 0 2.3-1.3l2.2 1L20.2 15l-1.9-1.4c.1-.4.1-.8.1-1.3Z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 16V10a6 6 0 0 1 12 0v6l1.5 2h-15L6 16Z"/><path d="M10 20a2 2 0 0 0 4 0"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M12 15l-4-4M12 15l4-4"/><path d="M5 19h14"/></symbol>
+</svg>
+
+<div class="root" data-theme="{{theme}}">
+<div class="app">
+  <div class="rail">
+    <nav class="rail-inner" aria-label="Navegación principal">
+      <div class="brand"><span class="logo">S</span><b>SaaS Inventory</b></div>
+      <div class="nav">
+        <a class="na" href="#" aria-current="page"><svg><use href="#i-home"/></svg><span class="lbl">Inicio</span></a>
+        <div class="cap">Catálogo</div>
+        <a class="na" href="#"><svg><use href="#i-box"/></svg><span class="lbl">Productos</span></a>
+        <a class="na" href="#"><svg><use href="#i-tag"/></svg><span class="lbl">Categorías</span></a>
+        <a class="na" href="#"><svg><use href="#i-upload"/></svg><span class="lbl">Importación</span></a>
+        <div class="cap">Inventario</div>
+        <a class="na" href="#"><svg><use href="#i-layers"/></svg><span class="lbl">Existencias</span></a>
+        <a class="na" href="#"><svg><use href="#i-swapv"/></svg><span class="lbl">Movimientos</span></a>
+        <a class="na" href="#"><svg><use href="#i-swaph"/></svg><span class="lbl">Transferencias</span></a>
+        <a class="na" href="#"><svg><use href="#i-warehouse"/></svg><span class="lbl">Almacenes</span></a>
+        <a class="na" href="#"><svg><use href="#i-pin"/></svg><span class="lbl">Ubicaciones</span></a>
+        <a class="na" href="#"><svg><use href="#i-qr"/></svg><span class="lbl">Códigos QR</span></a>
+        <div class="cap">Ventas</div>
+        <a class="na" href="#"><svg><use href="#i-cart"/></svg><span class="lbl">Nueva venta</span></a>
+        <a class="na" href="#"><svg><use href="#i-receipt"/></svg><span class="lbl">Historial</span></a>
+        <a class="na" href="#"><svg><use href="#i-user"/></svg><span class="lbl">Clientes</span></a>
+        <a class="na" href="#"><svg><use href="#i-approve"/></svg><span class="lbl">Aprobaciones</span></a>
+        <a class="na" href="#"><svg><use href="#i-undo"/></svg><span class="lbl">Devoluciones</span></a>
+        <div class="cap">Administración</div>
+        <a class="na" href="#"><svg><use href="#i-users"/></svg><span class="lbl">Usuarios</span></a>
+        <a class="na" href="#"><svg><use href="#i-gear"/></svg><span class="lbl">Configuración</span></a>
+      </div>
+    </nav>
+  </div>
+
+  <div class="main">
+    <header class="hdr">
+      <div class="search"><svg width="16" height="16"><use href="#i-search"/></svg>Buscar productos, órdenes, clientes…</div>
+      <div class="spacer"></div>
+      <button class="ib" aria-label="Notificaciones"><svg width="18" height="18"><use href="#i-bell"/></svg></button>
+      <div class="av">HM</div>
+    </header>
+
+    <div class="content">
+      <div class="phead">
+        <div>
+          <h1>Inicio</h1>
+          <p class="psub">Resumen de inventario y ventas · Acme Distribución</p>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <span class="demo">Datos de demostración</span>
+          <button class="btn btn-secondary" style="opacity:.55"><svg><use href="#i-download"/></svg>Exportar</button>
+          <button class="btn btn-primary"><svg><use href="#i-plus"/></svg>Nueva venta</button>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--text-3)">
+        <span class="demo" style="color:var(--primary);background:var(--primary-subtle)">Analítica → FASE 18</span>
+        Los KPIs, el gráfico, «Exportar», la búsqueda global y las notificaciones son <b style="color:var(--text-2)">referencia (PROTOTYPE ONLY)</b> — sin contrato backend. FASE 17 mantiene un Home simple y no crea endpoints agregados.
+      </div>
+
+      <div class="kpis" style="opacity:.72">
+        <div class="card kpi"><div class="kl"><svg><use href="#i-layers"/></svg>Valor de inventario</div><div class="kv">$1,284,900</div><div class="kd"><span class="up">▲ 2.4%</span> vs. mes anterior</div></div>
+        <div class="card kpi"><div class="kl"><svg><use href="#i-box"/></svg>Ítems en stock</div><div class="kv">48,320</div><div class="kd">312 SKU activos</div></div>
+        <div class="card kpi"><div class="kl"><svg><use href="#i-warehouse"/></svg>Almacenes</div><div class="kv">4 / 4</div><div class="kd">Todos operativos</div></div>
+        <div class="card kpi"><div class="kl"><svg><use href="#i-receipt"/></svg>Ventas del mes</div><div class="kv">$92,150</div><div class="kd"><span class="up">▲ 6.1%</span> · 128 órdenes</div></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <div class="ph"><h3>Movimiento de inventario</h3><span class="tab">Últimos 30 días</span></div>
+          <div class="bars">
+            <div class="bar"><i style="height:38%"></i><span>S1</span></div>
+            <div class="bar"><i style="height:62%"></i><span>S2</span></div>
+            <div class="bar"><i style="height:48%"></i><span>S3</span></div>
+            <div class="bar"><i style="height:74%"></i><span>S4</span></div>
+            <div class="bar"><i style="height:58%"></i><span>S5</span></div>
+            <div class="bar"><i style="height:88%"></i><span>S6</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="ph"><h3>Alertas de stock bajo</h3><a class="link" href="#">Ver todo</a></div>
+          <div class="lr"><span class="dot" style="background:var(--danger)"></span><div class="grow"><div>Módulo de lente</div><div class="t2">SKU CAM-LEN-04 · Almacén A</div></div><span class="badge b-danger">3 restantes</span></div>
+          <div class="lr"><span class="dot" style="background:var(--warning)"></span><div class="grow"><div>Cable USB-C 2m</div><div class="t2">SKU CBL-USB-2M · Bodega 22</div></div><span class="badge b-warning">12 restantes</span></div>
+          <div class="lr"><span class="dot" style="background:var(--warning)"></span><div class="grow"><div>Cuaderno Moleskine</div><div class="t2">SKU MOL-BLK-A5 · Almacén B</div></div><span class="badge b-warning">8 restantes</span></div>
+          <div class="lr"><span class="dot" style="background:var(--success)"></span><div class="grow"><div>Transferencia TRF-1042 recibida</div><div class="t2">Almacén A → Almacén C · hace 2 h</div></div><span class="badge b-success">Completa</span></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="ph" style="border:0;padding:0 2px 12px"><h3>Acciones rápidas</h3></div>
+        <div class="quick">
+          <a class="qa" href="#"><svg><use href="#i-download"/></svg><b>Recibir stock</b><span class="t2" style="color:var(--text-3);font-size:12px">Registrar entrada de mercancía</span></a>
+          <a class="qa" href="#"><svg><use href="#i-swaph"/></svg><b>Nueva transferencia</b><span class="t2" style="color:var(--text-3);font-size:12px">Mover stock entre almacenes</span></a>
+          <a class="qa" href="#"><svg><use href="#i-cart"/></svg><b>Nueva venta</b><span class="t2" style="color:var(--text-3);font-size:12px">Crear orden o nota de venta</span></a>
+          <a class="qa" href="#"><svg><use href="#i-upload"/></svg><b>Importar Excel</b><span class="t2" style="color:var(--text-3);font-size:12px">Alta masiva de catálogo</span></a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"dark":{"editor":"boolean","default":false,"section":"Tema"}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.dark ? 'dark' : 'light' };
+  }
+}
+</script>
+</body>
+</html>

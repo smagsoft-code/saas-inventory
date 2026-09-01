@@ -1,0 +1,137 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--border:#E3E6EA;--divider:#ECEEF1;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-hover:#2A63D4;--primary-subtle:#EAF1FE;
+      --success:#1E874B;--success-bg:#E5F4EC;--warning:#B7791F;--warning-bg:#FBF0DD;--danger:#D0453B;--danger-bg:#FBE9E7;
+      /* semantic navigation tokens — derived from primary, never hard-coded per screen */
+      --nav-bg:var(--primary);--nav-fg:rgba(255,255,255,.72);--nav-fg-strong:#FFFFFF;
+      --nav-hover:rgba(255,255,255,.12);--nav-active:rgba(255,255,255,.20);
+      --nav-divider:rgba(255,255,255,.16);--nav-focus:#FFFFFF;
+      --nav-logo-bg:#FFFFFF;--nav-logo-fg:var(--primary);--info:#2F6FED;--info-bg:#EAF1FE;
+      --r-sm:6px;--r-md:10px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    .app{display:grid;grid-template-columns:68px 1fr;min-height:1020px}
+    .rail{width:68px;background:var(--nav-bg);display:flex;flex-direction:column;align-items:center}
+    .logo{width:30px;height:30px;border-radius:8px;background:var(--nav-logo-bg);color:var(--nav-logo-fg);display:flex;align-items:center;justify-content:center;font-weight:700;margin:13px 0}
+    .ni{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--nav-fg);margin-bottom:4px}
+    .ni:hover{background:var(--nav-hover);color:#fff}
+    .ni:focus-visible{outline:2px solid var(--nav-focus);outline-offset:-2px}
+    .ni.active{background:var(--nav-active);color:#fff}
+    .ni svg{width:20px;height:20px}
+    .main{min-width:0;display:flex;flex-direction:column}
+    .hdr{height:56px;display:flex;align-items:center;gap:16px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .search{flex:1;max-width:420px;height:38px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface-subtle);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text-3);font-size:13px}
+    .av{width:32px;height:32px;border-radius:999px;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;margin-left:auto}
+    .content{padding:24px;display:flex;flex-direction:column;gap:16px;max-width:1240px}
+    .phead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+    h1{font-size:26px;line-height:32px;font-weight:700;letter-spacing:-.02em;margin:0}
+    .psub{color:var(--text-2);margin:4px 0 0}
+    .demo{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--warning);background:var(--warning-bg);padding:4px 10px;border-radius:999px}
+    .split{display:grid;grid-template-columns:340px 1fr;gap:16px;align-items:start}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden}
+    .lh{padding:12px 14px;border-bottom:1px solid var(--divider);font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3)}
+    .li{padding:13px 14px;border-bottom:1px solid var(--divider);cursor:pointer}
+    .li:last-child{border-bottom:0}
+    .li.sel{background:var(--primary-subtle)}
+    .li .code{font-weight:600;font-variant-numeric:tabular-nums}
+    .li .t3{color:var(--text-3);font-size:12px;margin-top:2px}
+    .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
+    .b-info{color:var(--info);background:var(--info-bg)}
+    .b-warning{color:var(--warning);background:var(--warning-bg)}
+    .b-success{color:var(--success);background:var(--success-bg)}
+    .b-neutral{color:var(--text-2);background:var(--surface-subtle)}
+    .det-h{padding:16px 18px;border-bottom:1px solid var(--divider);display:flex;align-items:center;justify-content:space-between}
+    .det-h h2{margin:0;font-size:18px;font-weight:700}
+    .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;padding:16px 18px;border-bottom:1px solid var(--divider);font-size:13px}
+    .meta .ml{color:var(--text-3);font-size:12px}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    thead th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);padding:10px 18px;background:var(--surface-subtle);border-bottom:1px solid var(--border)}
+    tbody td{padding:12px 18px;border-bottom:1px solid var(--divider);vertical-align:middle}
+    .pname{font-weight:600}
+    .num{font-variant-numeric:tabular-nums;text-align:center}
+    .selectlike{display:inline-flex;align-items:center;gap:8px;justify-content:space-between;min-width:150px;height:34px;border:1px solid var(--border);border-radius:var(--r-sm);padding:0 10px;font-size:13px}
+    .selectlike svg{width:13px;height:13px;color:var(--text-3)}
+    .disp-restock{border-color:var(--success);color:var(--success)}
+    .disp-quar{border-color:var(--warning);color:var(--warning)}
+    .foot{display:flex;justify-content:space-between;align-items:center;padding:16px 18px}
+    .btn{height:38px;padding:0 16px;border-radius:var(--r-sm);border:1px solid transparent;font:inherit;font-weight:600;cursor:pointer}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-secondary{background:var(--surface);color:var(--text-2);border-color:var(--border)}
+    .hint{font-size:12px;color:var(--text-3);padding:0 18px 16px}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="un" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  <symbol id="h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5M6 10v10h12V10"/></symbol>
+  <symbol id="ct" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h2l2.4 10h9.2L20 8H7"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></symbol>
+  <symbol id="ap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2 14 4.7l2.5-.2.9 2.4 2.1 1.4-.9 2.3.9 2.3-2.1 1.4-.9 2.4-2.5-.2L12 20.8 10 19.3l-2.5.2-.9-2.4-2.1-1.4.9-2.3-.9-2.3 2.1-1.4.9-2.4L10 4.7Z"/><path d="M9.5 12l1.8 1.8L15 10"/></symbol>
+  <symbol id="s" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="cv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+</svg>
+<div class="app">
+  <div class="rail">
+    <div class="logo">S</div>
+    <span class="ni"><svg><use href="#h"/></svg></span>
+    <span class="ni"><svg><use href="#ct"/></svg></span>
+    <span class="ni"><svg><use href="#ap"/></svg></span>
+    <span class="ni active"><svg><use href="#un"/></svg></span>
+  </div>
+  <div class="main">
+    <header class="hdr"><div class="search"><svg width="16" height="16"><use href="#s"/></svg>Buscar…</div><div class="av">HM</div></header>
+    <div class="content">
+      <div class="phead">
+        <div><h1>Devoluciones</h1><p class="psub">Reversos trazados a órdenes confirmadas · disposición por línea</p></div>
+        <span class="demo">Datos de demostración</span>
+      </div>
+      <div class="split">
+        <div class="card">
+          <div class="lh">Solicitudes</div>
+          <div class="li sel"><div style="display:flex;justify-content:space-between"><span class="code">DEV-0087</span><span class="badge b-warning">Inspeccionando</span></div><div class="t3">ORD-000478 · Comercial Márquez · 3 líneas</div></div>
+          <div class="li"><div style="display:flex;justify-content:space-between"><span class="code">DEV-0086</span><span class="badge b-info">Solicitada</span></div><div class="t3">ORD-000471 · Distribuidora Lara · 1 línea</div></div>
+          <div class="li"><div style="display:flex;justify-content:space-between"><span class="code">DEV-0085</span><span class="badge b-success">Resuelta</span></div><div class="t3">ORD-000465 · Tienda El Roble · 2 líneas</div></div>
+          <div class="li"><div style="display:flex;justify-content:space-between"><span class="code">DEV-0084</span><span class="badge b-neutral">Cancelada</span></div><div class="t3">ORD-000460 · Ferretería Súper · 1 línea</div></div>
+        </div>
+
+        <div class="card">
+          <div class="det-h">
+            <div><h2>DEV-0087</h2><div style="color:var(--text-3);font-size:12px;margin-top:2px">Solicitada 30 ago · Recibe: Bodega A</div></div>
+            <span class="badge b-warning">Inspeccionando</span>
+          </div>
+          <div class="meta">
+            <div><div class="ml">Orden original</div>ORD-000478</div>
+            <div><div class="ml">Cliente</div>Comercial Márquez S.A.</div>
+            <div><div class="ml">Motivo</div>Producto defectuoso</div>
+          </div>
+          <table>
+            <thead><tr><th>Producto</th><th class="num">Cant.</th><th>Disposición</th><th>Ubicación</th></tr></thead>
+            <tbody>
+              <tr><td><div class="pname">Sony WH-1000XM5</div><div style="color:var(--text-3);font-size:12px">AUD-SNY-005</div></td><td class="num">1</td><td><span class="selectlike disp-restock">Reingresar <svg><use href="#cv"/></svg></span></td><td><span class="selectlike">Almacén A · Vendible <svg><use href="#cv"/></svg></span></td></tr>
+              <tr><td><div class="pname">Keychron Q1 Pro</div><div style="color:var(--text-3);font-size:12px">KBD-KEY-Q1P</div></td><td class="num">1</td><td><span class="selectlike disp-quar">Cuarentena <svg><use href="#cv"/></svg></span></td><td><span class="selectlike">Almacén A · No vendible <svg><use href="#cv"/></svg></span></td></tr>
+              <tr><td><div class="pname">Hub USB-C Satechi</div><div style="color:var(--text-3);font-size:12px">ACC-SAT-U8</div></td><td class="num">1</td><td><span class="selectlike">Seleccionar… <svg><use href="#cv"/></svg></span></td><td><span class="selectlike" style="color:var(--text-3)">—</span></td></tr>
+            </tbody>
+          </table>
+          <p class="hint">Mapa 1:1 al contrato: dispositions <code>restock · quarantine · damaged · scrap</code>; estados de devolución <code>requested · inspecting · resolved · cancelled</code>. Reingresar exige ubicación vendible; cuarentena / dañado / desecho exigen no vendible. Cada línea genera un movimiento <code>RETURN</code> al resolver (ADR-0021). Aprobaciones de precio reutilizan este mismo patrón master-detail con estados <code>pending · approved · rejected · cancelled</code> y la regla «el solicitante no puede aprobar su propia solicitud».</p>
+          <div class="foot">
+            <button class="btn btn-secondary">Cancelar devolución</button>
+            <div style="display:flex;gap:10px"><button class="btn btn-secondary">Guardar inspección</button><button class="btn btn-primary">Resolver y aplicar al stock</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

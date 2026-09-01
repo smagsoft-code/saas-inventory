@@ -1,0 +1,165 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--border:#E3E6EA;--divider:#ECEEF1;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-hover:#2A63D4;--primary-subtle:#EAF1FE;--warning:#B7791F;--warning-bg:#FBF0DD;
+      --r-sm:6px;--r-md:10px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    body{background:#F6F7F9}
+    .app{display:grid;grid-template-columns:68px 1fr;min-height:1360px}
+    .rail{width:68px;background:var(--nav-bg);display:flex;flex-direction:column;align-items:center}
+    .logo{width:30px;height:30px;border-radius:8px;background:var(--nav-logo-bg);color:var(--nav-logo-fg);display:flex;align-items:center;justify-content:center;font-weight:700;margin:13px 0}
+    .ni{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--nav-fg);margin-bottom:4px}
+    .ni:hover{background:var(--nav-hover);color:#fff}
+    .ni:focus-visible{outline:2px solid var(--nav-focus);outline-offset:-2px}
+    .ni.active{background:var(--nav-active);color:#fff}
+    .ni svg{width:20px;height:20px}
+    .main{min-width:0;display:flex;flex-direction:column}
+    .hdr{height:56px;display:flex;align-items:center;gap:16px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .crumb{color:var(--text-3);font-size:13px}
+    .crumb b{color:var(--text)}
+    .av{width:32px;height:32px;border-radius:999px;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;margin-left:auto}
+    .content{padding:24px;display:grid;grid-template-columns:1fr 320px;gap:24px;max-width:1160px;align-items:start}
+    h1{font-size:26px;line-height:32px;font-weight:700;letter-spacing:-.02em;margin:0 0 20px}
+    .sec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);margin-bottom:16px}
+    .sec-h{padding:14px 18px;border-bottom:1px solid var(--divider)}
+    .sec-h b{font-size:15px}
+    .sec-h p{margin:2px 0 0;color:var(--text-3);font-size:12px}
+    .sec-b{padding:18px;display:flex;flex-direction:column;gap:16px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    label{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+    .inp{width:100%;height:38px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);padding:0 12px;font:inherit;color:var(--text)}
+    .inp.area{height:auto;padding:10px 12px;min-height:76px}
+    .hint{font-size:12px;color:var(--text-3);margin-top:5px}
+    .prefix{display:flex;align-items:center;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
+    .prefix span{padding:0 10px;color:var(--text-3);background:var(--surface-subtle);height:38px;display:flex;align-items:center;border-right:1px solid var(--border)}
+    .prefix input{border:0;height:38px;padding:0 12px;font:inherit;flex:1;background:var(--surface);color:var(--text)}
+    .attr{display:grid;grid-template-columns:160px 1fr;gap:12px;align-items:center}
+    .pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:var(--surface-subtle);border:1px solid var(--border);border-radius:999px;padding:4px 10px;color:var(--text-2)}
+    .aside{position:sticky;top:80px;display:flex;flex-direction:column;gap:16px}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:16px}
+    .card b{font-size:14px}
+    .imgbox{border:1px dashed var(--border);border-radius:var(--r-md);height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--text-3);background:var(--surface-subtle);font-size:13px}
+    .btn{height:38px;padding:0 16px;border-radius:var(--r-sm);border:1px solid transparent;font:inherit;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+    .btn-primary{background:var(--primary);color:#fff;width:100%}
+    .btn-secondary{background:var(--surface);color:var(--text);border-color:var(--border);width:100%}
+    .demo{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--warning);background:var(--warning-bg);padding:4px 10px;border-radius:999px}
+    .selectlike{display:flex;align-items:center;justify-content:space-between;height:38px;border:1px solid var(--border);border-radius:var(--r-sm);padding:0 12px;color:var(--text)}
+    .selectlike svg{width:14px;height:14px;color:var(--text-3)}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="bx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8 12 4l8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/></symbol>
+  <symbol id="h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5M6 10v10h12V10"/></symbol>
+  <symbol id="ly" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 3 9l9 5 9-5-9-5Z"/><path d="M3 14l9 5 9-5"/></symbol>
+  <symbol id="ct" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h2l2.4 10h9.2L20 8H7"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></symbol>
+  <symbol id="cv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M12 4 8 8M12 4l4 4M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></symbol>
+</svg>
+<div class="app">
+  <div class="rail">
+    <div class="logo">S</div>
+    <span class="ni"><svg><use href="#h"/></svg></span>
+    <span class="ni active"><svg><use href="#bx"/></svg></span>
+    <span class="ni"><svg><use href="#ly"/></svg></span>
+    <span class="ni"><svg><use href="#ct"/></svg></span>
+  </div>
+  <div class="main">
+    <header class="hdr">
+      <span class="crumb">Productos / <b>Nuevo producto</b></span>
+      <div class="av">HM</div>
+    </header>
+    <div class="content">
+      <div>
+        <h1>Nuevo producto</h1>
+
+        <div class="sec">
+          <div class="sec-h"><b>Información general</b><p>Datos que identifican el producto.</p></div>
+          <div class="sec-b">
+            <div><label>Nombre</label><input class="inp" value="Auriculares Sony WH-1000XM5"></div>
+            <div class="grid2">
+              <div><label>SKU</label><input class="inp" value="AUD-SNY-005"><div class="hint">Único por organización.</div></div>
+              <div><label>Código de barras (opcional)</label><input class="inp" value="4548736141438"></div>
+            </div>
+            <div><label>Descripción</label><textarea class="inp area">Auriculares inalámbricos con cancelación de ruido adaptable.</textarea></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-h"><b>Clasificación</b><p>Categoría, marca y unidad de medida.</p></div>
+          <div class="sec-b">
+            <div class="grid2">
+              <div><label>Categoría</label><div class="selectlike">Audio <svg><use href="#cv"/></svg></div></div>
+              <div><label>Marca</label><div class="selectlike">Sony <svg><use href="#cv"/></svg></div></div>
+            </div>
+            <div class="grid2">
+              <div><label>Unidad de medida</label><div class="selectlike">Unidad <svg><use href="#cv"/></svg></div></div>
+              <div><label>Seguimiento</label><div class="selectlike">Por existencias <svg><use href="#cv"/></svg></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-h"><b>Precios</b><p>Precio base y rango negociable. La visibilidad del piso depende del permiso <code>pricing.floor.view</code>.</p></div>
+          <div class="sec-b">
+            <div class="grid2">
+              <div><label>Precio base</label><div class="prefix"><span>$</span><input value="349.99"></div></div>
+              <div><label>Costo unitario</label><div class="prefix"><span>$</span><input value="210.00"></div></div>
+            </div>
+            <div class="grid2">
+              <div><label>Precio mínimo (piso)</label><div class="prefix"><span>$</span><input value="299.00"></div></div>
+              <div><label>Precio máximo</label><div class="prefix"><span>$</span><input value="399.00"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-h"><b>Atributos</b><p>Definidos por la categoría seleccionada.</p></div>
+          <div class="sec-b">
+            <div class="attr"><label style="margin:0">Color</label><div class="selectlike">Negro <svg><use href="#cv"/></svg></div></div>
+            <div class="attr"><label style="margin:0">Conectividad</label><div class="selectlike">Bluetooth 5.2 <svg><use href="#cv"/></svg></div></div>
+            <div class="attr"><label style="margin:0">Garantía (meses)</label><input class="inp" value="24"></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill">+ Variante: Color</span><span class="pill">+ Variante: Bundle</span></div>
+          </div>
+        </div>
+
+        <div class="sec">
+          <div class="sec-h"><b>Información adicional</b><p>Opcional.</p></div>
+          <div class="sec-b">
+            <div class="grid2">
+              <div><label>Peso (kg)</label><input class="inp" value="0.25"></div>
+              <div><label>Proveedor principal</label><div class="selectlike">Distribuidora Nord <svg><use href="#cv"/></svg></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="aside">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><b>Publicar</b><span class="demo">Demo</span></div>
+          <div class="selectlike" style="margin-bottom:12px">Estado: Borrador <svg><use href="#cv"/></svg></div>
+          <button class="btn btn-primary">Guardar producto</button>
+          <button class="btn btn-secondary" style="margin-top:8px">Guardar y crear otro</button>
+        </div>
+        <div class="card">
+          <b>Imagen</b>
+          <div class="imgbox" style="margin-top:12px"><svg width="22" height="22"><use href="#up"/></svg>Arrastra o selecciona<br>PNG / JPG · máx 4&nbsp;MB</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

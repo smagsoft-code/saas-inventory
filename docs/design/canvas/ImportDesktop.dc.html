@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--border:#E3E6EA;--divider:#ECEEF1;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-hover:#2A63D4;--primary-subtle:#EAF1FE;
+      --success:#1E874B;--success-bg:#E5F4EC;--warning:#B7791F;--warning-bg:#FBF0DD;--danger:#D0453B;--danger-bg:#FBE9E7;
+      /* semantic navigation tokens — derived from primary, never hard-coded per screen */
+      --nav-bg:var(--primary);--nav-fg:rgba(255,255,255,.72);--nav-fg-strong:#FFFFFF;
+      --nav-hover:rgba(255,255,255,.12);--nav-active:rgba(255,255,255,.20);
+      --nav-divider:rgba(255,255,255,.16);--nav-focus:#FFFFFF;
+      --nav-logo-bg:#FFFFFF;--nav-logo-fg:var(--primary);
+      --r-sm:6px;--r-md:10px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    .app{display:grid;grid-template-columns:68px 1fr;min-height:1020px}
+    .rail{width:68px;background:var(--nav-bg);display:flex;flex-direction:column;align-items:center}
+    .logo{width:30px;height:30px;border-radius:8px;background:var(--nav-logo-bg);color:var(--nav-logo-fg);display:flex;align-items:center;justify-content:center;font-weight:700;margin:13px 0}
+    .ni{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--nav-fg);margin-bottom:4px}
+    .ni:hover{background:var(--nav-hover);color:#fff}
+    .ni:focus-visible{outline:2px solid var(--nav-focus);outline-offset:-2px}
+    .ni.active{background:var(--nav-active);color:#fff}
+    .ni svg{width:20px;height:20px}
+    .main{min-width:0;display:flex;flex-direction:column}
+    .hdr{height:56px;display:flex;align-items:center;gap:16px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .crumb{color:var(--text-3);font-size:13px}.crumb b{color:var(--text)}
+    .av{width:32px;height:32px;border-radius:999px;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;margin-left:auto}
+    .content{padding:24px;max-width:1080px;display:flex;flex-direction:column;gap:20px}
+    h1{font-size:26px;line-height:32px;font-weight:700;letter-spacing:-.02em;margin:0}
+    .psub{color:var(--text-2);margin:4px 0 0}
+    .steps{display:flex;align-items:center;gap:0}
+    .step{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text-3)}
+    .step .dot{width:26px;height:26px;border-radius:999px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-weight:700;background:var(--surface)}
+    .step.done .dot{background:var(--success);border-color:var(--success);color:#fff}
+    .step.done{color:var(--text-2)}
+    .step.on .dot{background:var(--primary);border-color:var(--primary);color:#fff}
+    .step.on{color:var(--text);font-weight:600}
+    .bar{flex:1;height:1px;background:var(--border);margin:0 14px;min-width:24px}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md)}
+    .card-b{padding:20px}
+    .summ{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;padding:20px;border-bottom:1px solid var(--divider)}
+    .m .ml{font-size:12px;color:var(--text-2)}
+    .m .mv{font-size:22px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+    .ok{color:var(--success)}.bad{color:var(--danger)}.warn{color:var(--warning)}
+    .filerow{display:flex;align-items:center;gap:12px;background:var(--surface-subtle);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px 14px}
+    .btn{height:38px;padding:0 16px;border-radius:var(--r-sm);border:1px solid transparent;font:inherit;font-weight:600;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+    .btn svg{width:15px;height:15px}
+    .btn-primary{background:var(--primary);color:#fff}
+    .btn-secondary{background:var(--surface);color:var(--text);border-color:var(--border)}
+    .btn-ghost{background:transparent;color:var(--primary)}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    thead th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);padding:10px 14px;background:var(--surface-subtle);border-bottom:1px solid var(--border)}
+    tbody td{padding:11px 14px;border-bottom:1px solid var(--divider);vertical-align:top}
+    tbody tr.err{background:var(--danger-bg)}
+    .rn{font-variant-numeric:tabular-nums;color:var(--text-3)}
+    .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
+    .b-success{color:var(--success);background:var(--success-bg)}
+    .b-danger{color:var(--danger);background:var(--danger-bg)}
+    .errmsg{color:var(--danger);font-size:12px;margin-top:3px}
+    .demo{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--warning);background:var(--warning-bg);padding:4px 10px;border-radius:999px}
+    .actions{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-top:1px solid var(--divider)}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M12 4 8 8M12 4l4 4M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3"/></symbol>
+  <symbol id="h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5M6 10v10h12V10"/></symbol>
+  <symbol id="bx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8 12 4l8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/></symbol>
+  <symbol id="dl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M12 15l-4-4M12 15l4-4M5 19h14"/></symbol>
+  <symbol id="xf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M9.5 12.5 13 16M13 12.5 9.5 16"/></symbol>
+  <symbol id="ck" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></symbol>
+</svg>
+<div class="app">
+  <div class="rail">
+    <div class="logo">S</div>
+    <span class="ni"><svg><use href="#h"/></svg></span>
+    <span class="ni"><svg><use href="#bx"/></svg></span>
+    <span class="ni active"><svg><use href="#up"/></svg></span>
+  </div>
+  <div class="main">
+    <header class="hdr"><span class="crumb">Importación / <b>Nuevo archivo</b></span><div class="av">HM</div></header>
+    <div class="content">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div><h1>Importar catálogo desde Excel</h1><p class="psub">Alta y actualización masiva de productos e inventario</p></div>
+        <span class="demo">Datos de demostración</span>
+      </div>
+
+      <div class="steps">
+        <span class="step done"><span class="dot"><svg width="13" height="13"><use href="#ck"/></svg></span>Archivo</span>
+        <span class="bar"></span>
+        <span class="step done"><span class="dot"><svg width="13" height="13"><use href="#ck"/></svg></span>Validación</span>
+        <span class="bar"></span>
+        <span class="step on"><span class="dot">3</span>Revisión</span>
+        <span class="bar"></span>
+        <span class="step"><span class="dot">4</span>Importación</span>
+        <span class="bar"></span>
+        <span class="step"><span class="dot">5</span>Resultado</span>
+      </div>
+
+      <div class="card">
+        <div class="card-b" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <button class="btn btn-secondary"><svg><use href="#dl"/></svg>Descargar plantilla</button>
+          <div class="filerow" style="flex:1;min-width:280px"><svg width="22" height="22" style="color:var(--success)"><use href="#xf"/></svg><div style="flex:1"><div style="font-weight:600">catalogo-agosto.xlsx</div><div style="color:var(--text-3);font-size:12px">240 filas · subido hace 1 min</div></div><button class="btn btn-ghost">Cambiar archivo</button></div>
+        </div>
+        <div class="summ">
+          <div class="m"><div class="ml">Filas totales</div><div class="mv">240</div></div>
+          <div class="m"><div class="ml">Listas para importar</div><div class="mv ok">232</div></div>
+          <div class="m"><div class="ml">Con errores</div><div class="mv bad">8</div></div>
+          <div class="m"><div class="ml">Modo</div><div class="mv" style="font-size:15px;font-weight:600">Solo catálogo</div></div>
+        </div>
+        <table>
+          <thead><tr><th style="width:56px">Fila</th><th>SKU</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Estado</th></tr></thead>
+          <tbody>
+            <tr><td class="rn">2</td><td>AUD-SNY-005</td><td>Auriculares Sony WH-1000XM5</td><td>Audio</td><td>349.99</td><td><span class="badge b-success">OK</span></td></tr>
+            <tr class="err"><td class="rn">3</td><td>—</td><td>Teclado mecánico compacto</td><td>Periféricos</td><td>abc</td><td><span class="badge b-danger">2 errores</span><div class="errmsg">SKU vacío · Precio no numérico</div></td></tr>
+            <tr><td class="rn">4</td><td>ACC-SAT-U8</td><td>Hub USB-C Satechi</td><td>Accesorios</td><td>79.99</td><td><span class="badge b-success">OK</span></td></tr>
+            <tr class="err"><td class="rn">5</td><td>HF-32-BLU</td><td>Botella HydroFlask 32oz</td><td>Hoggar</td><td>44.95</td><td><span class="badge b-danger">1 error</span><div class="errmsg">Categoría «Hoggar» no existe</div></td></tr>
+            <tr><td class="rn">6</td><td>MOL-BLK-A5</td><td>Cuaderno Moleskine Classic</td><td>Oficina</td><td>21.90</td><td><span class="badge b-success">OK</span></td></tr>
+            <tr class="err"><td class="rn">7</td><td>SSX1-00249</td><td>Sensor Smart X1</td><td>Sensores</td><td>-149</td><td><span class="badge b-danger">1 error</span><div class="errmsg">Precio debe ser mayor que 0</div></td></tr>
+          </tbody>
+        </table>
+        <div class="actions">
+          <button class="btn btn-ghost"><svg><use href="#dl"/></svg>Descargar reporte de errores</button>
+          <div style="display:flex;gap:10px">
+            <button class="btn btn-secondary">Volver</button>
+            <button class="btn btn-primary">Importar 232 filas válidas</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

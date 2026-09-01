@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--border:#E3E6EA;--divider:#ECEEF1;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-hover:#2A63D4;--primary-subtle:#EAF1FE;
+      --success:#1E874B;--success-bg:#E5F4EC;--warning:#B7791F;--warning-bg:#FBF0DD;--danger:#D0453B;--danger-bg:#FBE9E7;
+      /* semantic navigation tokens — derived from primary, never hard-coded per screen */
+      --nav-bg:var(--primary);--nav-fg:rgba(255,255,255,.72);--nav-fg-strong:#FFFFFF;
+      --nav-hover:rgba(255,255,255,.12);--nav-active:rgba(255,255,255,.20);
+      --nav-divider:rgba(255,255,255,.16);--nav-focus:#FFFFFF;
+      --nav-logo-bg:#FFFFFF;--nav-logo-fg:var(--primary);
+      --info:#2F6FED;--info-bg:#EAF1FE;
+      --r-sm:6px;--r-md:10px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    .app{display:grid;grid-template-columns:68px 1fr;min-height:1020px}
+    .rail{width:68px;background:var(--nav-bg);display:flex;flex-direction:column;align-items:center}
+    .logo{width:30px;height:30px;border-radius:8px;background:var(--nav-logo-bg);color:var(--nav-logo-fg);display:flex;align-items:center;justify-content:center;font-weight:700;margin:13px 0}
+    .ni{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--nav-fg);margin-bottom:4px}
+    .ni:hover{background:var(--nav-hover);color:#fff}
+    .ni:focus-visible{outline:2px solid var(--nav-focus);outline-offset:-2px}
+    .ni.active{background:var(--nav-active);color:#fff}
+    .ni svg{width:20px;height:20px}
+    .main{min-width:0;display:flex;flex-direction:column}
+    .hdr{height:56px;display:flex;align-items:center;gap:16px;padding:0 24px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .search{flex:1;max-width:420px;height:38px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface-subtle);display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--text-3);font-size:13px}
+    .av{width:32px;height:32px;border-radius:999px;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;margin-left:auto}
+    .content{padding:24px;display:flex;flex-direction:column;gap:16px;max-width:1200px}
+    .phead{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+    h1{font-size:26px;line-height:32px;font-weight:700;letter-spacing:-.02em;margin:0}
+    .psub{color:var(--text-2);margin:4px 0 0}
+    .btn{height:38px;padding:0 16px;border-radius:var(--r-sm);border:1px solid transparent;font:inherit;font-weight:600;display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+    .btn svg{width:16px;height:16px}
+    .btn-primary{background:var(--primary);color:#fff}
+    .demo{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--warning);background:var(--warning-bg);padding:4px 10px;border-radius:999px}
+    .tabs{display:flex;gap:2px;border-bottom:1px solid var(--border)}
+    .tab{padding:10px 14px;font-size:13px;font-weight:600;color:var(--text-2);border-bottom:2px solid transparent;margin-bottom:-1px}
+    .tab.on{color:var(--primary);border-color:var(--primary)}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);overflow:hidden}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    thead th{text-align:left;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text-3);padding:12px 16px;background:var(--surface-subtle);border-bottom:1px solid var(--border)}
+    tbody td{padding:13px 16px;border-bottom:1px solid var(--divider);vertical-align:middle}
+    tbody tr:last-child td{border-bottom:0}
+    tbody tr:hover{background:var(--surface-subtle)}
+    .code{font-weight:600;font-variant-numeric:tabular-nums}
+    .route{display:flex;align-items:center;gap:8px}
+    .route svg{width:15px;height:15px;color:var(--text-3)}
+    .t3{color:var(--text-3);font-size:12px}
+    .num{font-variant-numeric:tabular-nums;text-align:right}
+    .badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px}
+    .b-neutral{color:var(--text-2);background:var(--surface-subtle)}
+    .b-info{color:var(--info);background:var(--info-bg)}
+    .b-warning{color:var(--warning);background:var(--warning-bg)}
+    .b-success{color:var(--success);background:var(--success-bg)}
+    .b-danger{color:var(--danger);background:var(--danger-bg)}
+    .link{color:var(--primary);font-weight:600;font-size:12px}
+    .foot{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;color:var(--text-2);font-size:13px}
+    .pg{min-width:30px;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--surface);display:inline-flex;align-items:center;justify-content:center;margin-left:4px}
+    .pg.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="sh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13M17 9l-3.5-3M17 9l-3.5 3M20 15H7M7 15l3.5-3M7 15l3.5 3"/></symbol>
+  <symbol id="h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5M6 10v10h12V10"/></symbol>
+  <symbol id="bx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8 12 4l8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/></symbol>
+  <symbol id="ly" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 3 9l9 5 9-5-9-5Z"/><path d="M3 14l9 5 9-5"/></symbol>
+  <symbol id="ct" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h2l2.4 10h9.2L20 8H7"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></symbol>
+  <symbol id="s" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="ar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="pl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+<div class="app">
+  <div class="rail">
+    <div class="logo">S</div>
+    <span class="ni"><svg><use href="#h"/></svg></span>
+    <span class="ni"><svg><use href="#bx"/></svg></span>
+    <span class="ni"><svg><use href="#ly"/></svg></span>
+    <span class="ni active"><svg><use href="#sh"/></svg></span>
+    <span class="ni"><svg><use href="#ct"/></svg></span>
+  </div>
+  <div class="main">
+    <header class="hdr"><div class="search"><svg width="16" height="16"><use href="#s"/></svg>Buscar…</div><div class="av">HM</div></header>
+    <div class="content">
+      <div class="phead">
+        <div><h1>Transferencias</h1><p class="psub">Movimiento de stock entre almacenes</p></div>
+        <div style="display:flex;gap:10px;align-items:center"><span class="demo">Datos de demostración</span><button class="btn btn-primary"><svg><use href="#pl"/></svg>Nueva transferencia</button></div>
+      </div>
+      <div class="tabs"><span class="tab on">Todas</span><span class="tab">Borrador</span><span class="tab">Aprobada</span><span class="tab">En preparación</span><span class="tab">Despachadas</span><span class="tab">Recibidas</span></div>
+      <p style="font-size:11px;color:var(--text-3);margin:0">Estados y acciones mapean 1:1 al contrato real: <code>draft · approved · preparing · dispatched · partially_received · received · cancelled</code> con transiciones approve / prepare / dispatch / receive / cancel. Filtros del contrato: status · sourceLocationId · destinationLocationId · paginación.</p>
+      <div class="card">
+        <table>
+          <thead><tr><th>Código</th><th>Ruta</th><th class="num">Ítems</th><th>Estado</th><th>Creada</th><th>Actualizada</th><th></th></tr></thead>
+          <tbody>
+            <tr><td class="code">TRF-1048</td><td><span class="route">Almacén A <svg><use href="#ar"/></svg> Almacén C</span></td><td class="num">12</td><td><span class="badge b-neutral">Borrador</span></td><td class="t3">28 ago</td><td class="t3">28 ago</td><td><span class="link">Aprobar</span></td></tr>
+            <tr><td class="code">TRF-1047</td><td><span class="route">Almacén A <svg><use href="#ar"/></svg> Almacén B</span></td><td class="num">6</td><td><span class="badge b-info">Aprobada</span></td><td class="t3">27 ago</td><td class="t3">30 ago</td><td><span class="link">Preparar</span></td></tr>
+            <tr><td class="code">TRF-1046</td><td><span class="route">Almacén A <svg><use href="#ar"/></svg> Almacén C</span></td><td class="num">15</td><td><span class="badge b-info">En preparación</span></td><td class="t3">27 ago</td><td class="t3">30 ago</td><td><span class="link">Despachar</span></td></tr>
+            <tr><td class="code">TRF-1045</td><td><span class="route">Almacén B <svg><use href="#ar"/></svg> Almacén A</span></td><td class="num">24</td><td><span class="badge b-info">Despachada</span></td><td class="t3">26 ago</td><td class="t3">29 ago</td><td><span class="link">Recibir</span></td></tr>
+            <tr><td class="code">TRF-1042</td><td><span class="route">Almacén A <svg><use href="#ar"/></svg> Almacén C</span></td><td class="num">18</td><td><span class="badge b-warning">Parcialmente recibida</span></td><td class="t3">24 ago</td><td class="t3">29 ago</td><td><span class="link">Recibir</span></td></tr>
+            <tr><td class="code">TRF-1039</td><td><span class="route">Almacén C <svg><use href="#ar"/></svg> Almacén A</span></td><td class="num">9</td><td><span class="badge b-success">Recibida</span></td><td class="t3">21 ago</td><td class="t3">23 ago</td><td><span class="link">Ver</span></td></tr>
+            <tr><td class="code">TRF-1036</td><td><span class="route">Almacén A <svg><use href="#ar"/></svg> Almacén B</span></td><td class="num">4</td><td><span class="badge b-danger">Cancelada</span></td><td class="t3">19 ago</td><td class="t3">19 ago</td><td><span class="link">Ver</span></td></tr>
+          </tbody>
+        </table>
+        <div class="foot"><span>Mostrando 1–6 de 63</span><div><span class="pg">‹</span><span class="pg on">1</span><span class="pg">2</span><span class="pg">3</span><span class="pg">›</span></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

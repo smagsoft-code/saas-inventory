@@ -1,0 +1,59 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--border:#E3E6EA;--text:#1A1D21;--text-2:#5B6470;
+      --primary:#2F6FED;--primary-hover:#2A63D4;
+      --r-sm:6px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:15px;line-height:22px;-webkit-font-smoothing:antialiased}
+    a{color:var(--primary);text-decoration:none}
+    .scr{min-height:844px;padding:40px 24px;display:flex;flex-direction:column}
+    .logo{width:44px;height:44px;border-radius:12px;background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;margin-bottom:32px}
+    h1{font-size:26px;line-height:32px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px}
+    .lead{color:var(--text-2);margin:0 0 28px}
+    label{display:block;font-size:13px;font-weight:600;margin:0 0 6px}
+    .inp{width:100%;height:48px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);padding:0 14px;font:inherit;color:var(--text)}
+    .field{margin-bottom:18px}
+    .hint{font-size:12px;color:#8A929E;margin:5px 0 0}
+    .btn{width:100%;height:48px;border-radius:var(--r-sm);border:0;background:var(--primary);color:#fff;font:inherit;font-weight:600;margin-top:6px}
+    .alt{margin-top:28px;font-size:13px;color:var(--text-2);text-align:center}
+    .alt small{color:#8A929E}
+    .divider{border:0;border-top:1px solid var(--border);margin:34px 0 28px}
+    .state-tag{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8A929E;margin:0 0 10px}
+    .trow{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;border:1px solid var(--border);background:var(--surface);border-radius:var(--r-sm);padding:15px 16px;font-size:15px;font-weight:600;color:var(--text);text-align:left;margin-bottom:8px}
+    .trow .chev{color:#8A929E}
+    .ghost{width:100%;height:44px;border-radius:var(--r-sm);border:0;background:transparent;color:var(--text-2);font:inherit;font-weight:600;margin-top:4px}
+  </style>
+</helmet>
+<div class="scr">
+  <div class="logo">S</div>
+  <p class="state-tag">Estado 1 · Credenciales</p>
+  <h1>Iniciar sesión</h1>
+  <p class="lead">SaaS Inventory · Accede con tu correo y contraseña</p>
+  <div class="field"><label for="e">Correo electrónico</label><input class="inp" id="e" type="email" value="hector@mi-empresa.com"></div>
+  <div class="field"><label for="p">Contraseña</label><input class="inp" id="p" type="password" value="············"></div>
+  <button class="btn" type="button">Entrar</button>
+  <p class="alt">¿Tu empresa aún no tiene cuenta? <a href="#">Crear organización</a></p>
+
+  <hr class="divider">
+
+  <p class="state-tag">Estado 2 · Solo con varias empresas</p>
+  <h1>Selecciona una empresa</h1>
+  <p class="lead">Elige dónde quieres trabajar.</p>
+  <button class="trow" type="button"><span>Comercial Andina</span><span class="chev" aria-hidden>→</span></button>
+  <button class="trow" type="button"><span>Distribuidora del Valle</span><span class="chev" aria-hidden>→</span></button>
+  <button class="ghost" type="button">Volver a iniciar sesión</button>
+  <p class="alt"><small>016-C: <code>POST /auth/login</code> pide solo correo + contraseña (sin tenantSlug). Una empresa → sesión directa. Varias → la lista viene de <code>availableTenants</code> + cookie httpOnly <code>tenant_selection</code>; al elegir, <code>POST /auth/select-tenant { tenantId }</code>. El selectionToken no se muestra ni se guarda.</small></p>
+</div>
+</x-dc>
+</body>
+</html>

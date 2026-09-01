@@ -1,0 +1,101 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+    :root{
+      --bg:#F6F7F9;--surface:#FFFFFF;--surface-subtle:#F1F3F5;--border:#E3E6EA;--divider:#ECEEF1;
+      --text:#1A1D21;--text-2:#5B6470;--text-3:#8A929E;
+      --primary:#2F6FED;--primary-hover:#2A63D4;--primary-subtle:#EAF1FE;--warning:#B7791F;--warning-bg:#FBF0DD;
+      --r-sm:6px;--r-md:10px;--font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+    .app{display:grid;grid-template-columns:68px 1fr;min-height:1100px}
+    .rail{width:68px;background:var(--nav-bg);display:flex;flex-direction:column;align-items:center}
+    .logo{width:30px;height:30px;border-radius:8px;background:var(--nav-logo-bg);color:var(--nav-logo-fg);display:flex;align-items:center;justify-content:center;font-weight:700;margin:13px 0}
+    .ni{width:40px;height:40px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--nav-fg);margin-bottom:4px}
+    .ni:hover{background:var(--nav-hover);color:#fff}
+    .ni:focus-visible{outline:2px solid var(--nav-focus);outline-offset:-2px}
+    .ni.active{background:var(--nav-active);color:#fff}
+    .ni svg{width:20px;height:20px}
+    .main{min-width:0;display:flex;flex-direction:column;position:relative}
+    .hdr{height:56px;display:flex;align-items:center;gap:12px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border)}
+    .mb{width:40px;height:40px;border-radius:8px;border:0;background:transparent;color:var(--text-2)}
+    .av{width:34px;height:34px;border-radius:999px;background:var(--primary-subtle);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;margin-left:auto}
+    .content{padding:20px;display:flex;flex-direction:column;gap:14px;flex:1}
+    h1{font-size:23px;line-height:28px;font-weight:700;letter-spacing:-.02em;margin:0}
+    .sinput{width:100%;height:46px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface);padding:0 12px 0 40px;font:inherit;position:relative}
+    .search{position:relative}
+    .sicon{position:absolute;left:12px;top:14px;color:var(--text-3)}
+    .cust{display:flex;align-items:center;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:12px}
+    .avc{width:36px;height:36px;border-radius:999px;background:var(--surface-subtle);display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--text-2);font-size:12px}
+    .t3{color:var(--text-3);font-size:12px}
+    .seg{display:flex;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;background:var(--surface)}
+    .seg button{flex:1;height:44px;border:0;background:var(--surface);color:var(--text-2);font:inherit;font-weight:600}
+    .seg button.on{background:var(--primary);color:#fff}
+    .line{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:14px;display:flex;align-items:center;gap:12px}
+    .thumb{width:44px;height:44px;border-radius:9px;background:var(--surface-subtle);border:1px solid var(--border);flex:none;display:flex;align-items:center;justify-content:center;color:var(--text-3)}
+    .pname{font-weight:600}
+    .stepper{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px}
+    .stepper button{width:36px;height:36px;border:0;background:transparent;color:var(--text-2);font-size:17px}
+    .stepper span{min-width:32px;text-align:center;font-weight:600;font-variant-numeric:tabular-nums}
+    .lt{font-weight:700;font-variant-numeric:tabular-nums;min-width:78px;text-align:right}
+    .pedit{display:inline-flex;align-items:center;gap:5px;margin-top:4px;font-size:12px;color:var(--primary);border:1px solid var(--border);border-radius:999px;padding:3px 9px}
+    .pedit.warn{color:var(--warning);border-color:var(--warning);background:var(--warning-bg)}
+    /* prototype: pinned bar. FASE 17 uses a sticky pattern + safe-area, never a bar that hides list content */
+    .barbottom{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:14px 20px calc(14px + env(safe-area-inset-bottom));display:flex;align-items:center;gap:16px;box-shadow:0 -4px 16px rgba(16,24,40,.06)}
+    .totwrap{flex:1}
+    .totwrap .t3{font-size:12px}
+    .tot{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums}
+    .btn-primary{height:48px;padding:0 28px;border-radius:var(--r-sm);border:0;background:var(--primary);color:#fff;font:inherit;font-weight:600;font-size:15px}
+    .disc-link{color:var(--primary);font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px}
+  </style>
+</helmet>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="ct" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h2l2.4 10h9.2L20 8H7"/><circle cx="9.5" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></symbol>
+  <symbol id="h" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11.5 12 4l8 7.5M6 10v10h12V10"/></symbol>
+  <symbol id="bx" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8 12 4l8 4v8l-8 4-8-4V8Z"/><path d="M4 8l8 4 8-4M12 12v8"/></symbol>
+  <symbol id="rc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"/><path d="M9 8h6M9 12h6"/></symbol>
+  <symbol id="mn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+  <symbol id="s" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="11" cy="11" r="6"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="cv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="pct" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M6 18 18 6M8 8h.01M16 16h.01"/></symbol>
+</svg>
+<div class="app">
+  <div class="rail">
+    <div class="logo">S</div>
+    <span class="ni"><svg><use href="#h"/></svg></span>
+    <span class="ni"><svg><use href="#bx"/></svg></span>
+    <span class="ni active"><svg><use href="#ct"/></svg></span>
+    <span class="ni"><svg><use href="#rc"/></svg></span>
+  </div>
+  <div class="main">
+    <header class="hdr"><button class="mb" aria-label="Fijar navegación"><svg width="20" height="20"><use href="#mn"/></svg></button><div class="av">HM</div></header>
+    <div class="content">
+      <h1>Nueva venta</h1>
+      <div class="search"><span class="sicon"><svg width="18" height="18"><use href="#s"/></svg></span><input class="sinput" placeholder="Buscar productos para añadir…"></div>
+      <div class="cust"><span class="avc">CM</span><div style="flex:1"><div style="font-weight:600">Comercial Márquez S.A.</div><div class="t3">RUC 20481… · Cliente empresa</div></div><svg width="16" height="16" style="color:var(--text-3)"><use href="#cv"/></svg></div>
+      <div class="seg"><button class="on">Factura</button><button>Nota de venta</button></div>
+
+      <div class="line"><span class="thumb"><svg width="20" height="20"><use href="#bx"/></svg></span><div style="flex:1;min-width:0"><div class="pname">Sony WH-1000XM5</div><div class="t3">AUD-SNY-005</div><span class="pedit">$349.99 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L20 8l-4-4L4 16v4Z" stroke-linejoin="round"/></svg></span></div><span class="stepper"><button>−</button><span>1</span><button>+</button></span><span class="lt">$349.99</span></div>
+      <div class="line"><span class="thumb"><svg width="20" height="20"><use href="#bx"/></svg></span><div style="flex:1;min-width:0"><div class="pname">Keychron Q1 Pro</div><div class="t3">KBD-KEY-Q1P</div><span class="pedit">$199.00 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L20 8l-4-4L4 16v4Z" stroke-linejoin="round"/></svg></span></div><span class="stepper"><button>−</button><span>2</span><button>+</button></span><span class="lt">$398.00</span></div>
+      <div class="line"><span class="thumb"><svg width="20" height="20"><use href="#bx"/></svg></span><div style="flex:1;min-width:0"><div class="pname">Hub USB-C Satechi</div><div class="t3">ACC-SAT-U8</div><span class="pedit warn">$62.00 · negociado <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20h4L20 8l-4-4L4 16v4Z" stroke-linejoin="round"/></svg></span></div><span class="stepper"><button>−</button><span>1</span><button>+</button></span><span class="lt">$62.00</span></div>
+
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-md);padding:14px;display:flex;justify-content:space-between;align-items:center"><a class="disc-link"><svg width="14" height="14"><use href="#pct"/></svg>Solicitar aprobación de precio</a><svg width="16" height="16" style="color:var(--text-3)"><use href="#cv"/></svg></div>
+      <p style="font-size:12px;color:var(--text-3);margin:0">Tocar el chip de precio abre una hoja (sheet) para el precio negociado / la solicitud de aprobación — sin saturar la vista.</p>
+    </div>
+    <div class="barbottom">
+      <div class="totwrap"><div class="t3">Subtotal · 4 ítems · sin impuestos en esta fase</div><div class="tot">$810.98</div></div>
+      <button class="btn-primary">Confirmar orden</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
