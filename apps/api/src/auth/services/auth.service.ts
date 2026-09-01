@@ -1,22 +1,27 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
 import { generateId } from '@saas-inventory/shared';
+import { AUTH_CONFIG, type AuthConfig } from '../../common/config/auth-config';
+import { isSelectionTokenPayload, type SelectionTokenPayload } from '../../common/tokens/access-token-payload';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { CsrfTokenService } from '../csrf/csrf-token.service';
 import { PasswordService } from '../password/password.service';
+import { IdentitiesRepository } from '../repositories/identities.repository';
 import { RefreshTokensPlatformRepository } from '../repositories/refresh-tokens-platform.repository';
 import { RefreshTokensRepository } from '../repositories/refresh-tokens.repository';
 import { RolesRepository } from '../repositories/roles.repository';
-import { TenantsPlatformRepository } from '../repositories/tenants-platform.repository';
+import { TenantMembershipsRepository, type ActiveMembership } from '../repositories/tenant-memberships.repository';
 import { UsersRepository } from '../repositories/users.repository';
 import { AccessTokenService } from '../tokens/access-token.service';
 import { RefreshTokenService } from '../tokens/refresh-token.service';
+import { IdentityProvisioningService } from './identity-provisioning.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
-import { normalizeEmail, normalizeSlug } from '../util/normalize';
+import { normalizeEmail } from '../util/normalize';
 
 /** A fixed, valid Argon2id hash of a value nobody can log in with — verified against on a
- * nonexistent-user login attempt so that path costs roughly the same time as a real password
+ * nonexistent-identity login attempt so that path costs roughly the same time as a real password
  * check, closing the timing side-channel that would otherwise let a caller distinguish
- * "no such user" from "wrong password" by response latency (security.md §6). */
+ * "no such account" from "wrong password" by response latency (security.md §6). */
 const DUMMY_PASSWORD_HASH =
   '$argon2id$v=19$m=19456,t=2,p=1$Wk+k4Aqt+cNKE8Icr0KpWA$5llxil2sQA4Rx7RKjXDW2hQ/6E+CEGDr2eypUF2nc4Q';
 
@@ -27,6 +32,7 @@ export interface SessionRequestMeta {
 
 export interface AuthenticatedUserView {
   id: string;
+  identityId: string;
   tenantId: string;
   tenantSlug: string;
   email: string;
@@ -36,12 +42,20 @@ export interface AuthenticatedUserView {
 }
 
 export interface IssuedSession {
+  kind: 'session';
   accessToken: string;
   accessTokenTtlSeconds: number;
   refreshToken: string;
   refreshTokenTtlSeconds: number;
   csrfToken: string;
   user: AuthenticatedUserView;
+}
+
+export interface TenantSelectionRequired {
+  kind: 'tenant-selection';
+  selectionToken: string;
+  selectionTokenTtlSeconds: number;
+  availableTenants: { tenantId: string; name: string }[];
 }
 
 export interface RegisterInput {
@@ -52,15 +66,21 @@ export interface RegisterInput {
 }
 
 export interface LoginInput {
-  tenantSlug: string;
   email: string;
   password: string;
 }
 
 function invalidCredentials(): UnauthorizedException {
-  // One identical message regardless of which part was wrong (nonexistent tenant, nonexistent
-  // user, wrong password, or a disabled/invited account) — security.md §6.
-  return new UnauthorizedException('Invalid tenant, email, or password.');
+  // One identical message regardless of which part was wrong — unknown email, wrong password,
+  // disabled/pending_credential identity, or an identity with no active membership anywhere
+  // (security.md §6, §22). Never reveals account existence, company count or company names.
+  return new UnauthorizedException('Invalid email or password.');
+}
+
+function invalidSelection(): UnauthorizedException {
+  // One message for every selection failure: token missing/expired/wrong-purpose, identity now
+  // disabled, or the chosen tenant not being an active membership of this identity.
+  return new UnauthorizedException('Invalid or expired selection.');
 }
 
 function invalidSession(): UnauthorizedException {
@@ -71,7 +91,9 @@ function invalidSession(): UnauthorizedException {
 export class AuthService {
   constructor(
     private readonly tenantProvisioningService: TenantProvisioningService,
-    private readonly tenantsPlatformRepository: TenantsPlatformRepository,
+    private readonly identityProvisioningService: IdentityProvisioningService,
+    private readonly identitiesRepository: IdentitiesRepository,
+    private readonly tenantMembershipsRepository: TenantMembershipsRepository,
     private readonly usersRepository: UsersRepository,
     private readonly rolesRepository: RolesRepository,
     private readonly refreshTokensRepository: RefreshTokensRepository,
@@ -80,8 +102,17 @@ export class AuthService {
     private readonly accessTokenService: AccessTokenService,
     private readonly refreshTokenService: RefreshTokenService,
     private readonly csrfTokenService: CsrfTokenService,
+    private readonly jwtService: JwtService,
+    @Inject(AUTH_CONFIG) private readonly authConfig: AuthConfig,
   ) {}
 
+  /**
+   * Self-service registration = a brand-new tenant + its first admin `users` row (unchanged) +
+   * the global `identities` row and `tenant_memberships` link (016-C). If the email already has
+   * an identity (the person is registering a second company), that identity keeps its existing
+   * credential — the password supplied here provisions the new `users` row and is only used as
+   * the identity credential when the identity is new.
+   */
   async register(input: RegisterInput, meta: SessionRequestMeta): Promise<IssuedSession> {
     const email = normalizeEmail(input.email);
     const passwordHash = await this.passwordService.hash(input.password);
@@ -93,60 +124,119 @@ export class AuthService {
       adminFullName: input.fullName,
     });
 
-    return withTenantTransaction(tenantId, async (tx) => {
-      const permissions = await this.rolesRepository.effectivePermissionsForUser(tx, userId);
-      const user: AuthenticatedUserView = {
-        id: userId,
-        tenantId,
-        tenantSlug,
-        email,
-        fullName: input.fullName,
-        status: 'active',
-        permissions,
-      };
-      return this.issueSession(tx, user, meta);
+    const { identityId } = await this.identityProvisioningService.provisionMembership({
+      tenantId,
+      userId,
+      email,
+      passwordHash,
+      fullName: input.fullName,
     });
+
+    const membership: ActiveMembership = {
+      membershipId: '',
+      identityId,
+      tenantId,
+      tenantName: input.companyName,
+      tenantSlug,
+      userId,
+    };
+    const session = await this.issueTenantSession(membership, meta);
+    if (!session) {
+      throw invalidSession();
+    }
+    return session;
   }
 
-  async login(input: LoginInput, meta: SessionRequestMeta): Promise<IssuedSession> {
+  /**
+   * Step 1 of login (016-C): `{ email, password }` only. Resolves a global identity, validates
+   * the credential against `identities.password_hash`, then branches on how many fully-active
+   * memberships it has:
+   *  - exactly one -> a real session for that tenant.
+   *  - more than one -> a short-lived, permission-less selection token + the list of companies
+   *    (returned ONLY here, after the credentials are validated — never from an email alone).
+   */
+  async login(input: LoginInput, meta: SessionRequestMeta): Promise<IssuedSession | TenantSelectionRequired> {
     const email = normalizeEmail(input.email);
-    const tenant = await this.tenantsPlatformRepository.findBySlug(normalizeSlug(input.tenantSlug));
+    const identity = await this.identitiesRepository.findByEmail(email);
 
-    if (!tenant || tenant.status !== 'active') {
+    // `disabled` and `pending_credential` both fail here, identically to "no such identity" and
+    // "wrong password" — a `pending_credential` identity has a NULL password_hash and must set a
+    // single credential (a later prompt) before it can log in; no fallback to users.password_hash.
+    if (!identity || identity.status !== 'active' || identity.passwordHash === null) {
       await this.passwordService.verify(DUMMY_PASSWORD_HASH, input.password);
       throw invalidCredentials();
     }
 
-    const result = await withTenantTransaction(tenant.id, async (tx) => {
-      const user = await this.usersRepository.findByEmail(tx, tenant.id, email);
-      if (!user || user.status !== 'active') {
-        await this.passwordService.verify(DUMMY_PASSWORD_HASH, input.password);
-        return undefined;
-      }
-
-      const passwordOk = await this.passwordService.verify(user.passwordHash, input.password);
-      if (!passwordOk) {
-        return undefined;
-      }
-
-      await this.usersRepository.touchLastLogin(tx, tenant.id, user.id);
-      const permissions = await this.rolesRepository.effectivePermissionsForUser(tx, user.id);
-      const view: AuthenticatedUserView = {
-        id: user.id,
-        tenantId: tenant.id,
-        tenantSlug: tenant.slug,
-        email: user.email,
-        fullName: user.fullName,
-        status: user.status,
-        permissions,
-      };
-      return this.issueSession(tx, view, meta);
-    });
-
-    if (!result) {
+    const passwordOk = await this.passwordService.verify(identity.passwordHash, input.password);
+    if (!passwordOk) {
       throw invalidCredentials();
     }
-    return result;
+
+    const memberships = await this.tenantMembershipsRepository.listActiveForIdentity(identity.id);
+    if (memberships.length === 0) {
+      throw invalidCredentials();
+    }
+
+    await this.identitiesRepository.touchLastLogin(identity.id);
+
+    if (memberships.length === 1) {
+      const session = await this.issueTenantSession(memberships[0] as ActiveMembership, meta);
+      if (!session) {
+        throw invalidCredentials();
+      }
+      return session;
+    }
+
+    const selection = await this.accessTokenService.issueSelection(identity.id);
+    return {
+      kind: 'tenant-selection',
+      selectionToken: selection.token,
+      selectionTokenTtlSeconds: selection.expiresInSeconds,
+      availableTenants: memberships.map((m) => ({ tenantId: m.tenantId, name: m.tenantName })),
+    };
+  }
+
+  /**
+   * Step 2 of a multi-membership login (016-C). The `tenantId` is never trusted on its own — the
+   * selection token's `sub` (an identity id) plus a live `findActiveForIdentityAndTenant` check is
+   * what authorizes the session.
+   */
+  async selectTenant(
+    rawSelectionToken: string | undefined,
+    tenantId: string,
+    meta: SessionRequestMeta,
+  ): Promise<IssuedSession> {
+    if (!rawSelectionToken) {
+      throw invalidSelection();
+    }
+    let payload: SelectionTokenPayload;
+    try {
+      const verified = await this.jwtService.verifyAsync<SelectionTokenPayload>(rawSelectionToken, {
+        secret: this.authConfig.jwtSecret,
+      });
+      if (!isSelectionTokenPayload(verified)) {
+        throw invalidSelection();
+      }
+      payload = verified;
+    } catch {
+      throw invalidSelection();
+    }
+
+    const identity = await this.identitiesRepository.findById(payload.sub);
+    if (!identity || identity.status !== 'active') {
+      throw invalidSelection();
+    }
+
+    const membership = await this.tenantMembershipsRepository.findActiveForIdentityAndTenant(identity.id, tenantId);
+    if (!membership) {
+      throw invalidSelection();
+    }
+
+    const session = await this.issueTenantSession(membership, meta);
+    if (!session) {
+      throw invalidSelection();
+    }
+    return session;
   }
 
   async refresh(rawRefreshToken: string | undefined, meta: SessionRequestMeta): Promise<IssuedSession> {
@@ -161,9 +251,8 @@ export class AuthService {
 
     if (existing.revokedAt || existing.expiresAt.getTime() < Date.now()) {
       if (existing.revokedAt) {
-        // A revoked (already-rotated, or already-logged-out) token being presented again is
-        // exactly the reuse pattern threat-model.md's "Stolen / replayed JWT" describes — assume
-        // compromise and kill every session for this user, not just this one token.
+        // Reuse of an already-rotated/revoked token — threat-model.md's "Stolen / replayed JWT":
+        // assume compromise, kill every session for this user.
         await withTenantTransaction(existing.tenantId, (tx) =>
           this.refreshTokensRepository.revokeAllForUser(tx, existing.tenantId, existing.userId),
         );
@@ -171,15 +260,17 @@ export class AuthService {
       throw invalidSession();
     }
 
-    // PROMPT 011-A: a refresh token minted while the tenant was active must not survive a
-    // later suspension — checked here, live, the same way login() already checks it, rather than
-    // relying solely on the resulting access token failing at TenantGuard on its next use. Left
-    // unrevoked (not rotated, not marked revoked): if the tenant is later reactivated, this same
-    // still-valid refresh token works again on its own, with no forced re-login — see this
-    // prompt's final report for why that is the chosen (least-surprising, no-ADR-mandated-
-    // revocation) reactivation semantics.
-    const tenant = await this.tenantsPlatformRepository.findById(existing.tenantId);
-    if (!tenant || tenant.status !== 'active') {
+    // One live cross-tenant check (016-C): the membership resolving `(tenantId, userId)` must be
+    // active, and so must the tenant, the identity and the user — the same immediate-revocation
+    // guarantee TenantGuard applies per request, applied here at rotation time. Replaces the
+    // separate PROMPT 011-A/011-B tenant-status + user-status reads. Left unrevoked on a status
+    // failure (same reactivation semantics PROMPT 011-A chose): a later re-activation lets this
+    // same token work again.
+    const membership = await this.tenantMembershipsRepository.findActiveForTenantAndUser(
+      existing.tenantId,
+      existing.userId,
+    );
+    if (!membership) {
       throw invalidSession();
     }
 
@@ -192,6 +283,7 @@ export class AuthService {
       const permissions = await this.rolesRepository.effectivePermissionsForUser(tx, user.id);
       const view: AuthenticatedUserView = {
         id: user.id,
+        identityId: membership.identityId,
         tenantId: existing.tenantId,
         tenantSlug: existing.tenantSlug,
         email: user.email,
@@ -199,18 +291,16 @@ export class AuthService {
         status: user.status,
         permissions,
       };
-      return this.issueSession(tx, view, meta, existing.id);
+      return this.issueSessionTokens(tx, view, meta, existing.id);
     });
-
     if (!result) {
       throw invalidSession();
     }
     return result;
   }
 
-  /** Idempotent by design — logging out with an already-invalid/missing token still succeeds
-   * (the caller's goal, "no active credentials afterward", is already satisfied). Never reveals
-   * whether the presented token was valid. */
+  /** Idempotent by design — logging out with an already-invalid/missing token still succeeds and
+   * never reveals whether the presented token was valid. */
   async logout(rawRefreshToken: string | undefined): Promise<void> {
     if (!rawRefreshToken) {
       return;
@@ -225,7 +315,7 @@ export class AuthService {
     );
   }
 
-  async me(userId: string, tenantId: string, tenantSlug: string): Promise<AuthenticatedUserView> {
+  async me(userId: string, identityId: string, tenantId: string, tenantSlug: string): Promise<AuthenticatedUserView> {
     return withTenantTransaction(tenantId, async (tx) => {
       const user = await this.usersRepository.findById(tx, tenantId, userId);
       if (!user || user.status !== 'active') {
@@ -234,6 +324,7 @@ export class AuthService {
       const permissions = await this.rolesRepository.effectivePermissionsForUser(tx, user.id);
       return {
         id: user.id,
+        identityId,
         tenantId,
         tenantSlug,
         email: user.email,
@@ -244,13 +335,40 @@ export class AuthService {
     });
   }
 
-  private async issueSession(
+  /** Enters the membership's tenant transaction, loads permissions, and mints the session. Returns
+   * `undefined` only if the underlying `users` row vanished between the platform check and here
+   * (a race the caller turns into a generic error). */
+  private async issueTenantSession(
+    membership: ActiveMembership,
+    meta: SessionRequestMeta,
+  ): Promise<IssuedSession | undefined> {
+    return withTenantTransaction(membership.tenantId, async (tx) => {
+      const user = await this.usersRepository.findById(tx, membership.tenantId, membership.userId);
+      if (!user || user.status !== 'active') {
+        return undefined;
+      }
+      const permissions = await this.rolesRepository.effectivePermissionsForUser(tx, user.id);
+      const view: AuthenticatedUserView = {
+        id: user.id,
+        identityId: membership.identityId,
+        tenantId: membership.tenantId,
+        tenantSlug: membership.tenantSlug,
+        email: user.email,
+        fullName: user.fullName,
+        status: user.status,
+        permissions,
+      };
+      return this.issueSessionTokens(tx, view, meta);
+    });
+  }
+
+  private async issueSessionTokens(
     tx: TenantTransaction,
     user: AuthenticatedUserView,
     meta: SessionRequestMeta,
     rotatedFromId?: string,
   ): Promise<IssuedSession> {
-    const access = await this.accessTokenService.issue(user.id, user.tenantId, user.tenantSlug);
+    const access = await this.accessTokenService.issue(user.id, user.identityId, user.tenantId, user.tenantSlug);
     const refresh = this.refreshTokenService.generate();
 
     await this.refreshTokensRepository.create(tx, {
@@ -265,6 +383,7 @@ export class AuthService {
     });
 
     return {
+      kind: 'session',
       accessToken: access.token,
       accessTokenTtlSeconds: access.expiresInSeconds,
       refreshToken: refresh.token,

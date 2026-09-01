@@ -46,16 +46,18 @@ function buildService() {
     setUserRole: vi.fn(),
   };
   const passwordService = { hash: vi.fn().mockResolvedValue('new-hash'), verify: vi.fn() };
+  const identityProvisioningService = { provisionMembership: vi.fn().mockResolvedValue({ identityId: 'identity-1' }) };
   const auditLogService = { record: vi.fn() };
 
   const service = new UsersService(
     usersRepository as never,
     rolesRepository as never,
     passwordService as never,
+    identityProvisioningService as never,
     auditLogService as never,
   );
 
-  return { service, usersRepository, rolesRepository, passwordService, auditLogService };
+  return { service, usersRepository, rolesRepository, passwordService, identityProvisioningService, auditLogService };
 }
 
 const META = { correlationId: undefined, ipAddress: undefined };

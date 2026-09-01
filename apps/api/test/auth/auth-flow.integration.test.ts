@@ -120,29 +120,33 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('auth flow (integration)', 
     expect(unauthed.statusCode).toBe(401);
   });
 
-  it('rejects login with a wrong password, a wrong tenant slug, and an unknown email — all with the same generic message', async () => {
-    const session = await registerTenant('Gamma LLC', 'admin@gamma-flow-test.example');
+  it('016-C: login is email+password only; a wrong password and an unknown email fail with the same generic message', async () => {
+    await registerTenant('Gamma LLC', 'admin@gamma-flow-test.example');
 
     const wrongPassword = await inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { tenantSlug: session.user.tenantSlug, email: 'admin@gamma-flow-test.example', password: 'wrong' },
+      payload: { email: 'admin@gamma-flow-test.example', password: 'wrong' },
     });
-    const wrongTenant = await inject({
+    const unknownEmail = await inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { tenantSlug: 'no-such-tenant-slug', email: 'admin@gamma-flow-test.example', password: 'x' },
-    });
-    const wrongEmail = await inject({
-      method: 'POST',
-      url: '/api/v1/auth/login',
-      payload: { tenantSlug: session.user.tenantSlug, email: 'nobody@gamma-flow-test.example', password: 'x' },
+      payload: { email: 'nobody@gamma-flow-test.example', password: 'x' },
     });
 
-    for (const response of [wrongPassword, wrongTenant, wrongEmail]) {
+    for (const response of [wrongPassword, unknownEmail]) {
       expect(response.statusCode).toBe(401);
-      expect(JSON.parse(response.body).message).toBe('Invalid tenant, email, or password.');
+      expect(JSON.parse(response.body).message).toBe('Invalid email or password.');
     }
+
+    // A `tenantSlug` in the body is rejected by the DTO whitelist (forbidNonWhitelisted) — the
+    // client cannot name a tenant on the credentials request at all.
+    const withStrayField = await inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      payload: { tenantSlug: 'anything', email: 'admin@gamma-flow-test.example', password: 'a-very-long-password' },
+    });
+    expect(withStrayField.statusCode).toBe(400);
   });
 
   it('CSRF: rejects a state-changing request with a missing/mismatched token, accepts a matching one', async () => {
@@ -235,14 +239,19 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('auth flow (integration)', 
       expect(mixed.statusCode).toBe(200);
       expect(JSON.parse(mixed.body).tenantId).toBe(tenantA.user.tenantId);
 
-      // Attempting to log into tenant B's slug using tenant A's admin email fails generically —
-      // proves the (tenantSlug, email) pair is what's checked, not email alone.
-      const crossLogin = await inject({
+      // 016-C: each admin email is its own global identity with exactly one membership. Logging
+      // in with tenant A's admin credentials resolves ONLY to tenant A's session — never B's,
+      // and there is no way to name tenant B on the request.
+      const loginA = await inject({
         method: 'POST',
         url: '/api/v1/auth/login',
-        payload: { tenantSlug: tenantB.user.tenantSlug, email: 'admin@zeta-flow-test.example', password: 'a-very-long-password' },
+        payload: { email: 'admin@zeta-flow-test.example', password: 'a-very-long-password' },
       });
-      expect(crossLogin.statusCode).toBe(401);
+      expect(loginA.statusCode).toBe(200);
+      const loginABody = JSON.parse(loginA.body) as { status: string; user: { tenantId: string } };
+      expect(loginABody.status).toBe('authenticated');
+      expect(loginABody.user.tenantId).toBe(tenantA.user.tenantId);
+      expect(loginABody.user.tenantId).not.toBe(tenantB.user.tenantId);
 
       // Tenant B's refresh token, presented on its own, always resolves to tenant B — never
       // tenant A, even though the endpoint itself carries no tenant-identifying input at all.

@@ -14,6 +14,10 @@ export interface AuthConfig {
   refreshTokenPepper: string;
   accessTokenTtlSeconds: number;
   refreshTokenTtlSeconds: number;
+  /** TTL of the interim tenant-selection token issued by `POST /auth/login` when an identity has
+   * more than one active membership (016-C). Deliberately short — it only needs to survive a user
+   * picking a company. */
+  selectionTokenTtlSeconds: number;
   argon2: {
     memoryCostKib: number;
     timeCost: number;
@@ -38,6 +42,7 @@ export function getAuthConfig(): AuthConfig {
     refreshTokenPepper: getRequiredEnvVar('JWT_REFRESH_SECRET'),
     accessTokenTtlSeconds: Number(getOptionalEnvVar('ACCESS_TOKEN_TTL_SECONDS', '900')),
     refreshTokenTtlSeconds: Number(getOptionalEnvVar('REFRESH_TOKEN_TTL_SECONDS', '2592000')),
+    selectionTokenTtlSeconds: Number(getOptionalEnvVar('SELECTION_TOKEN_TTL_SECONDS', '300')),
     argon2: {
       memoryCostKib: Number(getOptionalEnvVar('ARGON2_MEMORY_COST_KIB', '19456')),
       timeCost: Number(getOptionalEnvVar('ARGON2_TIME_COST', '2')),

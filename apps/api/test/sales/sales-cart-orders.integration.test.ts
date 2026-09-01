@@ -402,7 +402,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
       } finally {
         await client.end();
       }
-      const relogin = await c.loginAs(f.admin.user.tenantSlug, 'vendedor@price-vis.example');
+      const relogin = await c.loginAs('vendedor@price-vis.example');
       const read = await c.inject({ method: 'GET', url: `/api/v1/orders/${adminOrder.id}`, headers: c.readHeaders(relogin) });
       expect(read.statusCode).toBe(200);
       expect((JSON.parse(read.body) as { items: { minPrice?: number }[] }).items[0]!.minPrice).toBeUndefined();

@@ -5,13 +5,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TenantGuard } from './tenant.guard';
 
 /**
- * PROMPT 011-A/011-B: TenantGuard is the single central enforcement point for "is this tenant
- * currently allowed to operate" (tenants.status) and "is this user currently allowed to operate"
- * (users.status), both read fresh on every request rather than trusted from the JWT — see this
- * file's own header comment. The full HTTP-level proof (a real access token issued before
- * suspension/deactivation, against a real route, against real PostgreSQL) lives in
- * test/administration/tenant-suspension.integration.test.ts and
- * test/administration/user-status.integration.test.ts.
+ * 016-C / ADR-0033: TenantGuard now runs ONE live cross-tenant check per request —
+ * `TenantMembershipsRepository.findActiveForIdentityAndTenant(identityId, tenantId)` — which
+ * returns a row only when the `(identityId, tenantId)` membership is `active` AND `tenants.status`
+ * / `identities.status` / `users.status` are all `active` and the user is not soft-deleted. This
+ * folds in PROMPT 011-A (tenant status) + 011-B (user status) and extends the same
+ * revoke-without-waiting-for-JWT-expiry guarantee to identity + membership status. The full
+ * HTTP-level proofs against real PostgreSQL live in test/auth/identity-auth.integration.test.ts
+ * and test/administration/{tenant-suspension,user-status}.integration.test.ts.
  */
 vi.mock('../../database/tenant-context', () => ({
   withTenantTransaction: vi.fn(async (_tenantId: string, fn: (tx: unknown) => unknown) => fn({})),
@@ -39,51 +40,50 @@ function contextFor(
   return { context, reflector };
 }
 
-const ACTIVE_TENANT = { id: 'tenant-1', status: 'active' };
-const ACTIVE_USER_ROW = {
-  id: 'user-1',
+const PRINCIPAL = { userId: 'user-1', identityId: 'identity-1', tenantId: 'tenant-1', tenantSlug: 'acme' };
+const ACTIVE_MEMBERSHIP = {
+  membershipId: 'm-1',
+  identityId: 'identity-1',
   tenantId: 'tenant-1',
-  email: 'user@example.com',
-  passwordHash: 'x',
-  fullName: 'User',
-  status: 'active',
-  lastLoginAt: null,
-  createdAt: new Date('2026-01-01T00:00:00Z'),
+  tenantName: 'Acme',
+  tenantSlug: 'acme',
+  userId: 'user-1',
 };
 
 describe('TenantGuard', () => {
-  let tenantsPlatformRepository: { findById: ReturnType<typeof vi.fn> };
-  let usersRepository: { findById: ReturnType<typeof vi.fn> };
+  let membershipsRepository: { findActiveForIdentityAndTenant: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
-    tenantsPlatformRepository = { findById: vi.fn().mockResolvedValue(ACTIVE_TENANT) };
-    usersRepository = { findById: vi.fn().mockResolvedValue(ACTIVE_USER_ROW) };
+    membershipsRepository = { findActiveForIdentityAndTenant: vi.fn().mockResolvedValue(ACTIVE_MEMBERSHIP) };
   });
 
   function buildGuard(reflector: Reflector): TenantGuard {
-    return new TenantGuard(reflector, tenantsPlatformRepository as never, usersRepository as never);
+    return new TenantGuard(reflector, membershipsRepository as never);
   }
 
-  it('allows a @Public() route through without resolving a tenant or user at all', async () => {
+  it('allows a @Public() route through without resolving anything', async () => {
     const { context, reflector } = contextFor({}, { isPublic: true });
-    const guard = buildGuard(reflector);
-    await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(tenantsPlatformRepository.findById).not.toHaveBeenCalled();
-    expect(usersRepository.findById).not.toHaveBeenCalled();
+    await expect(buildGuard(reflector).canActivate(context)).resolves.toBe(true);
+    expect(membershipsRepository.findActiveForIdentityAndTenant).not.toHaveBeenCalled();
   });
 
-  it('rejects when no tenant can be resolved from the token at all (existing behavior)', async () => {
+  it('rejects when the token carries no resolvable tenant/identity', async () => {
     const { context, reflector } = contextFor({ authPrincipal: undefined });
-    const guard = buildGuard(reflector);
-    await expect(guard.canActivate(context)).rejects.toThrow('No resolvable tenant context.');
-    expect(tenantsPlatformRepository.findById).not.toHaveBeenCalled();
+    await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('No resolvable tenant context.');
+    expect(membershipsRepository.findActiveForIdentityAndTenant).not.toHaveBeenCalled();
   });
 
-  it('a @PlatformOnly() route requires platformPrincipal and never looks up a tenant or user (existing behavior, unaffected)', async () => {
+  it('rejects when the token has a tenantId but no identityId (016-C — pre-migration token)', async () => {
+    const { context, reflector } = contextFor({
+      authPrincipal: { userId: 'user-1', tenantId: 'tenant-1', tenantSlug: 'acme' },
+    });
+    await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('No resolvable tenant context.');
+  });
+
+  it('a @PlatformOnly() route requires platformPrincipal and never looks up a membership', async () => {
     const allowed = contextFor({ platformPrincipal: { adminId: 'admin-1' } }, { isPlatformOnly: true });
     await expect(buildGuard(allowed.reflector).canActivate(allowed.context)).resolves.toBe(true);
-    expect(tenantsPlatformRepository.findById).not.toHaveBeenCalled();
-    expect(usersRepository.findById).not.toHaveBeenCalled();
+    expect(membershipsRepository.findActiveForIdentityAndTenant).not.toHaveBeenCalled();
 
     const denied = contextFor({}, { isPlatformOnly: true });
     await expect(buildGuard(denied.reflector).canActivate(denied.context)).rejects.toThrow(
@@ -91,93 +91,38 @@ describe('TenantGuard', () => {
     );
   });
 
-  it('allows a tenant-scoped request when both the tenant and the user are active', async () => {
-    const request: Record<string, unknown> = {
-      authPrincipal: { userId: 'user-1', tenantId: 'tenant-1', tenantSlug: 'acme' },
-    };
+  it('allows a tenant-scoped request when the membership (and tenant/identity/user) are all active', async () => {
+    const request: Record<string, unknown> = { authPrincipal: PRINCIPAL };
     const { context, reflector } = contextFor(request);
-    const guard = buildGuard(reflector);
-
-    await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(usersRepository.findById).toHaveBeenCalledWith(expect.anything(), 'tenant-1', 'user-1');
+    await expect(buildGuard(reflector).canActivate(context)).resolves.toBe(true);
+    expect(membershipsRepository.findActiveForIdentityAndTenant).toHaveBeenCalledWith('identity-1', 'tenant-1');
     expect(request['tenantContext']).toEqual({
       userId: 'user-1',
+      identityId: 'identity-1',
       tenantId: 'tenant-1',
       tenantSlug: 'acme',
       permissions: ['products.view'],
     });
   });
 
-  it('PROMPT 011-A: rejects a tenant-scoped request when tenants.status is suspended, even with an otherwise-valid token', async () => {
-    tenantsPlatformRepository.findById.mockResolvedValue({ id: 'tenant-1', status: 'suspended' });
-    const request: Record<string, unknown> = {
-      authPrincipal: { userId: 'user-1', tenantId: 'tenant-1', tenantSlug: 'acme' },
-    };
+  it('rejects when the live check returns nothing (membership / tenant / identity / user not active)', async () => {
+    membershipsRepository.findActiveForIdentityAndTenant.mockResolvedValue(undefined);
+    const request: Record<string, unknown> = { authPrincipal: PRINCIPAL };
     const { context, reflector } = contextFor(request);
-    const guard = buildGuard(reflector);
-
-    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
-    await expect(guard.canActivate(context)).rejects.toThrow('Tenant is not active.');
-    expect(request['tenantContext']).toBeUndefined();
-    // Suspension is caught before ever touching the users table — cheaper failure path.
-    expect(usersRepository.findById).not.toHaveBeenCalled();
-  });
-
-  it('PROMPT 011-A: rejects when the resolved tenant is archived', async () => {
-    tenantsPlatformRepository.findById.mockResolvedValue({ id: 'tenant-1', status: 'archived' });
-    const request: Record<string, unknown> = {
-      authPrincipal: { userId: 'user-1', tenantId: 'tenant-1', tenantSlug: 'acme' },
-    };
-    const { context, reflector } = contextFor(request);
-    await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('Tenant is not active.');
-  });
-
-  it('PROMPT 011-A: rejects when the tenant id from the token no longer resolves to any row', async () => {
-    tenantsPlatformRepository.findById.mockResolvedValue(undefined);
-    const request: Record<string, unknown> = {
-      authPrincipal: { userId: 'user-1', tenantId: 'tenant-1', tenantSlug: 'acme' },
-    };
-    const { context, reflector } = contextFor(request);
-    await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('Tenant is not active.');
-  });
-
-  it('PROMPT 011-B: rejects a tenant-scoped request when users.status is disabled, even with an otherwise-valid token', async () => {
-    usersRepository.findById.mockResolvedValue({ ...ACTIVE_USER_ROW, status: 'disabled' });
-    const request: Record<string, unknown> = {
-      authPrincipal: { userId: 'user-1', tenantId: 'tenant-1', tenantSlug: 'acme' },
-    };
-    const { context, reflector } = contextFor(request);
-    const guard = buildGuard(reflector);
-
-    await expect(guard.canActivate(context)).rejects.toThrow(ForbiddenException);
-    await expect(guard.canActivate(context)).rejects.toThrow('User is not active.');
+    await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow(ForbiddenException);
+    await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('Tenant access is not active.');
     expect(request['tenantContext']).toBeUndefined();
   });
 
-  it('PROMPT 011-B: rejects when users.status is invited (not yet activated)', async () => {
-    usersRepository.findById.mockResolvedValue({ ...ACTIVE_USER_ROW, status: 'invited' });
-    const request: Record<string, unknown> = {
-      authPrincipal: { userId: 'user-1', tenantId: 'tenant-1', tenantSlug: 'acme' },
-    };
-    const { context, reflector } = contextFor(request);
-    await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('User is not active.');
+  it("rejects when the membership's user_id does not match the token's sub (tampered / stale token)", async () => {
+    membershipsRepository.findActiveForIdentityAndTenant.mockResolvedValue({ ...ACTIVE_MEMBERSHIP, userId: 'someone-else' });
+    const { context, reflector } = contextFor({ authPrincipal: PRINCIPAL });
+    await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('Tenant access is not active.');
   });
 
-  it('PROMPT 011-B: rejects when the user id from the token no longer resolves to any row (deleted, or belongs to a different tenant)', async () => {
-    usersRepository.findById.mockResolvedValue(undefined);
-    const request: Record<string, unknown> = {
-      authPrincipal: { userId: 'user-1', tenantId: 'tenant-1', tenantSlug: 'acme' },
-    };
-    const { context, reflector } = contextFor(request);
-    await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('User is not active.');
-  });
-
-  it('PROMPT 011-B: resolves the user scoped to both tenantId and userId from the token (never trusts userId alone)', async () => {
-    const request: Record<string, unknown> = {
-      authPrincipal: { userId: 'user-1', tenantId: 'tenant-1', tenantSlug: 'acme' },
-    };
-    const { context, reflector } = contextFor(request);
+  it('resolves the membership scoped to BOTH identityId and tenantId (never identityId alone)', async () => {
+    const { context, reflector } = contextFor({ authPrincipal: PRINCIPAL });
     await buildGuard(reflector).canActivate(context);
-    expect(usersRepository.findById).toHaveBeenCalledWith(expect.anything(), 'tenant-1', 'user-1');
+    expect(membershipsRepository.findActiveForIdentityAndTenant).toHaveBeenCalledWith('identity-1', 'tenant-1');
   });
 });

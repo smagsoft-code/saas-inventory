@@ -11,6 +11,7 @@ const testAuthConfig: AuthConfig = {
   refreshTokenPepper: 'test-pepper',
   accessTokenTtlSeconds: 900,
   refreshTokenTtlSeconds: 2_592_000,
+  selectionTokenTtlSeconds: 300,
   argon2: { memoryCostKib: 8192, timeCost: 1, parallelism: 1 },
   cookieDomain: undefined,
   cookieSecure: false,
@@ -57,7 +58,7 @@ describe('JwtAuthGuard', () => {
 
   it('rejects an expired token', async () => {
     const token = await jwtService.signAsync(
-      { sub: 'u1', tenantId: 't1', tenantSlug: 'acme', jti: 'j1' },
+      { sub: 'u1', identityId: 'i1', tenantId: 't1', tenantSlug: 'acme', jti: 'j1' },
       { secret: 'test-secret', expiresIn: -10 },
     );
     const { context, reflector } = contextFor({ headers: { authorization: `Bearer ${token}` } });
@@ -65,21 +66,31 @@ describe('JwtAuthGuard', () => {
     await expect(guard.canActivate(context)).rejects.toThrow('Invalid or expired session.');
   });
 
-  it('accepts a valid bearer token and attaches the principal to the request', async () => {
+  it('accepts a valid bearer token and attaches the principal (with identityId) to the request', async () => {
     const token = await jwtService.signAsync(
-      { sub: 'u1', tenantId: 't1', tenantSlug: 'acme', jti: 'j1' },
+      { sub: 'u1', identityId: 'i1', tenantId: 't1', tenantSlug: 'acme', jti: 'j1' },
       { secret: 'test-secret', expiresIn: 900 },
     );
     const request: Record<string, unknown> = { headers: { authorization: `Bearer ${token}` } };
     const { context, reflector } = contextFor(request);
     const guard = new JwtAuthGuard(reflector, jwtService, testAuthConfig);
     await expect(guard.canActivate(context)).resolves.toBe(true);
-    expect(request['authPrincipal']).toEqual({ userId: 'u1', tenantId: 't1', tenantSlug: 'acme' });
+    expect(request['authPrincipal']).toEqual({ userId: 'u1', identityId: 'i1', tenantId: 't1', tenantSlug: 'acme' });
+  });
+
+  it('rejects a tenant-selection token used as a session (016-C)', async () => {
+    const token = await jwtService.signAsync(
+      { sub: 'i1', purpose: 'tenant-selection', jti: 'j1' },
+      { secret: 'test-secret', expiresIn: 300 },
+    );
+    const { context, reflector } = contextFor({ headers: { authorization: `Bearer ${token}` } });
+    const guard = new JwtAuthGuard(reflector, jwtService, testAuthConfig);
+    await expect(guard.canActivate(context)).rejects.toThrow('Invalid or expired session.');
   });
 
   it('accepts a valid token from the access_token cookie when no bearer header is present', async () => {
     const token = await jwtService.signAsync(
-      { sub: 'u1', tenantId: 't1', tenantSlug: 'acme', jti: 'j1' },
+      { sub: 'u1', identityId: 'i1', tenantId: 't1', tenantSlug: 'acme', jti: 'j1' },
       { secret: 'test-secret', expiresIn: 900 },
     );
     const request: Record<string, unknown> = { headers: {}, cookies: { access_token: token } };

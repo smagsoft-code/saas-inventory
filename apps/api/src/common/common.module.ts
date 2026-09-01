@@ -1,8 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
-import { TenantsPlatformRepository } from '../auth/repositories/tenants-platform.repository';
-import { UsersRepository } from '../auth/repositories/users.repository';
+import { TenantMembershipsRepository } from '../auth/repositories/tenant-memberships.repository';
 import { AUTH_CONFIG, getAuthConfig } from './config/auth-config';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -23,12 +22,11 @@ import { ObjectStorageService } from './storage/object-storage.service';
   imports: [JwtModule.register({})],
   providers: [
     { provide: AUTH_CONFIG, useFactory: getAuthConfig },
-    // TenantsPlatformRepository/UsersRepository: TenantGuard's PROMPT-011-A (tenant-status) and
-    // PROMPT-011-B (user-status) live checks need them — same "each module gets its own stateless
-    // instance" convention CoreModule/AdministrationModule already use for these exact classes
-    // (neither has a dependency beyond the globally-provided database tokens), not a new pattern.
-    TenantsPlatformRepository,
-    UsersRepository,
+    // TenantMembershipsRepository: TenantGuard's one live cross-tenant status check (016-C —
+    // membership + tenant + identity + user status, folding in PROMPT 011-A/011-B). Stateless,
+    // depends only on the globally-provided PLATFORM_DATABASE token — same "each module gets its
+    // own instance" convention already used for the other app_platform repositories.
+    TenantMembershipsRepository,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },

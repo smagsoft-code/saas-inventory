@@ -1,8 +1,7 @@
 import { ForbiddenException, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import { TenantsPlatformRepository } from '../../auth/repositories/tenants-platform.repository';
-import { UsersRepository } from '../../auth/repositories/users.repository';
+import { TenantMembershipsRepository } from '../../auth/repositories/tenant-memberships.repository';
 import { withTenantTransaction } from '../../database/tenant-context';
 import { IS_PLATFORM_ONLY_KEY } from '../decorators/platform-only.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -15,9 +14,18 @@ import { loadEffectivePermissions } from '../permissions/load-effective-permissi
  * Runs after JwtAuthGuard in the global guard chain (common.module.ts) — a route without a
  * resolvable tenant is rejected with 403, except @Public() routes.
  *
- * Every tenant user in this schema belongs to exactly one tenant (users.tenant_id is NOT NULL,
- * database.md) — there is no "active tenant" to select or switch, so resolution here is a direct
- * read of the token's tenantId claim, not a lookup across memberships.
+ * 016-C / ADR-0033: the token now carries both `sub` (users.id, unchanged) and `identityId`
+ * (identities.id). Tenant scope is still resolved *only* from the verified token's `tenantId`
+ * claim — never client input. What changed is the live-status check below: one JOINed
+ * `app_platform` read (`TenantMembershipsRepository.findActiveForIdentityAndTenant`) now confirms,
+ * in a single round trip, that the `(identityId, tenantId)` membership exists and is `active`,
+ * that `tenants.status`, `identities.status` and `users.status` are all `active` and the user is
+ * not soft-deleted, AND that the membership's `user_id` matches the token's `sub` (structurally
+ * ruling out a tampered/stale token). This folds PROMPT 011-A (tenant status) and 011-B (user
+ * status) into the same query and extends the identical "revoke without waiting for JWT expiry"
+ * property to identity and membership status. One tenant transaction then loads effective
+ * permissions (ADR-0009). A session's JWT is always scoped to exactly one tenant; changing tenant
+ * requires a fresh login/selection (switch-tenant is a later prompt).
  *
  * @PlatformOnly() routes (FASE 11's SuperAdmin endpoints) take a third path, structurally
  * separate from both of the above: they require a verified `platformPrincipal` (set by
@@ -51,8 +59,7 @@ import { loadEffectivePermissions } from '../permissions/load-effective-permissi
 export class TenantGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly tenantsPlatformRepository: TenantsPlatformRepository,
-    private readonly usersRepository: UsersRepository,
+    private readonly tenantMembershipsRepository: TenantMembershipsRepository,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -78,40 +85,33 @@ export class TenantGuard implements CanActivate {
     }
 
     const principal = request.authPrincipal;
-    if (!principal?.tenantId) {
+    if (!principal?.tenantId || !principal.identityId) {
       throw new ForbiddenException('No resolvable tenant context.');
     }
 
-    // Server-side, live status check (never a JWT claim) — the fix for PROMPT 011-A's core
-    // scenario: a token minted while the tenant was 'active' must be rejected here as soon as
-    // tenants.status stops being 'active' (suspended/archived), well before the token's own TTL
-    // expiry. Checked via the app_platform (BYPASSRLS) connection, before the tenant-scoped
-    // transaction below, deliberately kept separate from RLS — status gates *whether* a tenant
-    // may operate at all, RLS gates *isolation between* tenants; conflating the two would mean
-    // adding a status condition to every tenant-owned table's policy instead of one central check.
-    const tenant = await this.tenantsPlatformRepository.findById(principal.tenantId);
-    if (!tenant || tenant.status !== 'active') {
-      throw new ForbiddenException('Tenant is not active.');
+    // One live cross-tenant read via app_platform (BYPASSRLS): the `(identityId, tenantId)`
+    // membership must exist and be `active`, and `tenants.status` / `identities.status` /
+    // `users.status` must all be `active` with the user not soft-deleted. This gates *whether*
+    // this identity may still operate in this tenant at all — deliberately separate from RLS,
+    // which gates *isolation between* tenants. Folds PROMPT 011-A (tenant status) + 011-B (user
+    // status) into one query and extends the same immediate-revocation property to identity and
+    // membership status (ADR-0033). `context.userId !== principal.userId` catches a token whose
+    // `sub` no longer matches its identity's membership for this tenant (tampering / staleness).
+    const membership = await this.tenantMembershipsRepository.findActiveForIdentityAndTenant(
+      principal.identityId,
+      principal.tenantId,
+    );
+    if (!membership || membership.userId !== principal.userId) {
+      throw new ForbiddenException('Tenant access is not active.');
     }
 
-    const permissions = await withTenantTransaction(principal.tenantId, async (tx) => {
-      // Live user-status check (PROMPT 011-B) — same rationale as the tenant check above, applied
-      // to `users.status`: a disabled/invited (or deleted — findById already excludes
-      // deleted_at IS NOT NULL rows) user must stop being able to use an already-issued token from
-      // this point on, not merely from their next login/refresh.
-      const user = await this.usersRepository.findById(tx, principal.tenantId, principal.userId);
-      if (!user || user.status !== 'active') {
-        return undefined;
-      }
-      return loadEffectivePermissions(tx, principal.userId);
-    });
-
-    if (!permissions) {
-      throw new ForbiddenException('User is not active.');
-    }
+    const permissions = await withTenantTransaction(principal.tenantId, (tx) =>
+      loadEffectivePermissions(tx, principal.userId),
+    );
 
     request.tenantContext = {
       userId: principal.userId,
+      identityId: principal.identityId,
       tenantId: principal.tenantId,
       tenantSlug: principal.tenantSlug,
       permissions,

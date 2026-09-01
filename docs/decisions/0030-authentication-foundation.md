@@ -2,7 +2,12 @@
 
 ## Status
 
-Accepted.
+Accepted. **The "Login requires a tenant slug" decision below is superseded by
+[ADR-0033](0033-global-identity-tenant-memberships.md) as of 016-C**: `POST /auth/login` now takes
+`{ email, password }` only, resolving a global `identities` row; the tenant (when the identity has
+more than one) is chosen afterwards via `POST /auth/select-tenant`. The access-token JWT gains an
+`identityId` claim (`sub` still carries `users.id`). Everything else in this ADR — cookie
+transport, opaque rotated refresh tokens, CSRF double-submit, the guard chain — is unchanged.
 
 ## Context
 

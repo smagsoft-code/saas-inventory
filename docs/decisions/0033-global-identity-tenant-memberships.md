@@ -2,13 +2,23 @@
 
 ## Status
 
-Accepted. Implemented by **016-B** (database layer only — see [database.md#global-identity-and-tenant-memberships](../architecture/database.md#global-identity-and-tenant-memberships)). The
-authentication flow this schema enables (email+password login, tenant selection, `switch-tenant`,
-JWT changes) is **not** implemented by this ADR/prompt — it is a separate, later prompt.
+Accepted. Implemented in two prompts:
+- **016-B** — database layer (`identities`, `tenant_memberships`, the backfill migration) — see
+  [database.md#global-identity-and-tenant-memberships](../architecture/database.md#global-identity-and-tenant-memberships).
+- **016-C** — the authentication flow: `POST /auth/login` is now `{ email, password }`, resolving
+  a global identity; one active membership issues a session, several return an interim
+  selection token completed by `POST /auth/select-tenant`. The access-token JWT gains an
+  `identityId` claim; `TenantGuard` does one live `app_platform` check that the
+  `(identityId, tenantId)` membership plus the tenant, identity and user statuses are all
+  `active`. `POST /users` (CORE) now also provisions an identity + membership for every user it
+  creates. See [security.md#authentication](../architecture/security.md#authentication).
 
-This ADR **partially supersedes** [ADR-0030](0030-authentication-foundation.md)'s "Login requires
-a tenant slug" section: that requirement is expected to be removed once the auth-flow prompt lands,
-but the login endpoint itself is unchanged by 016-B and still requires `tenantSlug` today.
+Still **not** built (later prompts): `POST /auth/switch-tenant` (changing the active tenant within
+a session), self-service password reset for `pending_credential` identities, dropping
+`users.password_hash`.
+
+This ADR **supersedes** [ADR-0030](0030-authentication-foundation.md)'s "Login requires a tenant
+slug" section as of 016-C — the login endpoint no longer accepts `tenantSlug`.
 
 ## Context
 
@@ -75,15 +85,46 @@ users  (tenant-scoped, RLS — UNCHANGED)
     └── every business FK (audit_log.actor_id, carts.user_id, order_items.placed_by, ...) (UNCHANGED)
 ```
 
-## Flujo de autenticación
+## Flujo de autenticación (016-C)
 
-**Not built by this ADR.** For the record, the flow this schema is designed to support (a later,
-separate prompt implements it): `email+password` → resolve `identities` by email → validate the
-one credential → enumerate active `tenant_memberships` (joined to `tenants.status='active'`) → one
-membership auto-selects, several return a list for the user to pick from (only after the password
-has already been validated) → the chosen membership's `tenant_id`/`user_id` becomes the session's
-tenant context exactly as today (`AuthPrincipal`, `TenantGuard`, `withTenantTransaction`,
-RLS) — none of which changes.
+```
+POST /auth/login  { email, password }                (@Public, @SkipCsrf, rate-limited)
+  normalizeEmail -> IdentitiesRepository.findByEmail   (app_platform, lower(email))
+  identity missing / status != 'active' / password_hash NULL
+        -> verify(DUMMY_HASH) for timing -> 401 "Invalid email or password."
+  verify(identity.password_hash, password) == false   -> 401 (same message)
+  TenantMembershipsRepository.listActiveForIdentity    (app_platform; JOINs tenants + identities +
+        users, all four statuses must be 'active', user not soft-deleted)
+  0 active memberships                                 -> 401 (same message)
+  1 active membership   -> issue session for that tenant  (access + refresh + csrf cookies)
+                           access JWT = { sub: users.id, identityId, tenantId, tenantSlug, jti }
+  >1 active memberships -> issueSelection(identity.id)
+                           selection JWT = { sub: identity.id, purpose:'tenant-selection', jti }
+                           set httpOnly `tenant_selection` cookie (path /api/v1/auth, ~5 min)
+                           200 { status:'tenant_selection_required',
+                                 availableTenants:[{ tenantId, name }] }   -- NO session cookie
+
+POST /auth/select-tenant  { tenantId, selectionToken? }   + tenant_selection cookie
+  verify selection token (JWT_SECRET, purpose == 'tenant-selection')      -> 401 on any failure
+  IdentitiesRepository.findById(payload.sub); status == 'active'          -> 401 otherwise
+  TenantMembershipsRepository.findActiveForIdentityAndTenant(id, tenantId) -> 401 if none
+  issue session; clear the tenant_selection cookie
+
+POST /auth/refresh  (unchanged transport)
+  resolve refresh row -> reuse/expiry checks (unchanged)
+  TenantMembershipsRepository.findActiveForTenantAndUser(tenantId, userId) -> 401 if not all active
+  rotate + re-issue (access JWT now carries identityId)
+
+Every subsequent request:  JwtAuthGuard verifies the JWT (rejects a selection token as a session,
+  sets authPrincipal incl. identityId) -> TenantGuard runs ONE app_platform check
+  (findActiveForIdentityAndTenant, + membership.user_id == token.sub) -> one tenant tx loads
+  effective permissions. RLS keyed by tenantId, unchanged.
+```
+
+`POST /users` (CORE) provisions the same way: create the tenant-scoped `users` row, then
+`IdentityProvisioningService.provisionMembership` find-or-creates the `identities` row for the
+email (never overwriting an existing person's credential) and creates the `active` membership;
+failure compensates with a soft-delete of the `users` row.
 
 ## Modelo de datos
 
@@ -133,15 +174,17 @@ for the full column list, constraints, and the backfill's case table (A/B/C/D-E)
   correctness, though `database/scripts/report-identity-backfill.sql` is provided for operator
   review of any `pending_credential` consolidations or excluded rows after migrating a real
   environment with existing data.
-- No change to `auth.service.ts`, `TenantGuard`, `JwtAuthGuard`, the JWT payload, RLS policies on
-  any existing table, RBAC, location authorization, or the frontend. The current login continues
-  to work unmodified.
-- A later, separate prompt is required to actually use `identities`/`tenant_memberships` for
-  authentication (login rewrite, tenant-selection endpoint, `switch-tenant`, JWT `identityId`
-  claim, `TenantGuard` membership-status check) and to eventually retire `users.password_hash`.
-- ADR-0030's `tenantSlug`-login requirement is superseded **in intent**, not yet **in code** — it
-  remains the accurate description of the current, unmodified login endpoint until that later
-  prompt ships.
+- **016-B**: no change to auth/JWT/guards/RLS/RBAC/location-auth/frontend — the `tenantSlug` login
+  kept working unmodified.
+- **016-C**: `AuthService`, `AuthController`, the login/select-tenant DTOs, `AccessTokenService`,
+  `JwtAuthGuard`, `TenantGuard`, `AuthPrincipal`, and `CoreModule`'s `UsersService` change.
+  `users.password_hash`, RLS policies on every existing table, RBAC, and location authorization
+  are **unchanged**. The **web login form (`apps/web`) is not touched by 016-C and now sends a
+  `tenantSlug` the API rejects** — updating it is the frontend prompt's job (016-D / FASE 17), a
+  known and intended consequence.
+- `POST /auth/switch-tenant`, `pending_credential` password reset, and the `users.password_hash`
+  drop remain later prompts.
+- ADR-0030's `tenantSlug`-login requirement is superseded as of 016-C.
 
 ## Migración
 

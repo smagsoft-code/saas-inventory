@@ -92,8 +92,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
     return { user: body.user, accessToken: cookieValue(response, 'access_token')!, csrfToken: cookieValue(response, 'csrf_token')! };
   }
 
-  async function loginAs(tenantSlug: string, email: string, password: string): Promise<Session> {
-    const response = await inject({ method: 'POST', url: '/api/v1/auth/login', payload: { tenantSlug, email, password } });
+  async function loginAs(email: string, password: string): Promise<Session> {
+    const response = await inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email, password } });
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body) as { user: Session['user'] };
     return { user: body.user, accessToken: cookieValue(response, 'access_token')!, csrfToken: cookieValue(response, 'csrf_token')! };
@@ -117,7 +117,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
       payload: { email, fullName: `${roleName} User`, password: 'a-very-long-password', roleId },
     });
     expect(createResponse.statusCode).toBe(201);
-    return loginAs(admin.user.tenantSlug, email, 'a-very-long-password');
+    return loginAs(email, 'a-very-long-password');
   }
 
   async function createWarehouse(admin: Session, name: string, code: string): Promise<string> {

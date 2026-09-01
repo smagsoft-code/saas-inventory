@@ -305,7 +305,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: platform-a
       const blockedLogin = await inject({
         method: 'POST',
         url: '/api/v1/auth/login',
-        payload: { tenantSlug: tenant.user.tenantSlug, email: 'admin@rho-tenant.example', password: 'a-very-long-password' },
+        payload: { email: 'admin@rho-tenant.example', password: 'a-very-long-password' },
       });
       expect(blockedLogin.statusCode).toBe(401);
 
@@ -320,7 +320,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: platform-a
       const restoredLogin = await inject({
         method: 'POST',
         url: '/api/v1/auth/login',
-        payload: { tenantSlug: tenant.user.tenantSlug, email: 'admin@rho-tenant.example', password: 'a-very-long-password' },
+        payload: { email: 'admin@rho-tenant.example', password: 'a-very-long-password' },
       });
       expect(restoredLogin.statusCode).toBe(200);
     });

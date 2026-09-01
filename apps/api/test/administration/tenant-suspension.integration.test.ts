@@ -179,7 +179,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: tenant sus
     const loginWhileActive = await inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { tenantSlug: tenant.user.tenantSlug, email: 'admin@suspend-t1.example', password: 'a-very-long-password' },
+      payload: { email: 'admin@suspend-t1.example', password: 'a-very-long-password' },
     });
     expect(loginWhileActive.statusCode).toBe(200);
 
@@ -188,7 +188,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: tenant sus
     const loginWhileSuspended = await inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { tenantSlug: tenant.user.tenantSlug, email: 'admin@suspend-t1.example', password: 'a-very-long-password' },
+      payload: { email: 'admin@suspend-t1.example', password: 'a-very-long-password' },
     });
     expect(loginWhileSuspended.statusCode).toBe(401);
     expect(cookieValue(loginWhileSuspended, 'access_token')).toBeUndefined();
@@ -305,7 +305,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: tenant sus
     const loginB = await inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { tenantSlug: tenantB.user.tenantSlug, email: 'admin@suspend-t7-b.example', password: 'a-very-long-password' },
+      payload: { email: 'admin@suspend-t7-b.example', password: 'a-very-long-password' },
     });
     expect(loginB.statusCode).toBe(200);
   });

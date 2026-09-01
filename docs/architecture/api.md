@@ -138,7 +138,10 @@ A small, explicit set of routes don't require the normal auth/tenant guard chain
 
 - `GET /health` (already scaffolded).
 - Login/token-refresh endpoints (they establish the session, so they can't require one) — both the
-  tenant (`/auth/*`) and platform-admin (`/platform/auth/*`, FASE 11) variants.
+  tenant (`/auth/*`) and platform-admin (`/platform/auth/*`, FASE 11) variants. This includes
+  `POST /auth/select-tenant` (016-C): it is reached only with a short-lived tenant-selection token,
+  never a session, and completes login for an identity that has more than one active tenant
+  membership (see [security.md](security.md#global-identity--tenant-selection-016-c)).
 - The QR public resolver (`GET /q/:code` or similar) — returns only the subset of information
   appropriate for an unauthenticated scan (see [multi-tenancy.md](multi-tenancy.md) and
   [security.md](security.md) for public-vs-private data rules); it does not require a tenant

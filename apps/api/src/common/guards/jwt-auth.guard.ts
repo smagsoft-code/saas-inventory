@@ -4,7 +4,11 @@ import { JwtService } from '@nestjs/jwt';
 import type { FastifyRequest } from 'fastify';
 import { AUTH_CONFIG, type AuthConfig } from '../config/auth-config';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import { type AccessTokenPayload, isPlatformAccessTokenPayload } from '../tokens/access-token-payload';
+import {
+  type AnyIssuedTokenPayload,
+  isPlatformAccessTokenPayload,
+  isSelectionTokenPayload,
+} from '../tokens/access-token-payload';
 
 /**
  * "Who are you?" — api.md#request-flow's Auth Guard. Verifies the access token (Authorization
@@ -40,13 +44,23 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token, {
+      const payload = await this.jwtService.verifyAsync<AnyIssuedTokenPayload>(token, {
         secret: this.authConfig.jwtSecret,
       });
+      // A tenant-selection token (016-C) is signed with the same secret but is NOT a session — it
+      // carries no tenant, no permissions, and only `POST /auth/select-tenant` may act on it.
+      if (isSelectionTokenPayload(payload)) {
+        throw new UnauthorizedException('Invalid or expired session.');
+      }
       if (isPlatformAccessTokenPayload(payload)) {
         request.platformPrincipal = { adminId: payload.sub };
       } else {
-        request.authPrincipal = { userId: payload.sub, tenantId: payload.tenantId, tenantSlug: payload.tenantSlug };
+        request.authPrincipal = {
+          userId: payload.sub,
+          identityId: payload.identityId,
+          tenantId: payload.tenantId,
+          tenantSlug: payload.tenantSlug,
+        };
       }
       return true;
     } catch {

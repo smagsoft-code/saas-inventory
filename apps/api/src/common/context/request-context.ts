@@ -9,7 +9,10 @@
 import type { FastifyRequest } from 'fastify';
 
 export interface AuthPrincipal {
+  /** `users.id` — the tenant-scoped principal (unchanged by 016-C). */
   userId: string;
+  /** `identities.id` — the global identity this user belongs to (016-C / ADR-0033). */
+  identityId: string;
   tenantId: string;
   tenantSlug: string;
 }

@@ -6,11 +6,21 @@ import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { SkipCsrf } from '../common/decorators/skip-csrf.decorator';
 import type { AuthPrincipal } from '../common/context/request-context';
-import { setSessionCookies, clearSessionCookies } from './cookies/auth-cookies.util';
-import { AuthSessionResponseDto, CurrentUserResponseDto } from './dto/auth-session-response.dto';
+import {
+  clearSelectionCookie,
+  clearSessionCookies,
+  setSelectionCookie,
+  setSessionCookies,
+} from './cookies/auth-cookies.util';
+import {
+  AuthSessionResponseDto,
+  CurrentUserResponseDto,
+  LoginResponseDto,
+} from './dto/auth-session-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
+import { SelectTenantDto } from './dto/select-tenant.dto';
 import { AuthThrottlerGuard } from './guards/auth-throttler.guard';
 import { AuthService, type IssuedSession, type SessionRequestMeta } from './services/auth.service';
 
@@ -42,7 +52,7 @@ export class AuthController {
   @UseGuards(AuthThrottlerGuard)
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  @ApiCreatedResponse({ type: AuthSessionResponseDto, description: 'Registers a new company and its first (Administrador) user.' })
+  @ApiCreatedResponse({ type: AuthSessionResponseDto, description: 'Registers a new company + its first (Administrador) user and issues a session.' })
   async register(
     @Body() dto: RegisterDto,
     @Req() request: FastifyRequest,
@@ -53,19 +63,56 @@ export class AuthController {
     return toResponse(session);
   }
 
+  /**
+   * 016-C: `{ email, password }` only. One active membership -> a session (cookies set). More than
+   * one -> the `tenant_selection` cookie + `availableTenants`, and NO session yet — the caller
+   * completes with `POST /auth/select-tenant`.
+   */
   @Public()
   @SkipCsrf()
   @UseGuards(AuthThrottlerGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOkResponse({ type: AuthSessionResponseDto })
+  @ApiOkResponse({ type: LoginResponseDto })
   async login(
     @Body() dto: LoginDto,
     @Req() request: FastifyRequest,
     @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<LoginResponseDto> {
+    const result = await this.authService.login(dto, requestMeta(request));
+
+    if (result.kind === 'session') {
+      setSessionCookies(reply, result, this.authConfig);
+      return { status: 'authenticated', ...toResponse(result) };
+    }
+
+    setSelectionCookie(reply, result.selectionToken, result.selectionTokenTtlSeconds, this.authConfig);
+    return {
+      status: 'tenant_selection_required',
+      availableTenants: result.availableTenants,
+      selectionToken: result.selectionToken,
+      selectionTokenExpiresAt: new Date(Date.now() + result.selectionTokenTtlSeconds * 1000).toISOString(),
+    };
+  }
+
+  /** 016-C step 2: picks the company from a multi-membership login. The selection token comes from
+   * the httpOnly `tenant_selection` cookie (browser) or the body (non-browser). */
+  @Public()
+  @SkipCsrf()
+  @UseGuards(AuthThrottlerGuard)
+  @Post('select-tenant')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: AuthSessionResponseDto })
+  async selectTenant(
+    @Body() dto: SelectTenantDto,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<AuthSessionResponseDto> {
-    const session = await this.authService.login(dto, requestMeta(request));
+    const cookies = request.cookies as Record<string, string | undefined> | undefined;
+    const rawSelectionToken = cookies?.['tenant_selection'] ?? dto.selectionToken;
+    const session = await this.authService.selectTenant(rawSelectionToken, dto.tenantId, requestMeta(request));
     setSessionCookies(reply, session, this.authConfig);
+    clearSelectionCookie(reply, this.authConfig);
     return toResponse(session);
   }
 
@@ -102,6 +149,6 @@ export class AuthController {
   @Get('me')
   @ApiOkResponse({ type: CurrentUserResponseDto })
   async me(@CurrentUser() principal: AuthPrincipal): Promise<CurrentUserResponseDto> {
-    return this.authService.me(principal.userId, principal.tenantId, principal.tenantSlug);
+    return this.authService.me(principal.userId, principal.identityId, principal.tenantId, principal.tenantSlug);
   }
 }

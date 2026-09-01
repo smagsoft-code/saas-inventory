@@ -1,17 +1,14 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, Length } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString } from 'class-validator';
 
+/**
+ * 016-C / ADR-0033: login is `{ email, password }` only. `email` resolves a global `identities`
+ * row (case-insensitive) and the password is checked against `identities.password_hash` — the
+ * credential belongs to the person, not to any tenant. The client cannot name a tenant on this
+ * request at all: which company (if the identity has more than one) is chosen *after* the
+ * credentials are validated, via `POST /auth/select-tenant`.
+ */
 export class LoginDto {
-  @ApiProperty({
-    type: String,
-    description:
-      'The tenant slug identifying which company to log into. Required because email is unique ' +
-      'per tenant, not globally (users.email is unique on (tenant_id, email)) — see ADR-0030.',
-  })
-  @IsString()
-  @Length(1, 80)
-  tenantSlug!: string;
-
   @ApiProperty({ type: String })
   @IsEmail()
   email!: string;

@@ -103,8 +103,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: user statu
     };
   }
 
-  async function loginAs(tenantSlug: string, email: string, password: string): Promise<Session> {
-    const response = await inject({ method: 'POST', url: '/api/v1/auth/login', payload: { tenantSlug, email, password } });
+  async function loginAs(email: string, password: string): Promise<Session> {
+    const response = await inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email, password } });
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body) as { user: Session['user'] };
     return {
@@ -133,7 +133,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: user statu
     });
     expect(createResponse.statusCode).toBe(201);
     const targetId = JSON.parse(createResponse.body).id as string;
-    const session = await loginAs(admin.user.tenantSlug, email, 'a-very-long-password');
+    const session = await loginAs(email, 'a-very-long-password');
     return { ...session, user: { ...session.user, id: targetId } };
   }
 
@@ -156,7 +156,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: user statu
     const loginWhileActive = await inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { tenantSlug: admin.user.tenantSlug, email: 'target@userstatus-u1.example', password: 'a-very-long-password' },
+      payload: { email: 'target@userstatus-u1.example', password: 'a-very-long-password' },
     });
     expect(loginWhileActive.statusCode).toBe(200);
 
@@ -165,7 +165,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: user statu
     const loginWhileDisabled = await inject({
       method: 'POST',
       url: '/api/v1/auth/login',
-      payload: { tenantSlug: admin.user.tenantSlug, email: 'target@userstatus-u1.example', password: 'a-very-long-password' },
+      payload: { email: 'target@userstatus-u1.example', password: 'a-very-long-password' },
     });
     expect(loginWhileDisabled.statusCode).toBe(401);
     expect(cookieValue(loginWhileDisabled, 'access_token')).toBeUndefined();

@@ -5,6 +5,7 @@ import { AuditLogService } from '../../common/audit/audit-log.service';
 import { UsersRepository, type UserListRow, type UserRow } from '../../auth/repositories/users.repository';
 import { RolesRepository } from '../../auth/repositories/roles.repository';
 import { PasswordService } from '../../auth/password/password.service';
+import { IdentityProvisioningService } from '../../auth/services/identity-provisioning.service';
 import { normalizeEmail } from '../../auth/util/normalize';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import type { CreateUserDto } from './dto/create-user.dto';
@@ -63,6 +64,7 @@ export class UsersService {
     private readonly usersRepository: UsersRepository,
     private readonly rolesRepository: RolesRepository,
     private readonly passwordService: PasswordService,
+    private readonly identityProvisioningService: IdentityProvisioningService,
     private readonly auditLogService: AuditLogService,
   ) {}
 
@@ -115,7 +117,10 @@ export class UsersService {
       throw new ForbiddenException('Missing permission to assign a role.');
     }
 
-    return withTenantTransaction(tenantId, async (tx) => {
+    const passwordHash = await this.passwordService.hash(dto.password);
+    const email = normalizeEmail(dto.email);
+
+    const { created, roleName } = await withTenantTransaction(tenantId, async (tx) => {
       let role: { id: string; name: string } | undefined;
       if (dto.roleId) {
         role = await this.rolesRepository.findById(tx, tenantId, dto.roleId);
@@ -127,13 +132,12 @@ export class UsersService {
         }
       }
 
-      const passwordHash = await this.passwordService.hash(dto.password);
-      let created: UserRow;
+      let user: UserRow;
       try {
-        created = await this.usersRepository.create(tx, {
+        user = await this.usersRepository.create(tx, {
           id: generateId(),
           tenantId,
-          email: normalizeEmail(dto.email),
+          email,
           passwordHash,
           fullName: dto.fullName,
         });
@@ -145,20 +149,44 @@ export class UsersService {
       }
 
       if (role) {
-        await this.rolesRepository.setUserRole(tx, tenantId, created.id, role.id, actorId);
+        await this.rolesRepository.setUserRole(tx, tenantId, user.id, role.id, actorId);
       }
 
       await this.writeAudit(tx, {
         tenantId,
         actorId,
         actionCode: 'user.created',
-        entityId: created.id,
-        afterState: { email: created.email, fullName: created.fullName, roleId: role?.id ?? null },
+        entityId: user.id,
+        afterState: { email: user.email, fullName: user.fullName, roleId: role?.id ?? null },
         meta,
       });
 
-      return toResponse(created, role ? [role.name] : []);
+      return { created: user, roleName: role?.name };
     });
+
+    // 016-C / ADR-0033: link the new `users` row into the global identity model — find-or-create
+    // the `identities` row for this email (never overwriting an existing person's credential) and
+    // create the `active` `tenant_memberships` row. Runs on the app_platform connection, so it
+    // cannot share the transaction above; on failure the just-created `users` row is
+    // compensatingly soft-deleted (best-effort) so it is never left orphaned.
+    try {
+      await this.identityProvisioningService.provisionMembership({
+        tenantId,
+        userId: created.id,
+        email,
+        passwordHash,
+        fullName: dto.fullName,
+      });
+    } catch (error) {
+      this.logger.error(`Identity/membership provisioning failed for user ${created.id}; rolling it back: ${String(error)}`);
+      await withTenantTransaction(tenantId, (tx) => this.usersRepository.softDelete(tx, tenantId, created.id)).catch(
+        (rollbackError: unknown) =>
+          this.logger.error(`Compensating soft-delete for user ${created.id} also failed: ${String(rollbackError)}`),
+      );
+      throw error;
+    }
+
+    return toResponse(created, roleName ? [roleName] : []);
   }
 
   async update(

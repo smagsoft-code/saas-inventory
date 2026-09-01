@@ -70,6 +70,16 @@ export class UsersRepository {
       .where(and(eq(users.tenantId, tenantId), eq(users.id, userId)));
   }
 
+  /** Compensating soft-delete (016-C): used only by `UsersService.create` to undo a `users` row
+   * whose global identity/membership provisioning failed right after it committed — so the row is
+   * never left orphaned (unreachable by the new login). */
+  async softDelete(tx: TenantTransaction, tenantId: string, userId: string): Promise<void> {
+    await tx
+      .update(users)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(users.tenantId, tenantId), eq(users.id, userId)));
+  }
+
   /** Admin-facing paginated listing (§11) — never selects `password_hash`. `status` is an
    * optional allow-listed filter (validated by the DTO before this is called). */
   async findManyByTenant(

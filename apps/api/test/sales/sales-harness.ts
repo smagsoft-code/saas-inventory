@@ -69,8 +69,8 @@ export function makeClient(app: NestFastifyApplication) {
     return { user: body.user, accessToken: cookieValue(response, 'access_token')!, csrfToken: cookieValue(response, 'csrf_token')! };
   }
 
-  async function loginAs(tenantSlug: string, email: string, password = 'a-very-long-password'): Promise<Session> {
-    const response = await inject({ method: 'POST', url: '/api/v1/auth/login', payload: { tenantSlug, email, password } });
+  async function loginAs(email: string, password = 'a-very-long-password'): Promise<Session> {
+    const response = await inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email, password } });
     expect(response.statusCode, response.body).toBe(200);
     const body = JSON.parse(response.body) as { user: Session['user'] };
     return { user: body.user, accessToken: cookieValue(response, 'access_token')!, csrfToken: cookieValue(response, 'csrf_token')! };
@@ -94,7 +94,7 @@ export function makeClient(app: NestFastifyApplication) {
       payload: { email, fullName: `${roleName} User`, password: 'a-very-long-password', roleId },
     });
     expect(created.statusCode, created.body).toBe(201);
-    return loginAs(admin.user.tenantSlug, email);
+    return loginAs(email);
   }
 
   /** Codes must be uppercase alphanumeric, optionally hyphen-separated (catalog/inventory DTO rule). */

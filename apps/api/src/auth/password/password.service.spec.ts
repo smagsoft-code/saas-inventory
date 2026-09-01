@@ -7,6 +7,7 @@ const testAuthConfig: AuthConfig = {
   refreshTokenPepper: 'test-refresh-pepper',
   accessTokenTtlSeconds: 900,
   refreshTokenTtlSeconds: 2_592_000,
+  selectionTokenTtlSeconds: 300,
   argon2: { memoryCostKib: 8192, timeCost: 2, parallelism: 1 },
   cookieDomain: undefined,
   cookieSecure: false,

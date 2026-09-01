@@ -15,6 +15,34 @@ resolved in Prompt 04 per [ADR-0030](../decisions/0030-authentication-foundation
 access token is carried to the browser is resolved the same way — an httpOnly cookie; see
 [frontend.md](frontend.md#authentication-and-route-protection).
 
+### Global identity + tenant selection (016-C)
+
+As of 016-C, credentials belong to a **global identity** (`identities`, one row per email,
+one `password_hash`), not to a per-tenant `users` row — see
+[ADR-0033](../decisions/0033-global-identity-tenant-memberships.md). `POST /auth/login` takes
+`{ email, password }` only; **`tenantSlug` is no longer part of the login contract** and there is
+no endpoint that maps an email to its tenants before credentials are verified. The flow:
+
+- password is verified against `identities.password_hash` (only when the identity is `active`);
+- the identity's **active** `tenant_memberships` are then loaded;
+- **exactly one** active membership → a normal session is issued directly;
+- **more than one** → the API returns a short-lived **selection token** (JWT,
+  `purpose: 'tenant-selection'`, no business permissions, `SELECTION_TOKEN_TTL_SECONDS` ≈ 300s,
+  carried in the `tenant_selection` httpOnly cookie) plus the list of `{ tenantId, name }`. The
+  client calls `POST /auth/select-tenant` with a `tenantId`; the API re-verifies the selection
+  token *and* that the membership still exists, is active, and the tenant is active before issuing
+  the session. A selection token is rejected anywhere a session token is expected, and vice versa.
+
+Every issued session JWT/refresh token represents **exactly one active tenant** — one identity,
+one membership, one tenant. The access token adds an `identityId` claim; `sub` stays `users.id`
+so every downstream guard, `@CurrentUser()`, and audit record is unchanged. `TenantGuard` resolves
+the `users` row for that identity+tenant *via the membership* and re-checks — on every request —
+that the identity, membership, and tenant are all still active (a disabled membership revokes
+access without waiting for the JWT to expire). Switching tenants is a fresh `/auth/login` +
+`/auth/select-tenant`; there is no in-session tenant switch. Generic `401` messages cover a
+nonexistent email, wrong password, disabled identity, `pending_credential` identity, and
+zero active memberships alike — none reveal whether the account exists or how many tenants it has.
+
 ```mermaid
 sequenceDiagram
     participant U as User
@@ -22,21 +50,27 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     U->>API: POST /auth/login (email, password)
-    API->>DB: look up user by (tenant-scoped) email
-    API->>API: verify password hash
-    alt invalid credentials
+    API->>DB: look up identity by lower(email)
+    API->>API: verify password against identities.password_hash (identity must be active)
+    alt invalid credentials / no active membership
         API-->>U: 401 (generic message, no "which part was wrong")
-    else valid
-        API->>DB: record login event (audit)
-        API->>API: issue access token (short TTL, claims: sub, tenantId or context=global, roles)
-        API->>API: issue refresh token (long TTL, opaque, stored server-side for revocation)
-        API-->>U: access token + refresh token
+    else exactly one active membership
+        API->>DB: record login, resolve users row via membership
+        API->>API: issue access token (sub=users.id, identityId, tenantId, jti) + refresh token
+        API-->>U: session cookies
+    else more than one active membership
+        API->>API: issue selection token (purpose=tenant-selection, no permissions, ~5 min)
+        API-->>U: tenant_selection cookie + [{ tenantId, name }]
+        U->>API: POST /auth/select-tenant (tenantId)
+        API->>DB: re-verify selection token + membership active + tenant active
+        API->>API: issue access token + refresh token for that one tenant
+        API-->>U: session cookies
     end
 
-    U->>API: subsequent requests: Authorization: Bearer <access token>
+    U->>API: subsequent requests: access_token cookie
     Note over U,API: When access token expires:
     U->>API: POST /auth/refresh (refresh token)
-    API->>DB: validate refresh token not revoked/expired
+    API->>DB: validate refresh token not revoked/expired + membership still active
     API->>API: issue new access token (rotate refresh token)
     API-->>U: new access token (+ new refresh token)
 ```

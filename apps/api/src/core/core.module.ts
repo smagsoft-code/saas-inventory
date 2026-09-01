@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 import { PasswordService } from '../auth/password/password.service';
+import { IdentitiesRepository } from '../auth/repositories/identities.repository';
 import { RolesRepository } from '../auth/repositories/roles.repository';
+import { TenantMembershipsRepository } from '../auth/repositories/tenant-memberships.repository';
 import { TenantsPlatformRepository } from '../auth/repositories/tenants-platform.repository';
 import { UsersRepository } from '../auth/repositories/users.repository';
+import { IdentityProvisioningService } from '../auth/services/identity-provisioning.service';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { RolesController } from './roles/roles.controller';
 import { RolesService } from './roles/roles.service';
@@ -31,6 +34,11 @@ import { UsersService } from './users/users.service';
     UsersRepository,
     RolesRepository,
     TenantsPlatformRepository,
+    // 016-C: creating a user now also links it into the global identity model — same
+    // "own stateless instance" convention as the repositories above.
+    IdentityProvisioningService,
+    IdentitiesRepository,
+    TenantMembershipsRepository,
   ],
 })
 export class CoreModule {}

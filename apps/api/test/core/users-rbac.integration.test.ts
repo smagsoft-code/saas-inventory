@@ -103,8 +103,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('core: tenant/users/roles R
     };
   }
 
-  async function loginAs(tenantSlug: string, email: string, password: string): Promise<Session> {
-    const response = await inject({ method: 'POST', url: '/api/v1/auth/login', payload: { tenantSlug, email, password } });
+  async function loginAs(email: string, password: string): Promise<Session> {
+    const response = await inject({ method: 'POST', url: '/api/v1/auth/login', payload: { email, password } });
     expect(response.statusCode).toBe(200);
     const body = JSON.parse(response.body) as { user: Session['user'] };
     return {
@@ -136,7 +136,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('core: tenant/users/roles R
       payload: { email, fullName: 'Low Privilege', password: 'a-very-long-password', roleId: vendedorRoleId },
     });
     expect(createResponse.statusCode).toBe(201);
-    return loginAs(admin.user.tenantSlug, email, 'a-very-long-password');
+    return loginAs(email, 'a-very-long-password');
   }
 
   describe('tenant self-administration (§7-§9)', () => {

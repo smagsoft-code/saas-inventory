@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { AUTH_CONFIG, type AuthConfig } from '../../common/config/auth-config';
-import type { AccessTokenPayload, PlatformAccessTokenPayload } from '../../common/tokens/access-token-payload';
+import type {
+  PlatformAccessTokenPayload,
+  SelectionTokenPayload,
+  TenantAccessTokenPayload,
+} from '../../common/tokens/access-token-payload';
 
 export interface IssuedAccessToken {
   token: string;
@@ -21,13 +25,27 @@ export class AccessTokenService {
     @Inject(AUTH_CONFIG) private readonly authConfig: AuthConfig,
   ) {}
 
-  async issue(userId: string, tenantId: string, tenantSlug: string): Promise<IssuedAccessToken> {
-    const payload: AccessTokenPayload = { sub: userId, tenantId, tenantSlug, jti: randomUUID() };
+  async issue(userId: string, identityId: string, tenantId: string, tenantSlug: string): Promise<IssuedAccessToken> {
+    const payload: TenantAccessTokenPayload = { sub: userId, identityId, tenantId, tenantSlug, jti: randomUUID() };
     const token = await this.jwtService.signAsync(payload, {
       secret: this.authConfig.jwtSecret,
       expiresIn: this.authConfig.accessTokenTtlSeconds,
     });
     return { token, expiresInSeconds: this.authConfig.accessTokenTtlSeconds };
+  }
+
+  /**
+   * The interim, permission-less tenant-selection token (016-C). Same signing secret; the
+   * `purpose` claim keeps it structurally distinct — `JwtAuthGuard` rejects it as a session, only
+   * `POST /auth/select-tenant` accepts it. Short TTL from `SELECTION_TOKEN_TTL_SECONDS`.
+   */
+  async issueSelection(identityId: string): Promise<IssuedAccessToken> {
+    const payload: SelectionTokenPayload = { sub: identityId, purpose: 'tenant-selection', jti: randomUUID() };
+    const token = await this.jwtService.signAsync(payload, {
+      secret: this.authConfig.jwtSecret,
+      expiresIn: this.authConfig.selectionTokenTtlSeconds,
+    });
+    return { token, expiresInSeconds: this.authConfig.selectionTokenTtlSeconds };
   }
 
   /** Issues a platform (SuperAdmin) access token — same secret/TTL, structurally distinct payload

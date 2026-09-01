@@ -56,3 +56,21 @@ export function clearSessionCookies(reply: FastifyReply, authConfig: AuthConfig)
   reply.clearCookie('refresh_token', { ...base, httpOnly: true, path: AUTH_COOKIE_PATH });
   reply.clearCookie('csrf_token', { ...base, httpOnly: false, path: '/' });
 }
+
+/**
+ * The interim tenant-selection token (016-C). httpOnly (it is a credential — the identity has
+ * been authenticated), scoped to `/api/v1/auth` like the refresh token (only `select-tenant` and,
+ * on abandonment, a fresh login touch it), short `maxAge` matching its own TTL.
+ */
+export function setSelectionCookie(reply: FastifyReply, token: string, ttlSeconds: number, authConfig: AuthConfig): void {
+  reply.setCookie('tenant_selection', token, {
+    ...baseCookieOptions(authConfig),
+    httpOnly: true,
+    path: AUTH_COOKIE_PATH,
+    maxAge: ttlSeconds,
+  });
+}
+
+export function clearSelectionCookie(reply: FastifyReply, authConfig: AuthConfig): void {
+  reply.clearCookie('tenant_selection', { ...baseCookieOptions(authConfig), httpOnly: true, path: AUTH_COOKIE_PATH });
+}
