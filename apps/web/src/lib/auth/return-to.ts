@@ -24,7 +24,7 @@ export function safeReturnTo(value: string | null | undefined, fallback = '/'): 
   }
   // Never bounce back to an auth route — that just loops the user.
   const path = candidate.split(/[?#]/)[0] ?? candidate;
-  if (path === '/login' || path === '/register') {
+  if (path === '/login' || path === '/register' || path === '/platform/login') {
     return fallback;
   }
   return candidate;

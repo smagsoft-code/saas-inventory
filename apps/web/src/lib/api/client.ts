@@ -68,14 +68,19 @@ function resolveUrl(path: string, query: ApiFetchOptions['query']): string {
   return url;
 }
 
-/** Reads the (deliberately non-httpOnly) `csrf_token` cookie for the double-submit header that
+/** Reads the (deliberately non-httpOnly) CSRF cookie for the double-submit header that
  * `apps/api/src/common/guards/csrf.guard.ts` requires on every state-changing request. Browser
- * only — a Server Component never issues the mutations that need it. */
+ * only — a Server Component never issues the mutations that need it.
+ *
+ * Falls back to `platform_csrf_token` for the platform-admin context: that guard accepts either
+ * cookie (`csrf_token ?? platform_csrf_token`), and a pure platform admin holds only the latter. */
 function readCsrfTokenCookie(): string | undefined {
   if (typeof document === 'undefined') {
     return undefined;
   }
-  const match = /(?:^|;\s*)csrf_token=([^;]*)/.exec(document.cookie);
+  const match =
+    /(?:^|;\s*)csrf_token=([^;]*)/.exec(document.cookie) ??
+    /(?:^|;\s*)platform_csrf_token=([^;]*)/.exec(document.cookie);
   return match?.[1] ? decodeURIComponent(match[1]) : undefined;
 }
 

@@ -28,9 +28,12 @@ describe('safeReturnTo', () => {
   it('never returns to an auth route', () => {
     expect(safeReturnTo('/login')).toBe('/');
     expect(safeReturnTo('/register?x=1')).toBe('/');
+    expect(safeReturnTo('/platform/login')).toBe('/');
+    expect(safeReturnTo('/platform/login?returnTo=/platform', '/platform')).toBe('/platform');
   });
 
   it('honours a custom fallback', () => {
     expect(safeReturnTo('//evil', '/dashboard')).toBe('/dashboard');
+    expect(safeReturnTo('/platform', '/platform')).toBe('/platform');
   });
 });
