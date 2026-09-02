@@ -42,7 +42,11 @@ describe('filterNavigation', () => {
     expect(labels(['warehouses.view'])).toContain('Warehouses');
     expect(labels(['warehouses.view'])).not.toContain('Locations');
     expect(labels(['locations.view'])).toContain('Locations');
-    // the whole "Inventory" section is dropped when the user holds neither
+    // Stock on hand + Movements ride on inventory.view
+    expect(labels([])).not.toContain('Stock on hand');
+    expect(labels(['inventory.view'])).toEqual(expect.arrayContaining(['Stock on hand', 'Movements']));
+    expect(labels(['inventory.view'])).not.toContain('Warehouses');
+    // the whole "Inventory" section is dropped when the user holds none of its permissions
     expect(
       filterNavigation(NAVIGATION, createPermissionChecker([])).map((s) => s.title),
     ).not.toContain('Inventory');
@@ -76,5 +80,18 @@ describe('isNavItemActive', () => {
     expect(isNavItemActive(users, '/users/new')).toBe(true);
     expect(isNavItemActive(users, '/users-archive')).toBe(false);
     expect(isNavItemActive(users, '/settings')).toBe(false);
+  });
+
+  it('lets a more specific sibling win a nested path', () => {
+    const stock: NavItem = { label: 'Stock on hand', href: '/inventory', icon: 'layers', activePaths: ['/inventory'] };
+    const movements: NavItem = { label: 'Movements', href: '/inventory/movements', icon: 'activity', activePaths: ['/inventory/movements'] };
+    const siblings = ['/inventory', '/inventory/movements'];
+
+    expect(isNavItemActive(stock, '/inventory', siblings)).toBe(true);
+    expect(isNavItemActive(stock, '/inventory/b1', siblings)).toBe(true);
+    // on the movements path only Movements is active
+    expect(isNavItemActive(stock, '/inventory/movements', siblings)).toBe(false);
+    expect(isNavItemActive(movements, '/inventory/movements', siblings)).toBe(true);
+    expect(isNavItemActive(movements, '/inventory/movements/x', siblings)).toBe(true);
   });
 });

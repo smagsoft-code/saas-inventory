@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSession } from '../../../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../../../lib/auth/permissions';
@@ -6,12 +7,15 @@ import { serverApiFetch } from '../../../../../../lib/api/server';
 import { getProduct, getProductVariant } from '../../../../../../lib/catalog/products';
 import { listAttributeDefinitions } from '../../../../../../lib/catalog/attributes';
 import { loadCategoryAttributeFieldSets } from '../../../../../../lib/catalog/product-attributes';
+import { listBalances } from '../../../../../../lib/inventory/balances';
+import { buildLocationIndex } from '../../../../../../lib/inventory/location-index';
 import { VARIANT_STATUS_LABELS, type VariantStatus } from '../../../../../../lib/types/products';
 import { PageContainer } from '../../../../../../components/ui/page-container';
 import { PageHeader } from '../../../../../../components/ui/page-header';
 import { Card, CardBody } from '../../../../../../components/ui/card';
 import { Badge, statusTone } from '../../../../../../components/ui/badge';
 import { NoAccess } from '../../../../../../components/ui/no-access';
+import { Table, TBody, TD, TH, THead, TR } from '../../../../../../components/ui/table';
 import { VariantForm } from '../../variant-form';
 
 export const metadata = { title: 'Variant · SaaS Inventory' };
@@ -45,11 +49,17 @@ export default async function VariantDetailPage({
     throw error;
   }
 
+  const canViewInventory = checker.can('inventory.view');
+  const canAdjustInventory = checker.can('inventory.adjust');
+
   const definitions = canManage && checker.can('categories.view') ? await listAttributeDefinitions() : [];
-  const fieldSets =
+  const [fieldSets, balances, locationIndex] = await Promise.all([
     canManage && checker.can('categories.view')
-      ? await loadCategoryAttributeFieldSets((path) => serverApiFetch(path), product.categoryId, definitions)
-      : { product: [], variant: [], options: {} };
+      ? loadCategoryAttributeFieldSets((path) => serverApiFetch(path), product.categoryId, definitions)
+      : Promise.resolve({ product: [], variant: [], options: {} }),
+    canViewInventory ? listBalances({ productVariantId: variantId, pageSize: 100 }).catch(() => null) : Promise.resolve(null),
+    canViewInventory ? buildLocationIndex(checker.can('warehouses.view')) : Promise.resolve(null),
+  ]);
 
   const attrEntries = Object.entries(variant.attributes ?? {});
 
@@ -124,6 +134,64 @@ export default async function VariantDetailPage({
           )}
         </CardBody>
       </Card>
+
+      {canViewInventory && (
+        <Card>
+          <CardBody className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold text-slate-900">Stock</h2>
+              <div className="flex items-center gap-3">
+                <Link
+                  href={`/inventory/movements?productVariantId=${variant.id}`}
+                  className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+                >
+                  Movements
+                </Link>
+                {canAdjustInventory && (
+                  <Link
+                    href={`/inventory/adjust?productVariantId=${variant.id}`}
+                    className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+                  >
+                    Adjust
+                  </Link>
+                )}
+              </div>
+            </div>
+            {!balances || balances.data.length === 0 ? (
+              <p className="text-sm text-slate-500">No stock recorded for this variant yet.</p>
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Location</TH>
+                    <TH>Warehouse</TH>
+                    <TH className="text-right">Available</TH>
+                    <TH className="text-right">Physical</TH>
+                    <TH className="text-right">Reserved</TH>
+                    <TH className="text-right">Committed</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {balances.data.map((balance) => (
+                    <TR key={balance.id}>
+                      <TD className="text-slate-700">
+                        <Link href={`/inventory/${balance.id}`} className="underline underline-offset-2">
+                          {locationIndex?.locationName(balance.locationId) ?? balance.locationId}
+                        </Link>
+                      </TD>
+                      <TD className="text-slate-500">{locationIndex?.warehouseName(balance.locationId) ?? '—'}</TD>
+                      <TD className="text-right font-medium">{balance.quantityAvailable}</TD>
+                      <TD className="text-right text-slate-500">{balance.quantityPhysical}</TD>
+                      <TD className="text-right text-slate-500">{balance.quantityReserved}</TD>
+                      <TD className="text-right text-slate-500">{balance.quantityCommitted}</TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            )}
+          </CardBody>
+        </Card>
+      )}
     </PageContainer>
   );
 }

@@ -27,7 +27,9 @@ export type NavIcon =
   | 'attributes'
   | 'warehouse'
   | 'map-pin'
-  | 'box';
+  | 'box'
+  | 'layers'
+  | 'activity';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */
@@ -70,6 +72,21 @@ export const NAVIGATION: NavSection[] = [
   {
     title: 'Inventory',
     items: [
+      {
+        label: 'Stock on hand',
+        href: '/inventory',
+        icon: 'layers',
+        permission: 'inventory.view',
+        // `/inventory/movements` and `/inventory/adjust` are their own nav item / in-page action.
+        activePaths: ['/inventory'],
+      },
+      {
+        label: 'Movements',
+        href: '/inventory/movements',
+        icon: 'activity',
+        permission: 'inventory.view',
+        activePaths: ['/inventory/movements'],
+      },
       {
         label: 'Warehouses',
         href: '/warehouses',
@@ -116,15 +133,29 @@ export function filterNavigation(sections: NavSection[], checker: PermissionChec
     .filter((section) => section.items.length > 0);
 }
 
+function matchesPrefix(prefix: string, pathname: string): boolean {
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+}
+
 /**
  * Whether `item` should render as the active nav entry for the current pathname. `/` matches only
  * itself; every other item matches its `href` and any `activePaths` prefix, respecting path
  * boundaries so `/users` does not light up for a hypothetical `/users-archive`.
+ *
+ * `siblingHrefs` (the hrefs of the other nav items) disambiguates nested items: on
+ * `/inventory/movements` only "Movements" (`/inventory/movements`) lights up, not the parent
+ * "Stock on hand" (`/inventory`), because a more specific sibling href also matches.
  */
-export function isNavItemActive(item: NavItem, pathname: string): boolean {
+export function isNavItemActive(item: NavItem, pathname: string, siblingHrefs: string[] = []): boolean {
   if (item.href === '/') {
     return pathname === '/';
   }
   const prefixes = [item.href, ...(item.activePaths ?? [])];
-  return prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  if (!prefixes.some((prefix) => matchesPrefix(prefix, pathname))) {
+    return false;
+  }
+  const longestOwn = Math.max(...prefixes.filter((p) => matchesPrefix(p, pathname)).map((p) => p.length));
+  return !siblingHrefs.some(
+    (href) => href !== item.href && href.length > longestOwn && matchesPrefix(href, pathname),
+  );
 }

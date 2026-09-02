@@ -79,5 +79,18 @@ export function NavIconGlyph({
           <path d="M3 8.5 12 13l9-4.5M12 13v7" />
         </svg>
       );
+    case 'layers':
+      return (
+        <svg {...common}>
+          <path d="M12 3 3 8l9 5 9-5-9-5Z" />
+          <path d="m4 12 8 4 8-4M4 16l8 4 8-4" />
+        </svg>
+      );
+    case 'activity':
+      return (
+        <svg {...common}>
+          <path d="M3 12h4l3 8 4-16 3 8h4" />
+        </svg>
+      );
   }
 }

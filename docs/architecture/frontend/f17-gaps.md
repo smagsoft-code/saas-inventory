@@ -60,6 +60,15 @@ join; no schema change; indexes exist). Without it F17 must either issue N looku
 audit §9 GAP 2 says no N+1 from the frontend) or maintain client-side dictionaries. **This is the
 single highest-leverage F17 backend adjustment.** See [017-A `GAP-INV-AGGREGATE`](../reporting/data-gaps.md#gap-inv-aggregate).
 
+**F17-06 (2026-09) — OPEN, worked around.** The stock-on-hand and movements screens resolve
+`locationId` → location/warehouse name from **one bounded list fetch each** (`pageSize: 100`
+`GET /locations` + `GET /warehouses`), the same bounded-list approach F17-03/F17-05 use — no N+1.
+The **variant** cannot be named on the tenant-wide list (no `GET /variants` — `GAP-VARIANT-LIST`),
+so `productVariantId` shows as a short id there; the fully-named view is the drill-in from
+`/products/[id]/variants/[variantId]`, which already knows the product + SKU and shows that
+variant's balances per location. Actor names are not shown (`actorId` short id only). A tenant with
+>100 warehouses/locations is beyond the tested range.
+
 ### `GAP-VARIANT-LIST`
 Variants are reachable **only** per-product (`GET /products/:id/variants`). New Sale's core
 interaction is "type a SKU → add the line". **F17-blocking:** needs a tenant-wide
@@ -186,6 +195,12 @@ needs a date range + guaranteed chronological order. **F17-additive:** `occurred
 + `sort` + `referenceType`/`referenceId`. Index `(tenant_id, created_at)` already exists. See
 [017-A](../reporting/data-gaps.md#gap-movements-date-filter).
 
+**F17-06 (2026-09) — OPEN.** Confirmed against `ListMovementsQueryDto`: the only params are
+`page`, `pageSize`, `productVariantId`, `locationId`, `movementType` — no `occurredFrom`/`occurredTo`,
+no `sort`. `/inventory/movements` ships the filtered feed + the kardex (`?productVariantId=&locationId=`)
+and displays rows in the order the endpoint returns them (repository `created_at DESC`); it offers
+**no date-range control and no sortable headers**. Period/kardex-window views stay B.
+
 ### `GAP-SEARCH`
 Only `GET /customers` has `?q=`. Products list and Sales history show search boxes with no
 backing. **F17-additive:** `?q=` on `GET /products` (name/SKU/barcode) and `GET /orders`
@@ -215,6 +230,14 @@ aggregate exists. See [017-A](../reporting/data-gaps.md#gap-reorder).
 **Decision → F17-additive:** should reads be assignment-scoped? ADR-0024 is about writes; this
 extends it to reads. Recommend scoping the reads for consistency with the transfer/adjustment
 screens.
+
+**F17-06 (2026-09) — OPEN, unchanged.** Confirmed: `BalancesService.list` / `MovementsService.list`
+take no actor and never touch `user_location_assignments` (only `MovementsService.createAdjustment`
+calls `LocationAuthorizationService`). F17-06's `/inventory` and `/inventory/movements` therefore
+show every tenant balance/movement a `inventory.view` holder can reach — the frontend does **not**
+replicate or simulate location scoping (backend is the authority). The adjustment form lets the
+user pick any active location and surfaces the backend's `403` ("not authorized to operate on this
+location") in place. If reads should be scoped, that is a backend change.
 
 ### `GAP-ROLE-CRUD`
 No endpoint to create/edit roles or toggle role permissions — the catalogue is fixed

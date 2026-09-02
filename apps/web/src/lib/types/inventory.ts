@@ -107,3 +107,94 @@ export interface UpdateLocationInput {
   isSellable?: boolean;
   status?: InventoryStatus;
 }
+
+// --- stock: balances, movements, adjustments (F17-06) -----------------------------------------
+//
+// Mirrors `apps/api/src/inventory/balances/dto/*` and `.../movements/dto/*`. Endpoints:
+//  - `GET /api/v1/inventory/balances` · `GET /api/v1/inventory/balances/:id`  (`inventory.view`)
+//  - `GET /api/v1/inventory/movements`                                        (`inventory.view`)
+//  - `POST /api/v1/inventory/adjustments`                                     (`inventory.adjust`)
+//
+// The read endpoints return **FK ids only** — no product/variant/location/warehouse names, no
+// SKU, no serial/lot, no in-transit column, no date-range or sort params (`GAP-NAME-ENRICHMENT`,
+// `GAP-MOVEMENTS-DATE-FILTER`, `GAP-INV-AGGREGATE`). None of that is invented here. There is no
+// tenant-wide product-name/status filter and no warehouse filter on either list.
+
+/** `GET /inventory/balances` item / `GET /inventory/balances/:id` — `BalanceResponseDto`.
+ * `quantityAvailable` is a DB GENERATED column (`physical - reserved - committed`). */
+export interface InventoryBalance {
+  id: string;
+  productVariantId: string;
+  locationId: string;
+  quantityPhysical: number;
+  quantityReserved: number;
+  quantityCommitted: number;
+  quantityAvailable: number;
+  version: number;
+  updatedAt: string;
+}
+
+/** Every `inventory_movements.movement_type` the ledger can hold (`ListMovementsQueryDto`). */
+export const MOVEMENT_TYPES = [
+  'RECEIPT',
+  'SALE',
+  'RETURN',
+  'ADJUSTMENT_IN',
+  'ADJUSTMENT_OUT',
+  'TRANSFER_OUT',
+  'TRANSFER_IN',
+  'RESERVATION',
+  'RESERVATION_RELEASE',
+  'COMMITMENT',
+  'COMMITMENT_RELEASE',
+  'INITIAL_STOCK',
+] as const;
+export type MovementType = (typeof MOVEMENT_TYPES)[number];
+
+export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
+  RECEIPT: 'Receipt',
+  SALE: 'Sale',
+  RETURN: 'Return',
+  ADJUSTMENT_IN: 'Adjustment in',
+  ADJUSTMENT_OUT: 'Adjustment out',
+  TRANSFER_OUT: 'Transfer out',
+  TRANSFER_IN: 'Transfer in',
+  RESERVATION: 'Reservation',
+  RESERVATION_RELEASE: 'Reservation release',
+  COMMITMENT: 'Commitment',
+  COMMITMENT_RELEASE: 'Commitment release',
+  INITIAL_STOCK: 'Initial stock',
+};
+
+/** The only movement types a manual adjustment may create (`CreateAdjustmentDto`). */
+export const ADJUSTMENT_MOVEMENT_TYPES = ['RECEIPT', 'ADJUSTMENT_IN', 'ADJUSTMENT_OUT'] as const;
+export type AdjustmentMovementType = (typeof ADJUSTMENT_MOVEMENT_TYPES)[number];
+
+/** `GET /inventory/movements` item — `MovementResponseDto`. `quantity` is signed relative to the
+ * bucket it affects; `balanceAfter` is the `quantity_physical` snapshot after the movement. */
+export interface InventoryMovement {
+  id: string;
+  productVariantId: string;
+  locationId: string;
+  movementType: string;
+  quantity: number;
+  balanceAfter: number;
+  referenceType?: string;
+  referenceId?: string;
+  reason?: string;
+  actorType: string;
+  actorId?: string;
+  occurredAt: string;
+  createdAt: string;
+}
+
+/** `POST /inventory/adjustments` body — `CreateAdjustmentDto`. `quantity` is a positive magnitude;
+ * direction comes from `movementType`. `reason` is required (1–500). Never sends `tenantId`. */
+export interface CreateAdjustmentInput {
+  productVariantId: string;
+  locationId: string;
+  movementType: AdjustmentMovementType;
+  quantity: number;
+  reason: string;
+  occurredAt?: string;
+}

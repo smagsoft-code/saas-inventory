@@ -19,6 +19,7 @@ export function SidebarNav({
   onNavigate?: () => void;
 }): React.JSX.Element {
   const pathname = usePathname();
+  const allHrefs = sections.flatMap((section) => section.items.map((item) => item.href));
 
   return (
     <nav aria-label="Primary" className="flex flex-col gap-6">
@@ -30,7 +31,7 @@ export function SidebarNav({
             </p>
           )}
           {section.items.map((item) => {
-            const active = isNavItemActive(item, pathname);
+            const active = isNavItemActive(item, pathname, allHrefs);
             return (
               <Link
                 key={item.href}
