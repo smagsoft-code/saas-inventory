@@ -15,6 +15,20 @@ describe('filterNavigation', () => {
     expect(labels(withoutUsers)).toEqual(['Dashboard', 'Company settings']);
   });
 
+  it('shows the Catalog items only with the right permissions', () => {
+    const labels = (perms: string[]) =>
+      filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) =>
+        s.items.map((i) => i.label),
+      );
+    // no catalog permissions → no Categories / Attributes, and the empty "Catalog" section is dropped
+    expect(labels([])).not.toContain('Categories');
+    expect(labels([])).not.toContain('Attributes');
+    expect(labels(['categories.view'])).toContain('Categories');
+    expect(labels(['categories.view'])).not.toContain('Attributes');
+    // Attributes rides on products.view
+    expect(labels(['products.view'])).toContain('Attributes');
+  });
+
   it('drops a section that becomes empty', () => {
     const sections = [
       {

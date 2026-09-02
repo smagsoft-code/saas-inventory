@@ -16,3 +16,6 @@ export { EmptyState } from './empty-state';
 export { ErrorState } from './error-state';
 export { PageHeader } from './page-header';
 export { PageContainer } from './page-container';
+export { Table, THead, TBody, TR, TH, TD } from './table';
+export { Pagination } from './pagination';
+export { NoAccess } from './no-access';

@@ -25,7 +25,7 @@ import { emitSessionExpired } from '../auth/session-events';
 const AUTH_REFRESH_PATH = '/api/v1/auth/refresh';
 
 export interface ApiFetchOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Server-side only: the caller's forwarded request cookies (see `lib/api/server.ts`). Its
    * presence is also how the client knows it is running server-side and must not try to refresh —

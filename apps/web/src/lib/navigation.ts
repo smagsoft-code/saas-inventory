@@ -19,7 +19,7 @@ export interface NavItem {
   activePaths?: string[];
 }
 
-export type NavIcon = 'home' | 'users' | 'settings';
+export type NavIcon = 'home' | 'users' | 'settings' | 'categories' | 'attributes';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */
@@ -30,8 +30,31 @@ export interface NavSection {
 export const NAVIGATION: NavSection[] = [
   {
     title: null,
+    items: [{ label: 'Dashboard', href: '/', icon: 'home' }],
+  },
+  {
+    title: 'Catalog',
     items: [
-      { label: 'Dashboard', href: '/', icon: 'home' },
+      {
+        label: 'Categories',
+        href: '/categories',
+        icon: 'categories',
+        permission: 'categories.view',
+        activePaths: ['/categories'],
+      },
+      {
+        label: 'Attributes',
+        href: '/attributes',
+        icon: 'attributes',
+        // Reads ride on `products.view` (attributes.controller.ts), not a dedicated attributes-view code.
+        permission: 'products.view',
+        activePaths: ['/attributes'],
+      },
+    ],
+  },
+  {
+    title: 'Administration',
+    items: [
       {
         label: 'Users',
         href: '/users',

@@ -42,5 +42,20 @@ export function NavIconGlyph({
           <path d="M19.4 12a7.4 7.4 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a7.3 7.3 0 0 0-1.7-1l-.3-2.5H10l-.3 2.5a7.3 7.3 0 0 0-1.7 1l-2.3-1-2 3.4 2 1.5a7.4 7.4 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a7.3 7.3 0 0 0 1.7 1l.3 2.5h4l.3-2.5a7.3 7.3 0 0 0 1.7-1l2.3 1 2-3.4-2-1.5c.1-.3.1-.7.1-1Z" />
         </svg>
       );
+    case 'categories':
+      return (
+        <svg {...common}>
+          <path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4l2 2.5h7A1.5 1.5 0 0 1 21 9v8.5A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5Z" />
+        </svg>
+      );
+    case 'attributes':
+      return (
+        <svg {...common}>
+          <path d="M4 7h10M18 7h2M4 12h4M12 12h8M4 17h12M20 17h0" />
+          <circle cx="16" cy="7" r="2" />
+          <circle cx="10" cy="12" r="2" />
+          <circle cx="18" cy="17" r="2" />
+        </svg>
+      );
   }
 }

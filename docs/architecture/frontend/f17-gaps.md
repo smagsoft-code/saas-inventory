@@ -46,6 +46,9 @@
 | 26 | [`GAP-SA-ADMIN-CRUD`](#gap-sa-admin-crud) | future | Super-Admin |
 | 27 | [`GAP-AUDIT-READ`](#gap-audit-read) | future | (no F17 screen) |
 | 28 | [`GAP-PLATFORM-AGGREGATE`](../reporting/data-gaps.md#gap-platform-aggregate) | future | Super-Admin dashboard |
+| 29 | [`GAP-ATTR-DEF-DETAIL`](#gap-attr-def-detail) | F17-additive (low) | Attribute detail/edit |
+| 30 | [`GAP-ATTR-DISPLAY-ORDER`](#gap-attr-display-order) | F17-additive (low) | Attributes list ordering |
+| 31 | [`GAP-MEASUREMENT-UNITS-PERMISSION`](#gap-measurement-units-permission) | decision (low) | Attribute form unit selector |
 
 ---
 
@@ -69,6 +72,22 @@ ADR-0019 keeps brands/suppliers as reference entities **without any endpoint** �
 selectors have no data source, and a product cannot actually be assigned a brand/supplier via the
 API today. **Decision:** (a) add read-only `GET /brands` / `GET /suppliers` (F17-additive, no ADR
 change — they'd stay CRUD-less), or (b) omit both fields from the F17 product form. Recommend (a).
+**Still open after F17-03** (F17-03 covers categories + attributes only). F17-05 (products) must
+resolve it before building the product form's brand/supplier selectors.
+
+### F17-05 dependency — category ↔ attributes: **RESOLVED by F17-03**
+The category-driven dynamic attribute contract F17-05's product form needs is fully in place and
+fully manageable (ADR-0026, "case A"):
+- `GET /categories/:id/attributes` → `{ attributeDefinitionId, code, name, dataType, isRequired,
+  displayOrder }[]` (ordered) — the product form calls this for the product's category and renders
+  one input per definition by `dataType`.
+- `PUT /categories/:id/attributes` (`catalog.attributes.manage`) — whole-set replace; F17-03 ships
+  the editor for it.
+- `GET /attribute-definitions` + `GET /attribute-definitions/:id/options` — definitions and their
+  select/multi_select options.
+- Reusable frontend contracts left by F17-03: `lib/types/catalog.ts` (all DTO mirrors +
+  `ATTRIBUTE_DATA_TYPES`, `isSelectType`, `isNumericType`), `lib/catalog/categories.ts` /
+  `lib/catalog/attributes.ts` (server read helpers).
 
 ### `GAP-APPROVALS-PERMISSION`
 `GET /price-approvals` and `GET /price-approvals/:id` declare **no `@RequirePermissions`** — any
@@ -232,6 +251,27 @@ platform admins from the UI is **future** (ADR: bootstrap vs UI, MFA).
 already exist. **future** — fits FASE 19 (security) or FASE 20 (observability); a new permission
 (`core.audit.read`) + read endpoint + a SuperAdmin variant for platform actions + redaction rules
 for `before_state`/`after_state`. No F17 screen. See [017-A](../reporting/data-gaps.md#gap-audit-read).
+
+### `GAP-ATTR-DEF-DETAIL`
+There is **no `GET /attribute-definitions/:id`** — only the list (`GET /attribute-definitions`).
+F17-03's attribute detail/edit page fetches the (bounded, governance) list and finds the one by
+id — fine for the current scale. **F17-additive (low):** a real detail endpoint would avoid the
+full-list fetch if the attribute set ever grows large. Discovered in F17-03; not blocking.
+
+### `GAP-ATTR-DISPLAY-ORDER`
+`attribute_definitions.displayOrder` exists on the schema and the list is ordered by it, but the
+column is **not in `CreateAttributeDefinitionDto` / `UpdateAttributeDefinitionDto` / the response
+DTO** — so the F17-03 UI cannot set or show a definition's global display order (only the
+*per-category* `displayOrder` on `category_attributes`, which F17-03 does manage). **F17-additive
+(low):** add `displayOrder` to the definition DTOs if a tenant-global ordering is wanted.
+Discovered in F17-03; not blocking (per-category order covers the product-form use case).
+
+### `GAP-MEASUREMENT-UNITS-PERMISSION`
+`GET /api/v1/measurement-units` declares **no `@RequirePermissions`** — any authenticated tenant
+member can list the platform measurement-unit reference data. Low sensitivity (platform reference
+data, no tenant content), same class of finding as `GAP-APPROVALS-PERMISSION`. **decision (low):**
+gate it on `products.view` for consistency, or leave it (it is harmless reference data).
+Observed in F17-03; **no code change made** (F17-03 does not touch the backend).
 
 ---
 
