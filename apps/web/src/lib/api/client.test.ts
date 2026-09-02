@@ -70,6 +70,22 @@ describe('apiFetch', () => {
     expect(postInit.credentials).toBe('include');
   });
 
+  it('merges caller-supplied headers (e.g. Idempotency-Key) without dropping the defaults', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
+    global.fetch = fetchMock as typeof fetch;
+
+    await apiFetch('/api/v1/inventory/transfers/t1/receive', {
+      method: 'POST',
+      body: { items: [] },
+      headers: { 'Idempotency-Key': 'key-abc' },
+    });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const headers = init.headers as Record<string, string>;
+    expect(headers['Idempotency-Key']).toBe('key-abc');
+    expect(headers['Content-Type']).toBe('application/json');
+    expect(headers['Correlation-Id']).toBeTruthy();
+  });
+
   it('translates a network failure into a status-0 ApiError', async () => {
     global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) as typeof fetch;
     const error = await apiFetch('/api/v1/auth/me').catch((e: unknown) => e);

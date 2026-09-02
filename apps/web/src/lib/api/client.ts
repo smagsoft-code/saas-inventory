@@ -33,6 +33,10 @@ export interface ApiFetchOptions {
   cookieHeader?: string;
   /** Extra query params, appended if the path does not already carry a query string. */
   query?: Record<string, string | number | boolean | undefined>;
+  /** Extra request headers (e.g. `Idempotency-Key` for a repeatable mutation). Merged in after
+   * `Content-Type`/`Correlation-Id`; it can never override the forwarded `Cookie` or the
+   * double-submit `X-CSRF-Token` the client sets itself. */
+  headers?: Record<string, string>;
   signal?: AbortSignal;
   /** Internal: set once a 401 retry has already happened for this logical request. */
   _retried?: boolean;
@@ -156,6 +160,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Correlation-Id': randomCorrelationId(),
+    ...(options.headers ?? {}),
   };
   if (options.cookieHeader) {
     headers['Cookie'] = options.cookieHeader;

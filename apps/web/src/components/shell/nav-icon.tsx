@@ -92,5 +92,11 @@ export function NavIconGlyph({
           <path d="M3 12h4l3 8 4-16 3 8h4" />
         </svg>
       );
+    case 'transfer':
+      return (
+        <svg {...common}>
+          <path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5" />
+        </svg>
+      );
   }
 }

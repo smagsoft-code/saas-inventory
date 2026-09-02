@@ -198,3 +198,147 @@ export interface CreateAdjustmentInput {
   reason: string;
   occurredAt?: string;
 }
+
+// --- transfers (F17-07) ----------------------------------------------------------------------
+//
+// Mirrors `apps/api/src/inventory/transfers/dto/*`. Endpoints (all tenant-scoped — `tenantId`
+// resolved server-side, never sent):
+//  - `GET  /api/v1/inventory/transfers`            (`inventory.view`)
+//  - `GET  /api/v1/inventory/transfers/:id`        (`inventory.view`)
+//  - `POST /api/v1/inventory/transfers`            (`inventory.transfers.request`)
+//  - `POST /api/v1/inventory/transfers/:id/approve`  (`inventory.transfers.approve`)
+//  - `POST /api/v1/inventory/transfers/:id/prepare`  (`inventory.transfers.dispatch` + source location auth)
+//  - `POST /api/v1/inventory/transfers/:id/dispatch` (`inventory.transfers.dispatch` + source location auth)
+//  - `POST /api/v1/inventory/transfers/:id/receive`  (`inventory.transfers.receive` + dest location auth, `Idempotency-Key` header REQUIRED)
+//  - `POST /api/v1/inventory/transfers/:id/cancel`   (`inventory.transfers.approve`)
+//
+// `TransferResponseDto` returns **FK ids only** — no location/warehouse/variant names, no human
+// transfer code (`GAP-NAME-ENRICHMENT`, `GAP-TRANSFER-CODE`). `ListTransfersQueryDto` accepts a
+// single `status` (`GAP-MULTI-STATUS`), `sourceLocationId`, `destinationLocationId` — no search,
+// no sort, no date range. None of that is invented here.
+
+/** `inventory_transfers.status` — the state machine (ADR-0020). draft → approved → preparing →
+ * dispatched → partially_received → received; `cancelled` reachable from draft/approved/preparing. */
+export const TRANSFER_STATUSES = [
+  'draft',
+  'approved',
+  'preparing',
+  'dispatched',
+  'partially_received',
+  'received',
+  'cancelled',
+] as const;
+export type TransferStatus = (typeof TRANSFER_STATUSES)[number];
+
+export const TRANSFER_STATUS_LABELS: Record<TransferStatus, string> = {
+  draft: 'Draft',
+  approved: 'Approved',
+  preparing: 'Preparing',
+  dispatched: 'Dispatched',
+  partially_received: 'Partially received',
+  received: 'Received',
+  cancelled: 'Cancelled',
+};
+
+/** The per-line incident flags `ReceiveTransferItemDto` accepts. */
+export const TRANSFER_INCIDENT_TYPES = ['shortage', 'damage', 'excess'] as const;
+export type TransferIncidentType = (typeof TRANSFER_INCIDENT_TYPES)[number];
+
+export const TRANSFER_INCIDENT_TYPE_LABELS: Record<TransferIncidentType, string> = {
+  shortage: 'Shortage',
+  damage: 'Damage',
+  excess: 'Excess',
+};
+
+/** `TransferItemResponseDto`. `quantityInTransit` is derived (`dispatched − received`). */
+export interface TransferItem {
+  id: string;
+  productVariantId: string;
+  quantityRequested: number;
+  quantityDispatched: number;
+  quantityReceived: number;
+  quantityInTransit: number;
+}
+
+/** `GET /inventory/transfers` list item / `GET /inventory/transfers/:id` — `TransferResponseDto`. */
+export interface Transfer {
+  id: string;
+  sourceLocationId: string;
+  destinationLocationId: string;
+  status: string;
+  requestedBy: string;
+  approvedBy?: string;
+  dispatchedBy?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  approvedAt?: string;
+  dispatchedAt?: string;
+  receivedAt?: string;
+  cancelledAt?: string;
+  items: TransferItem[];
+}
+
+/** `POST /inventory/transfers` body — `CreateTransferDto`. Never sends `tenantId`/`requestedBy`/
+ * `status` (all server-derived). Source and destination must differ; no duplicate `productVariantId`. */
+export interface CreateTransferInput {
+  sourceLocationId: string;
+  destinationLocationId: string;
+  items: { productVariantId: string; quantityRequested: number }[];
+  notes?: string;
+}
+
+/** `POST /inventory/transfers/:id/dispatch` body — `DispatchTransferDto`. Omitting `items` entirely
+ * dispatches every line at its full `quantityRequested`; naming a subset overrides just those. */
+export interface DispatchTransferInput {
+  items?: { transferItemId: string; quantityDispatched: number }[];
+}
+
+/** One line of a `POST /inventory/transfers/:id/receive` event — `ReceiveTransferItemDto`.
+ * `quantityReceived` is THIS event's quantity, not a running total. */
+export interface ReceiveTransferItemInput {
+  transferItemId: string;
+  quantityReceived: number;
+  incidentType?: TransferIncidentType;
+  incidentNotes?: string;
+}
+
+/** `POST /inventory/transfers/:id/receive` body — `ReceiveTransferDto`. Requires an
+ * `Idempotency-Key` header (one per logical receiving attempt, preserved across retries). */
+export interface ReceiveTransferInput {
+  items: ReceiveTransferItemInput[];
+  notes?: string;
+}
+
+/** Which lifecycle transitions the backend state machine allows from `status` (ADR-0020). The UI
+ * mirrors this to decide which buttons to render; the backend still authorizes every call. */
+export function transferActionsForStatus(status: string): {
+  approve: boolean;
+  prepare: boolean;
+  dispatch: boolean;
+  receive: boolean;
+  cancel: boolean;
+} {
+  return {
+    approve: status === 'draft',
+    prepare: status === 'approved',
+    dispatch: status === 'preparing',
+    receive: status === 'dispatched' || status === 'partially_received',
+    cancel: status === 'draft' || status === 'approved' || status === 'preparing',
+  };
+}
+
+export function transferStatusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' {
+  switch (status) {
+    case 'received':
+      return 'success';
+    case 'cancelled':
+      return 'danger';
+    case 'preparing':
+    case 'dispatched':
+    case 'partially_received':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}

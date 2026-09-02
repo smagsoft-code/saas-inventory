@@ -69,6 +69,15 @@ so `productVariantId` shows as a short id there; the fully-named view is the dri
 variant's balances per location. Actor names are not shown (`actorId` short id only). A tenant with
 >100 warehouses/locations is beyond the tested range.
 
+**F17-06 note carried into F17-07 (2026-09) — OPEN.** The transfers list and detail resolve
+`sourceLocationId`/`destinationLocationId` → location + warehouse name from the shared
+`buildLocationIndex()` (one bounded `GET /locations` + `GET /warehouses`, `pageSize: 100`) — no
+N+1, no per-transfer or per-item lookup. `TransferResponseDto` items carry only `productVariantId`
+with **no product context** (no `productId`, SKU or name), so transfer lines show the variant as a
+short id and link to `/inventory/movements?productVariantId=` (an existing route) rather than a
+`/products/[id]/variants/[variantId]` route that cannot be constructed. `requestedBy`/`approvedBy`/
+`dispatchedBy` are shown as short ids (no user-name resolution).
+
 ### `GAP-VARIANT-LIST`
 Variants are reachable **only** per-product (`GET /products/:id/variants`). New Sale's core
 interaction is "type a SKU → add the line". **F17-blocking:** needs a tenant-wide
@@ -82,6 +91,13 @@ variants live at the nested `GET/POST /products/:id/variants` + `GET/PATCH
 the per-product path and uses it — the product detail page lists a product's variants and links to
 per-variant create/edit. The gap stays for **F17-08** (New Sale SKU search), decision deferred to
 that phase per [f17-implementation-order.md](f17-implementation-order.md).
+
+**Re-audited during F17-07 (2026-09) — status: OPEN, worked around.** `CreateTransferItemDto` takes
+a bare `productVariantId` (UUID). The transfer creation form reuses the F17-06 pattern verbatim:
+pick a product (`GET /products?status=active`), then a variant (`GET /products/:id/variants`, SKU
+shown), then a quantity — one line per variant, add/remove lines, no duplicate variant. No
+tenant-wide variant list is created, simulated or requested. On the transfer detail, lines carry
+only `productVariantId` (no product context) so they show a short id.
 
 ### `GAP-BRAND-SUPPLIER-LIST`
 `products.brand_id` / `supplier_id` are real FKs and the Product form shows the fields, but
@@ -155,6 +171,12 @@ the order, or its inventory movements. **F17-blocking for this feature:** a smal
 Every list DTO takes a single `@IsIn` status. "Open transfers", "returns to process", "imports
 running" are multi-status → N calls each. **F17-additive:** accept `status` as a repeatable/array
 param on transfers, returns, imports, orders. Trivial DTO change, no schema impact.
+
+**F17-07 (2026-09) — OPEN, confirmed.** `ListTransfersQueryDto` accepts a single `status`
+(`@IsIn` over the 7 states), plus `sourceLocationId` / `destinationLocationId`. The transfers list
+offers status **chips** (one real value at a time, "All statuses" clears it) — no `status[]`, no
+synthetic "open" bucket, no client-side merge of several calls. Source/destination filters are two
+native `<select>`s in a GET form (real params only).
 
 ### `GAP-HOME-DATE-TZ`
 "Orders today", "this month" etc. must be computed in `tenant_settings.timezone` (the only tz
@@ -239,6 +261,14 @@ replicate or simulate location scoping (backend is the authority). The adjustmen
 user pick any active location and surfaces the backend's `403` ("not authorized to operate on this
 location") in place. If reads should be scoped, that is a backend change.
 
+**F17-07 (2026-09) — OPEN, unchanged.** `TransfersService.list`/`getById` take no actor —
+`inventory.view` sees every tenant transfer. Only the write transitions check
+`LocationAuthorizationService` (`prepare`/`dispatch` → source, `receive` → destination). The
+transfer form lets the user select any active location for either end; the detail page renders
+Prepare/Dispatch/Receive whenever status + permission allow, and shows the backend's `403`
+("not authorized to operate on this transfer's location") in place — the frontend never reads or
+simulates `user_location_assignments`.
+
 ### `GAP-ROLE-CRUD`
 No endpoint to create/edit roles or toggle role permissions — the catalogue is fixed
 (`DEFAULT_ROLE_TEMPLATES`), editable only via direct DB. The nav/design imply "Roles / Permisos"
@@ -270,6 +300,10 @@ without the inventory costing engine. **F18-additive.** See [017-A](../reporting
 `inventory_transfers` has only the UUID `id` — no human code like `orders.order_number`. **Decision
 (cosmetic):** F17 displays a short id slice or a derived label; a real sequence column is a minor
 schema addition only if operators require it. Not a blocker.
+
+**F17-07 (2026-09) — OPEN.** Confirmed against `TransferResponseDto`: no `code`/`number`/`folio`
+field. The list and detail show `shortId(transfer.id)` (the shared 8-char helper) as the human
+handle — no invented `TRF-…` code. A real sequence column stays a future minor schema addition.
 
 ### `GAP-IMPORT-PROGRESS`
 Large imports are processed asynchronously by the Import Worker; the client learns status by

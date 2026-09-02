@@ -29,7 +29,8 @@ export type NavIcon =
   | 'map-pin'
   | 'box'
   | 'layers'
-  | 'activity';
+  | 'activity'
+  | 'transfer';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */
@@ -86,6 +87,13 @@ export const NAVIGATION: NavSection[] = [
         icon: 'activity',
         permission: 'inventory.view',
         activePaths: ['/inventory/movements'],
+      },
+      {
+        label: 'Transfers',
+        href: '/inventory/transfers',
+        icon: 'transfer',
+        permission: 'inventory.view',
+        activePaths: ['/inventory/transfers'],
       },
       {
         label: 'Warehouses',
