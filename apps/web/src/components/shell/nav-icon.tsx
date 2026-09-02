@@ -98,5 +98,21 @@ export function NavIconGlyph({
           <path d="M4 8h13l-3.5-3.5M20 16H7l3.5 3.5" />
         </svg>
       );
+    case 'cart':
+      return (
+        <svg {...common}>
+          <circle cx="9" cy="20" r="1.3" />
+          <circle cx="18" cy="20" r="1.3" />
+          <path d="M3 4h2l2.4 11.2a1.5 1.5 0 0 0 1.5 1.2h8.7a1.5 1.5 0 0 0 1.5-1.2L21 8H6" />
+        </svg>
+      );
+    case 'contact':
+      return (
+        <svg {...common}>
+          <rect x="3" y="5" width="18" height="14" rx="1.6" />
+          <circle cx="9" cy="11" r="2" />
+          <path d="M5.5 16a3.5 3.5 0 0 1 7 0M15 9h4M15 13h4" />
+        </svg>
+      );
   }
 }

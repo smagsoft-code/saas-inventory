@@ -30,7 +30,9 @@ export type NavIcon =
   | 'box'
   | 'layers'
   | 'activity'
-  | 'transfer';
+  | 'transfer'
+  | 'cart'
+  | 'contact';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */
@@ -108,6 +110,25 @@ export const NAVIGATION: NavSection[] = [
         icon: 'map-pin',
         permission: 'locations.view',
         activePaths: ['/locations'],
+      },
+    ],
+  },
+  {
+    title: 'Sales',
+    items: [
+      {
+        label: 'New sale',
+        href: '/sales/new',
+        icon: 'cart',
+        permission: 'sales.orders.create',
+        activePaths: ['/sales/new'],
+      },
+      {
+        label: 'Customers',
+        href: '/customers',
+        icon: 'contact',
+        permission: 'sales.customers.view',
+        activePaths: ['/customers'],
       },
     ],
   },

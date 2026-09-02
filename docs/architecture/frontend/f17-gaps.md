@@ -99,6 +99,13 @@ shown), then a quantity — one line per variant, add/remove lines, no duplicate
 tenant-wide variant list is created, simulated or requested. On the transfer detail, lines carry
 only `productVariantId` (no product context) so they show a short id.
 
+**Re-audited during F17-08 (2026-09) — status: OPEN, worked around.** `AddCartItemDto` takes a bare
+`productVariantId`. New Sale reuses the same Product → Variant → quantity pattern
+(`GET /products?status=active` → `GET /products/:id/variants`, SKU shown as the option label). No
+tenant-wide `GET /variants` created/simulated/requested. Cart and order **line responses** already
+carry `sku` + `productName` (the backend enriches those), so once a line is on the cart it is named
+without any extra lookup — the gap only affects the *picker*.
+
 ### `GAP-BRAND-SUPPLIER-LIST`
 `products.brand_id` / `supplier_id` are real FKs and the Product form shows the fields, but
 ADR-0019 keeps brands/suppliers as reference entities **without any endpoint** — no list, so the
@@ -151,12 +158,30 @@ must add a gate before the Approvals screen ships; F17-00 recommends `pricing.di
 for the queue and `pricing.discount.request` (own requests) — or a new `pricing.discount.view`.
 Also affects nav-item gating. Observed in 017-A, unchanged.
 
+**Re-audited during F17-08 (2026-09) — status: OPEN / BLOCKING for the Approvals screen, unchanged.**
+Confirmed against `price-approvals.controller.ts`: the two `GET` routes carry no `@RequirePermissions`;
+the service does an OR check (`pricing.discount.request` OR `pricing.discount.approve`) the guard's
+AND semantics can't express. F17-08 builds **Clientes + Nueva Venta only** — no Approvals list, no
+nav item, no `price-approvals` read. When checkout produces a `pending` order with a below-`min_price`
+line, New Sale and the read-only order detail show an informational "needs a price approval before it
+can be confirmed" notice (no link to a queue that does not exist yet). The Approvals screen, the
+`POST /price-approvals` request flow and the order confirm/cancel lifecycle are **F17-09**; the
+backend gate still needs correcting first.
+
 ### `GAP-ORDERS-LOCATION`
 `orders.location_id` exists but `GET /orders` has **no `locationId` filter** and the endpoint does
 not location-scope order visibility. **Decision needed:** should an operational user see only
 orders placed at their authorized locations? If yes → add the filter + scope (F18/additive). If no
 → document that order visibility is tenant-wide for `sales.orders.view` holders. Blocks
 `REP-SALES-BY-LOCATION` (F18) either way. See [017-A](../reporting/data-gaps.md#gap-orders-location-filter).
+
+**F17-08 (2026-09) — OPEN, unchanged.** Confirmed against `OrdersService.list`/`getById`: no actor
+is taken, `user_location_assignments` is never read — order visibility is **tenant-wide** for a
+`sales.orders.view` holder. F17-08's customer-detail order list (`GET /orders?customerId=`) and the
+read-only order detail (`GET /orders/:id`) therefore show any tenant order; the frontend does not
+replicate or simulate location scoping. The cart *location* selector lets the vendor pick any active
+sellable location and surfaces the backend's `403` (ADR-0024 location authorization on the cart /
+checkout) in place. If reads should be scoped, that is a backend change.
 
 ### `GAP-NOTIF-STATUS`
 Roadmap FASE 17 item: a `sent`/`pending`/`failed` badge on the order + an authorized "retry
@@ -166,6 +191,11 @@ repository/service/controller reads it and no permission gates it**. The retry n
 grant (`app_tenant` has none) or a processor-mediated action, and must never recreate the event,
 the order, or its inventory movements. **F17-blocking for this feature:** a small read projection
 + a guarded requeue, contract to be designed first. See [017-A](../reporting/data-gaps.md#gap-notif-status).
+
+**F17-08 (2026-09) — OPEN, not addressed.** `OrderResponseDto` carries no notification field and
+there is no read endpoint for `event_outbox`. F17-08's order detail shows the order status only —
+no `sent`/`pending`/`failed` notification badge and no "retry notification" control. Deferred to the
+phase that designs the read projection + guarded requeue (roadmap FASE 17 item / F17-09+).
 
 ### `GAP-MULTI-STATUS`
 Every list DTO takes a single `@IsIn` status. "Open transfers", "returns to process", "imports
@@ -205,6 +235,12 @@ only in the default roles). Home's per-role date computation (F17-12) needs it f
 operational role. **F17-12 / decision** — see `GAP-HOME-DATE-TZ` above for the options. F17-02
 records it; it needs a backend decision (recommended: `timezone` on `GET /auth/me`).
 
+**F17-08 (2026-09) — not affected.** `GAP-HOME-DATE-TZ` / `GAP-TZ-VISIBILITY` concern Home date
+tiles and the Sales history date picker. F17-08 builds neither — New Sale, customers and the
+read-only order detail have no date-range control and compute no "today"/"this month". The order
+DTO's `createdFrom`/`createdTo` filters are left unused. These gaps stay for F17 Home / Sales
+history phases.
+
 ### `GAP-DATE-SEMANTICS`
 `api.md` does not document whether `createdFrom`/`createdTo` are inclusive/exclusive. **Decision:**
 confirm the service behaviour (recommend half-open `[from, to)`), document it in `api.md` before
@@ -228,6 +264,13 @@ Only `GET /customers` has `?q=`. Products list and Sales history show search box
 backing. **F17-additive:** `?q=` on `GET /products` (name/SKU/barcode) and `GET /orders`
 (order number / customer snapshot name). `api.md` already frames search as a per-endpoint `q`
 param. See [017-A](../reporting/data-gaps.md#gap-search).
+
+**F17-08 (2026-09) — partially exercised.** `ListCustomersQueryDto.q` is real (case-insensitive over
+displayName / taxId / email / phone, tenant-scoped) and F17-08 uses it: the customers list search
+box and the New Sale customer picker both send `?q=` and let the **backend** match — no client-side
+filtering of a pre-fetched list. `GET /orders` / `GET /products` still have no `q` — F17-08 builds
+no order search box and no product search (the New Sale product picker is a bounded `pageSize: 100`
+`status=active` select, same as F17-06/07). The gap stays for Products list and Sales history.
 
 ### `GAP-SORT`
 No list endpoint exposes `sort`. **F17-additive:** an allow-listed `sort` param per endpoint

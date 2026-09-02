@@ -57,6 +57,19 @@ describe('filterNavigation', () => {
     ).not.toContain('Inventory');
   });
 
+  it('shows the Sales items only with the matching permissions', () => {
+    const labels = (perms: string[]) =>
+      filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));
+    expect(labels([])).not.toContain('New sale');
+    expect(labels([])).not.toContain('Customers');
+    expect(labels(['sales.orders.create'])).toContain('New sale');
+    expect(labels(['sales.orders.create'])).not.toContain('Customers');
+    expect(labels(['sales.customers.view'])).toContain('Customers');
+    expect(labels(['sales.customers.view'])).not.toContain('New sale');
+    // the whole "Sales" section is dropped when the user holds none of its permissions
+    expect(filterNavigation(NAVIGATION, createPermissionChecker([])).map((s) => s.title)).not.toContain('Sales');
+  });
+
   it('drops a section that becomes empty', () => {
     const sections = [
       {
@@ -104,5 +117,18 @@ describe('isNavItemActive', () => {
     expect(isNavItemActive(transfers, '/inventory/transfers/new', siblings)).toBe(true);
     expect(isNavItemActive(transfers, '/inventory/transfers/abc-123', siblings)).toBe(true);
     expect(isNavItemActive(stock, '/inventory/transfers/new', siblings)).toBe(false);
+  });
+
+  it('keeps Customers and New sale independent (nested customer routes, order detail)', () => {
+    const newSale: NavItem = { label: 'New sale', href: '/sales/new', icon: 'cart', activePaths: ['/sales/new'] };
+    const customers: NavItem = { label: 'Customers', href: '/customers', icon: 'contact', activePaths: ['/customers'] };
+    const siblings = ['/sales/new', '/customers'];
+    expect(isNavItemActive(customers, '/customers', siblings)).toBe(true);
+    expect(isNavItemActive(customers, '/customers/new', siblings)).toBe(true);
+    expect(isNavItemActive(customers, '/customers/abc-1', siblings)).toBe(true);
+    expect(isNavItemActive(newSale, '/sales/new', siblings)).toBe(true);
+    // the read-only order detail (/sales/:id) is not a nav destination — nothing lights up
+    expect(isNavItemActive(newSale, '/sales/order-9', siblings)).toBe(false);
+    expect(isNavItemActive(customers, '/sales/order-9', siblings)).toBe(false);
   });
 });
