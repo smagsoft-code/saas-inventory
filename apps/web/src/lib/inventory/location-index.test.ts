@@ -22,6 +22,8 @@ describe('buildLocationIndex', () => {
     const index = await buildLocationIndex(true);
     expect(index.locationName('l1')).toBe('Aisle A');
     expect(index.warehouseName('l1')).toBe('Central');
+    // the raw list is exposed so a page reuses it instead of re-fetching GET /locations
+    expect(index.locations.map((l) => l.id)).toEqual(['l1']);
   });
 
   it('does not fetch warehouses without the permission, and falls back to a short id', async () => {

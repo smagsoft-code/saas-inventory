@@ -149,7 +149,7 @@ export default async function VariantDetailPage({
                 </Link>
                 {canAdjustInventory && (
                   <Link
-                    href={`/inventory/adjust?productVariantId=${variant.id}`}
+                    href={`/inventory/adjust?productVariantId=${variant.id}&sku=${encodeURIComponent(variant.sku)}`}
                     className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                   >
                     Adjust

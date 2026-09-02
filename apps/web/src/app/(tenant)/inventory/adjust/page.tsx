@@ -13,7 +13,7 @@ export const metadata = { title: 'Adjust stock · SaaS Inventory' };
 export default async function AdjustStockPage({
   searchParams,
 }: {
-  searchParams: Promise<{ productVariantId?: string; locationId?: string }>;
+  searchParams: Promise<{ productVariantId?: string; locationId?: string; sku?: string }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
   const checker = createPermissionChecker(session?.permissions ?? []);
@@ -57,6 +57,7 @@ export default async function AdjustStockPage({
       )}
       <AdjustmentForm
         {...(fixedProductVariantId ? { fixedProductVariantId } : {})}
+        {...(fixedProductVariantId && sp.sku ? { fixedVariantLabel: sp.sku } : {})}
         {...(sp.locationId ? { fixedLocationId: sp.locationId } : {})}
         products={(products?.data ?? []).map((p) => ({ id: p.id, name: p.name }))}
         locations={(locations?.data ?? []).map((l) => ({ id: l.id, name: l.name }))}

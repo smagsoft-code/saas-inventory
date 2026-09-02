@@ -3,7 +3,6 @@ import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { listMovements } from '../../../../lib/inventory/movements';
 import { buildLocationIndex, shortId } from '../../../../lib/inventory/location-index';
-import { listLocations } from '../../../../lib/inventory/locations';
 import {
   MOVEMENT_TYPES,
   MOVEMENT_TYPE_LABELS,
@@ -47,15 +46,13 @@ export default async function MovementsPage({
       </PageContainer>
     );
   }
-  const canViewLocations = checker.can('locations.view');
-
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const locationId = sp.locationId || undefined;
   const movementType = parseMovementType(sp.movementType);
   const productVariantId = sp.productVariantId || undefined;
 
-  const [result, index, locations] = await Promise.all([
+  const [result, index] = await Promise.all([
     listMovements({
       page,
       pageSize: PAGE_SIZE,
@@ -64,8 +61,9 @@ export default async function MovementsPage({
       ...(productVariantId ? { productVariantId } : {}),
     }),
     buildLocationIndex(checker.can('warehouses.view')),
-    canViewLocations ? listLocations({ pageSize: 100, status: 'active' }).catch(() => null) : Promise.resolve(null),
   ]);
+  // Reuse the index's own location fetch for the filter chips — no second GET /locations.
+  const locationChips = index.locations.filter((l) => l.status === 'active');
 
   function buildHref(next: {
     page?: number;
@@ -111,12 +109,12 @@ export default async function MovementsPage({
           </div>
         )}
 
-        {locations && locations.data.length > 0 && (
+        {locationChips.length > 0 && (
           <div className="flex flex-wrap gap-2">
             <Link href={buildHref({ locationId: undefined })} aria-current={!locationId ? 'true' : undefined} className={chip(!locationId)}>
               All locations
             </Link>
-            {locations.data.map((location) => (
+            {locationChips.map((location) => (
               <Link
                 key={location.id}
                 href={buildHref({ locationId: location.id })}

@@ -39,11 +39,14 @@ interface VariantOption {
  */
 export function AdjustmentForm({
   fixedProductVariantId,
+  fixedVariantLabel,
   fixedLocationId,
   products,
   locations,
 }: {
   fixedProductVariantId?: string;
+  /** A human label (SKU) for the fixed variant when the caller knows it — display only. */
+  fixedVariantLabel?: string;
   fixedLocationId?: string;
   products: ProductOption[];
   locations: LocationOption[];
@@ -153,7 +156,7 @@ export function AdjustmentForm({
     <form onSubmit={handleSubmit} noValidate className="flex max-w-md flex-col gap-4">
       {variantFixed ? (
         <Field label="Variant" hint="Fixed for this adjustment.">
-          <Input readOnly value={productVariantId} />
+          <Input readOnly value={fixedVariantLabel ?? productVariantId} />
         </Field>
       ) : (
         <>

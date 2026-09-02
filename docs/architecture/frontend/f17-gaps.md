@@ -333,8 +333,8 @@ Observed in F17-03; **no code change made** (F17-03 does not touch the backend).
 | --- | --- | --- | --- |
 | A1 | Route names/structure for new modules | flat `(tenant)/products` vs nested; `/approvals` vs tab of `/sales` | Follow the flat FASE 16 convention; keep one route per screen ([f17-navigation.md](f17-navigation.md)) |
 | A2 | Order visibility & location scope | tenant-wide vs location-scoped | Decide with `GAP-ORDERS-LOCATION` before Sales history |
-| A3 | Inventory read location scope | scoped vs not | Scope for consistency (`GAP-INV-LOCATION-SCOPE`) |
-| A4 | Brand/supplier fields in the product form | add read endpoints vs omit | Add read-only lists (`GAP-BRAND-SUPPLIER-LIST`) |
+| A3 | Inventory read location scope | scoped vs not | Scope for consistency (`GAP-INV-LOCATION-SCOPE`) — **F17-06 left it unscoped** (backend takes no actor on the read paths); revisit if the backend adds it |
+| A4 | Brand/supplier fields in the product form | add read endpoints vs omit | **Decided in F17-05: omit** (option b) — no `GET /brands`/`GET /suppliers` exists; the form has no brand/supplier selector. Re-add when the endpoints land (`GAP-BRAND-SUPPLIER-LIST`) |
 | A5 | Approvals permission gate | `.approve` / `.request` / new `.view` | New `pricing.discount.view` is cleanest (`GAP-APPROVALS-PERMISSION`) |
 | A6 | Notification-status contract shape | read-only projection + requeue endpoint | Design a minimal read + a guarded requeue (`GAP-NOTIF-STATUS`) |
 | A7 | Roles screen scope | read-only vs "coming soon" placeholder | Read-only view of the fixed catalogue (`GAP-ROLE-CRUD`) |

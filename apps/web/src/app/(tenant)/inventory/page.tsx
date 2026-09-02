@@ -3,7 +3,6 @@ import { getSession } from '../../../lib/auth/session';
 import { createPermissionChecker } from '../../../lib/auth/permissions';
 import { listBalances } from '../../../lib/inventory/balances';
 import { buildLocationIndex, shortId } from '../../../lib/inventory/location-index';
-import { listLocations } from '../../../lib/inventory/locations';
 import type { InventoryBalance } from '../../../lib/types/inventory';
 import { PageContainer } from '../../../components/ui/page-container';
 import { PageHeader } from '../../../components/ui/page-header';
@@ -41,14 +40,13 @@ export default async function InventoryBalancesPage({
     );
   }
   const canAdjust = checker.can('inventory.adjust');
-  const canViewLocations = checker.can('locations.view');
 
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const locationId = sp.locationId || undefined;
   const productVariantId = sp.productVariantId || undefined;
 
-  const [result, index, locations] = await Promise.all([
+  const [result, index] = await Promise.all([
     listBalances({
       page,
       pageSize: PAGE_SIZE,
@@ -56,8 +54,9 @@ export default async function InventoryBalancesPage({
       ...(productVariantId ? { productVariantId } : {}),
     }),
     buildLocationIndex(checker.can('warehouses.view')),
-    canViewLocations ? listLocations({ pageSize: 100, status: 'active' }).catch(() => null) : Promise.resolve(null),
   ]);
+  // Reuse the index's own location fetch for the filter chips — no second GET /locations.
+  const locationChips = index.locations.filter((l) => l.status === 'active');
 
   function buildHref(next: { page?: number; locationId?: string | undefined; productVariantId?: string | undefined }): string {
     const params = new URLSearchParams();
@@ -91,7 +90,7 @@ export default async function InventoryBalancesPage({
             <span className="sr-only">Clear variant filter</span>
           </Link>
         )}
-        {locations && locations.data.length > 0 && (
+        {locationChips.length > 0 && (
           <div className="flex flex-wrap gap-2">
             <Link
               href={buildHref({ locationId: undefined })}
@@ -104,7 +103,7 @@ export default async function InventoryBalancesPage({
             >
               All locations
             </Link>
-            {locations.data.map((location) => {
+            {locationChips.map((location) => {
               const active = locationId === location.id;
               return (
                 <Link

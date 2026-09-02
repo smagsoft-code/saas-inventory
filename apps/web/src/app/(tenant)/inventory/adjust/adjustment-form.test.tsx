@@ -92,6 +92,15 @@ describe('AdjustmentForm', () => {
     await waitFor(() => expect(screen.getByText(/adjustment recorded/i)).toBeInTheDocument());
   });
 
+  it('shows the SKU label for a fixed variant when given, and the id otherwise', () => {
+    const { rerender } = render(
+      <AdjustmentForm fixedProductVariantId="var-1" fixedVariantLabel="SKU-1" products={[]} locations={LOCATIONS} />,
+    );
+    expect((screen.getByLabelText(/^variant/i) as HTMLInputElement).value).toBe('SKU-1');
+    rerender(<AdjustmentForm fixedProductVariantId="var-1" products={[]} locations={LOCATIONS} />);
+    expect((screen.getByLabelText(/^variant/i) as HTMLInputElement).value).toBe('var-1');
+  });
+
   it('loads a product\'s variants when picking a product (no fixed variant)', async () => {
     mockedFetch.mockResolvedValueOnce([{ id: 'var-9', sku: 'SKU-9' }]);
     render(
