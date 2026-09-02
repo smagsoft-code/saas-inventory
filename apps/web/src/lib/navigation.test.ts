@@ -29,6 +29,22 @@ describe('filterNavigation', () => {
     expect(labels(['products.view'])).toContain('Attributes');
   });
 
+  it('shows the Inventory items only with the matching permissions', () => {
+    const labels = (perms: string[]) =>
+      filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) =>
+        s.items.map((i) => i.label),
+      );
+    expect(labels([])).not.toContain('Warehouses');
+    expect(labels([])).not.toContain('Locations');
+    expect(labels(['warehouses.view'])).toContain('Warehouses');
+    expect(labels(['warehouses.view'])).not.toContain('Locations');
+    expect(labels(['locations.view'])).toContain('Locations');
+    // the whole "Inventory" section is dropped when the user holds neither
+    expect(
+      filterNavigation(NAVIGATION, createPermissionChecker([])).map((s) => s.title),
+    ).not.toContain('Inventory');
+  });
+
   it('drops a section that becomes empty', () => {
     const sections = [
       {

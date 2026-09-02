@@ -57,5 +57,20 @@ export function NavIconGlyph({
           <circle cx="18" cy="17" r="2" />
         </svg>
       );
+    case 'warehouse':
+      return (
+        <svg {...common}>
+          <path d="M3 21V9l9-5 9 5v12" />
+          <path d="M7 21v-8h10v8" />
+          <path d="M7 17h10" />
+        </svg>
+      );
+    case 'map-pin':
+      return (
+        <svg {...common}>
+          <path d="M12 21s7-5.5 7-11a7 7 0 0 0-14 0c0 5.5 7 11 7 11Z" />
+          <circle cx="12" cy="10" r="2.5" />
+        </svg>
+      );
   }
 }

@@ -75,6 +75,17 @@ change — they'd stay CRUD-less), or (b) omit both fields from the F17 product 
 **Still open after F17-03** (F17-03 covers categories + attributes only). F17-05 (products) must
 resolve it before building the product form's brand/supplier selectors.
 
+**Re-audited during F17-04 (2026-09) — status: `BLOCKING / BACKEND DEPENDENCY`.** A dedicated
+backend audit for this phase re-confirmed the code (the source of truth): there is **no**
+`brands`/`suppliers` controller, service, DTO, route, permission code, OpenAPI entry or test —
+the only application code touching either table is `ProductsRepository.brandExists()` /
+`supplierExists()` (existence checks used when a product is assigned a `brandId`/`supplierId`).
+No alternative real endpoint exposes the data. Because F17-04 cannot modify the backend or invent
+a contract, no brand/supplier UI was built (Case C). F17-04 was implemented as **Warehouses &
+Locations** (its scope in [f17-implementation-order.md](f17-implementation-order.md); the
+brands/suppliers gap remains F17-05's to resolve, via option (a) read-only `GET /brands` /
+`GET /suppliers` or option (b) omitting the fields — both still open).
+
 ### F17-05 dependency — category ↔ attributes: **RESOLVED by F17-03**
 The category-driven dynamic attribute contract F17-05's product form needs is fully in place and
 fully manageable (ADR-0026, "case A"):
