@@ -72,5 +72,12 @@ export function NavIconGlyph({
           <circle cx="12" cy="10" r="2.5" />
         </svg>
       );
+    case 'box':
+      return (
+        <svg {...common}>
+          <path d="M3 8.5 12 4l9 4.5v7L12 20l-9-4.5Z" />
+          <path d="M3 8.5 12 13l9-4.5M12 13v7" />
+        </svg>
+      );
   }
 }

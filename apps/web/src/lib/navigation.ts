@@ -26,7 +26,8 @@ export type NavIcon =
   | 'categories'
   | 'attributes'
   | 'warehouse'
-  | 'map-pin';
+  | 'map-pin'
+  | 'box';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */
@@ -42,6 +43,13 @@ export const NAVIGATION: NavSection[] = [
   {
     title: 'Catalog',
     items: [
+      {
+        label: 'Products',
+        href: '/products',
+        icon: 'box',
+        permission: 'products.view',
+        activePaths: ['/products'],
+      },
       {
         label: 'Categories',
         href: '/categories',

@@ -66,6 +66,14 @@ interaction is "type a SKU → add the line". **F17-blocking:** needs a tenant-w
 `GET /variants?q=<sku|barcode|name>&status=` (or `GET /products/variants`). Interim: F17 can force
 "pick a product, then a variant" — clunky but functional. See [017-A](../reporting/data-gaps.md#gap-variant-list).
 
+**Re-audited during F17-05 (2026-09) — status: OPEN, not blocking for F17-05.** Confirmed against
+the code: no tenant-wide variant controller exists (`@Controller('products')` is the only one;
+variants live at the nested `GET/POST /products/:id/variants` + `GET/PATCH
+/products/:id/variants/:variantId`, `products.view`/`.manage`). F17-05 (product CRUD) needs only
+the per-product path and uses it — the product detail page lists a product's variants and links to
+per-variant create/edit. The gap stays for **F17-08** (New Sale SKU search), decision deferred to
+that phase per [f17-implementation-order.md](f17-implementation-order.md).
+
 ### `GAP-BRAND-SUPPLIER-LIST`
 `products.brand_id` / `supplier_id` are real FKs and the Product form shows the fields, but
 ADR-0019 keeps brands/suppliers as reference entities **without any endpoint** — no list, so the
@@ -85,6 +93,16 @@ a contract, no brand/supplier UI was built (Case C). F17-04 was implemented as *
 Locations** (its scope in [f17-implementation-order.md](f17-implementation-order.md); the
 brands/suppliers gap remains F17-05's to resolve, via option (a) read-only `GET /brands` /
 `GET /suppliers` or option (b) omitting the fields — both still open).
+
+**F17-05 decision (2026-09) — `NOT RESOLVED`; the product form takes option (b).** F17-05 built
+the product/variant frontend. The audit re-confirmed: `CreateProductDto`/`UpdateProductDto` accept
+`brandId`/`supplierId` (validated by `ProductsRepository.brand/supplierExists`), but there is still
+no endpoint to list either, so the product form **omits the brand/supplier selectors entirely** —
+no fake selector, no hardcoded list, no invented endpoint, no backend change. The product detail
+page shows a raw `brandId`/`supplierId` only when the response already carries one (it cannot
+resolve them to names). The gap stays a backend dependency: whenever read-only `GET /brands` /
+`GET /suppliers` are added, the product form gains the two selectors and the fields become
+assignable from the UI.
 
 ### F17-05 dependency — category ↔ attributes: **RESOLVED by F17-03**
 The category-driven dynamic attribute contract F17-05's product form needs is fully in place and

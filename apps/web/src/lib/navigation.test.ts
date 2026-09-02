@@ -25,8 +25,11 @@ describe('filterNavigation', () => {
     expect(labels([])).not.toContain('Attributes');
     expect(labels(['categories.view'])).toContain('Categories');
     expect(labels(['categories.view'])).not.toContain('Attributes');
-    // Attributes rides on products.view
+    expect(labels(['categories.view'])).not.toContain('Products');
+    // Products and Attributes ride on products.view
     expect(labels(['products.view'])).toContain('Attributes');
+    expect(labels(['products.view'])).toContain('Products');
+    expect(labels([])).not.toContain('Products');
   });
 
   it('shows the Inventory items only with the matching permissions', () => {
