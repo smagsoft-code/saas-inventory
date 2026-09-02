@@ -24,7 +24,8 @@
 | 5 | [`GAP-ORDERS-LOCATION`](#gap-orders-location) | decision → F18 | Sales history, Order detail, Home "orders today" |
 | 6 | [`GAP-NOTIF-STATUS`](#gap-notif-status) | F17-blocking for that feature | Order detail, Sales history |
 | 7 | [`GAP-MULTI-STATUS`](#gap-multi-status) | F17-additive | Home tiles, Transfers/Returns/Imports tabs |
-| 8 | [`GAP-HOME-DATE-TZ`](#gap-home-date-tz) | F17-blocking for date tiles | Home, any date filter |
+| 8 | [`GAP-HOME-DATE-TZ`](#gap-home-date-tz) | PARTIALLY RESOLVED (F17-02) — tz config done; per-role visibility open | Home, any date filter |
+| 8b | [`GAP-TZ-VISIBILITY`](#gap-tz-visibility) | F17-12 / decision (backend) | Home date tiles for non-Administrador roles |
 | 9 | [`GAP-DATE-SEMANTICS`](#gap-date-semantics) | decision | Sales history date filter |
 | 10 | [`GAP-MOVEMENTS-DATE-FILTER`](#gap-movements-date-filter) | F17-additive | Movements, Kardex |
 | 11 | [`GAP-SEARCH`](#gap-search) | F17-additive | Products, Sales history |
@@ -101,9 +102,29 @@ param on transfers, returns, imports, orders. Trivial DTO change, no schema impa
 ### `GAP-HOME-DATE-TZ`
 "Orders today", "this month" etc. must be computed in `tenant_settings.timezone` (the only tz
 source), converted to a UTC `createdFrom`/`createdTo` range for `GET /orders`. **No endpoint does
-this.** **F17-blocking for date tiles:** F17 must fetch the tenant timezone and do the conversion
-client-side (or F18 read-side does it). Low effort, must not be skipped or "today" is wrong for
-non-UTC tenants.
+this.** F17 must fetch the tenant timezone and do the conversion client-side (or F18 read-side
+does it). "today" is wrong for non-UTC tenants otherwise.
+
+**Status after F17-02: PARTIALLY RESOLVED.**
+- **Done:** the tenant timezone is now a real, read/write, persisted setting —
+  `GET`/`PATCH /administration/tenant-settings` wired in the `S-SETTINGS` screen, with a stable
+  server-side read contract for later phases (`lib/tenant/tenant-settings.ts` —
+  `getTenantSettings()` / `resolveTenantTimezone()`) and a picker built from the exact set the
+  backend validates against (`lib/tenant/timezones.ts` = `Intl.supportedValuesOf('timeZone')`).
+  F17-02 deliberately does **not** compute any date range / "today" / "this month" — that is F17-12.
+- **Still open → `GAP-TZ-VISIBILITY` (F17-12 / decision):** `GET /administration/tenant-settings`
+  requires `administration.settings.view`, which in `DEFAULT_ROLE_TEMPLATES` only **Administrador**
+  holds. A Vendedor/Bodega/Supervisor rendering Home's "orders today" tile cannot read the tenant
+  timezone through this endpoint (403). F17-12 must resolve this before wiring per-role date tiles
+  — options: (a) add `timezone` to `GET /auth/me` (small backend change, best), (b) a new
+  low-sensitivity `GET /tenant/timezone`, or (c) Home date tiles only for `administration.settings.view`
+  holders / browser-timezone fallback (degraded). Not solved by F17-02 (no backend change).
+
+### `GAP-TZ-VISIBILITY`
+The tenant operational timezone is only readable with `administration.settings.view` (Administrador
+only in the default roles). Home's per-role date computation (F17-12) needs it for every
+operational role. **F17-12 / decision** — see `GAP-HOME-DATE-TZ` above for the options. F17-02
+records it; it needs a backend decision (recommended: `timezone` on `GET /auth/me`).
 
 ### `GAP-DATE-SEMANTICS`
 `api.md` does not document whether `createdFrom`/`createdTo` are inclusive/exclusive. **Decision:**
