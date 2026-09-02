@@ -39,17 +39,23 @@ Sidebar resolves it; FASE 16 has `home`/`users`/`settings`, F17 adds the rest as
 | **Ventas** | Nueva venta | `/sales/new` | `shopping-cart` | `sales.orders.create` | **A** | `S-SALE-NEW` |
 | | Historial | `/sales` | `receipt` | `sales.orders.view` | **A** (list) / **F18** (KPIs) | `S-SALES-HISTORY` |
 | | Clientes | `/customers` | `users-round` | `sales.customers.view` | **A** | `S-CUST-LIST` |
-| | Aprobaciones | `/approvals` | `badge-check` | *(GET undeclared — see gap)* | **A** | `S-APPROVALS-LIST` |
-| | Devoluciones | `/returns` | `undo` | `sales.returns.view` | **A** | `S-RET-LIST` |
+| | Aprobaciones | `/approvals` | `badge-check` | `pricing.discount.request` **or** `pricing.discount.approve` (`NavItem.anyPermission`) | **A** | `S-APPROVALS-LIST` |
+| | Devoluciones | `/returns` | `undo` | `sales.returns.view` | **A** — *not built in F17-09 (`GAP-RETURNS-UI-DEFERRED`)* | `S-RET-LIST` |
 | **Administración** | Usuarios | `/users` | `users` | `core.users.read` | **A** | `S-USERS-LIST` |
 | | Roles | `/roles` | `shield` | `core.roles.read` | **A** (read-only) | `S-ROLES-LIST` |
 | | Configuración | `/settings` | `settings` | — (any; edit gated) | **A** | `S-SETTINGS` |
 
 Notes:
-- **`Aprobaciones`** visibility: because `GET /price-approvals` declares no permission, the nav
-  item needs a client-side gate decision — recommend showing it when the user holds
-  `pricing.discount.approve` **or** `pricing.discount.request` (see
-  [f17-gaps.md](f17-gaps.md#gap-approvals-permission)); the backend must still be corrected.
+- **`Aprobaciones`** visibility: `GET /price-approvals` now declares
+  `@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')` (F17-09 —
+  `GAP-APPROVALS-PERMISSION` resolved). The nav item mirrors that OR via the new
+  `NavItem.anyPermission` field (`filterNavigation` checks `checker.canAny`).
+- **`Historial`** (`/sales`) and **`Nueva venta`** (`/sales/new`) share a prefix — `isNavItemActive`
+  uses the sibling-href rule so `/sales/new` lights up "Nueva venta" and every other `/sales/*`
+  (incl. the order detail) lights up "Historial".
+- **`Devoluciones`** is **not** wired in F17-09 — the backend contract is ready but the UI was
+  deferred (`GAP-RETURNS-UI-DEFERRED`). No `/returns` route exists yet, so per the "only routes that
+  exist are listed" rule there is no nav entry.
 - **`Atributos`** could instead live as a tab inside `/categories` — layout decision for F17, not
   a contract question.
 - **`Roles`** could be a tab of `/users`. It is read-only regardless (`GAP-ROLE-CRUD`).

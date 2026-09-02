@@ -66,8 +66,20 @@ describe('filterNavigation', () => {
     expect(labels(['sales.orders.create'])).not.toContain('Customers');
     expect(labels(['sales.customers.view'])).toContain('Customers');
     expect(labels(['sales.customers.view'])).not.toContain('New sale');
+    // Sales history rides on sales.orders.view
+    expect(labels([])).not.toContain('Sales history');
+    expect(labels(['sales.orders.view'])).toContain('Sales history');
     // the whole "Sales" section is dropped when the user holds none of its permissions
     expect(filterNavigation(NAVIGATION, createPermissionChecker([])).map((s) => s.title)).not.toContain('Sales');
+  });
+
+  it('shows Approvals for a holder of EITHER pricing-discount permission (anyPermission / OR gate)', () => {
+    const labels = (perms: string[]) =>
+      filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));
+    expect(labels([])).not.toContain('Approvals');
+    expect(labels(['sales.orders.view'])).not.toContain('Approvals');
+    expect(labels(['pricing.discount.request'])).toContain('Approvals');
+    expect(labels(['pricing.discount.approve'])).toContain('Approvals');
   });
 
   it('drops a section that becomes empty', () => {
@@ -122,13 +134,24 @@ describe('isNavItemActive', () => {
   it('keeps Customers and New sale independent (nested customer routes, order detail)', () => {
     const newSale: NavItem = { label: 'New sale', href: '/sales/new', icon: 'cart', activePaths: ['/sales/new'] };
     const customers: NavItem = { label: 'Customers', href: '/customers', icon: 'contact', activePaths: ['/customers'] };
-    const siblings = ['/sales/new', '/customers'];
+    const salesHistory: NavItem = { label: 'Sales history', href: '/sales', icon: 'receipt', activePaths: ['/sales'] };
+    const siblings = ['/sales/new', '/sales', '/customers'];
     expect(isNavItemActive(customers, '/customers', siblings)).toBe(true);
     expect(isNavItemActive(customers, '/customers/new', siblings)).toBe(true);
     expect(isNavItemActive(customers, '/customers/abc-1', siblings)).toBe(true);
+    // New sale wins its own path; Sales history does not light up there (more specific sibling)
     expect(isNavItemActive(newSale, '/sales/new', siblings)).toBe(true);
-    // the read-only order detail (/sales/:id) is not a nav destination — nothing lights up
+    expect(isNavItemActive(salesHistory, '/sales/new', siblings)).toBe(false);
+    // the order detail (/sales/:id) belongs to Sales history, never New sale
+    expect(isNavItemActive(salesHistory, '/sales', siblings)).toBe(true);
+    expect(isNavItemActive(salesHistory, '/sales/order-9', siblings)).toBe(true);
     expect(isNavItemActive(newSale, '/sales/order-9', siblings)).toBe(false);
-    expect(isNavItemActive(customers, '/sales/order-9', siblings)).toBe(false);
+  });
+
+  it('activates Approvals on its own nested routes', () => {
+    const approvals: NavItem = { label: 'Approvals', href: '/approvals', icon: 'approval', activePaths: ['/approvals'] };
+    expect(isNavItemActive(approvals, '/approvals')).toBe(true);
+    expect(isNavItemActive(approvals, '/approvals/abc-1')).toBe(true);
+    expect(isNavItemActive(approvals, '/sales')).toBe(false);
   });
 });

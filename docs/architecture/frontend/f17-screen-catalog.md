@@ -518,9 +518,11 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 - **F17.**
 
 ### `S-APPROVALS-LIST` / `S-APPROVAL-DETAIL` — Price-approval queue
-- **Persona:** Supervisor/TA (to resolve) · **Route:** `/approvals` · **Scope:** tenant ·
-  **Permission:** **GET has NONE declared** ([`GAP-APPROVALS-PERMISSION`](f17-gaps.md#gap-approvals-permission))
-  — resolve requires `pricing.discount.approve`.
+- **Persona:** Supervisor/TA (to resolve) · **Route:** `/approvals` (+ `/approvals/[id]`) ·
+  **Scope:** tenant · **Permission:** GET (list + detail) requires
+  `pricing.discount.request` **or** `pricing.discount.approve`
+  (`@RequireAnyPermission`, F17-09 — [`GAP-APPROVALS-PERMISSION`](f17-gaps.md#gap-approvals-permission)
+  resolved); resolve requires `pricing.discount.approve`.
 - **Endpoint:** `GET /api/v1/price-approvals` — query `{ page, pageSize, status?, orderId? }` →
   `PaginatedResult<PriceApprovalResponseDto>` (`{ orderNumber, variant/sku/name, requestedPrice,
   maxPriceAtRequest, minPriceAtRequest *(gated pricing.floor.view)*, discountAmount, reason,

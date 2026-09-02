@@ -344,6 +344,47 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
     expect(r.statusCode).toBe(403);
   });
 
+  // ---- GAP-APPROVALS-PERMISSION (F17-09) -------------------------------------
+  it('GET /price-approvals is gated by @RequireAnyPermission — requester OR approver reads it, neither is 403', async () => {
+    const f = await seed('AP Co', `ap-${uniq()}@ex.com`);
+    const { orderItemId } = await pendingOrder(f, f.admin, { unitPrice: 70 });
+    const req = await requestApproval(f.admin, { orderItemId, reason: 'permission gate' });
+    const approvalId = (JSON.parse(req.body) as { id: string }).id;
+
+    // Vendedor holds pricing.discount.request (not .approve) — can read the queue and the row.
+    const seller = await c.createAndLoginAs(f.admin, `ap-seller-${uniq()}@ex.com`, 'Vendedor');
+    expect((await c.inject({ method: 'GET', url: '/api/v1/price-approvals', headers: c.readHeaders(seller) })).statusCode).toBe(200);
+    expect(
+      (await c.inject({ method: 'GET', url: `/api/v1/price-approvals/${approvalId}`, headers: c.readHeaders(seller) })).statusCode,
+    ).toBe(200);
+
+    // Supervisor holds pricing.discount.approve (not .request) — also reads it.
+    const supervisor = await c.createAndLoginAs(f.admin, `ap-sup-${uniq()}@ex.com`, 'Supervisor');
+    expect((await c.inject({ method: 'GET', url: '/api/v1/price-approvals', headers: c.readHeaders(supervisor) })).statusCode).toBe(200);
+
+    // Bodega holds neither — 403 on the list and the row (was previously only enforced in the service).
+    const bodega = await c.createAndLoginAs(f.admin, `ap-bod-${uniq()}@ex.com`, 'Bodega');
+    expect((await c.inject({ method: 'GET', url: '/api/v1/price-approvals', headers: c.readHeaders(bodega) })).statusCode).toBe(403);
+    expect(
+      (await c.inject({ method: 'GET', url: `/api/v1/price-approvals/${approvalId}`, headers: c.readHeaders(bodega) })).statusCode,
+    ).toBe(403);
+  });
+
+  it('GET /price-approvals never crosses tenants even for an authorized reader', async () => {
+    const a = await seed('AP-ISO A', `apisoa-${uniq()}@ex.com`);
+    const b = await seed('AP-ISO B', `apisob-${uniq()}@ex.com`);
+    const { orderItemId } = await pendingOrder(a, a.admin, { unitPrice: 70 });
+    const req = await requestApproval(a.admin, { orderItemId, reason: 'isolation' });
+    const approvalId = (JSON.parse(req.body) as { id: string }).id;
+    // b.admin is an authorized reader in tenant B but must not see tenant A's row.
+    const list = await c.inject({ method: 'GET', url: '/api/v1/price-approvals', headers: c.readHeaders(b.admin) });
+    expect(list.statusCode).toBe(200);
+    expect((JSON.parse(list.body) as { data: { id: string }[] }).data.map((r) => r.id)).not.toContain(approvalId);
+    expect(
+      (await c.inject({ method: 'GET', url: `/api/v1/price-approvals/${approvalId}`, headers: c.readHeaders(b.admin) })).statusCode,
+    ).toBe(404);
+  });
+
   // ---- hard floor (tenant_price_policies, read-only w/ direct row) ------------
   it('hard floor: a below-min price beyond max_discount_below_min_percent is rejected at checkout (422, no order)', async () => {
     const f = await seed('HF Co', `hf-${uniq()}@ex.com`);

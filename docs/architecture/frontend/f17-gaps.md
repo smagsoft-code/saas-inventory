@@ -20,7 +20,8 @@
 | 1 | [`GAP-NAME-ENRICHMENT`](#gap-name-enrichment) | F17-additive (high leverage) | Inventory, Movements, Transfers, QR, Products list |
 | 2 | [`GAP-VARIANT-LIST`](#gap-variant-list) | F17-blocking | New Sale (SKU search), Transfer form, flat variant view |
 | 3 | [`GAP-BRAND-SUPPLIER-LIST`](#gap-brand-supplier-list) | decision → F17-additive | Product form |
-| 4 | [`GAP-APPROVALS-PERMISSION`](#gap-approvals-permission) | F17-blocking (defect) | Approvals list, nav gating |
+| 4 | [`GAP-APPROVALS-PERMISSION`](#gap-approvals-permission) | ~~F17-blocking (defect)~~ **RESOLVED (F17-09)** | Approvals list, nav gating |
+| 4b | [`GAP-RETURNS-UI-DEFERRED`](#gap-returns-ui-deferred) | non-blocking (F17-09 scope call) | Returns list/new/detail, Order detail |
 | 5 | [`GAP-ORDERS-LOCATION`](#gap-orders-location) | decision → F18 | Sales history, Order detail, Home "orders today" |
 | 6 | [`GAP-NOTIF-STATUS`](#gap-notif-status) | F17-blocking for that feature | Order detail, Sales history |
 | 7 | [`GAP-MULTI-STATUS`](#gap-multi-status) | F17-additive | Home tiles, Transfers/Returns/Imports tabs |
@@ -168,6 +169,33 @@ can be confirmed" notice (no link to a queue that does not exist yet). The Appro
 `POST /price-approvals` request flow and the order confirm/cancel lifecycle are **F17-09**; the
 backend gate still needs correcting first.
 
+**RESOLVED — F17-09 (2026-09).** The AND-only `@RequirePermissions` genuinely could not express the
+OR, so F17-09 adds a minimal, behaviour-preserving mechanism: `@RequireAnyPermission(...codes)`
+(`common/decorators/require-any-permission.decorator.ts`) + OR support in `PermissionsGuard` (a
+route may carry both — every AND code and at least one ANY code). Both `GET /price-approvals` and
+`GET /price-approvals/:id` now declare
+`@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')` — the exact set the
+service already checked (kept as defense in depth). **No new permission code**, no role-template
+change, no business-logic change; `POST` routes are unchanged. Proven by
+`common/guards/permissions.guard.spec.ts` (7 cases) and two new HTTP-level cases in
+`test/sales/sales-exceptional-pricing.integration.test.ts` (requester-only reads, approver-only
+reads, neither → 403 on both the list and the row, tenant isolation intact). The nav item
+(`/approvals`, label "Approvals") mirrors the OR with `NavItem.anyPermission`.
+
+### `GAP-RETURNS-UI-DEFERRED`
+The sales-returns backend contract is **complete and tested** (`returns.controller.ts` /
+`returns.service.ts`; `create → inspect → resolve` + `cancel`; `sales.returns.view` /
+`sales.returns.create` for the administrative half, `inventory.returns.manage` for the
+stock-sensitive half; two `Idempotency-Key` scopes; ADR-0021 dispositions;
+`test/sales/sales-returns.integration.test.ts` + `returns.service.spec.ts`). **F17-09 deliberately
+did not build the Returns UI** — no `/returns` route, no nav item, no `sales-returns` read, no fake
+button. Rationale: keep F17-09 focused on Orders + Approvals (the GAP-APPROVALS-PERMISSION fix was
+the hard prerequisite) and avoid a large multi-role screen (`ReturnResponseDto` carries no
+`orderNumber` / SKU on lines, so a returns list/detail needs the same `GAP-NAME-ENRICHMENT`
+work-arounds as transfers, plus a two-persona inspect/resolve flow). **non-blocking.** Recommended
+phase: **F17-10 or a dedicated F17-RETURNS slice.** The order detail links to `/sales` and shows a
+`confirmed` order's state but offers no "start a return" action yet.
+
 ### `GAP-ORDERS-LOCATION`
 `orders.location_id` exists but `GET /orders` has **no `locationId` filter** and the endpoint does
 not location-scope order visibility. **Decision needed:** should an operational user see only
@@ -183,6 +211,12 @@ replicate or simulate location scoping. The cart *location* selector lets the ve
 sellable location and surfaces the backend's `403` (ADR-0024 location authorization on the cart /
 checkout) in place. If reads should be scoped, that is a backend change.
 
+**F17-09 (2026-09) — OPEN, unchanged.** The sales-history list (`/sales`, `GET /orders`) is
+explicitly tenant-wide: it shows a "Every sales order in the company" description, has **no**
+location filter or chip, and does not read `user_location_assignments`. `confirm` / `cancel` on the
+detail surface the backend's `403` (order-location authorization) in place. Still a backend
+decision.
+
 ### `GAP-NOTIF-STATUS`
 Roadmap FASE 17 item: a `sent`/`pending`/`failed` badge on the order + an authorized "retry
 notification". `event_outbox` is DB-readable by `app_tenant` (migration 0010 grants `SELECT,
@@ -197,6 +231,10 @@ there is no read endpoint for `event_outbox`. F17-08's order detail shows the or
 no `sent`/`pending`/`failed` notification badge and no "retry notification" control. Deferred to the
 phase that designs the read projection + guarded requeue (roadmap FASE 17 item / F17-09+).
 
+**F17-09 (2026-09) — OPEN, not addressed.** The order lifecycle (confirm / cancel / approvals) is
+built, but still no `event_outbox` read: no notification-status column on `/sales`, no badge on the
+order detail, no requeue control. Deferred to **F17-10** (Notifications).
+
 ### `GAP-MULTI-STATUS`
 Every list DTO takes a single `@IsIn` status. "Open transfers", "returns to process", "imports
 running" are multi-status → N calls each. **F17-additive:** accept `status` as a repeatable/array
@@ -207,6 +245,10 @@ param on transfers, returns, imports, orders. Trivial DTO change, no schema impa
 offers status **chips** (one real value at a time, "All statuses" clears it) — no `status[]`, no
 synthetic "open" bucket, no client-side merge of several calls. Source/destination filters are two
 native `<select>`s in a GET form (real params only).
+
+**F17-09 (2026-09) — OPEN, confirmed.** `ListOrdersQueryDto` / `ListPriceApprovalsQueryDto` each
+take a single `@IsIn` status. Sales history uses a single-select status dropdown; the Approvals
+queue uses status chips (one value at a time). No `status[]`, no synthetic buckets.
 
 ### `GAP-HOME-DATE-TZ`
 "Orders today", "this month" etc. must be computed in `tenant_settings.timezone` (the only tz
@@ -246,6 +288,13 @@ history phases.
 confirm the service behaviour (recommend half-open `[from, to)`), document it in `api.md` before
 building the Sales history date picker.
 
+**F17-09 (2026-09) — OPEN, worked around.** The Sales history date filter ships. The two inputs are
+calendar dates; they are sent as an explicit UTC day boundary (`…T00:00:00.000Z` /
+`…T23:59:59.999Z`) and each field carries a "UTC day start/end" hint so the behaviour is legible
+rather than silently wrong. Tenant-timezone-correct ranges remain `GAP-HOME-DATE-TZ` /
+`GAP-TZ-VISIBILITY`; the inclusive/exclusive boundary question is unresolved — the frontend does
+not compensate for it. No `api.md` change made (F17-09 did not confirm the service behaviour).
+
 ### `GAP-MOVEMENTS-DATE-FILTER`
 `GET /inventory/movements` has only `productVariantId`/`locationId`/`movementType` — **no date
 range, no `sort`, no reference filter**. A proper kardex (the ledger *stores* `balance_after`)
@@ -271,6 +320,12 @@ box and the New Sale customer picker both send `?q=` and let the **backend** mat
 filtering of a pre-fetched list. `GET /orders` / `GET /products` still have no `q` — F17-08 builds
 no order search box and no product search (the New Sale product picker is a bounded `pageSize: 100`
 `status=active` select, same as F17-06/07). The gap stays for Products list and Sales history.
+
+**F17-09 (2026-09) — OPEN, unchanged.** `ListOrdersQueryDto` still has no `q`. The Sales history
+screen has **no order-number / customer text search** — only the real filters (`status`,
+`documentType`, `customerId`, date range). Its customer filter reuses `GET /customers?q=` (the
+only `q`-capable list) to resolve a `customerId`, never to search orders. Same for the Approvals
+queue — `ListPriceApprovalsQueryDto` is `status` + `orderId` only.
 
 ### `GAP-SORT`
 No list endpoint exposes `sort`. **F17-additive:** an allow-listed `sort` param per endpoint
@@ -412,7 +467,7 @@ Observed in F17-03; **no code change made** (F17-03 does not touch the backend).
 | A2 | Order visibility & location scope | tenant-wide vs location-scoped | Decide with `GAP-ORDERS-LOCATION` before Sales history |
 | A3 | Inventory read location scope | scoped vs not | Scope for consistency (`GAP-INV-LOCATION-SCOPE`) — **F17-06 left it unscoped** (backend takes no actor on the read paths); revisit if the backend adds it |
 | A4 | Brand/supplier fields in the product form | add read endpoints vs omit | **Decided in F17-05: omit** (option b) — no `GET /brands`/`GET /suppliers` exists; the form has no brand/supplier selector. Re-add when the endpoints land (`GAP-BRAND-SUPPLIER-LIST`) |
-| A5 | Approvals permission gate | `.approve` / `.request` / new `.view` | New `pricing.discount.view` is cleanest (`GAP-APPROVALS-PERMISSION`) |
+| A5 | Approvals permission gate | `.approve` / `.request` / new `.view` | **Decided in F17-09:** `@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')` — no new permission code; matches the service's existing OR check and the two real personas (`GAP-APPROVALS-PERMISSION`) |
 | A6 | Notification-status contract shape | read-only projection + requeue endpoint | Design a minimal read + a guarded requeue (`GAP-NOTIF-STATUS`) |
 | A7 | Roles screen scope | read-only vs "coming soon" placeholder | Read-only view of the fixed catalogue (`GAP-ROLE-CRUD`) |
 | A8 | Date-filter boundary semantics | inclusive vs half-open | Half-open `[from, to)`, document in `api.md` (`GAP-DATE-SEMANTICS`) |

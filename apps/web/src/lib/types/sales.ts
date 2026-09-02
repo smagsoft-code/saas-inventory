@@ -238,3 +238,66 @@ export interface CreateOrderInput {
   cartId: string;
   documentType: DocumentType;
 }
+
+/** The order lifecycle the UI can drive (`OrdersService`): `pending → confirmed` (`POST /orders/:id/confirm`,
+ * `sales.orders.create`) and `pending → cancelled` (`POST /orders/:id/cancel`, `sales.orders.cancel`).
+ * A `confirmed` order can only be reversed by a sales return (not built in F17-09). The backend
+ * re-checks state + permission + location authorization on every call — this only decides which
+ * buttons to render. */
+export function orderLifecycleActions(status: string): { confirm: boolean; cancel: boolean } {
+  const pending = status === 'pending';
+  return { confirm: pending, cancel: pending };
+}
+
+// --- price approvals ----------------------------------------------------------------------------
+
+export const PRICE_APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;
+export type PriceApprovalStatus = (typeof PRICE_APPROVAL_STATUSES)[number];
+
+export const PRICE_APPROVAL_STATUS_LABELS: Record<PriceApprovalStatus, string> = {
+  pending: 'Pending',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+};
+
+export function priceApprovalStatusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' {
+  switch (status) {
+    case 'approved':
+      return 'success';
+    case 'rejected':
+      return 'danger';
+    case 'pending':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+/** `PriceApprovalResponseDto` (order-first exceptional-discount request, ADR-0022). `minPriceAtRequest`
+ * is present only for a caller with `pricing.floor.view`; there is never a `cost` field (ADR-0028). */
+export interface PriceApproval {
+  id: string;
+  orderId: string;
+  orderItemId: string;
+  requestedPrice: number;
+  maxPriceAtRequest: number;
+  minPriceAtRequest?: number;
+  discountAmount: number;
+  reason: string;
+  requestedBy: string;
+  approvedBy?: string;
+  status: string;
+  requestedAt: string;
+  resolvedAt?: string;
+}
+
+/** `POST /price-approvals` body — `CreatePriceApprovalDto`. The line already exists on a `pending`
+ * order with `isExceptionalDiscount = true`; the server derives every price from that frozen row.
+ * `reason` is the only field the client legitimately supplies; `requestedPrice` is an optional
+ * cross-check that must equal the frozen line price (`422` on mismatch) — the UI does not send it. */
+export interface CreatePriceApprovalInput {
+  orderItemId: string;
+  reason: string;
+  requestedPrice?: number;
+}

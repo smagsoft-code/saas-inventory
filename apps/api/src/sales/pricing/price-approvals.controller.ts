@@ -6,6 +6,7 @@ import type { AuthPrincipal, TenantRequestContext } from '../../common/context/r
 import { CurrentPermissions } from '../../common/decorators/current-permissions.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { RequireAnyPermission } from '../../common/decorators/require-any-permission.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { CreatePriceApprovalDto } from './dto/create-price-approval.dto';
 import { ListPriceApprovalsQueryDto } from './dto/list-price-approvals-query.dto';
@@ -15,8 +16,9 @@ import { PriceApprovalsService } from './price-approvals.service';
 /**
  * Exceptional-discount approvals within the caller's own tenant only (§55, §90). State changes go
  * through explicit command routes (`/approve`, `/reject`), never `PATCH { status }` (§54). Listing
- * and reading require either `pricing.discount.request` or `pricing.discount.approve` (checked in
- * the service — the guard's AND semantics can't express OR); `pricing.floor.view`
+ * and reading require either `pricing.discount.request` or `pricing.discount.approve` —
+ * `@RequireAnyPermission` declares that at the route (F17-09, closing `GAP-APPROVALS-PERMISSION`);
+ * the service keeps the equivalent check as defense in depth. `pricing.floor.view`
  * (CurrentPermissions) controls whether the frozen `minPriceAtRequest` appears in the response
  * (ADR-0028, §45).
  */
@@ -26,6 +28,7 @@ export class PriceApprovalsController {
   constructor(private readonly priceApprovalsService: PriceApprovalsService) {}
 
   @Get()
+  @RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')
   @ApiOkResponse({ type: PriceApprovalResponseDto, isArray: true })
   async list(
     @CurrentTenant() tenantId: string,
@@ -36,6 +39,7 @@ export class PriceApprovalsController {
   }
 
   @Get(':id')
+  @RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')
   @ApiOkResponse({ type: PriceApprovalResponseDto })
   async getById(
     @CurrentTenant() tenantId: string,

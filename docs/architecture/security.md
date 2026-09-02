@@ -102,6 +102,9 @@ strings, which keeps the permission set checkable by the code that enforces it.
 Every route that isn't explicitly public declares the permission(s) it requires; a Permission
 Guard checks the authenticated user's effective permissions (derived from their role(s)) against
 that declaration before the controller runs — see [api.md#request-flow](api.md#request-flow).
+`@RequirePermissions(a, b)` requires **all** of the listed codes; `@RequireAnyPermission(c, d)`
+requires **at least one** (for a read legitimately reachable by two non-overlapping roles — e.g.
+the exceptional-discount queue, readable by both requester and approver). A route may carry both.
 Authorization is always re-checked server-side on every request; the frontend hiding a button is a
 UX nicety, never the enforcement (per [CLAUDE.md §7.6](../../CLAUDE.md#76-frontend)).
 

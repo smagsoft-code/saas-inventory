@@ -114,5 +114,19 @@ export function NavIconGlyph({
           <path d="M5.5 16a3.5 3.5 0 0 1 7 0M15 9h4M15 13h4" />
         </svg>
       );
+    case 'receipt':
+      return (
+        <svg {...common}>
+          <path d="M5 3v18l2-1.3L9 21l2-1.3L13 21l2-1.3L17 21l2-1.3V3l-2 1.3L15 3l-2 1.3L11 3 9 4.3 7 3Z" />
+          <path d="M8 8h8M8 12h8M8 16h5" />
+        </svg>
+      );
+    case 'approval':
+      return (
+        <svg {...common}>
+          <path d="M12 3.5 14 5l2.5-.3.7 2.4 2.1 1.4-1 2.3 1 2.3-2.1 1.4-.7 2.4L14 19l-2 1.5L10 19l-2.5.3-.7-2.4-2.1-1.4 1-2.3-1-2.3 2.1-1.4.7-2.4L10 5Z" />
+          <path d="m9.5 12 1.8 1.8L15 10" />
+        </svg>
+      );
   }
 }

@@ -14,6 +14,10 @@ export interface NavItem {
   /** If set, the item is shown only when the user holds this permission. Absent → always shown
    * to any authenticated user. The backend still authorizes every resulting request (§15). */
   permission?: PermissionCode;
+  /** If set, the item is shown only when the user holds **at least one** of these permissions —
+   * for a route whose backend gate is an OR (`@RequireAnyPermission`), e.g. the price-approval
+   * queue readable by both the requester and the approver. Combined with `permission` by AND. */
+  anyPermission?: readonly PermissionCode[];
   /** Extra path prefixes that should still mark this item active (nested routes). `href` itself
    * is always included. */
   activePaths?: string[];
@@ -32,7 +36,9 @@ export type NavIcon =
   | 'activity'
   | 'transfer'
   | 'cart'
-  | 'contact';
+  | 'contact'
+  | 'receipt'
+  | 'approval';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */
@@ -124,11 +130,26 @@ export const NAVIGATION: NavSection[] = [
         activePaths: ['/sales/new'],
       },
       {
+        label: 'Sales history',
+        href: '/sales',
+        icon: 'receipt',
+        permission: 'sales.orders.view',
+        activePaths: ['/sales'],
+      },
+      {
         label: 'Customers',
         href: '/customers',
         icon: 'contact',
         permission: 'sales.customers.view',
         activePaths: ['/customers'],
+      },
+      {
+        // `GET /price-approvals` requires request OR approve (`@RequireAnyPermission`) — mirror that.
+        label: 'Approvals',
+        href: '/approvals',
+        icon: 'approval',
+        anyPermission: ['pricing.discount.approve', 'pricing.discount.request'],
+        activePaths: ['/approvals'],
       },
     ],
   },
@@ -157,7 +178,11 @@ export function filterNavigation(sections: NavSection[], checker: PermissionChec
   return sections
     .map((section) => ({
       ...section,
-      items: section.items.filter((item) => !item.permission || checker.can(item.permission)),
+      items: section.items.filter(
+        (item) =>
+          (!item.permission || checker.can(item.permission)) &&
+          (!item.anyPermission || checker.canAny(item.anyPermission)),
+      ),
     }))
     .filter((section) => section.items.length > 0);
 }
