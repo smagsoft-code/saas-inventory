@@ -30,7 +30,7 @@ Sidebar resolves it; FASE 16 has `home`/`users`/`settings`, F17 adds the rest as
 | | Categorías | `/categories` | `folder-tree` | `categories.view` | **A** | `S-CAT-CATEGORIES` |
 | | Atributos | `/attributes` | `sliders` | `products.view` | **A** | `S-CAT-ATTR-DEFS` |
 | | QR | `/qr` | `qr` | `catalog.qr.manage` | **A** | `S-QR-LIST` |
-| | Importación | `/imports` | `upload` | `import.execute` | **A** | `S-IMP-LIST` |
+| | Importación | `/imports` | `upload` | `import.execute` | **A** — built F17-11 | `S-IMP-LIST` |
 | **Inventario** | Existencias | `/inventory` | `layers` | `inventory.view` | **A** (raw) / **B** (enriched) | `S-INV-BALANCES` |
 | | Movimientos | `/inventory/movements` | `activity` | `inventory.view` | **A** / **B** (period) | `S-INV-MOVEMENTS` |
 | | Transferencias | `/transfers` | `arrow-left-right` | `inventory.view` | **A** | `S-TRF-LIST` |
@@ -57,6 +57,10 @@ Notes:
   (`sales.returns.view` to see it; `sales.returns.create` for New return + cancel;
   `inventory.returns.manage` for inspect/resolve). `isNavItemActive` keeps it independent of
   `/sales` via the same sibling-href rule.
+- **`Importación`** (`/imports`, `/imports/new`, `/imports/[id]`, `/imports/templates`) is built in
+  **F17-11** — one `import.execute` gate for the whole pipeline; `import.inventory` is checked
+  server-side only at confirm for `update_catalog_and_inventory`. `isNavItemActive` keeps it under
+  Catálogo, independent of `/inventory`.
 - **Notification status** is not a nav item — it is a card on the order detail (`/sales/[id]`),
   reading `GET /orders/:id/notifications` (`sales.orders.view`). No retry control
   (`GAP-NOTIF-RETRY-BACKEND`).

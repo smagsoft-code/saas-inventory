@@ -26,6 +26,9 @@ const AUTH_REFRESH_PATH = '/api/v1/auth/refresh';
 
 export interface ApiFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** JSON-serialized by default. A `FormData` value is sent as-is (multipart) and the
+   * `Content-Type` header is left for the browser to set with its boundary — the one case a
+   * mutation body is not JSON (the import file upload, F17-11). */
   body?: unknown;
   /** Server-side only: the caller's forwarded request cookies (see `lib/api/server.ts`). Its
    * presence is also how the client knows it is running server-side and must not try to refresh —
@@ -156,9 +159,12 @@ async function refreshSession(): Promise<boolean> {
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
   const method = options.method ?? 'GET';
   const isServer = typeof window === 'undefined' || options.cookieHeader !== undefined;
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    // A multipart body needs the browser-generated `multipart/form-data; boundary=…` header — never
+    // a hand-set `Content-Type`.
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     'Correlation-Id': randomCorrelationId(),
     ...(options.headers ?? {}),
   };
@@ -180,7 +186,9 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
       credentials: 'include',
       cache: 'no-store',
       ...(options.signal ? { signal: options.signal } : {}),
-      ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+      ...(options.body !== undefined
+        ? { body: isFormData ? (options.body as FormData) : JSON.stringify(options.body) }
+        : {}),
     });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {

@@ -32,6 +32,14 @@ describe('filterNavigation', () => {
     expect(labels([])).not.toContain('Products');
   });
 
+  it('shows Imports only with import.execute', () => {
+    const labels = (perms: string[]) =>
+      filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));
+    expect(labels([])).not.toContain('Imports');
+    expect(labels(['products.view'])).not.toContain('Imports');
+    expect(labels(['import.execute'])).toContain('Imports');
+  });
+
   it('shows the Inventory items only with the matching permissions', () => {
     const labels = (perms: string[]) =>
       filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) =>
@@ -165,5 +173,14 @@ describe('isNavItemActive', () => {
     expect(isNavItemActive(returns, '/returns/new')).toBe(true);
     expect(isNavItemActive(returns, '/returns/abc-1')).toBe(true);
     expect(isNavItemActive(returns, '/sales')).toBe(false);
+  });
+
+  it('activates Imports on its own nested routes (new / detail / templates)', () => {
+    const imports: NavItem = { label: 'Imports', href: '/imports', icon: 'upload', activePaths: ['/imports'] };
+    expect(isNavItemActive(imports, '/imports')).toBe(true);
+    expect(isNavItemActive(imports, '/imports/new')).toBe(true);
+    expect(isNavItemActive(imports, '/imports/abc-1')).toBe(true);
+    expect(isNavItemActive(imports, '/imports/templates')).toBe(true);
+    expect(isNavItemActive(imports, '/inventory')).toBe(false);
   });
 });

@@ -80,9 +80,10 @@
 
 | Screen | Endpoint(s) | Req DTO | Resp DTO | Permission | Entity | ADR | Ref | State |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `S-IMP-NEW` | `GET /imports/template` · `POST /imports` (multipart) · `POST /imports/:id/mapping`\|`/validate`\|`/confirm`\|`/cancel` · `GET /imports/:id/preview`\|`/rows`\|`/errors` | import DTOs (`duplicateHandlingMode`, `columnMapping`, …) | import job/row DTOs | `import.execute` (+ `import.inventory`) | `import_jobs`,`import_job_rows` | 0027, 0029 | `ImportDesktop` | A; progress polling = `GAP-IMPORT-PROGRESS` |
-| `S-IMP-LIST/DETAIL/ROWS` | `GET /imports` · `GET /imports/:id`\|`/rows`\|`/errors` | `ListImportJobsQueryDto {page,pageSize,status?}` | `PaginatedResult<ImportJobResponseDto>` | `import.execute` | `import_jobs`,`import_job_rows` | 0027 | [017-A `REP-IMP-JOBS`](../reporting/reports.md#rep-imp-jobs--rep-imp-rows--rep-imp-errors) | A |
-| `S-IMP-TEMPLATES` | `GET/POST/PATCH/DELETE /import-mapping-templates[/:id]` | template DTOs | template DTOs | `import.execute` | `import_mapping_templates` | 0027 | — | A |
+| `S-IMP-NEW` | `POST /imports` (multipart `file` + `mappingTemplateId`\|`columnMapping`,`defaultLocationId?`,`duplicateHandlingMode?`; **no** `Idempotency-Key`) · `GET /imports/template` (`<a>` link) | multipart text fields | `ImportJobResponseDto` | `import.execute` | `import_jobs`,`import_job_rows` | 0027, 0029 | `ImportDesktop` | **built F17-11** at `/imports/new`; mapping chosen up front (`GAP-IMPORT-FILE-HEADERS`) |
+| `S-IMP-DETAIL` (pipeline) | `POST /imports/:id/mapping`\|`/validate`\|`/confirm`\|`/cancel` · `GET /imports/:id`\|`/preview` · `GET /imports/:id/errors` (`<a>` link) | `SetMappingDto` | `ImportJobResponseDto` / `ImportPreviewResponseDto` | `import.execute` (+ `import.inventory` server-side at confirm for inventory mode) | `import_jobs` | 0027 | — | **built F17-11** (`ImportPipeline`); status+counters only, `GAP-IMPORT-PROGRESS` open |
+| `S-IMP-LIST` / `S-IMP-ROWS` | `GET /imports` · `GET /imports/:id/rows` | `ListImportJobsQueryDto {page,pageSize,status?}` · `ListImportJobRowsQueryDto {…,status?}` | `PaginatedResult<ImportJobResponseDto>` / `<ImportJobRowResponseDto>` | `import.execute` | `import_jobs`,`import_job_rows` | 0027 | [017-A `REP-IMP-JOBS`](../reporting/reports.md#rep-imp-jobs--rep-imp-rows--rep-imp-errors) | **built F17-11** (`/imports`, rows on the detail page) |
+| `S-IMP-TEMPLATES` | `GET/POST/PATCH/DELETE /import-mapping-templates[/:id]` | `Create/UpdateMappingTemplateDto {name,categoryId?,columnMapping}` | `MappingTemplateResponseDto` | `import.execute` | `import_mapping_templates` | 0027 | — | **built F17-11** at `/imports/templates` (real DELETE) |
 
 ## Super-Admin
 

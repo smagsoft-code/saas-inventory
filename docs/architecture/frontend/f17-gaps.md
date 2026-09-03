@@ -41,7 +41,8 @@
 | 19 | [`GAP-PRICE-HISTORY-READ`](#gap-price-history-read) | F18-additive | Product detail |
 | 20 | [`GAP-ORDER-MARGIN`](#gap-order-margin) | F18-additive | Order detail |
 | 21 | [`GAP-TRANSFER-CODE`](#gap-transfer-code) | decision (cosmetic) | Transfers list |
-| 22 | [`GAP-IMPORT-PROGRESS`](#gap-import-progress) | decision | Import wizard |
+| 22 | [`GAP-IMPORT-PROGRESS`](#gap-import-progress) | decision — **OPEN**, degraded honestly (F17-11) | Import detail |
+| 22b | [`GAP-IMPORT-FILE-HEADERS`](#gap-import-file-headers) | F17-additive — **OPEN** (F17-11) | Import upload / mapping |
 | 23 | [`GAP-SUSPENDED-TENANT-UX`](#gap-suspended-tenant-ux) | decision | App shell |
 | 24 | [`GAP-SA-CREATE-TENANT`](#gap-sa-create-tenant) | future | Super-Admin |
 | 25 | [`GAP-SA-TENANT-ADMINS`](#gap-sa-tenant-admins) | future | Super-Admin |
@@ -455,6 +456,31 @@ handle — no invented `TRF-…` code. A real sequence column stays a future min
 Large imports are processed asynchronously by the Import Worker; the client learns status by
 polling `GET /imports/:id`. **Decision:** polling cadence / a lightweight long-poll / SSE — pick
 the simplest that gives acceptable UX. No backend contract change needed for basic polling.
+
+**F17-11 (2026-09) — OPEN, degraded honestly.** Audited every import contract: `ImportJobResponseDto`
+carries `status` + `totalRows`/`validRows`/`invalidRows`/`warningRows`/`importedRows`; `GET
+/imports/:id/preview` adds a live per-status breakdown (`pendingRows`, `skippedRows`, `newProducts`,
+`existingProducts`). There is **no** `progress` / `processedRows` / percentage field, **no** progress
+endpoint, and **no** SSE/websocket anywhere in the module. F17-11 shows the **status and the real
+counters only** — no progress bar, no percentage, no time-based estimate. While `status ∈
+{validating, importing}` the detail page lightly auto-refreshes (`GET /imports/:id` every ~4s, the
+polling this doc already blesses) and also offers a manual "Refresh". The cadence is a UI choice, and
+there is still no true progress signal, so the gap stays **open**; a `processed_rows` counter or a
+long-poll would be a clean, non-schema `F17-additive` improvement.
+
+### `GAP-IMPORT-FILE-HEADERS`
+No endpoint returns an uploaded file's parsed column headers. `POST /imports` stages
+`import_job_rows.raw_data` (header-keyed) but the job DTO does not surface the header list, and there
+is no `GET /imports/:id/headers`. **Consequence:** a free-form "map every column we detected" visual
+mapper at the `uploaded` step is not buildable from a first-class contract.
+
+**F17-11 (2026-09) — OPEN, degraded.** `S-IMP-NEW` requires the mapping **up front** — either a saved
+`import_mapping_templates` row (`mappingTemplateId`) or a built-in "standard template layout" whose
+`columnMapping` mirrors `ImportTemplateService.BASE_COLUMNS`'s exact header→field pairs (the same
+module's own generator output — used when the operator filled in the downloadable template).
+`S-IMP-TEMPLATES` provides a generic header→target builder the operator populates from their own
+spreadsheet. A `GET /imports/:id/headers` (or headers on the job DTO) would let the wizard render a
+real per-column mapper — small, non-schema, `F17-additive`.
 
 ### `GAP-SUSPENDED-TENANT-UX`
 When a tenant is suspended mid-session (011-A), **every** tenant-scoped request starts returning

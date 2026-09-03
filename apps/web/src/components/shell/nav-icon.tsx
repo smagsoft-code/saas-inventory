@@ -135,5 +135,12 @@ export function NavIconGlyph({
           <path d="M4 9h11a5 5 0 0 1 0 10H8" />
         </svg>
       );
+    case 'upload':
+      return (
+        <svg {...common}>
+          <path d="M12 16V4M7 9l5-5 5 5" />
+          <path d="M5 16v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-3" />
+        </svg>
+      );
   }
 }

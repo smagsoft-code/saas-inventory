@@ -86,6 +86,20 @@ describe('apiFetch', () => {
     expect(headers['Correlation-Id']).toBeTruthy();
   });
 
+  it('sends a FormData body as-is and lets the browser set the multipart Content-Type', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: 'job-1' }));
+    global.fetch = fetchMock as typeof fetch;
+
+    const form = new FormData();
+    form.set('file', new File(['x'], 'a.xlsx'));
+    await apiFetch('/api/v1/imports', { method: 'POST', body: form });
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init.body).toBe(form);
+    expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    expect((init.headers as Record<string, string>)['Correlation-Id']).toBeTruthy();
+  });
+
   it('translates a network failure into a status-0 ApiError', async () => {
     global.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) as typeof fetch;
     const error = await apiFetch('/api/v1/auth/me').catch((e: unknown) => e);

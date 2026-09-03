@@ -39,7 +39,8 @@ export type NavIcon =
   | 'contact'
   | 'receipt'
   | 'approval'
-  | 'undo';
+  | 'undo'
+  | 'upload';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */
@@ -76,6 +77,15 @@ export const NAVIGATION: NavSection[] = [
         // Reads ride on `products.view` (attributes.controller.ts), not a dedicated attributes-view code.
         permission: 'products.view',
         activePaths: ['/attributes'],
+      },
+      {
+        // Whole pipeline (list/upload/detail/rows/templates) is gated by the single `import.execute`
+        // code (database.md's RBAC table — "una permission para todo el flujo").
+        label: 'Imports',
+        href: '/imports',
+        icon: 'upload',
+        permission: 'import.execute',
+        activePaths: ['/imports'],
       },
     ],
   },

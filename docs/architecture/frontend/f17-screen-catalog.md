@@ -611,6 +611,18 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 
 ## MODULE: IMPORT  (`(tenant)/`)
 
+> **Built F17-11 (2026-09).** Routes: `/imports` (`S-IMP-LIST`), `/imports/new` (`S-IMP-NEW` upload
+> step), `/imports/[id]` (`S-IMP-DETAIL` + `S-IMP-ROWS` — the staged mapping/validate/review/confirm
+> pipeline lives here, driven off `import_jobs.status`), `/imports/templates` (`S-IMP-TEMPLATES`).
+> One `import.execute` gate for everything; `import.inventory` is checked server-side only at
+> confirm for `update_catalog_and_inventory`. The mapping is chosen up front (saved template or the
+> standard downloadable-template layout) because no endpoint exposes an uploaded file's headers
+> (`GAP-IMPORT-FILE-HEADERS`). Progress is **status + real counters only — no progress bar / % /
+> estimate** (`GAP-IMPORT-PROGRESS` stays open); the detail page lightly auto-refreshes while
+> `validating`/`importing` and offers a manual Refresh. Template + error-report downloads are plain
+> `<a>` links to the API path (binary body, GET, cookie-authed). `POST /imports` takes **no**
+> `Idempotency-Key`.
+
 ### `S-IMP-NEW` — Import wizard
 - **Persona:** TA/OP · **Route:** `/imports/new` · **Permission:** `import.execute`
   (+ `import.inventory` for `update_catalog_and_inventory` mode).
@@ -642,8 +654,11 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 ### `S-IMP-TEMPLATES` — Mapping templates
 - **Route:** `/imports/templates` · **Permission:** `import.execute`.
 - **Endpoints:** full CRUD `GET/POST/PATCH/DELETE /api/v1/import-mapping-templates[/:id]`
-  (`{ name, categoryId?, columnMapping }`).
-- **F17.**
+  (`{ name, categoryId?, columnMapping }`). DELETE is a real hard-delete endpoint → a real Delete
+  control (with a confirm step) is shown, unlike categories/customers.
+- **Mapping builder:** repeatable `{ excelHeader → target }` rows; target is a standard field
+  (`STANDARD_IMPORT_FIELDS`) or `attr:<code>`; client mirrors `assertValidColumnMapping` (must map a
+  `sku`). **F17 — built F17-11.**
 
 ---
 
