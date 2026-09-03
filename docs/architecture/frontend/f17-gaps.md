@@ -25,9 +25,9 @@
 | 6b | [`GAP-NOTIF-RETRY-BACKEND`](#gap-notif-retry-backend) | future (needs migration + permission + ADR) | Order detail |
 | 5 | [`GAP-ORDERS-LOCATION`](#gap-orders-location) | decision → F18 | Sales history, Order detail, Home "orders today" |
 | 6 | [`GAP-NOTIF-STATUS`](#gap-notif-status) | status half **RESOLVED (F17-10)**; list-level deferred | Order detail, Sales history |
-| 7 | [`GAP-MULTI-STATUS`](#gap-multi-status) | F17-additive | Home tiles, Transfers/Returns/Imports tabs |
-| 8 | [`GAP-HOME-DATE-TZ`](#gap-home-date-tz) | PARTIALLY RESOLVED (F17-02) — tz config done; per-role visibility open | Home, any date filter |
-| 8b | [`GAP-TZ-VISIBILITY`](#gap-tz-visibility) | F17-12 / decision (backend) | Home date tiles for non-Administrador roles |
+| 7 | [`GAP-MULTI-STATUS`](#gap-multi-status) | F17-additive — worked around in F17-12 (2 parallel GETs per rollup) | Home tiles, Transfers/Returns/Imports tabs |
+| 8 | [`GAP-HOME-DATE-TZ`](#gap-home-date-tz) | PARTIALLY RESOLVED (F17-02 tz config, F17-12 tz→UTC compute); per-role visibility still open | Home, any date filter |
+| 8b | [`GAP-TZ-VISIBILITY`](#gap-tz-visibility) | OPEN — F17-12 degraded (option c); needs backend decision | Home date tiles for non-Administrador roles |
 | 9 | [`GAP-DATE-SEMANTICS`](#gap-date-semantics) | decision | Sales history date filter |
 | 10 | [`GAP-MOVEMENTS-DATE-FILTER`](#gap-movements-date-filter) | F17-additive | Movements, Kardex |
 | 11 | [`GAP-SEARCH`](#gap-search) | F17-additive | Products, Sales history |
@@ -299,6 +299,15 @@ native `<select>`s in a GET form (real params only).
 take a single `@IsIn` status. Sales history uses a single-select status dropdown; the Approvals
 queue uses status chips (one value at a time). No `status[]`, no synthetic buckets.
 
+**F17-12 (2026-09) — OPEN, worked around per this doc's own guidance.** The operational Home needs
+two multi-status rollups — "Returns to process" (`requested` + `inspecting`) and "Transfers to
+receive" (`dispatched` + `partially_received`). Each is **two parallel `GET`s** merged client-side
+(`lib/home/dashboard.ts` `combined()`), never an invented `status=a,b`, never assuming the DTO takes
+an array. Two independent reads per tile is not an abusive pattern (both `Promise.all`-parallel with
+the rest of the Home). If the secondary read fails the tile still shows the primary-status count (a
+documented possible undercount) rather than blanking. A repeatable `status` param would collapse
+each pair to one call — still a clean `F17-additive`.
+
 ### `GAP-HOME-DATE-TZ`
 "Orders today", "this month" etc. must be computed in `tenant_settings.timezone` (the only tz
 source), converted to a UTC `createdFrom`/`createdTo` range for `GET /orders`. **No endpoint does
@@ -326,11 +335,32 @@ only in the default roles). Home's per-role date computation (F17-12) needs it f
 operational role. **F17-12 / decision** — see `GAP-HOME-DATE-TZ` above for the options. F17-02
 records it; it needs a backend decision (recommended: `timezone` on `GET /auth/me`).
 
+**F17-12 (2026-09) — OPEN, unchanged; Home degrades option (c).** F17-12 is frontend-only and did
+not add `timezone` to `GET /auth/me`. The single date-dependent Home tile ("Orders confirmed
+today") is shown as a real number only for a caller who holds `administration.settings.view` (so
+`getTenantSettings()` returns the row); every other role sees a `no-timezone` "Not available" state
+with a note pointing here. No browser-timezone fallback. The backend decision is still needed for a
+date-aware Home across all operational roles.
+
 **F17-08 (2026-09) — not affected.** `GAP-HOME-DATE-TZ` / `GAP-TZ-VISIBILITY` concern Home date
 tiles and the Sales history date picker. F17-08 builds neither — New Sale, customers and the
 read-only order detail have no date-range control and compute no "today"/"this month". The order
 DTO's `createdFrom`/`createdTo` filters are left unused. These gaps stay for F17 Home / Sales
 history phases.
+
+**F17-12 (2026-09) — STILL OPEN; Home ships one date tile, degraded honestly.** The computation
+half is solved: `lib/home/tenant-day.ts` `tenantStartOfDayUtc(timeZone, now)` turns
+`tenant_settings.timezone` into the UTC instant of the tenant's local midnight using only the
+platform `Intl` API (two-pass DST correction, UTC fallback for an unknown zone, never `new Date()`
+interpreting a business period). It feeds **only** `GET /orders?createdFrom=` (a `>=` lower bound,
+so the unresolved `createdTo` inclusive/exclusive question — `GAP-DATE-SEMANTICS` — never bites).
+The **visibility** half is unsolved and cannot be solved in a frontend-only phase: the timezone is
+still readable only with `administration.settings.view`. F17-12 takes **option (c)** — the
+"Orders confirmed today" tile renders a real number for a caller who can read the tenant settings
+(`getTenantSettings()` non-null) and otherwise degrades to a `no-timezone` state ("Not available" +
+a one-line note naming `GAP-TZ-VISIBILITY`). It never falls back to the browser timezone, never
+guesses a zone, never shows a wrong "today". Every **other** Home tile is status-based and
+timezone-independent. The recommended fix is unchanged: add `timezone` to `GET /auth/me`.
 
 ### `GAP-DATE-SEMANTICS`
 `api.md` does not document whether `createdFrom`/`createdTo` are inclusive/exclusive. **Decision:**
@@ -385,6 +415,13 @@ No list endpoint exposes `sort`. **F17-additive:** an allow-listed `sort` param 
 in-transit aggregate, no zero/out-of-stock rollup. **F17 slice (additive):** warehouse filter +
 name enrichment on the operational list. **F18:** the Σ / grouped / valuation views and the
 `KPI-INV-OOS-SKUS` read for Home. See [017-A](../reporting/data-gaps.md#gap-inv-aggregate).
+
+**F17-12 (2026-09) — OPEN; the Home did NOT build an inventory KPI.** No aggregate/rollup endpoint
+exists, and scanning every `inventory_balances` row from the Home to synthesise an "out of stock"
+or "low stock" count is exactly the full-list-download-to-count pattern this phase forbids
+(`GAP-REORDER` also means "low stock" has no definition). The operational Home therefore carries
+**no** inventory-level tile — only the transfer queue (`inventory.view`). An `KPI-INV-OOS-SKUS`
+aggregate read stays F18.
 
 ### `GAP-REORDER`
 No reorder point / minimum / par-level field on any table → **"low stock" cannot be defined

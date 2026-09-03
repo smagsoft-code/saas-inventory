@@ -133,6 +133,22 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 - **Deps:** most modules' list endpoints. **Gaps:** [`GAP-MULTI-STATUS`](f17-gaps.md#gap-multi-status)
   (B→A for queue tiles), [`GAP-HOME-DATE-TZ`](f17-gaps.md#gap-home-date-tz). **F17** (operational
   tiles only).
+- **BUILT — F17-12 (2026-09).** `/` (`page.tsx` + `home-dashboard.tsx` pure components +
+  `lib/home/dashboard.ts` fetch layer + `lib/home/tenant-day.ts`). One `Promise.all` fan-out of
+  permission-gated reads; every number is a real list endpoint's `meta.total`. Tiles built:
+  **Pending orders** (`GET /orders?status=pending`, `sales.orders.view`), **Orders confirmed today**
+  (`GET /orders?status=confirmed&createdFrom=<tenant-tz midnight>`, `sales.orders.view` +
+  `administration.settings.view` — degraded `no-timezone` for roles that cannot read the tz,
+  `GAP-TZ-VISIBILITY`), **Price approvals pending**
+  (`GET /price-approvals?status=pending`, `@RequireAnyPermission` request/approve), **Returns to
+  process** (`?status=requested` + `?status=inspecting`, 2 calls, `sales.returns.view`),
+  **Transfers to receive** (`?status=dispatched` + `?status=partially_received`, 2 calls,
+  `inventory.view`), **Imports needing attention** (`?status=failed` + `?status=completed_with_errors`,
+  2 calls, `import.execute`), **Draft products** (`GET /products?status=draft`, `products.view`).
+  A tile the user lacks permission for is omitted (no request fired); a failed endpoint degrades
+  **that tile** to "Not available" (never `0`); the "Needs attention" digest reuses the already-
+  fetched preview rows (no extra requests). No inventory-level KPI (no aggregate — `GAP-INV-AGGREGATE`),
+  no revenue (A9 — F18). ~11 parallel reads max, all `pageSize` 1–5, no N+1, no polling.
 
 ---
 
