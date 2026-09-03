@@ -21,9 +21,10 @@
 | 2 | [`GAP-VARIANT-LIST`](#gap-variant-list) | F17-blocking | New Sale (SKU search), Transfer form, flat variant view |
 | 3 | [`GAP-BRAND-SUPPLIER-LIST`](#gap-brand-supplier-list) | decision → F17-additive | Product form |
 | 4 | [`GAP-APPROVALS-PERMISSION`](#gap-approvals-permission) | ~~F17-blocking (defect)~~ **RESOLVED (F17-09)** | Approvals list, nav gating |
-| 4b | [`GAP-RETURNS-UI-DEFERRED`](#gap-returns-ui-deferred) | non-blocking (F17-09 scope call) | Returns list/new/detail, Order detail |
+| 4b | [`GAP-RETURNS-UI-DEFERRED`](#gap-returns-ui-deferred--resolved-f17-10) | ~~non-blocking~~ **RESOLVED (F17-10)** | Returns list/new/detail, Order detail |
+| 6b | [`GAP-NOTIF-RETRY-BACKEND`](#gap-notif-retry-backend) | future (needs migration + permission + ADR) | Order detail |
 | 5 | [`GAP-ORDERS-LOCATION`](#gap-orders-location) | decision → F18 | Sales history, Order detail, Home "orders today" |
-| 6 | [`GAP-NOTIF-STATUS`](#gap-notif-status) | F17-blocking for that feature | Order detail, Sales history |
+| 6 | [`GAP-NOTIF-STATUS`](#gap-notif-status) | status half **RESOLVED (F17-10)**; list-level deferred | Order detail, Sales history |
 | 7 | [`GAP-MULTI-STATUS`](#gap-multi-status) | F17-additive | Home tiles, Transfers/Returns/Imports tabs |
 | 8 | [`GAP-HOME-DATE-TZ`](#gap-home-date-tz) | PARTIALLY RESOLVED (F17-02) — tz config done; per-role visibility open | Home, any date filter |
 | 8b | [`GAP-TZ-VISIBILITY`](#gap-tz-visibility) | F17-12 / decision (backend) | Home date tiles for non-Administrador roles |
@@ -182,7 +183,19 @@ change, no business-logic change; `POST` routes are unchanged. Proven by
 reads, neither → 403 on both the list and the row, tenant isolation intact). The nav item
 (`/approvals`, label "Approvals") mirrors the OR with `NavItem.anyPermission`.
 
-### `GAP-RETURNS-UI-DEFERRED`
+### `GAP-RETURNS-UI-DEFERRED` — **RESOLVED (F17-10)**
+**F17-10 (2026-09) — built.** `/returns` (list, `sales.returns.view`), `/returns/new` (create,
+`sales.returns.create` + `Idempotency-Key`; confirmed-order picker + returnable-quantity hint
+from `GET /orders/:id` + `GET /sales-returns?orderId=`), `/returns/[id]` (detail + `inspect` /
+`resolve` / `cancel` via `ReturnActions` — `inventory.returns.manage` for the stock-sensitive half,
+`sales.returns.create` for cancel, `Idempotency-Key` on resolve, ADR-0021 sellable/non-sellable
+disposition pairing surfaced, backend re-authorizes state + permission + location on every call).
+Nav item "Returns" (`sales.returns.view`, icon `undo`). Order detail gained a "Start a return"
+action (confirmed order + `sales.returns.create`) and a related-returns list. Line SKUs are resolved
+from the parent order when the caller holds `sales.orders.view` (`GAP-NAME-ENRICHMENT` — no
+`orderNumber`/SKU on the return DTO). No backend change. The original text is kept below for
+history.
+
 The sales-returns backend contract is **complete and tested** (`returns.controller.ts` /
 `returns.service.ts`; `create → inspect → resolve` + `cancel`; `sales.returns.view` /
 `sales.returns.create` for the administrative half, `inventory.returns.manage` for the
@@ -234,6 +247,41 @@ phase that designs the read projection + guarded requeue (roadmap FASE 17 item /
 **F17-09 (2026-09) — OPEN, not addressed.** The order lifecycle (confirm / cancel / approvals) is
 built, but still no `event_outbox` read: no notification-status column on `/sales`, no badge on the
 order detail, no requeue control. Deferred to **F17-10** (Notifications).
+
+**RESOLVED (status half) — F17-10 (2026-09).** New read-only endpoint
+`GET /api/v1/orders/:id/notifications` (`sales.orders.view`) →
+`OrderNotificationsResponseDto { orderId, overallStatus: none|pending|delivered|failed, events:[{ eventId, eventType, status, attempts, occurredAt, processedAt? }] }`.
+`app_tenant` has held `SELECT` on `event_outbox` since migration 0010 (+ tenant-isolation RLS) —
+`OrderNotificationsRepository` is the first application read; **no schema/grant/migration change**.
+Delivery **metadata only** — never `payload` (buyer PII) or `last_error` (worker-internal). The
+order detail (`/sales/[id]`) shows a rollup badge + the per-event list. A deployment with
+`N8N_EVENTS_ENABLED=false` legitimately reports every event `pending` (nothing claims the row) —
+the badge says "Queued", not an error. Backend: `permissions.guard`-gated, 404 cross-tenant, proven
+by `test/sales/sales-order-notifications.integration.test.ts`. The **list** (`/sales`) still has no
+per-row status (would be N+1 — needs a batch/projection endpoint, minor, deferred). The **retry**
+half is `GAP-NOTIF-RETRY-BACKEND`.
+
+### `GAP-NOTIF-RETRY-BACKEND`
+Re-sending a failed (`dead_letter`) notification has **no backend contract** and F17-10 did not
+build one (deliberate scope decision — status read is a safe existing-grant addition, retry is not).
+Evidence / what a retry needs:
+- **Grant:** `app_tenant` has only `SELECT, INSERT` on `event_outbox` (migration 0010) — **no
+  `UPDATE`**. A retry must reset a `dead_letter` row (`status → 'pending'`, `attempts → 0`,
+  `claimed_at/claimed_by/last_error → NULL`) so the Event Processor's claim query (which requires
+  `attempts < maxAttempts` and skips `dead_letter`) re-picks it. That is a new column-scoped
+  `GRANT UPDATE (status, attempts, claimed_at, claimed_by, last_error) ON event_outbox TO app_tenant`
+  — a migration.
+- **Permission:** no notification permission exists; `notifications.retry` must **not** be invented
+  (per the F17-10 prompt). The reviewed choice if/when built is `administration.settings.manage`
+  (Administrador-only — treats notification delivery as tenant infra, matches the FASE 15 note
+  "let an admin retry").
+- **Service + endpoint:** a guarded `POST /orders/:id/notifications/:eventId/retry` (or similar)
+  that only ever touches `event_outbox` — never the order, its lifecycle, or any inventory movement.
+  Re-delivery re-POSTs the frozen payload to n8n, which dedupes on `eventId`, so it is safe.
+- **ADR:** the grant + permission choice + "retry is delivery-only" invariant warrant a short ADR.
+
+**Class:** future. **Blocking:** no (the status badge already tells an operator delivery failed).
+**Recommended phase:** a dedicated notifications-ops slice, or F17-19 (observability).
 
 ### `GAP-MULTI-STATUS`
 Every list DTO takes a single `@IsIn` status. "Open transfers", "returns to process", "imports
@@ -468,7 +516,7 @@ Observed in F17-03; **no code change made** (F17-03 does not touch the backend).
 | A3 | Inventory read location scope | scoped vs not | Scope for consistency (`GAP-INV-LOCATION-SCOPE`) — **F17-06 left it unscoped** (backend takes no actor on the read paths); revisit if the backend adds it |
 | A4 | Brand/supplier fields in the product form | add read endpoints vs omit | **Decided in F17-05: omit** (option b) — no `GET /brands`/`GET /suppliers` exists; the form has no brand/supplier selector. Re-add when the endpoints land (`GAP-BRAND-SUPPLIER-LIST`) |
 | A5 | Approvals permission gate | `.approve` / `.request` / new `.view` | **Decided in F17-09:** `@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')` — no new permission code; matches the service's existing OR check and the two real personas (`GAP-APPROVALS-PERMISSION`) |
-| A6 | Notification-status contract shape | read-only projection + requeue endpoint | Design a minimal read + a guarded requeue (`GAP-NOTIF-STATUS`) |
+| A6 | Notification-status contract shape | read-only projection + requeue endpoint | **F17-10:** read-only projection built (`GET /orders/:id/notifications`, no migration); requeue deferred as `GAP-NOTIF-RETRY-BACKEND` (needs a migration + permission + ADR) |
 | A7 | Roles screen scope | read-only vs "coming soon" placeholder | Read-only view of the fixed catalogue (`GAP-ROLE-CRUD`) |
 | A8 | Date-filter boundary semantics | inclusive vs half-open | Half-open `[from, to)`, document in `api.md` (`GAP-DATE-SEMANTICS`) |
 | A9 | Home revenue tile | client-side sum (small tenants) vs defer to F18 | Defer to F18; F17 Home shows counts/queues only |

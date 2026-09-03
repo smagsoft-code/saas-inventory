@@ -86,6 +86,7 @@ function build() {
     lockByOrder: vi.fn().mockResolvedValue([]),
     cancelPendingByOrder: vi.fn().mockResolvedValue(0),
   };
+  const orderNotificationsRepository = { listByOrder: vi.fn().mockResolvedValue([]) };
   const auditLogService = { record: vi.fn() };
   const domainEventPublisher = { append: vi.fn() };
 
@@ -129,6 +130,7 @@ function build() {
     idempotencyRepository as never,
     pricePoliciesRepository as never,
     priceApprovalsRepository as never,
+    orderNotificationsRepository as never,
     auditLogService as never,
     domainEventPublisher as never,
   );

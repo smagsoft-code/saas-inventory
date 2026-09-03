@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { serverApiFetch } from '../api/server';
-import { listOrders, getOrder } from './orders';
+import { listOrders, getOrder, getOrderNotifications } from './orders';
 
 vi.mock('../api/server', () => ({ serverApiFetch: vi.fn() }));
 const mocked = vi.mocked(serverApiFetch);
@@ -29,5 +29,15 @@ describe('getOrder', () => {
     mocked.mockResolvedValueOnce({ id: 'o1' });
     await getOrder('o1');
     expect(mocked).toHaveBeenCalledWith('/api/v1/orders/o1');
+  });
+});
+
+describe('getOrderNotifications', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it('reads GET /orders/:id/notifications — no tenantId', async () => {
+    mocked.mockResolvedValueOnce({ orderId: 'o1', overallStatus: 'none', events: [] });
+    await getOrderNotifications('o1');
+    expect(mocked).toHaveBeenCalledWith('/api/v1/orders/o1/notifications');
+    expect(JSON.stringify(mocked.mock.calls)).not.toMatch(/tenantId/i);
   });
 });

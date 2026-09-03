@@ -128,5 +128,12 @@ export function NavIconGlyph({
           <path d="m9.5 12 1.8 1.8L15 10" />
         </svg>
       );
+    case 'undo':
+      return (
+        <svg {...common}>
+          <path d="M9 14 4 9l5-5" />
+          <path d="M4 9h11a5 5 0 0 1 0 10H8" />
+        </svg>
+      );
   }
 }

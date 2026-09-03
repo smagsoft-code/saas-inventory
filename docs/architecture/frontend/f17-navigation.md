@@ -40,7 +40,7 @@ Sidebar resolves it; FASE 16 has `home`/`users`/`settings`, F17 adds the rest as
 | | Historial | `/sales` | `receipt` | `sales.orders.view` | **A** (list) / **F18** (KPIs) | `S-SALES-HISTORY` |
 | | Clientes | `/customers` | `users-round` | `sales.customers.view` | **A** | `S-CUST-LIST` |
 | | Aprobaciones | `/approvals` | `badge-check` | `pricing.discount.request` **or** `pricing.discount.approve` (`NavItem.anyPermission`) | **A** | `S-APPROVALS-LIST` |
-| | Devoluciones | `/returns` | `undo` | `sales.returns.view` | **A** — *not built in F17-09 (`GAP-RETURNS-UI-DEFERRED`)* | `S-RET-LIST` |
+| | Devoluciones | `/returns` | `undo` | `sales.returns.view` | **A** — built F17-10 | `S-RET-LIST` |
 | **Administración** | Usuarios | `/users` | `users` | `core.users.read` | **A** | `S-USERS-LIST` |
 | | Roles | `/roles` | `shield` | `core.roles.read` | **A** (read-only) | `S-ROLES-LIST` |
 | | Configuración | `/settings` | `settings` | — (any; edit gated) | **A** | `S-SETTINGS` |
@@ -53,9 +53,13 @@ Notes:
 - **`Historial`** (`/sales`) and **`Nueva venta`** (`/sales/new`) share a prefix — `isNavItemActive`
   uses the sibling-href rule so `/sales/new` lights up "Nueva venta" and every other `/sales/*`
   (incl. the order detail) lights up "Historial".
-- **`Devoluciones`** is **not** wired in F17-09 — the backend contract is ready but the UI was
-  deferred (`GAP-RETURNS-UI-DEFERRED`). No `/returns` route exists yet, so per the "only routes that
-  exist are listed" rule there is no nav entry.
+- **`Devoluciones`** (`/returns`, `/returns/new`, `/returns/[id]`) is built in **F17-10**
+  (`sales.returns.view` to see it; `sales.returns.create` for New return + cancel;
+  `inventory.returns.manage` for inspect/resolve). `isNavItemActive` keeps it independent of
+  `/sales` via the same sibling-href rule.
+- **Notification status** is not a nav item — it is a card on the order detail (`/sales/[id]`),
+  reading `GET /orders/:id/notifications` (`sales.orders.view`). No retry control
+  (`GAP-NOTIF-RETRY-BACKEND`).
 - **`Atributos`** could instead live as a tab inside `/categories` — layout decision for F17, not
   a contract question.
 - **`Roles`** could be a tab of `/users`. It is read-only regardless (`GAP-ROLE-CRUD`).

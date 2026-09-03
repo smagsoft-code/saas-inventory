@@ -18,6 +18,7 @@ import { CustomersRepository } from '../repositories/customers.repository';
 import type { CreateOrderItemValues, OrderItemRow } from '../repositories/order-items.repository';
 import { OrderItemsRepository } from '../repositories/order-items.repository';
 import type { OrderRow } from '../repositories/orders.repository';
+import { OrderNotificationsRepository } from '../repositories/order-notifications.repository';
 import { OrdersRepository } from '../repositories/orders.repository';
 import { PriceApprovalsRepository } from '../repositories/price-approvals.repository';
 import { SalesCatalogLookupRepository } from '../repositories/sales-catalog-lookup.repository';
@@ -29,6 +30,7 @@ import { moneyString, roundMoney } from '../sales-money';
 import { SalesPricingService } from '../pricing/sales-pricing.service';
 import type { CreateOrderDto } from './dto/create-order.dto';
 import type { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import type { OrderNotificationsResponseDto } from './dto/order-notifications-response.dto';
 import type { OrderItemResponseDto, OrderResponseDto } from './dto/order-response.dto';
 
 const IDEMPOTENCY_SCOPE = 'orders.create';
@@ -101,6 +103,7 @@ export class OrdersService {
     private readonly idempotencyRepository: SalesIdempotencyRepository,
     private readonly pricePoliciesRepository: TenantPricePoliciesRepository,
     private readonly priceApprovalsRepository: PriceApprovalsRepository,
+    private readonly orderNotificationsRepository: OrderNotificationsRepository,
     private readonly auditLogService: AuditLogService,
     private readonly domainEventPublisher: DomainEventPublisher,
   ) {}
@@ -131,6 +134,41 @@ export class OrdersService {
         throw new NotFoundException('Order not found.');
       }
       return this.toResponse(tx, tenantId, order, permissions);
+    });
+  }
+
+  /**
+   * Delivery status of the order's domain-event notifications (`event_outbox`), F17-10 —
+   * `GAP-NOTIF-STATUS`. Read-only: metadata only, never `payload`/`last_error`. 404 if the order is
+   * not in the caller's tenant (same shape as `getById`). A deployment with outbound notifications
+   * disabled legitimately reports every event `pending` — nothing claims the rows.
+   */
+  async getNotifications(tenantId: string, id: string): Promise<OrderNotificationsResponseDto> {
+    return withTenantTransaction(tenantId, async (tx) => {
+      const order = await this.ordersRepository.findById(tx, tenantId, id);
+      if (!order) {
+        throw new NotFoundException('Order not found.');
+      }
+      const rows = await this.orderNotificationsRepository.listByOrder(tx, tenantId, id);
+      const events = rows.map((row) => ({
+        eventId: row.id,
+        eventType: row.eventType,
+        status: row.status,
+        attempts: row.attempts,
+        occurredAt: row.createdAt.toISOString(),
+        ...(row.processedAt ? { processedAt: row.processedAt.toISOString() } : {}),
+      }));
+      let overallStatus: 'none' | 'pending' | 'delivered' | 'failed';
+      if (events.length === 0) {
+        overallStatus = 'none';
+      } else if (events.some((event) => event.status === 'dead_letter')) {
+        overallStatus = 'failed';
+      } else if (events.every((event) => event.status === 'delivered')) {
+        overallStatus = 'delivered';
+      } else {
+        overallStatus = 'pending';
+      }
+      return { orderId: id, overallStatus, events };
     });
   }
 

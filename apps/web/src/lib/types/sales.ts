@@ -301,3 +301,155 @@ export interface CreatePriceApprovalInput {
   reason: string;
   requestedPrice?: number;
 }
+
+// --- sales returns ------------------------------------------------------------------------------
+
+export const RETURN_STATUSES = ['requested', 'inspecting', 'resolved', 'cancelled'] as const;
+export type ReturnStatus = (typeof RETURN_STATUSES)[number];
+
+export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
+  requested: 'Requested',
+  inspecting: 'Inspecting',
+  resolved: 'Resolved',
+  cancelled: 'Cancelled',
+};
+
+export function returnStatusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' {
+  switch (status) {
+    case 'resolved':
+      return 'success';
+    case 'cancelled':
+      return 'danger';
+    case 'inspecting':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+/** ADR-0021 dispositions. `restock` re-enters a **sellable** location (stock available again);
+ * `quarantine`/`damaged`/`scrap` re-enter a **non-sellable** location (tracked, never counted as
+ * available). The backend enforces the sellable/non-sellable pairing. */
+export const DISPOSITIONS = ['restock', 'quarantine', 'damaged', 'scrap'] as const;
+export type Disposition = (typeof DISPOSITIONS)[number];
+
+export const DISPOSITION_LABELS: Record<Disposition, string> = {
+  restock: 'Restock (sellable)',
+  quarantine: 'Quarantine',
+  damaged: 'Damaged',
+  scrap: 'Scrap',
+};
+
+/** `ReturnItemResponseDto`. Carries `orderItemId` + `productVariantId` only — no SKU/product name
+ * (`GAP-NAME-ENRICHMENT`); the detail page resolves those from the parent order when the caller
+ * can read it. `disposition`/`dispositionLocationId`/`inspectedBy`/`inspectedAt`/`notes` appear
+ * once the line has been inspected. */
+export interface ReturnItem {
+  id: string;
+  orderItemId: string;
+  productVariantId: string;
+  quantityReturned: number;
+  disposition?: string;
+  dispositionLocationId?: string;
+  inspectedBy?: string;
+  inspectedAt?: string;
+  notes?: string;
+}
+
+/** `ReturnResponseDto` — a reversal traced to a **confirmed** order (ADR-0021). No `orderNumber`
+ * (`GAP-NAME-ENRICHMENT`). */
+export interface Return {
+  id: string;
+  orderId: string;
+  locationId: string;
+  status: string;
+  requestedBy: string;
+  receivedBy?: string;
+  reason: string;
+  items: ReturnItem[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `POST /sales-returns` body — `CreateReturnDto` (+ `Idempotency-Key` header). No
+ * `tenantId`/`requestedBy`/`status` (all server-derived; a return always starts `requested`). */
+export interface CreateReturnInput {
+  orderId: string;
+  locationId: string;
+  reason: string;
+  items: { orderItemId: string; quantity: number }[];
+}
+
+/** `POST /sales-returns/:id/inspect` body — `InspectReturnDto`. One entry per line being inspected
+ * (at least one). */
+export interface InspectReturnInput {
+  items: {
+    returnItemId: string;
+    disposition: Disposition;
+    dispositionLocationId: string;
+    notes?: string;
+  }[];
+}
+
+/** Which return transitions the backend allows from `status` (`ReturnsService`). `inspect` accepts
+ * `requested` or `inspecting`; `resolve` needs `inspecting` + every line inspected (re-checked
+ * server-side); `cancel` accepts `requested`/`inspecting`. The backend re-authorizes permission +
+ * state + location on every call. */
+export function returnActionsForStatus(status: string): { inspect: boolean; resolve: boolean; cancel: boolean } {
+  return {
+    inspect: status === 'requested' || status === 'inspecting',
+    resolve: status === 'inspecting',
+    cancel: status === 'requested' || status === 'inspecting',
+  };
+}
+
+// --- notification (event_outbox) delivery status ----------------------------------------------
+
+export const NOTIFICATION_EVENT_STATUSES = ['pending', 'processing', 'delivered', 'dead_letter'] as const;
+export type NotificationEventStatus = (typeof NOTIFICATION_EVENT_STATUSES)[number];
+
+export const NOTIFICATION_OVERALL_STATUSES = ['none', 'pending', 'delivered', 'failed'] as const;
+export type NotificationOverallStatus = (typeof NOTIFICATION_OVERALL_STATUSES)[number];
+
+export const NOTIFICATION_OVERALL_LABELS: Record<NotificationOverallStatus, string> = {
+  none: 'No notification',
+  pending: 'Queued',
+  delivered: 'Delivered',
+  failed: 'Delivery failed',
+};
+
+export function notificationOverallTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' {
+  switch (status) {
+    case 'delivered':
+      return 'success';
+    case 'failed':
+      return 'danger';
+    case 'pending':
+      return 'warning';
+    default:
+      return 'neutral';
+  }
+}
+
+export const NOTIFICATION_EVENT_TYPE_LABELS: Record<string, string> = {
+  'sales.order.confirmed': 'Order confirmed',
+  'sales.order.cancelled': 'Order cancelled',
+};
+
+/** One `event_outbox` row's delivery metadata — `OrderNotificationEventDto`. Never the payload or
+ * the worker error text. */
+export interface NotificationEvent {
+  eventId: string;
+  eventType: string;
+  status: string;
+  attempts: number;
+  occurredAt: string;
+  processedAt?: string;
+}
+
+/** `GET /orders/:id/notifications` — `OrderNotificationsResponseDto`. */
+export interface OrderNotifications {
+  orderId: string;
+  overallStatus: string;
+  events: NotificationEvent[];
+}

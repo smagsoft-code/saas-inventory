@@ -1,6 +1,6 @@
 import { serverApiFetch } from '../api/server';
 import type { Paginated } from '../types/pagination';
-import type { DocumentType, Order, OrderStatus } from '../types/sales';
+import type { DocumentType, Order, OrderNotifications, OrderStatus } from '../types/sales';
 
 /**
  * Server-side reads for sales orders (`GET /api/v1/orders*`, permission `sales.orders.view`).
@@ -45,4 +45,14 @@ export async function listOrders(query: ListOrdersQuery = {}): Promise<Paginated
 
 export async function getOrder(id: string): Promise<Order> {
   return serverApiFetch<Order>(`/api/v1/orders/${id}`);
+}
+
+/**
+ * Delivery status of the order's domain-event notifications (`GET /api/v1/orders/:id/notifications`,
+ * permission `sales.orders.view`) — F17-10, closing `GAP-NOTIF-STATUS`. Read-only metadata; there
+ * is no retry endpoint (`GAP-NOTIF-RETRY-BACKEND`). A deployment with outbound notifications
+ * disabled legitimately reports every event `pending`.
+ */
+export async function getOrderNotifications(id: string): Promise<OrderNotifications> {
+  return serverApiFetch<OrderNotifications>(`/api/v1/orders/${id}/notifications`);
 }

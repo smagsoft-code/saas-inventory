@@ -16,6 +16,7 @@ import { CartItemsRepository } from './repositories/cart-items.repository';
 import { CartsRepository } from './repositories/carts.repository';
 import { CustomersRepository } from './repositories/customers.repository';
 import { OrderItemsRepository } from './repositories/order-items.repository';
+import { OrderNotificationsRepository } from './repositories/order-notifications.repository';
 import { OrdersRepository } from './repositories/orders.repository';
 import { PriceApprovalsRepository } from './repositories/price-approvals.repository';
 import { SalesCatalogLookupRepository } from './repositories/sales-catalog-lookup.repository';
@@ -70,6 +71,7 @@ import { ReturnsService } from './returns/returns.service';
     CartItemsRepository,
     OrdersRepository,
     OrderItemsRepository,
+    OrderNotificationsRepository,
     PriceApprovalsRepository,
     SalesReturnsRepository,
     SalesReturnItemsRepository,

@@ -69,6 +69,10 @@ describe('filterNavigation', () => {
     // Sales history rides on sales.orders.view
     expect(labels([])).not.toContain('Sales history');
     expect(labels(['sales.orders.view'])).toContain('Sales history');
+    // Returns rides on sales.returns.view
+    expect(labels([])).not.toContain('Returns');
+    expect(labels(['sales.returns.view'])).toContain('Returns');
+    expect(labels(['inventory.returns.manage'])).not.toContain('Returns');
     // the whole "Sales" section is dropped when the user holds none of its permissions
     expect(filterNavigation(NAVIGATION, createPermissionChecker([])).map((s) => s.title)).not.toContain('Sales');
   });
@@ -153,5 +157,13 @@ describe('isNavItemActive', () => {
     expect(isNavItemActive(approvals, '/approvals')).toBe(true);
     expect(isNavItemActive(approvals, '/approvals/abc-1')).toBe(true);
     expect(isNavItemActive(approvals, '/sales')).toBe(false);
+  });
+
+  it('activates Returns on its own nested routes only', () => {
+    const returns: NavItem = { label: 'Returns', href: '/returns', icon: 'undo', activePaths: ['/returns'] };
+    expect(isNavItemActive(returns, '/returns')).toBe(true);
+    expect(isNavItemActive(returns, '/returns/new')).toBe(true);
+    expect(isNavItemActive(returns, '/returns/abc-1')).toBe(true);
+    expect(isNavItemActive(returns, '/sales')).toBe(false);
   });
 });

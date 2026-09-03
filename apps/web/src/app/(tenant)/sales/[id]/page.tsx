@@ -3,22 +3,31 @@ import { notFound } from 'next/navigation';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { isApiError } from '../../../../lib/api/errors';
-import { getOrder } from '../../../../lib/sales/orders';
+import { getOrder, getOrderNotifications } from '../../../../lib/sales/orders';
 import { listPriceApprovals } from '../../../../lib/sales/price-approvals';
+import { listReturns } from '../../../../lib/sales/returns';
 import { buildLocationIndex, shortId } from '../../../../lib/inventory/location-index';
 import {
   DOCUMENT_TYPE_LABELS,
+  NOTIFICATION_EVENT_TYPE_LABELS,
+  NOTIFICATION_OVERALL_LABELS,
   ORDER_STATUS_LABELS,
   PRICE_APPROVAL_STATUS_LABELS,
+  RETURN_STATUS_LABELS,
+  notificationOverallTone,
   orderStatusTone,
   priceApprovalStatusTone,
+  returnStatusTone,
   type DocumentType,
+  type NotificationOverallStatus,
   type OrderStatus,
   type PriceApprovalStatus,
+  type ReturnStatus,
 } from '../../../../lib/types/sales';
 import { OrderActions, type ExceptionalLine } from './order-actions';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
+import { ButtonLink } from '../../../../components/ui/button';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { Alert } from '../../../../components/ui/alert';
 import { Badge } from '../../../../components/ui/badge';
@@ -56,6 +65,8 @@ export default async function OrderDetailPage({
   const canCancel = checker.can('sales.orders.cancel');
   const canRequestApproval = checker.can('pricing.discount.request');
   const canViewApprovals = checker.canAny(['pricing.discount.request', 'pricing.discount.approve']);
+  const canViewReturns = checker.can('sales.returns.view');
+  const canCreateReturn = checker.can('sales.returns.create');
 
   let order;
   try {
@@ -67,10 +78,16 @@ export default async function OrderDetailPage({
     throw error;
   }
 
-  const [index, approvals] = await Promise.all([
+  const [index, approvals, notifications, returns] = await Promise.all([
     buildLocationIndex(checker.can('warehouses.view')),
     canViewApprovals
       ? listPriceApprovals({ orderId: id, pageSize: 100 })
+          .then((r) => r.data)
+          .catch(() => [])
+      : Promise.resolve([]),
+    getOrderNotifications(id).catch(() => null),
+    canViewReturns
+      ? listReturns({ orderId: id, pageSize: 100 })
           .then((r) => r.data)
           .catch(() => [])
       : Promise.resolve([]),
@@ -97,9 +114,16 @@ export default async function OrderDetailPage({
         title={`Order ${order.orderNumber}`}
         description={`${DOCUMENT_TYPE_LABELS[order.documentType as DocumentType] ?? order.documentType} · ${index.locationName(order.locationId)}`}
         actions={
-          <Badge tone={orderStatusTone(order.status)}>
-            {ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {order.status === 'confirmed' && canCreateReturn && (
+              <ButtonLink href={`/returns/new?orderId=${order.id}`} size="sm" variant="secondary">
+                Start a return
+              </ButtonLink>
+            )}
+            <Badge tone={orderStatusTone(order.status)}>
+              {ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status}
+            </Badge>
+          </div>
         }
       />
 
@@ -287,10 +311,97 @@ export default async function OrderDetailPage({
         </Card>
       )}
 
+      {notifications && (
+        <Card>
+          <CardBody className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold text-slate-900">Notification</h2>
+              <Badge tone={notificationOverallTone(notifications.overallStatus)}>
+                {NOTIFICATION_OVERALL_LABELS[notifications.overallStatus as NotificationOverallStatus] ??
+                  notifications.overallStatus}
+              </Badge>
+            </div>
+            {notifications.events.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No notification has been raised for this order yet. Confirming or cancelling an order queues one.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1 text-sm">
+                {notifications.events.map((event) => (
+                  <li key={event.eventId} className="flex flex-wrap items-center gap-2">
+                    <span className="text-slate-700">
+                      {NOTIFICATION_EVENT_TYPE_LABELS[event.eventType] ?? event.eventType}
+                    </span>
+                    <span className="text-slate-400">·</span>
+                    <span className="text-slate-500">{event.status}</span>
+                    {event.attempts > 0 && <span className="text-slate-400">· {event.attempts} attempts</span>}
+                    <span className="text-slate-400">· {new Date(event.occurredAt).toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {notifications.overallStatus === 'failed' && (
+              <p className="text-xs text-slate-500">
+                Re-sending a failed notification is not available yet — it needs a backend contract
+                (`GAP-NOTIF-RETRY-BACKEND`).
+              </p>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {canViewReturns && returns.length > 0 && (
+        <Card>
+          <CardBody className="flex flex-col gap-4">
+            <h2 className="text-sm font-semibold text-slate-900">Returns</h2>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Return</TH>
+                  <TH className="text-right">Lines</TH>
+                  <TH>Status</TH>
+                  <TH className="w-0">
+                    <span className="sr-only">Actions</span>
+                  </TH>
+                </TR>
+              </THead>
+              <TBody>
+                {returns.map((ret) => (
+                  <TR key={ret.id}>
+                    <TD>
+                      <code className="text-xs text-slate-500">{shortId(ret.id)}</code>
+                    </TD>
+                    <TD className="text-right text-slate-500">{ret.items.length}</TD>
+                    <TD>
+                      <Badge tone={returnStatusTone(ret.status)}>
+                        {RETURN_STATUS_LABELS[ret.status as ReturnStatus] ?? ret.status}
+                      </Badge>
+                    </TD>
+                    <TD>
+                      <Link
+                        href={`/returns/${ret.id}`}
+                        className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+                      >
+                        View
+                      </Link>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </CardBody>
+        </Card>
+      )}
+
       <div className="flex gap-4 text-sm">
         <Link href="/sales" className="font-medium text-slate-500 hover:underline">
           Sales history
         </Link>
+        {canViewReturns && (
+          <Link href={`/returns?orderId=${order.id}`} className="font-medium text-slate-500 hover:underline">
+            Returns
+          </Link>
+        )}
         <Link href="/sales/new" className="font-medium text-slate-500 hover:underline">
           New sale
         </Link>

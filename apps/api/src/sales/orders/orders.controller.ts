@@ -9,6 +9,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import { OrderNotificationsResponseDto } from './dto/order-notifications-response.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { OrdersService } from './orders.service';
 
@@ -43,6 +44,16 @@ export class OrdersController {
     @Param('id') id: string,
   ): Promise<OrderResponseDto> {
     return this.ordersService.getById(tenantId, permissions, id);
+  }
+
+  @Get(':id/notifications')
+  @RequirePermissions('sales.orders.view')
+  @ApiOkResponse({ type: OrderNotificationsResponseDto })
+  async notifications(
+    @CurrentTenant() tenantId: string,
+    @Param('id') id: string,
+  ): Promise<OrderNotificationsResponseDto> {
+    return this.ordersService.getNotifications(tenantId, id);
   }
 
   @Post()

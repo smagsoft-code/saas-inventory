@@ -38,7 +38,8 @@ export type NavIcon =
   | 'cart'
   | 'contact'
   | 'receipt'
-  | 'approval';
+  | 'approval'
+  | 'undo';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */
@@ -150,6 +151,13 @@ export const NAVIGATION: NavSection[] = [
         icon: 'approval',
         anyPermission: ['pricing.discount.approve', 'pricing.discount.request'],
         activePaths: ['/approvals'],
+      },
+      {
+        label: 'Returns',
+        href: '/returns',
+        icon: 'undo',
+        permission: 'sales.returns.view',
+        activePaths: ['/returns'],
       },
     ],
   },

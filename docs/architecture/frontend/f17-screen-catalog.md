@@ -499,9 +499,10 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 - **Sort:** none.
 - **NOT built (F18 / PROTOTYPE ONLY):** 4 KPI tiles (ventas del mes, ticket promedio — **B**;
   órdenes, pendientes — **A** counts), "Exportar".
-- **Notification-status column + "retry"** on the row/detail = **GAP**
-  ([`GAP-NOTIF-STATUS`](f17-gaps.md#gap-notif-status)) — roadmap FASE 17 item, needs a new
-  `event_outbox` read + a guarded requeue. Decision needed on the exact contract before build.
+- **Notification status:** **F17-10** adds it on the **order detail** (`GET /orders/:id/notifications`).
+  A per-row column on this list is deferred — it would be N+1 against a per-order endpoint (a batch
+  projection is a minor future addition). **Retry** stays
+  [`GAP-NOTIF-RETRY-BACKEND`](f17-gaps.md#gap-notif-retry-backend).
 - **Responsive:** table → row cards → stacked cards.
 - **F17** (list + filters + detail). KPI tiles / export = **F18**.
 
@@ -515,7 +516,12 @@ Legend for support: **A** fully supported · **B** additive backend change recom
   reservation, `pending → cancelled` (a `confirmed` order can **only** be reversed by a return).
 - **Domain states:** `draft`(unreachable) · `pending` · `confirmed` · `fulfilled`(unreachable) ·
   `cancelled`. Transitions: `pending→confirmed`, `pending→cancelled`.
-- **F17.**
+- **F17-10:** notification-delivery card — `GET /api/v1/orders/:id/notifications`
+  (`sales.orders.view`) → `OrderNotificationsResponseDto` (rollup badge + per-`event_outbox`-row
+  status; metadata only). **No retry** ([`GAP-NOTIF-RETRY-BACKEND`](f17-gaps.md#gap-notif-retry-backend)).
+  "Start a return" action (`confirmed` + `sales.returns.create` → `/returns/new?orderId=`) + a
+  related-returns list (`GET /sales-returns?orderId=`, `sales.returns.view`).
+- **F17** (F17-08 read-only · F17-09 confirm/cancel + approvals · F17-10 notification status + returns links).
 
 ### `S-APPROVALS-LIST` / `S-APPROVAL-DETAIL` — Price-approval queue
 - **Persona:** Supervisor/TA (to resolve) · **Route:** `/approvals` (+ `/approvals/[id]`) ·
@@ -551,13 +557,17 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 ### `S-RET-LIST` — Devoluciones
 - **Persona:** OP (Vendedor/Bodega)/TA · **Route:** `/returns` · **Permission:** `sales.returns.view`.
 - **Endpoint:** `GET /api/v1/sales-returns` — query `{ page, pageSize, status?, orderId? }` →
-  `PaginatedResult<ReturnResponseDto>` (`{ id, orderId, orderNumber, locationId, status, reason,
-  requestedBy, receivedBy?, createdAt, updatedAt, items:[...] }`).
-- **Columns:** id, order, customer *(from the order snapshot)*, line count, status badge
+  `PaginatedResult<ReturnResponseDto>`. The DTO is `{ id, orderId, locationId, status, requestedBy,
+  receivedBy?, reason, items:[{ id, orderItemId, productVariantId, quantityReturned, disposition?,
+  dispositionLocationId?, inspectedBy?, inspectedAt?, notes? }], createdAt, updatedAt }` — **no
+  `orderNumber`, no SKU on lines** (`GAP-NAME-ENRICHMENT`; the earlier catalogue draft overstated
+  this).
+- **Columns (F17-10):** return short id, order short id (→ `/sales/:orderId` when `sales.orders.view`),
+  received-at location name (one bounded `buildLocationIndex()` fetch), line count, status badge
   (`requested`/`inspecting`/`resolved`/`cancelled`), createdAt.
-- **Filters:** status, orderId. **No date filter.** **Sort:** none.
-- **Actions:** New return; row → `S-RET-DETAIL`.
-- **F17.**
+- **Filters:** status (chips), orderId (from the URL). **No date filter, no text search.** **Sort:** none.
+- **Actions:** New return (`sales.returns.create`); row → `S-RET-DETAIL`.
+- **F17-10 — built.**
 
 ### `S-RET-NEW` — Create a return
 - **Route:** `/returns/new` (or from `S-ORDER-DETAIL`) · **Permission:** `sales.returns.create` ·
@@ -567,14 +577,19 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 - **Validation:** order must be `confirmed`; per line `quantity ≤ returnable`
   (`= sold − Σ already-returned`, checked under a row lock — `409` if two concurrent requests
   over-return).
-- **F17.**
+- **F17-10 — built.** Confirmed-order picker is a bounded `pageSize: 100` `status=confirmed` list
+  (no order search — `GAP-SEARCH`); the returnable hint is derived client-side from
+  `GET /orders/:id` + `GET /sales-returns?orderId=` (backend re-validates). Receiving location =
+  any active location.
 
 ### `S-RET-DETAIL` — Return detail + inspect + resolve
 - **Route:** `/returns/[id]` · **Permission:** `sales.returns.view` (view) /
   `inventory.returns.manage` (inspect/resolve) + location authorization on each
   `dispositionLocationId`.
-- **Endpoint:** `GET /api/v1/sales-returns/:id`. Lines: `{ orderItemId, variant, sku,
-  quantityReturned, disposition?, dispositionLocationId?, inspectedBy?, inspectedAt?, notes? }`.
+- **Endpoint:** `GET /api/v1/sales-returns/:id`. Lines carry `orderItemId` + `productVariantId`
+  only — the SKU/name are resolved from the parent order (`GET /orders/:id`) when the caller holds
+  `sales.orders.view` (`GAP-NAME-ENRICHMENT`); otherwise the variant shows as a short id + a
+  `/inventory/movements?productVariantId=` link (`inventory.view`).
 - **Actions:**
   - `POST /api/v1/sales-returns/:id/inspect` → `InspectReturnDto` `{ items:[{ returnItemId,
     disposition: 'restock'|'quarantine'|'damaged'|'scrap', dispositionLocationId, notes? }] }` —
@@ -587,7 +602,10 @@ Legend for support: **A** fully supported · **B** additive backend change recom
     `cancelled` (a `resolved` return cannot be cancelled).
 - **Domain states / transitions:** `requested → inspecting → resolved`; `requested`/`inspecting`
   → `cancelled`.
-- **F17.**
+- **F17-10 — built.** `ReturnActions` client component: Inspect panel (per-line disposition +
+  disposition-location select, restock→sellable / others→non-sellable pool), Resolve (confirm
+  dialog — irreversible, `Idempotency-Key`, disabled until every line inspected), Cancel (confirm
+  dialog). Every action single-flight; a `403` shows the location-authorization message in place.
 
 ---
 
