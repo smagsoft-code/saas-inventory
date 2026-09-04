@@ -52,6 +52,8 @@
 | 29 | [`GAP-ATTR-DEF-DETAIL`](#gap-attr-def-detail) | F17-additive (low) | Attribute detail/edit |
 | 30 | [`GAP-ATTR-DISPLAY-ORDER`](#gap-attr-display-order) | F17-additive (low) | Attributes list ordering |
 | 31 | [`GAP-MEASUREMENT-UNITS-PERMISSION`](#gap-measurement-units-permission) | decision (low) | Attribute form unit selector |
+| 32 | [`GAP-QR-PRINT`](#gap-qr-print) | decision / additive — **OPEN** (F17-14) | QR list (print / bitmap) |
+| 33 | [`GAP-SA-PLATFORM-401`](#gap-sa-platform-401) | F17-additive — **OPEN** (F17-13) | Super-Admin mutations |
 
 ---
 
@@ -80,6 +82,12 @@ with **no product context** (no `productId`, SKU or name), so transfer lines sho
 short id and link to `/inventory/movements?productVariantId=` (an existing route) rather than a
 `/products/[id]/variants/[variantId]` route that cannot be constructed. `requestedBy`/`approvedBy`/
 `dispatchedBy` are shown as short ids (no user-name resolution).
+
+**F17-14 (2026-09) — OPEN, same workaround.** `S-QR-LIST` and the `S-USER-DETAIL` location-access
+editor resolve `targetId` / `locationId` → location name from the shared `buildLocationIndex()`
+(bounded `GET /locations` + `GET /warehouses`, `pageSize: 100`) — no N+1. A QR `product_variant`
+target has no tenant-wide list (`GAP-VARIANT-LIST`) so it shows a short id; `qr_codes` carries no
+`code`/user enrichment either (`assignedBy` on a user-location row shows a short id).
 
 ### `GAP-VARIANT-LIST`
 Variants are reachable **only** per-product (`GET /products/:id/variants`). New Sale's core
@@ -458,6 +466,20 @@ No endpoint to create/edit roles or toggle role permissions — the catalogue is
 (`DEFAULT_ROLE_TEMPLATES`), editable only via direct DB. The nav/design imply "Roles / Permisos"
 as manageable. **future:** custom-role CRUD + per-role permission toggling (database.md anticipates
 it). **F17 = read-only Roles view.**
+
+**F17-14 (2026-09) — the read-only view is built; CRUD stays FUTURE, unchanged.** `S-ROLES-LIST`
+(`/roles`, `GET /roles`, `core.roles.read`) ships with **no** create/edit/delete control (asserted
+by test). Managing roles/permissions from the UI is still a backend dependency (no endpoint).
+
+### `GAP-QR-PRINT`
+`GET /q/:code` (the public resolver) is the URL that goes on a printed QR label, but it is **not**
+under the `/api/v1` prefix, so Next.js's `/api/*` rewrite does not proxy it — turning it into a
+clickable link from the admin UI is a reverse-proxy/deployment concern, not a frontend one. There
+is also no QR-image contract and no image library in the bundle. **F17-14 (2026-09)** therefore
+shows the opaque `code` token (for label reconciliation) but renders **no QR bitmap and no
+"open/print link"**. **Class:** decision / additive. **Blocking:** no. **Fix:** either a Caddy/
+proxy rule exposing `/q/*` from the web origin + a small client-side QR renderer, or a backend
+endpoint returning the code image. Discovered in F17-14.
 
 ### `GAP-USER-FILTERS`
 `GET /users` filters by `status` only — no role filter, no `?q=` name/email search, no

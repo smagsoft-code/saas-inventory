@@ -214,6 +214,12 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 - **Errors:** `403` self-escalation / self-status-change.
 - **Deps:** `S-LOC-LIST` (for the location picker source: `GET /locations`).
 - **F17** (partial in FASE 16 — location editor is new F17 work).
+- **BUILT — F17-14 (2026-09).** `location-access.tsx` (client) added to `/users/[id]`, gated by
+  `core.users.locations.manage`. Two modes: **Unrestricted** (`PUT { locationIds: [] }` — ADR-0024:
+  zero rows = every location) or **Restrict to selected** (checkbox list of active locations →
+  `PUT { locationIds: [...] }`, refuses to save an empty restricted set). Location names from the
+  bounded `buildLocationIndex()` (`GAP-NAME-ENRICHMENT`). Body is exactly `SetUserLocationsDto` —
+  never `tenantId`/`userId`. Does not touch `LocationAuthorizationService` or any inventory op.
 
 ### `S-ROLES-LIST` — Roles & permissions (read-only)
 - **Persona:** TA · **Route:** `/roles` (or a tab of `/users`) · **Permission:** `core.roles.read`.
@@ -224,6 +230,11 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 - **Gaps:** [`GAP-ROLE-CRUD`](f17-gaps.md#gap-role-crud) — the design/nav mention "Roles/Permisos"
   as manageable; the backend has no endpoint. F17 = **read-only view**; management is **future**.
 - **F17** (read-only).
+- **BUILT — F17-14 (2026-09)** at `/roles`. `page.tsx` (server, `listRoles()` = `GET /roles`,
+  plain array) + `roles-table.tsx` (pure). Columns: name, description, type (system default / custom),
+  permission codes (compact sorted chips + count). **No** create/edit/delete control anywhere
+  (`GAP-ROLE-CRUD` stays **FUTURE**). No client filter/search (the array is small; endpoint has no
+  params). Nav item "Roles" (`core.roles.read`, icon `shield`).
 
 ---
 
@@ -317,6 +328,15 @@ Legend for support: **A** fully supported · **B** additive backend change recom
   authed resolver returns `{productId, productVariantId}` / `{locationId}` and the caller then
   hits the normal variant/location endpoint — no pricing logic duplicated).
 - **F17.**
+- **BUILT — F17-14 (2026-09).** `S-QR-LIST` at `/qr` (`page.tsx` server, `listQrCodes()` — offset
+  paginated, `targetType` chips) + `RevokeQrButton` (client, `PATCH { status: 'revoked' }` behind a
+  confirm). `S-QR-NEW` at `/qr/new` (`qr-form.tsx` client, `POST { targetType, targetId, expiresAt? }`
+  — target picked as Product→Variant `GET /products/:id/variants` / Location `GET /locations`). The
+  list shows the `code` token and the `targetId` resolved to a location name via `buildLocationIndex()`
+  (`GAP-NAME-ENRICHMENT`); a variant target shows a short id (`GAP-VARIANT-LIST`). **No QR bitmap is
+  rendered** (no image library added) and no "print" flow — the printable URL is `/q/<code>`, a
+  deployment/reverse-proxy concern, not surfaced as a link (`GAP-QR-PRINT`, additive/decision). Nav
+  item "QR codes" (`catalog.qr.manage`, icon `qr`).
 
 ---
 

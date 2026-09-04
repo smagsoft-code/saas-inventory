@@ -32,6 +32,22 @@ describe('filterNavigation', () => {
     expect(labels([])).not.toContain('Products');
   });
 
+  it('shows QR codes only with catalog.qr.manage', () => {
+    const labels = (perms: string[]) =>
+      filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));
+    expect(labels([])).not.toContain('QR codes');
+    expect(labels(['products.view'])).not.toContain('QR codes');
+    expect(labels(['catalog.qr.manage'])).toContain('QR codes');
+  });
+
+  it('shows Roles only with core.roles.read (read-only view — no CRUD nav)', () => {
+    const labels = (perms: string[]) =>
+      filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));
+    expect(labels([])).not.toContain('Roles');
+    expect(labels(['core.users.read'])).not.toContain('Roles');
+    expect(labels(['core.roles.read'])).toContain('Roles');
+  });
+
   it('shows Imports only with import.execute', () => {
     const labels = (perms: string[]) =>
       filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));

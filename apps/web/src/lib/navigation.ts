@@ -41,7 +41,9 @@ export type NavIcon =
   | 'approval'
   | 'undo'
   | 'upload'
-  | 'building';
+  | 'building'
+  | 'qr'
+  | 'shield';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */
@@ -78,6 +80,15 @@ export const NAVIGATION: NavSection[] = [
         // Reads ride on `products.view` (attributes.controller.ts), not a dedicated attributes-view code.
         permission: 'products.view',
         activePaths: ['/attributes'],
+      },
+      {
+        // All `/qr-codes*` management routes are gated by the single `catalog.qr.manage` code
+        // (qr-codes.controller.ts — database.md's RBAC table: "generar/revocar qr_codes").
+        label: 'QR codes',
+        href: '/qr',
+        icon: 'qr',
+        permission: 'catalog.qr.manage',
+        activePaths: ['/qr'],
       },
       {
         // Whole pipeline (list/upload/detail/rows/templates) is gated by the single `import.execute`
@@ -181,6 +192,15 @@ export const NAVIGATION: NavSection[] = [
         icon: 'users',
         permission: 'core.users.read',
         activePaths: ['/users'],
+      },
+      {
+        // Read-only view of the fixed `DEFAULT_ROLE_TEMPLATES` catalogue (`GET /roles`) — role
+        // CRUD does not exist (`GAP-ROLE-CRUD`, future).
+        label: 'Roles',
+        href: '/roles',
+        icon: 'shield',
+        permission: 'core.roles.read',
+        activePaths: ['/roles'],
       },
       {
         label: 'Company settings',

@@ -29,7 +29,7 @@ Sidebar resolves it; FASE 16 has `home`/`users`/`settings`, F17 adds the rest as
 | **Catálogo** | Productos | `/products` | `box` | `products.view` | **A** | `S-CAT-PRODUCTS` |
 | | Categorías | `/categories` | `folder-tree` | `categories.view` | **A** | `S-CAT-CATEGORIES` |
 | | Atributos | `/attributes` | `sliders` | `products.view` | **A** | `S-CAT-ATTR-DEFS` |
-| | QR | `/qr` | `qr` | `catalog.qr.manage` | **A** | `S-QR-LIST` |
+| | QR codes | `/qr` | `qr` | `catalog.qr.manage` | **A** — built F17-14 | `S-QR-LIST` |
 | | Importación | `/imports` | `upload` | `import.execute` | **A** — built F17-11 | `S-IMP-LIST` |
 | **Inventario** | Existencias | `/inventory` | `layers` | `inventory.view` | **A** (raw) / **B** (enriched) | `S-INV-BALANCES` |
 | | Movimientos | `/inventory/movements` | `activity` | `inventory.view` | **A** / **B** (period) | `S-INV-MOVEMENTS` |
@@ -42,7 +42,7 @@ Sidebar resolves it; FASE 16 has `home`/`users`/`settings`, F17 adds the rest as
 | | Aprobaciones | `/approvals` | `badge-check` | `pricing.discount.request` **or** `pricing.discount.approve` (`NavItem.anyPermission`) | **A** | `S-APPROVALS-LIST` |
 | | Devoluciones | `/returns` | `undo` | `sales.returns.view` | **A** — built F17-10 | `S-RET-LIST` |
 | **Administración** | Usuarios | `/users` | `users` | `core.users.read` | **A** | `S-USERS-LIST` |
-| | Roles | `/roles` | `shield` | `core.roles.read` | **A** (read-only) | `S-ROLES-LIST` |
+| | Roles | `/roles` | `shield` | `core.roles.read` | **A** (read-only) — built F17-14 | `S-ROLES-LIST` |
 | | Configuración | `/settings` | `settings` | — (any; edit gated) | **A** | `S-SETTINGS` |
 
 Notes:
@@ -67,7 +67,8 @@ Notes:
 - **`Atributos`** could instead live as a tab inside `/categories` — layout decision for F17, not
   a contract question.
 - **`Roles`** could be a tab of `/users`. It is read-only regardless (`GAP-ROLE-CRUD`).
-- Location-access management is **not** a top-level nav item — it is a section of `S-USER-DETAIL`.
+- Location-access management is **not** a top-level nav item — it is a section of `S-USER-DETAIL`
+  (`/users/[id]`), built F17-14 (`GET/PUT /users/:userId/locations`, `core.users.locations.manage`).
 - **No** nav item for: brands, suppliers, serials, lots, price history, audit, reports/dashboards,
   notifications — none have F17 routes.
 

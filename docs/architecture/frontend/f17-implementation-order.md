@@ -23,10 +23,10 @@
 | # | Sub-prompt | Screens | Depends on | Backend prerequisite (from [f17-gaps.md](f17-gaps.md)) |
 | --- | --- | --- | --- | --- |
 | **F17-01** | **App Shell + Auth polish + Home skeleton** | `S-SHELL`, `S-AUTH-*` (polish), `S-HOME` (frame + quick actions; tiles stubbed) | FASE 16 | — |
-| **F17-02** | **Tenant administration** | `S-SETTINGS` (incl. timezone — unblocks all date logic), `S-USERS-LIST/NEW/DETAIL/EDIT`, `S-ROLES-LIST` (read-only), location-access editor | F17-01, `S-LOC-LIST` for the location editor (so do F17-02 users *after* F17-04 locations, or ship the editor in F17-04) | — (`GAP-USER-FILTERS` non-blocking; `GAP-ROLE-CRUD` → read-only) |
+| **F17-02** | **Tenant administration** | `S-SETTINGS` (incl. timezone — unblocks all date logic), `S-USERS-LIST/NEW/DETAIL/EDIT`, `S-ROLES-LIST` (read-only) [→ built F17-14], location-access editor [→ built F17-14] | F17-01, `S-LOC-LIST` for the location editor (so do F17-02 users *after* F17-04 locations, or ship the editor in F17-04) | — (`GAP-USER-FILTERS` non-blocking; `GAP-ROLE-CRUD` → read-only) |
 | **F17-03** | **Catalog base** | `S-CAT-CATEGORIES` (+ tree + category-attributes), `S-CAT-ATTR-DEFS` (+ options), `measurement-units` | F17-01 | — |
 | **F17-04** | **Warehouses & Locations** | `S-WH-LIST/EDIT`, `S-LOC-LIST/EDIT` | F17-01 | `GAP-NAME-ENRICHMENT` (warehouse name on locations — non-blocking) |
-| **F17-05** | **Products & variants & QR** | `S-CAT-PRODUCTS`, `S-CAT-PRODUCT-NEW/EDIT/DETAIL`, `S-CAT-VARIANT-EDIT`, `S-QR-LIST/NEW` | F17-03 (categories/attributes) | **decide `GAP-BRAND-SUPPLIER-LIST` (A4)**; `GAP-SEARCH`/`GAP-SORT` (non-blocking); `GAP-VARIANT-LIST` (needed for F17-08, decide here) |
+| **F17-05** | **Products & variants & QR** | `S-CAT-PRODUCTS`, `S-CAT-PRODUCT-NEW/EDIT/DETAIL`, `S-CAT-VARIANT-EDIT`, `S-QR-LIST/NEW` [→ built F17-14] | F17-03 (categories/attributes) | **decide `GAP-BRAND-SUPPLIER-LIST` (A4)**; `GAP-SEARCH`/`GAP-SORT` (non-blocking); `GAP-VARIANT-LIST` (needed for F17-08, decide here) |
 | **F17-06** | **Inventory: balances + movements + adjustments** | `S-INV-BALANCES`, `S-INV-BALANCE-DETAIL`, `S-INV-MOVEMENTS`, `S-INV-ADJUST` | F17-04, F17-05 | **`GAP-NAME-ENRICHMENT`** (strongly recommended before this), `GAP-INV-LOCATION-SCOPE` (A3 decision), `GAP-MOVEMENTS-DATE-FILTER` (kardex — additive) |
 | **F17-07** | **Inventory transfers** | `S-TRF-LIST/NEW/DETAIL/RECEIVE` | F17-04, F17-05, F17-06 | `GAP-NAME-ENRICHMENT`, `GAP-MULTI-STATUS` (tabs), `GAP-TRANSFER-CODE` (A21 cosmetic) |
 | **F17-08** | **Customers + New Sale + cart** | `S-CUST-LIST/NEW/EDIT/DETAIL`, `S-SALE-NEW` | F17-05 (variants+prices), F17-04 (location) | **`GAP-VARIANT-LIST`** (SKU search — F17-blocking; interim: product→variant picker) |
@@ -35,6 +35,7 @@
 | **F17-11** | **Import pipeline** | `S-IMP-NEW`, `S-IMP-LIST/DETAIL/ROWS`, `S-IMP-TEMPLATES` | F17-03, F17-04, F17-05 | `GAP-IMPORT-PROGRESS` (A9 polling decision) |
 | **F17-12** | **Home tiles wired + operational KPIs** | fill `S-HOME` tiles with real reads | F17-06…F17-11 | `GAP-MULTI-STATUS`, `GAP-HOME-DATE-TZ` (both before this) |
 | **F17-13** | **Super-Admin** | `(superadmin)/` group, `S-SA-LOGIN`, `S-SA-TENANTS`, `S-SA-TENANT-DETAIL` | F17-01 | none for the supported set; the rest is `GAP-SA-*` (future) |
+| **F17-14** | **F17 close-out** | `S-QR-LIST/NEW` (F17-05 scope), `S-ROLES-LIST` (F17-02 scope), location-access editor on `S-USER-DETAIL` (F17-02 scope) — the three screens the F17 close-out audit found declared "A" but unbuilt (`F-01`/`F-02`/`F-03`); trazabilidad realigned (`F-04`) | F17-01…F17-13 | none — all three contracts already existed (`GET/POST/PATCH /qr-codes`, `GET /roles`, `GET/PUT /users/:userId/locations`); no backend/DB/migration/permission change |
 
 ## Deviations from the prompt's example order (justified)
 

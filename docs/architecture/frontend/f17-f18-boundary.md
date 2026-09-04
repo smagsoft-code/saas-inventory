@@ -26,7 +26,8 @@
 | Brands / Suppliers management | | | ❌ no endpoint (ADR-0019) |
 | Product price-history timeline | | ✅ | `GAP-PRICE-HISTORY-READ` |
 | Serial / lot browser | | | ❌ no read endpoint (deferred design) |
-| QR list + generate + revoke + print | ✅ | | `GAP-NAME-ENRICHMENT` (target name) |
+| QR list + generate + revoke | ✅ built F17-14 | | `GAP-NAME-ENRICHMENT` (target name) |
+| QR print / bitmap render | | | ❌ `GAP-QR-PRINT` — no image lib; printable URL `/q/:code` is a proxy concern |
 | Inventory balances list + adjust | ✅ | | `GAP-NAME-ENRICHMENT`, `GAP-INV-LOCATION-SCOPE` |
 | Inventory — Σ on hand / by warehouse / valuation | | ✅ | `GAP-INV-AGGREGATE`, `GAP-COST` (017-A) |
 | Inventory — "Stock bajo" tab | | | ❌ `GAP-REORDER` |
@@ -56,8 +57,8 @@
 | Import wizard + history + rows + error report + templates | ✅ | | `GAP-IMPORT-PROGRESS` (polling decision) |
 | Import — rows-imported rollup over a period | | ✅ | aggregation |
 | Users list + create/edit + status | ✅ | | `GAP-USER-FILTERS` |
-| Location-access editor (per user) | ✅ | | |
-| Roles view (read-only) | ✅ | | `GAP-ROLE-CRUD` (management = future) |
+| Location-access editor (per user) | ✅ built F17-14 | | |
+| Roles view (read-only) | ✅ built F17-14 | | `GAP-ROLE-CRUD` (management = future) |
 | Role/permission CRUD | | | ❌ future (no endpoint) |
 | Audit trail viewer | | | ❌ future `GAP-AUDIT-READ` |
 | Tenant settings (timezone, business hours) + company info | ✅ | | |

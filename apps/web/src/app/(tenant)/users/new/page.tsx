@@ -1,7 +1,6 @@
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
-import { serverApiFetch } from '../../../../lib/api/server';
-import type { Role } from '../../../../lib/types/core';
+import { listRoles } from '../../../../lib/core/roles';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { Card, CardBody } from '../../../../components/ui/card';
@@ -12,7 +11,7 @@ export default async function NewUserPage(): Promise<React.JSX.Element> {
   const canAssignRole = createPermissionChecker(session?.permissions ?? []).can(
     'core.roles.assign',
   );
-  const roles = canAssignRole ? await serverApiFetch<Role[]>('/api/v1/roles') : [];
+  const roles = canAssignRole ? await listRoles() : [];
 
   return (
     <PageContainer>

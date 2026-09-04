@@ -150,5 +150,21 @@ export function NavIconGlyph({
           <path d="M8 8h3M8 12h3M8 16h3" />
         </svg>
       );
+    case 'qr':
+      return (
+        <svg {...common}>
+          <rect x="4" y="4" width="6" height="6" rx="1" />
+          <rect x="14" y="4" width="6" height="6" rx="1" />
+          <rect x="4" y="14" width="6" height="6" rx="1" />
+          <path d="M14 14h3v3M20 14v0M14 20h0M20 17v3h-3" />
+        </svg>
+      );
+    case 'shield':
+      return (
+        <svg {...common}>
+          <path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3Z" />
+          <path d="m9 12 2 2 4-4" />
+        </svg>
+      );
   }
 }
