@@ -26,6 +26,17 @@ export class CurrentUserResponseDto {
 
   @ApiProperty({ type: [String] })
   permissions!: string[];
+
+  @ApiProperty({
+    type: String,
+    example: 'America/Bogota',
+    description:
+      "The active tenant's IANA timezone (tenant_settings.timezone, 'UTC' default). Unlike " +
+      'GET /administration/tenant-settings, this is never permission-gated — F18-01, closes ' +
+      'GAP-TZ-VISIBILITY so every authenticated tenant member can resolve calendar periods ' +
+      "('today', 'this month') without administration.settings.view.",
+  })
+  timezone!: string;
 }
 
 export class AuthSessionResponseDto {

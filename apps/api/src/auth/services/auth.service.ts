@@ -1,6 +1,8 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { generateId } from '@saas-inventory/shared';
+import { TenantSettingsRepository } from '../../administration/tenant-settings/tenant-settings.repository';
+import { DEFAULT_TIMEZONE } from '../../administration/tenant-settings/tenant-settings.service';
 import { AUTH_CONFIG, type AuthConfig } from '../../common/config/auth-config';
 import { isSelectionTokenPayload, type SelectionTokenPayload } from '../../common/tokens/access-token-payload';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
@@ -39,6 +41,10 @@ export interface AuthenticatedUserView {
   fullName: string;
   status: string;
   permissions: string[];
+  /** The active tenant's IANA timezone (`tenant_settings.timezone`, `'UTC'` when no row exists yet
+   * — F18-01, closes `GAP-TZ-VISIBILITY`: every session-issuing response now carries this, not just
+   * `GET /administration/tenant-settings` (which stays gated on `administration.settings.view`). */
+  timezone: string;
 }
 
 export interface IssuedSession {
@@ -103,8 +109,20 @@ export class AuthService {
     private readonly refreshTokenService: RefreshTokenService,
     private readonly csrfTokenService: CsrfTokenService,
     private readonly jwtService: JwtService,
+    private readonly tenantSettingsRepository: TenantSettingsRepository,
     @Inject(AUTH_CONFIG) private readonly authConfig: AuthConfig,
   ) {}
+
+  /** `tenant_settings.timezone` for `tenantId`, defaulting exactly like
+   * `TenantSettingsService.getEffective` does for a tenant that has never written its own row
+   * (F18-01). Read-only, no permission check — timezone is deliberately not gated the way the rest
+   * of tenant settings is (`GAP-TZ-VISIBILITY`: every authenticated tenant member may know their
+   * own tenant's timezone; only business hours / write access stay behind
+   * `administration.settings.*`). */
+  private async resolveTenantTimezone(tx: TenantTransaction, tenantId: string): Promise<string> {
+    const row = await this.tenantSettingsRepository.find(tx, tenantId);
+    return row?.timezone ?? DEFAULT_TIMEZONE;
+  }
 
   /**
    * Self-service registration = a brand-new tenant + its first admin `users` row (unchanged) +
@@ -281,6 +299,7 @@ export class AuthService {
       }
       await this.refreshTokensRepository.revoke(tx, existing.tenantId, existing.id);
       const permissions = await this.rolesRepository.effectivePermissionsForUser(tx, user.id);
+      const timezone = await this.resolveTenantTimezone(tx, existing.tenantId);
       const view: AuthenticatedUserView = {
         id: user.id,
         identityId: membership.identityId,
@@ -290,6 +309,7 @@ export class AuthService {
         fullName: user.fullName,
         status: user.status,
         permissions,
+        timezone,
       };
       return this.issueSessionTokens(tx, view, meta, existing.id);
     });
@@ -322,6 +342,7 @@ export class AuthService {
         throw invalidSession();
       }
       const permissions = await this.rolesRepository.effectivePermissionsForUser(tx, user.id);
+      const timezone = await this.resolveTenantTimezone(tx, tenantId);
       return {
         id: user.id,
         identityId,
@@ -331,6 +352,7 @@ export class AuthService {
         fullName: user.fullName,
         status: user.status,
         permissions,
+        timezone,
       };
     });
   }
@@ -348,6 +370,7 @@ export class AuthService {
         return undefined;
       }
       const permissions = await this.rolesRepository.effectivePermissionsForUser(tx, user.id);
+      const timezone = await this.resolveTenantTimezone(tx, membership.tenantId);
       const view: AuthenticatedUserView = {
         id: user.id,
         identityId: membership.identityId,
@@ -357,6 +380,7 @@ export class AuthService {
         fullName: user.fullName,
         status: user.status,
         permissions,
+        timezone,
       };
       return this.issueSessionTokens(tx, view, meta);
     });

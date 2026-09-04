@@ -26,9 +26,9 @@
 | 5 | [`GAP-ORDERS-LOCATION`](#gap-orders-location) | decision → F18 | Sales history, Order detail, Home "orders today" |
 | 6 | [`GAP-NOTIF-STATUS`](#gap-notif-status) | status half **RESOLVED (F17-10)**; list-level deferred | Order detail, Sales history |
 | 7 | [`GAP-MULTI-STATUS`](#gap-multi-status) | F17-additive — worked around in F17-12 (2 parallel GETs per rollup) | Home tiles, Transfers/Returns/Imports tabs |
-| 8 | [`GAP-HOME-DATE-TZ`](#gap-home-date-tz) | PARTIALLY RESOLVED (F17-02 tz config, F17-12 tz→UTC compute); per-role visibility still open | Home, any date filter |
-| 8b | [`GAP-TZ-VISIBILITY`](#gap-tz-visibility) | OPEN — F17-12 degraded (option c); needs backend decision | Home date tiles for non-Administrador roles |
-| 9 | [`GAP-DATE-SEMANTICS`](#gap-date-semantics) | decision | Sales history date filter |
+| 8 | [`GAP-HOME-DATE-TZ`](#gap-home-date-tz) | ~~PARTIALLY RESOLVED~~ **RESOLVED (F18-01)** | Home, any date filter |
+| 8b | [`GAP-TZ-VISIBILITY`](#gap-tz-visibility) | ~~OPEN~~ **RESOLVED (F18-01)** — `timezone` on `GET /auth/me`, ungated | Home date tiles for non-Administrador roles |
+| 9 | [`GAP-DATE-SEMANTICS`](#gap-date-semantics) | ~~decision~~ **RATIFIED (F18-01)** for new FASE 18 endpoints — `GET /orders` unchanged | Sales history date filter |
 | 10 | [`GAP-MOVEMENTS-DATE-FILTER`](#gap-movements-date-filter) | F17-additive | Movements, Kardex |
 | 11 | [`GAP-SEARCH`](#gap-search) | F17-additive | Products, Sales history |
 | 12 | [`GAP-SORT`](#gap-sort) | F17-additive | every list |
@@ -343,44 +343,75 @@ only in the default roles). Home's per-role date computation (F17-12) needs it f
 operational role. **F17-12 / decision** — see `GAP-HOME-DATE-TZ` above for the options. F17-02
 records it; it needs a backend decision (recommended: `timezone` on `GET /auth/me`).
 
-**F17-12 (2026-09) — OPEN, unchanged; Home degrades option (c).** F17-12 is frontend-only and did
-not add `timezone` to `GET /auth/me`. The single date-dependent Home tile ("Orders confirmed
-today") is shown as a real number only for a caller who holds `administration.settings.view` (so
-`getTenantSettings()` returns the row); every other role sees a `no-timezone` "Not available" state
-with a note pointing here. No browser-timezone fallback. The backend decision is still needed for a
-date-aware Home across all operational roles.
+**F17-12 (2026-09) — was OPEN; Home degraded option (c).** F17-12 was frontend-only and did not add
+`timezone` to `GET /auth/me`. The single date-dependent Home tile ("Orders confirmed today") was
+shown as a real number only for a caller who held `administration.settings.view`; every other role
+saw a `no-timezone` "Not available" state with a note pointing here. No browser-timezone fallback.
 
-**F17-08 (2026-09) — not affected.** `GAP-HOME-DATE-TZ` / `GAP-TZ-VISIBILITY` concern Home date
-tiles and the Sales history date picker. F17-08 builds neither — New Sale, customers and the
-read-only order detail have no date-range control and compute no "today"/"this month". The order
-DTO's `createdFrom`/`createdTo` filters are left unused. These gaps stay for F17 Home / Sales
-history phases.
+**RESOLVED — F18-01 (2026-09).** `timezone` is now on `CurrentUserResponseDto`
+(`apps/api/src/auth/dto/auth-session-response.dto.ts`) — populated in `AuthService` (`me`,
+`refresh`, and `issueTenantSession`, used by login + select-tenant) via a new
+`resolveTenantTimezone(tx, tenantId)` helper that reads `tenant_settings` through
+`TenantSettingsRepository` (added as a provider to `AuthModule`, the same "reuse the repository
+class directly" convention `AdministrationModule` already uses for `TenantsPlatformRepository` —
+no module-level import cycle either way), defaulting to `'UTC'` exactly like
+`TenantSettingsService.getEffective` does for a tenant with no row yet (`DEFAULT_TIMEZONE`,
+exported from `tenant-settings.service.ts` so the default is never duplicated). **No permission
+check** — every authenticated tenant member may know their own tenant's timezone; only writing it
+(or reading business hours) stays behind `administration.settings.*`. Proven by two new
+`auth-flow.integration.test.ts` cases: a fresh tenant's `/auth/me` timezone defaults to `'UTC'`,
+and two tenants each see only their own timezone after `PATCH /administration/tenant-settings` (no
+cross-tenant leak). The frontend `Session` type gained the matching `timezone: string` field.
 
-**F17-12 (2026-09) — STILL OPEN; Home ships one date tile, degraded honestly.** The computation
-half is solved: `lib/home/tenant-day.ts` `tenantStartOfDayUtc(timeZone, now)` turns
+**F17-08 (2026-09) — not affected at the time.** `GAP-HOME-DATE-TZ` / `GAP-TZ-VISIBILITY` concerned
+Home date tiles and the Sales history date picker. F17-08 built neither — New Sale, customers and
+the read-only order detail have no date-range control and compute no "today"/"this month". The
+order DTO's `createdFrom`/`createdTo` filters are left unused; unaffected by the F18-01 resolution
+above (no F17-08 screen consumes `session.timezone`).
+
+**F17-12 (2026-09) — was OPEN; Home shipped one date tile, degraded honestly.** The computation
+half was solved: `lib/home/tenant-day.ts` `tenantStartOfDayUtc(timeZone, now)` turns
 `tenant_settings.timezone` into the UTC instant of the tenant's local midnight using only the
 platform `Intl` API (two-pass DST correction, UTC fallback for an unknown zone, never `new Date()`
 interpreting a business period). It feeds **only** `GET /orders?createdFrom=` (a `>=` lower bound,
 so the unresolved `createdTo` inclusive/exclusive question — `GAP-DATE-SEMANTICS` — never bites).
-The **visibility** half is unsolved and cannot be solved in a frontend-only phase: the timezone is
-still readable only with `administration.settings.view`. F17-12 takes **option (c)** — the
-"Orders confirmed today" tile renders a real number for a caller who can read the tenant settings
-(`getTenantSettings()` non-null) and otherwise degrades to a `no-timezone` state ("Not available" +
-a one-line note naming `GAP-TZ-VISIBILITY`). It never falls back to the browser timezone, never
-guesses a zone, never shows a wrong "today". Every **other** Home tile is status-based and
-timezone-independent. The recommended fix is unchanged: add `timezone` to `GET /auth/me`.
+The **visibility** half was unsolved in a frontend-only phase: the timezone was readable only with
+`administration.settings.view`. F17-12 took **option (c)** — the "Orders confirmed today" tile
+rendered a real number only for a caller who could read the tenant settings and otherwise degraded
+to a `no-timezone` state.
+
+**RESOLVED — F18-01 (2026-09).** `GET /auth/me` (and every session-issuing response) now carries
+`timezone`, never permission-gated (see `GAP-TZ-VISIBILITY` below). `lib/home/dashboard.ts`'s
+`loadHomeDashboard` takes `session.timezone` directly as a parameter — the `getTenantSettings()`
+call, the `no-timezone` `TileState`, and its degraded note are all removed (dead code once the
+timezone is unconditionally available). Every role now sees a real "Orders confirmed today" count.
+`apps/web/src/lib/home/tenant-day.ts` itself is untouched (same algorithm, same tests, same import
+path) — `apps/api` gets the identical algorithm via a new port, `tenantStartOfDayUtc` in
+`@saas-inventory/shared`, so both apps share one tested source without `apps/web` taking on its
+first runtime dependency on a workspace package.
 
 ### `GAP-DATE-SEMANTICS`
 `api.md` does not document whether `createdFrom`/`createdTo` are inclusive/exclusive. **Decision:**
 confirm the service behaviour (recommend half-open `[from, to)`), document it in `api.md` before
 building the Sales history date picker.
 
-**F17-09 (2026-09) — OPEN, worked around.** The Sales history date filter ships. The two inputs are
-calendar dates; they are sent as an explicit UTC day boundary (`…T00:00:00.000Z` /
+**F17-09 (2026-09) — was OPEN, worked around.** The Sales history date filter ships. The two inputs
+are calendar dates; they are sent as an explicit UTC day boundary (`…T00:00:00.000Z` /
 `…T23:59:59.999Z`) and each field carries a "UTC day start/end" hint so the behaviour is legible
-rather than silently wrong. Tenant-timezone-correct ranges remain `GAP-HOME-DATE-TZ` /
-`GAP-TZ-VISIBILITY`; the inclusive/exclusive boundary question is unresolved — the frontend does
-not compensate for it. No `api.md` change made (F17-09 did not confirm the service behaviour).
+rather than silently wrong.
+
+**RATIFIED — F18-01, for new FASE 18 endpoints only.** `[from, to)` (half-open, `to` exclusive) is
+now the documented, tested convention for every FASE 18 reporting endpoint —
+[api.md](../api.md#date-range-filters-fase-18-reporting-endpoints) /
+[reporting/filters-periods-and-scope.md#period-boundaries](../reporting/filters-periods-and-scope.md#period-boundaries),
+backed by `apps/api/src/common/reporting/date-range.ts` (`toHalfOpenRange`, unit-tested) and
+`ReportDateRangeQueryDto`. **`GET /orders` (Sales History's own filter) is a deliberate exception,
+unchanged**: it keeps its FASE 12 inclusive-both-bounds (`gte`/`lte`) semantics, since F17-09's
+`…T23:59:59.999Z` compensation already relies on it and retroactively changing it would break an
+already-shipped screen. Tenant-timezone-correct *conversion* of a calendar period into either
+convention's UTC range is `GAP-HOME-DATE-TZ` (resolved for the Home tile, F18-01) — Sales History's
+own date picker still sends raw UTC day boundaries, not tenant-timezone-corrected ones (unchanged
+by F18-01, no F17-09 screen code was touched).
 
 ### `GAP-MOVEMENTS-DATE-FILTER`
 `GET /inventory/movements` has only `productVariantId`/`locationId`/`movementType` — **no date
@@ -624,6 +655,6 @@ Observed in F17-03; **no code change made** (F17-03 does not touch the backend).
 | A5 | Approvals permission gate | `.approve` / `.request` / new `.view` | **Decided in F17-09:** `@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')` — no new permission code; matches the service's existing OR check and the two real personas (`GAP-APPROVALS-PERMISSION`) |
 | A6 | Notification-status contract shape | read-only projection + requeue endpoint | **F17-10:** read-only projection built (`GET /orders/:id/notifications`, no migration); requeue deferred as `GAP-NOTIF-RETRY-BACKEND` (needs a migration + permission + ADR) |
 | A7 | Roles screen scope | read-only vs "coming soon" placeholder | Read-only view of the fixed catalogue (`GAP-ROLE-CRUD`) |
-| A8 | Date-filter boundary semantics | inclusive vs half-open | Half-open `[from, to)`, document in `api.md` (`GAP-DATE-SEMANTICS`) |
+| A8 | Date-filter boundary semantics | inclusive vs half-open | **Decided in F18-01:** half-open `[from, to)` for new FASE 18 endpoints, documented in `api.md`; `GET /orders` keeps its pre-existing inclusive-both-bounds semantics unchanged (`GAP-DATE-SEMANTICS`) |
 | A9 | Home revenue tile | client-side sum (small tenants) vs defer to F18 | Defer to F18; F17 Home shows counts/queues only |
 | A10 | Suspended-tenant UX | per-screen 403 vs shell-level state | Shell-level state (`GAP-SUSPENDED-TENANT-UX`) |

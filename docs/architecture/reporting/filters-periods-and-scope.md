@@ -49,26 +49,56 @@ by role) is a FASE 18 read-side concern.
 
 ### Period boundaries
 
-- **`orders` is filterable by `createdFrom` / `createdTo`** (`IsDateString` — ISO-8601). The
-  service comparison semantics (inclusive/exclusive of the bounds) are **not documented in
-  api.md**; F17-00 / FASE 18 must pin them (recommend: `from` inclusive, `to` exclusive,
-  half-open `[from, to)`).
+**RATIFIED — F18-01.** Every new FASE 18 reporting endpoint uses half-open **`[from, to)`**: `from`
+is an inclusive lower bound, `to` is an exclusive upper bound. Enforced in exactly one place —
+`toHalfOpenRange()` (`apps/api/src/common/reporting/date-range.ts`), which returns `{ gte, lt }`
+(never `lte`) for a repository query to apply — and paired with the reusable
+`ReportDateRangeQueryDto` (`from?`/`to?`, `@IsDateString()`) new report DTOs extend. Unit-tested
+(`date-range.spec.ts`) against the exact boundary cases: a row at `to` is excluded, a row at `from`
+is included.
+
+**Explicit, deliberate exception:** `GET /orders` (`apps/api/src/sales/repositories/orders.repository.ts`)
+keeps its pre-existing, already-shipped **inclusive-both-bounds** semantics (`gte`/`lte` on
+`createdFrom`/`createdTo`) — it is a FASE 12 SALES operational filter, not a FASE 18 reporting
+endpoint, and the F17-09 Sales History screen already compensates for it (sending an explicit
+`...T23:59:59.999Z` upper bound). Retroactively changing `GET /orders`'s comparison operators would
+be a breaking change to an already-tested F17 screen — out of scope for a foundations-only phase.
+New FASE 18 endpoints never inherit this exception; they use the half-open contract above.
+
 - `orders` has **only `created_at`** — no `confirmed_at`. "Revenue for June" therefore means
   "orders *created* in June that are now `confirmed`", which is a small but real semantic caveat
   (an order created 30 June, confirmed 2 July, counts in June). If "confirmed in period" is
-  required, that is a **gap** — no timestamp supports it (`GAP-ORDER-CONFIRMED-AT`).
+  required, that is a **gap** — no timestamp supports it (`GAP-ORDER-CONFIRMED-AT`, still open,
+  deferred to the sub-prompt that first needs it — no backfill in F18-01).
 - Point-in-time KPIs (stock, queue depth) have **no history** — no snapshot table
   (`GAP-SNAPSHOTS`). "as of last month" is not reconstructable.
+- **Missing `from`/`to`:** `ReportDateRangeQueryDto` leaves both optional; each report's own DTO
+  decides whether either is required and what its default means (e.g. "all time", "start of the
+  current month") — not centrally mandated, matching api.md's "no generic passthrough" convention.
+- **Max range:** not imposed centrally — no evidence yet of a real performance need to cap it. Each
+  F18-0X sub-prompt evaluates a limit against that specific report's actual query cost when it is
+  built, rather than inventing an arbitrary number here.
 
 ### Timezone
 
-- The **only** tenant timezone source is `tenant_settings.timezone` (IANA name, e.g.
-  `America/Bogota`), via `GET /administration/tenant-settings` (`administration.settings.view`).
-  Default `'UTC'` when unset.
-- All DB timestamps are `timestamptz` (stored UTC). "Today" / "this month" for a tenant must be
-  computed against `tenant_settings.timezone`, then converted to a UTC range for the
-  `createdFrom`/`createdTo` query. No endpoint does this conversion today — the client (or the
-  FASE 18 read-side) must.
+**RESOLVED (visibility) — F18-01.** `GET /auth/me` (and every other session-issuing response —
+login, select-tenant, refresh) now carries `timezone` (`tenant_settings.timezone`, `'UTC'` default),
+resolved server-side from the caller's own authenticated tenant, **never permission-gated** —
+closes `GAP-TZ-VISIBILITY`. `GET /administration/tenant-settings` (`administration.settings.view`)
+remains the only way to *write* the timezone or read business hours; it is unchanged.
+
+- The source of truth is still, and only, `tenant_settings.timezone` (IANA name, e.g.
+  `America/Bogota`). Default `'UTC'` when unset — unchanged, no migration, no backfill.
+- All DB timestamps are `timestamptz` (stored UTC). "Today" / "this month" for a tenant is computed
+  against the tenant's IANA zone, then converted to a UTC range for the query. The conversion
+  algorithm (DST-safe, `Intl`-only, two-pass midnight correction) now has one shared, tested source
+  — `tenantStartOfDayUtc()` in `@saas-inventory/shared` (`packages/shared/src/index.ts`) — ported
+  from `apps/web/src/lib/home/tenant-day.ts` (F17-12, left untouched and still the one `apps/web`
+  imports, since `apps/web` does not otherwise depend on `@saas-inventory/shared` at runtime) so
+  `apps/api` and any future backend reporting endpoint use the exact same algorithm rather than a
+  second, potentially-drifting implementation. Only "start of day" exists so far — "start of week" /
+  "start of month" are added by whichever F18-0X sub-prompt first needs them, not invented ahead of
+  that need.
 - `pg-verify` runs in `America/Bogota` locale; production timezone is deployment config, not a
   reporting input.
 
@@ -124,7 +154,7 @@ Identity → active Membership → active Tenant → active User → (if locatio
 | Inventory balances / movements / adjustments | tenant | **yes** — a location-restricted user sees only assigned locations | `inventory.view` / `inventory.adjust` |
 | Transfers | tenant | **yes** — source/destination location authorization | `inventory.view` / `inventory.transfers.*` |
 | Customers | tenant | none | `sales.customers.view` |
-| Orders / order lines | tenant | **`orders.location_id` exists but the list endpoint does not scope by it** — F17-00 must decide whether order visibility is location-scoped | `sales.orders.view` |
+| Orders / order lines | tenant | **`orders.location_id` exists but the list endpoint does not scope by it** — deferred by F18-01 (see below), `GAP-ORDERS-LOCATION` still open | `sales.orders.view` |
 | Price approvals | tenant | none | *(GET undeclared)* / `pricing.discount.approve` to act |
 | Returns | tenant | **yes** for disposition location | `sales.returns.view` / `inventory.returns.manage` |
 | Imports | tenant | `default_location_id` is authorized at validation; the job list is not location-scoped | `import.execute` |
@@ -143,6 +173,19 @@ stripped after the fact:
 
 A report that would expose a gated field to a caller without the permission is a **defect**, not a
 "filter it in the UI" situation.
+
+### `GAP-ORDERS-LOCATION` — deferred by F18-01, not resolved
+
+F18-01 does **not** implement `locationId` filtering/scoping on `GET /orders` — that decision
+(should order visibility respect `user_location_assignments` like the rest of INVENTORY, or stay
+tenant-wide) is left open, per its own no-implementation mandate. Consequence for F18-02+:
+
+- General sales reports (revenue/ticket/by-product/by-customer, grouped by day/week/month) stay
+  **tenant-wide** — they do not need `locationId` and are not blocked by this gap.
+- `REP-SALES-BY-LOCATION` specifically **stays blocked** until the decision above is made — it
+  cannot correctly exist without first deciding whether it is TENANT-WIDE (grouping visible orders
+  by their `location_id`, no scoping change) or LOCATION-SCOPED (also restricting *which* orders a
+  location-restricted caller can even see, extending ADR-0024 to reads).
 
 ---
 
@@ -166,6 +209,19 @@ Default roles: **Administrador** (all), **Supervisor** (approvals, transfers, co
 visibility, sales, returns), **Vendedor** (sell + request discounts, floor visibility, no cost),
 **Bodega** (transfers, adjustments, returns processing, view catalog/inventory).
 
-**No reporting-specific permission exists.** Reporting reuses the domain `*.view` permissions. A
-`reports.*` family (and whether `KPI-INV-VALUE` needs `pricing.cost.view`, whether a dashboard
-needs its own gate) is a FASE 18 decision.
+**RATIFIED — F18-01.** No `reports.*`/`analytics.*` permission family is introduced. A report
+endpoint reuses the `*.view` permission of the domain it reports on — e.g. a future
+`GET /reports/sales-summary` gates on `sales.orders.view`, exactly like `GET /orders` — the same
+"module.resource.action" catalogue every migration since `0014` has followed, no new code. This is
+confirmed against the real, current 39-entry catalogue in `packages/shared/src/index.ts`
+`DEFAULT_ROLE_TEMPLATES` (not just this doc) — no `reports.*`/`analytics.*` code exists there.
+
+A dashboard that combines **multiple** domains in one screen (e.g. a future executive Home mixing
+sales + inventory + returns tiles) is the one case where reusing a single domain permission would
+be wrong — that dashboard's own sub-prompt decides then whether it needs a dedicated gate
+(documented, justified by the specific mixing, never invented speculatively here). No such
+dashboard is built in F18-01.
+
+`pricing.cost.view`/`pricing.floor.view` continue to gate the specific gated fields
+(`min_price`/`unit_cost_snapshot` and anything derived from them, e.g. a future margin report)
+exactly as they do today — unchanged by this decision.

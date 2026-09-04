@@ -41,18 +41,16 @@ describe('HomeKpiCard', () => {
     expect(screen.getByText(/not available/i)).toBeInTheDocument();
   });
 
-  it('shows the timezone limitation note for a no-timezone tile', () => {
+  it('shows a custom note for an unavailable tile when one is provided', () => {
     render(
       <HomeKpiCard
         tile={baseTile({
-          key: 'orders-today',
-          label: 'Orders confirmed today',
-          state: 'no-timezone',
-          note: 'Needs the company-settings permission to read the tenant timezone (GAP-TZ-VISIBILITY).',
+          state: 'unavailable',
+          note: 'Something specific went wrong.',
         })}
       />,
     );
-    expect(screen.getByText(/GAP-TZ-VISIBILITY/)).toBeInTheDocument();
+    expect(screen.getByText('Something specific went wrong.')).toBeInTheDocument();
   });
 });
 

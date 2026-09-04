@@ -14,8 +14,11 @@ export interface AuditMeta {
 
 /** System defaults — used when a tenant has never written its own row (§10's "effective = tenant
  * override ?? system default"). `[]` business hours reads as "no restriction configured", the
- * same meaning an absent row has today (there was never a hard requirement to configure this). */
-const DEFAULT_TIMEZONE = 'UTC';
+ * same meaning an absent row has today (there was never a hard requirement to configure this).
+ * `DEFAULT_TIMEZONE` is exported so AuthService (F18-01, `timezone` on `GET /auth/me`) resolves
+ * exactly the same default a missing `tenant_settings` row would produce here — never a second,
+ * potentially-drifting `'UTC'` literal. */
+export const DEFAULT_TIMEZONE = 'UTC';
 const DEFAULT_BUSINESS_HOURS: BusinessHoursEntryDto[] = [];
 
 function toResponse(row: TenantSettingsRow | undefined): TenantSettingsResponseDto {

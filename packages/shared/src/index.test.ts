@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateId, isNonNullable, sleep } from './index';
+import { generateId, isNonNullable, sleep, tenantStartOfDayUtc } from './index';
 
 describe('shared package', () => {
   it('isNonNullable filters null and undefined', () => {
@@ -25,6 +25,32 @@ describe('shared package', () => {
       expect(new Set(ids).size).toBe(ids.length);
       const sorted = [...ids].sort();
       expect(ids).toEqual(sorted);
+    });
+  });
+
+  describe('tenantStartOfDayUtc (F18-01)', () => {
+    it('returns the same UTC day boundary for a UTC tenant', () => {
+      const now = new Date('2026-06-15T14:23:00.000Z');
+      expect(tenantStartOfDayUtc('UTC', now)).toBe('2026-06-15T00:00:00.000Z');
+    });
+
+    it('shifts start-of-day back for a positive-offset zone (Asia/Kolkata, +05:30)', () => {
+      const now = new Date('2026-06-15T02:00:00.000Z');
+      expect(tenantStartOfDayUtc('Asia/Kolkata', now)).toBe('2026-06-14T18:30:00.000Z');
+    });
+
+    it('accounts for DST in a negative-offset zone (America/New_York)', () => {
+      expect(tenantStartOfDayUtc('America/New_York', new Date('2026-06-15T02:00:00.000Z'))).toBe(
+        '2026-06-14T04:00:00.000Z',
+      );
+      expect(tenantStartOfDayUtc('America/New_York', new Date('2026-01-15T02:00:00.000Z'))).toBe(
+        '2026-01-14T05:00:00.000Z',
+      );
+    });
+
+    it('falls back to UTC midnight for an unknown zone rather than throwing', () => {
+      const now = new Date('2026-06-15T14:23:00.000Z');
+      expect(tenantStartOfDayUtc('Not/AZone', now)).toBe('2026-06-15T00:00:00.000Z');
     });
   });
 });

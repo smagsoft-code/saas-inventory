@@ -19,6 +19,11 @@ export interface Session {
   /** Effective permission codes for this user in this tenant. The frontend uses these to hide
    * controls the request would be refused anyway — the API stays the authority (CLAUDE.md §7.6). */
   permissions: string[];
+  /** The active tenant's IANA timezone (`'UTC'` default) — F18-01. Unlike
+   * `GET /administration/tenant-settings`, always present regardless of the caller's permissions;
+   * closes `GAP-TZ-VISIBILITY` for any screen that needs to resolve "today"/"this month" in the
+   * tenant's own timezone. */
+  timezone: string;
 }
 
 /**

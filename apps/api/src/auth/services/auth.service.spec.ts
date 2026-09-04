@@ -82,6 +82,10 @@ function buildService() {
   };
   const csrfTokenService = { generate: vi.fn().mockReturnValue('csrf-token') };
   const jwtService = { verifyAsync: vi.fn() };
+  // F18-01: resolves the tenant timezone for AuthenticatedUserView. Defaults to "no row" so
+  // resolveTenantTimezone falls back to DEFAULT_TIMEZONE ('UTC'), matching TenantSettingsService's
+  // own default for a tenant that has never written tenant_settings.
+  const tenantSettingsRepository = { find: vi.fn().mockResolvedValue(undefined) };
   const authConfig = { jwtSecret: 'test-secret' };
 
   const service = new AuthService(
@@ -98,6 +102,7 @@ function buildService() {
     refreshTokenService as never,
     csrfTokenService as never,
     jwtService as never,
+    tenantSettingsRepository as never,
     authConfig as never,
   );
 
@@ -116,6 +121,7 @@ function buildService() {
     refreshTokenService,
     csrfTokenService,
     jwtService,
+    tenantSettingsRepository,
   };
 }
 
@@ -335,6 +341,23 @@ describe('AuthService (016-C)', () => {
       const view = await m.service.me('user-a', 'identity-1', 'tenant-a', 'muebles');
       expect(view).not.toHaveProperty('passwordHash');
       expect(view).toMatchObject({ id: 'user-a', identityId: 'identity-1', tenantId: 'tenant-a', tenantSlug: 'muebles' });
+    });
+
+    it('F18-01: defaults timezone to UTC when the tenant has no tenant_settings row', async () => {
+      const m = buildService();
+      m.usersRepository.findById.mockResolvedValue(ACTIVE_USER_A);
+      m.tenantSettingsRepository.find.mockResolvedValue(undefined);
+      const view = await m.service.me('user-a', 'identity-1', 'tenant-a', 'muebles');
+      expect(view.timezone).toBe('UTC');
+      expect(m.tenantSettingsRepository.find).toHaveBeenCalledWith(expect.anything(), 'tenant-a');
+    });
+
+    it('F18-01: returns the real tenant_settings.timezone when a row exists', async () => {
+      const m = buildService();
+      m.usersRepository.findById.mockResolvedValue(ACTIVE_USER_A);
+      m.tenantSettingsRepository.find.mockResolvedValue({ timezone: 'America/Bogota' });
+      const view = await m.service.me('user-a', 'identity-1', 'tenant-a', 'muebles');
+      expect(view.timezone).toBe('America/Bogota');
     });
 
     it('rejects if the user was disabled/deleted since the token was issued', async () => {

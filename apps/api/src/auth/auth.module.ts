@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { getAuthConfig } from '../common/config/auth-config';
+import { TenantSettingsRepository } from '../administration/tenant-settings/tenant-settings.repository';
 import { AuthController } from './auth.controller';
 import { CsrfTokenService } from './csrf/csrf-token.service';
 import { PasswordService } from './password/password.service';
@@ -48,6 +49,12 @@ const authConfig = getAuthConfig();
     TenantsPlatformRepository,
     PlatformAdminsRepository,
     PlatformRefreshTokensRepository,
+    // Reused directly as a provider (F18-01, `timezone` on every session-issuing response — see
+    // AuthService.resolveTenantTimezone) rather than importing AdministrationModule, the same
+    // cross-module convention administration.module.ts itself already uses for
+    // TenantsPlatformRepository — no module-level dependency edge between AuthModule and
+    // AdministrationModule either way.
+    TenantSettingsRepository,
   ],
 })
 export class AuthModule {}

@@ -14,7 +14,7 @@
 | App shell, sidebar, header, account menu | ✅ | | |
 | Login + company selection + session/refresh | ✅ | | (done 016-D) |
 | Register (self-service tenant) | ✅ | | |
-| Operational Home — attention queues + quick actions | ✅ | | `GAP-MULTI-STATUS`, `GAP-HOME-DATE-TZ` |
+| Operational Home — attention queues + quick actions | ✅ | | `GAP-MULTI-STATUS` (`GAP-HOME-DATE-TZ` resolved F18-01) |
 | Home — revenue / ticket KPI numerals | | ✅ | `GAP-SALES-AGGREGATE` (017-A) |
 | Home — inventory-movement chart | | ✅ | `GAP-MOVEMENTS-DATE-FILTER` + aggregation |
 | Home — "Exportar" | | ✅ | `GAP-EXPORT` (017-A) |

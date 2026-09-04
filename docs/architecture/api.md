@@ -100,6 +100,18 @@ This shape is already reflected in `packages/types` (`ApiErrorShape`, from Promp
   (e.g. `?q=`), with the underlying implementation (simple `ILIKE`, Postgres full-text search,
   something else) decided per-endpoint when that endpoint is designed.
 
+### Date-range filters (FASE 18 reporting endpoints)
+
+**RATIFIED — F18-01.** Every FASE 18 read-side reporting endpoint's `from`/`to` query params are a
+half-open **`[from, to)`** period — `from` inclusive, `to` exclusive — both ISO-8601 datetime
+strings already resolved to UTC by the caller. See
+[reporting/filters-periods-and-scope.md#period-boundaries](reporting/filters-periods-and-scope.md#period-boundaries)
+for the full contract (the reusable `ReportDateRangeQueryDto`/`toHalfOpenRange()` helpers, the
+per-endpoint default rules, and the explicit exception below) — not duplicated here.
+
+`GET /orders`'s pre-existing `createdFrom`/`createdTo` (SALES, FASE 12) is a deliberate exception:
+it keeps its original inclusive-both-bounds semantics, unchanged by F18-01.
+
 ## Idempotency
 
 State-changing endpoints where a client retry could otherwise duplicate an effect (most notably

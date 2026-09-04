@@ -22,7 +22,7 @@ export default async function HomePage(): Promise<React.JSX.Element> {
   }
 
   const checker = createPermissionChecker(session.permissions);
-  const dashboard = await loadHomeDashboard(checker);
+  const dashboard = await loadHomeDashboard(checker, session.timezone);
 
   const visibleTiles = dashboard.tiles.filter((tile) => tile.state !== 'no-access');
   const quickActions = HOME_QUICK_ACTIONS.filter((action) => checker.can(action.permission));

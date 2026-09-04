@@ -8,7 +8,6 @@ import { listReturns } from '../sales/returns';
 import { listTransfers } from '../inventory/transfers';
 import { listImportJobs } from '../imports/imports';
 import { listProducts } from '../catalog/products';
-import { getTenantSettings } from '../tenant/tenant-settings';
 import { loadHomeDashboard } from './dashboard';
 
 vi.mock('../sales/orders', () => ({ listOrders: vi.fn() }));
@@ -17,7 +16,6 @@ vi.mock('../sales/returns', () => ({ listReturns: vi.fn() }));
 vi.mock('../inventory/transfers', () => ({ listTransfers: vi.fn() }));
 vi.mock('../imports/imports', () => ({ listImportJobs: vi.fn() }));
 vi.mock('../catalog/products', () => ({ listProducts: vi.fn() }));
-vi.mock('../tenant/tenant-settings', () => ({ getTenantSettings: vi.fn() }));
 
 const mOrders = vi.mocked(listOrders);
 const mApprovals = vi.mocked(listPriceApprovals);
@@ -25,7 +23,6 @@ const mReturns = vi.mocked(listReturns);
 const mTransfers = vi.mocked(listTransfers);
 const mImports = vi.mocked(listImportJobs);
 const mProducts = vi.mocked(listProducts);
-const mSettings = vi.mocked(getTenantSettings);
 
 function page<T>(data: T[], total = data.length): { data: T[]; meta: { page: number; pageSize: number; total: number; totalPages: number } } {
   return { data, meta: { page: 1, pageSize: 20, total, totalPages: 1 } };
@@ -54,7 +51,6 @@ beforeEach(() => {
   mTransfers.mockResolvedValue(page([]) as never);
   mImports.mockResolvedValue(page([]) as never);
   mProducts.mockResolvedValue(page([]) as never);
-  mSettings.mockResolvedValue({ timezone: 'UTC', businessHours: [], updatedAt: null });
 });
 
 describe('loadHomeDashboard', () => {
@@ -66,7 +62,7 @@ describe('loadHomeDashboard', () => {
           : (page([], 0) as never),
       ),
     );
-    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS));
+    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC');
     const pending = tile(dash, 'pending-orders');
     expect(pending.state).toBe('ready');
     expect(pending.count).toBe(3);
@@ -76,7 +72,7 @@ describe('loadHomeDashboard', () => {
   });
 
   it('treats total 0 as a real zero, not an error', async () => {
-    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS));
+    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC');
     const pending = tile(dash, 'pending-orders');
     expect(pending.state).toBe('ready');
     expect(pending.count).toBe(0);
@@ -84,7 +80,7 @@ describe('loadHomeDashboard', () => {
 
   it('degrades a single failing endpoint to "unavailable" without touching the others', async () => {
     mApprovals.mockRejectedValue(new Error('boom'));
-    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS));
+    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC');
     expect(tile(dash, 'pending-approvals').state).toBe('unavailable');
     expect(tile(dash, 'pending-approvals').count).toBe(0);
     expect(tile(dash, 'pending-orders').state).toBe('ready');
@@ -92,12 +88,12 @@ describe('loadHomeDashboard', () => {
 
   it('maps a 403 on an endpoint to no-access (not an error)', async () => {
     mReturns.mockRejectedValue(new ApiError(403, 'FORBIDDEN', 'nope', undefined));
-    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS));
+    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC');
     expect(tile(dash, 'returns').state).toBe('no-access');
   });
 
   it('does not fire a request for a module the user lacks permission for', async () => {
-    const dash = await loadHomeDashboard(createPermissionChecker(['sales.orders.view']));
+    const dash = await loadHomeDashboard(createPermissionChecker(['sales.orders.view']), 'UTC');
     expect(mImports).not.toHaveBeenCalled();
     expect(mTransfers).not.toHaveBeenCalled();
     expect(mProducts).not.toHaveBeenCalled();
@@ -113,7 +109,7 @@ describe('loadHomeDashboard', () => {
           : (page([], 3) as never),
       ),
     );
-    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS));
+    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC');
     expect(mReturns).toHaveBeenCalledWith(expect.objectContaining({ status: 'requested' }));
     expect(mReturns).toHaveBeenCalledWith(expect.objectContaining({ status: 'inspecting' }));
     for (const call of mReturns.mock.calls) {
@@ -128,28 +124,24 @@ describe('loadHomeDashboard', () => {
         ? Promise.resolve(page([{ id: 'r1', reason: 'x' }], 4) as never)
         : Promise.reject(new Error('boom')),
     );
-    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS));
+    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC');
     expect(tile(dash, 'returns').state).toBe('ready');
     expect(tile(dash, 'returns').count).toBe(4);
   });
 
-  it('degrades orders-today to no-timezone when the tenant timezone is not readable', async () => {
-    mSettings.mockResolvedValue(null);
-    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS));
-    const today = tile(dash, 'orders-today');
-    expect(today.state).toBe('no-timezone');
-    expect(today.note).toMatch(/GAP-TZ-VISIBILITY/);
-    // no confirmed+createdFrom request was attempted
+  it('does not fire the orders-today request when the caller cannot view orders', async () => {
+    const dash = await loadHomeDashboard(createPermissionChecker([]), 'UTC');
+    expect(tile(dash, 'orders-today').state).toBe('no-access');
     expect(mOrders).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'confirmed' }));
   });
 
-  it('computes orders-today from the tenant timezone when it is readable', async () => {
-    mSettings.mockResolvedValue({ timezone: 'America/New_York', businessHours: [], updatedAt: null });
+  it('computes orders-today from the given tenant timezone (F18-01, session.timezone)', async () => {
     mOrders.mockImplementation((q) =>
       Promise.resolve(q?.status === 'confirmed' ? (page([], 7) as never) : (page([], 0) as never)),
     );
     const dash = await loadHomeDashboard(
       createPermissionChecker(ALL_PERMS),
+      'America/New_York',
       new Date('2026-06-15T02:00:00.000Z'),
     );
     expect(mOrders).toHaveBeenCalledWith(
@@ -159,7 +151,7 @@ describe('loadHomeDashboard', () => {
   });
 
   it('never sends a tenantId anywhere', async () => {
-    await loadHomeDashboard(createPermissionChecker(ALL_PERMS));
+    await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC');
     const allCalls = JSON.stringify([
       mOrders.mock.calls,
       mApprovals.mock.calls,
@@ -177,7 +169,7 @@ describe('loadHomeDashboard', () => {
         ? Promise.reject(new Error('boom'))
         : Promise.resolve(page([], 1) as never),
     );
-    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS));
+    const dash = await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC');
     expect(tile(dash, 'imports').state).toBe('unavailable');
   });
 });

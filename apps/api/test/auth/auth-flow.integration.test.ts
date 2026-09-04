@@ -120,6 +120,60 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('auth flow (integration)', 
     expect(unauthed.statusCode).toBe(401);
   });
 
+  it('F18-01: GET /auth/me carries the tenant timezone, defaulting to UTC with no tenant_settings row', async () => {
+    const session = await registerTenant('Default Timezone Co', 'admin@default-tz-flow-test.example');
+
+    const authed = await inject({
+      method: 'GET',
+      url: '/api/v1/auth/me',
+      headers: { cookie: cookieHeader({ access_token: session.accessToken }) },
+    });
+    expect(authed.statusCode).toBe(200);
+    const body = JSON.parse(authed.body) as { timezone: string };
+    expect(body.timezone).toBe('UTC');
+  });
+
+  it('F18-01: GET /auth/me reflects a tenant timezone set via PATCH /administration/tenant-settings, isolated per tenant', async () => {
+    const tenantA = await registerTenant('Bogota Timezone Co', 'admin@bogota-tz-flow-test.example');
+    const tenantB = await registerTenant('Tokyo Timezone Co', 'admin@tokyo-tz-flow-test.example');
+
+    const patchA = await inject({
+      method: 'PATCH',
+      url: '/api/v1/administration/tenant-settings',
+      payload: { timezone: 'America/Bogota' },
+      headers: {
+        cookie: cookieHeader({ access_token: tenantA.accessToken, csrf_token: tenantA.csrfToken }),
+        'x-csrf-token': tenantA.csrfToken,
+      },
+    });
+    expect(patchA.statusCode).toBe(200);
+
+    const patchB = await inject({
+      method: 'PATCH',
+      url: '/api/v1/administration/tenant-settings',
+      payload: { timezone: 'Asia/Tokyo' },
+      headers: {
+        cookie: cookieHeader({ access_token: tenantB.accessToken, csrf_token: tenantB.csrfToken }),
+        'x-csrf-token': tenantB.csrfToken,
+      },
+    });
+    expect(patchB.statusCode).toBe(200);
+
+    const meA = await inject({
+      method: 'GET',
+      url: '/api/v1/auth/me',
+      headers: { cookie: cookieHeader({ access_token: tenantA.accessToken }) },
+    });
+    const meB = await inject({
+      method: 'GET',
+      url: '/api/v1/auth/me',
+      headers: { cookie: cookieHeader({ access_token: tenantB.accessToken }) },
+    });
+
+    expect((JSON.parse(meA.body) as { timezone: string }).timezone).toBe('America/Bogota');
+    expect((JSON.parse(meB.body) as { timezone: string }).timezone).toBe('Asia/Tokyo');
+  });
+
   it('016-C: login is email+password only; a wrong password and an unknown email fail with the same generic message', async () => {
     await registerTenant('Gamma LLC', 'admin@gamma-flow-test.example');
 

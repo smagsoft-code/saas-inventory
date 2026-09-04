@@ -27,6 +27,74 @@ export function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Tenant-timezone date math (F18-01 reporting foundation). The only correct source for "today"/
+ * "this month" on a tenant is `tenant_settings.timezone` (surfaced on every session response since
+ * F18-01, `GAP-TZ-VISIBILITY`) — never the server's clock, never a client's. This turns an IANA
+ * zone into the UTC instant of that zone's local midnight, ready to feed a `createdFrom`-shaped
+ * half-open lower bound (`toHalfOpenRange`, `apps/api/src/common/reporting/date-range.ts`).
+ *
+ * Implementation uses only the platform `Intl` API — no dependency, no `new Date()` interpretation
+ * of a business period — so it runs identically in `apps/api` (Node) and `apps/web` (Node/browser).
+ * It never throws: an unknown/blank zone falls back to UTC midnight so a caller can still render
+ * *something*. Ported here from the algorithm `apps/web/src/lib/home/tenant-day.ts` proved first
+ * (F17-12) — that file's own `tenantStartOfDayUtc` is untouched (a working, already-tested F17
+ * screen depends on its exact import path); this is the same algorithm, now available to
+ * `apps/api` and any future reporting caller through one shared, tested source, since packages/api
+ * cannot import from apps/web.
+ */
+function timeZoneOffsetMs(timeZone: string, at: Date): number {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hourCycle: 'h23',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).formatToParts(at);
+  const get = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
+  const wallClockAsUtc = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour'),
+    get('minute'),
+    get('second'),
+  );
+  return Math.round((wallClockAsUtc - at.getTime()) / 60_000) * 60_000;
+}
+
+/** The UTC `Date` for `year-month-day 00:00:00` as a wall-clock time in `timeZone`. Two passes so a
+ * DST change between the guessed instant and the real one is corrected (the one genuinely ambiguous
+ * hour per year is close enough for a "today" count). */
+function zonedMidnightToUtc(timeZone: string, year: number, month: number, day: number): Date {
+  const wallClockGuess = Date.UTC(year, month - 1, day, 0, 0, 0);
+  let utc = wallClockGuess - timeZoneOffsetMs(timeZone, new Date(wallClockGuess));
+  utc = wallClockGuess - timeZoneOffsetMs(timeZone, new Date(utc));
+  return new Date(utc);
+}
+
+/**
+ * ISO-8601 UTC instant of "start of today" in `timeZone`. `now` is injectable for tests.
+ */
+export function tenantStartOfDayUtc(timeZone: string, now: Date = new Date()): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now);
+    const get = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
+    return zonedMidnightToUtc(timeZone, get('year'), get('month'), get('day')).toISOString();
+  } catch {
+    // Unknown zone — fall back to UTC midnight rather than throw.
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  }
+}
+
+/**
  * The fixed, application-level role template copied into a newly-created tenant's
  * roles/role_permissions at provisioning time — database.md#rbac-roles-permissions: "The template
  * itself lives in application code (or a small static config), not a database table... copying it

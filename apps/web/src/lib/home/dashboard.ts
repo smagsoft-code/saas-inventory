@@ -7,7 +7,6 @@ import { listReturns } from '../sales/returns';
 import { listTransfers } from '../inventory/transfers';
 import { listImportJobs } from '../imports/imports';
 import { listProducts } from '../catalog/products';
-import { getTenantSettings } from '../tenant/tenant-settings';
 import type { Paginated } from '../types/pagination';
 import { tenantStartOfDayUtc } from './tenant-day';
 
@@ -26,7 +25,7 @@ import { tenantStartOfDayUtc } from './tenant-day';
  * Requests are independent and run with `Promise.all` — no N+1, no polling, no waterfall.
  */
 
-export type TileState = 'ready' | 'unavailable' | 'no-access' | 'no-timezone';
+export type TileState = 'ready' | 'unavailable' | 'no-access';
 
 export interface HomeQueueItem {
   id: string;
@@ -89,10 +88,13 @@ function shortId(id: string): string {
   return id.length > 8 ? `${id.slice(0, 8)}…` : id;
 }
 
-/** Loads every Home tile the caller may see. `now`/`checker` are the only inputs — pure enough to
- * unit test with the module helpers mocked. */
+/** Loads every Home tile the caller may see. `timezone` is the active tenant's IANA zone (F18-01,
+ * `session.timezone` from `GET /auth/me` — every role can read it now, closing `GAP-TZ-VISIBILITY`
+ * for this tile); `now`/`checker` are the other inputs — pure enough to unit test with the module
+ * helpers mocked. */
 export async function loadHomeDashboard(
   checker: PermissionChecker,
+  timezone: string,
   now: Date = new Date(),
 ): Promise<HomeDashboard> {
   const can = (code: PermissionCode): boolean => checker.can(code);
@@ -103,23 +105,12 @@ export async function loadHomeDashboard(
   const canImports = can('import.execute');
   const canProducts = can('products.view');
 
-  // "Orders today" needs the tenant timezone, readable only with `administration.settings.view`
-  // (Administrador in the default roles). GAP-TZ-VISIBILITY: F17-12 is frontend-only and cannot add
-  // `timezone` to `GET /auth/me`, so for every other role this tile honestly degrades to
-  // "no-timezone" rather than guessing a zone or using the browser's.
-  const ordersTodayPromise: Promise<Fetched<unknown>> = (async () => {
-    if (!canOrders) {
-      return { state: 'no-access' as const, count: 0, items: [] };
-    }
-    const settings = await getTenantSettings();
-    if (!settings) {
-      return { state: 'no-timezone' as const, count: 0, items: [] };
-    }
-    const createdFrom = tenantStartOfDayUtc(settings.timezone, now);
-    return fetchList(true, () =>
-      listOrders({ status: 'confirmed', createdFrom, page: 1, pageSize: 1 }),
-    );
-  })();
+  // "Orders today" needs the tenant timezone to resolve local midnight (F17-12, `GAP-HOME-DATE-TZ`)
+  // — converted to a UTC `createdFrom` for GET /orders, a `>=` lower bound so the `createdTo`
+  // inclusive/exclusive ambiguity never bites (`GAP-DATE-SEMANTICS`).
+  const ordersTodayPromise: Promise<Fetched<unknown>> = fetchList(canOrders, () =>
+    listOrders({ status: 'confirmed', createdFrom: tenantStartOfDayUtc(timezone, now), page: 1, pageSize: 1 }),
+  );
 
   const [
     pendingOrders,
@@ -198,11 +189,6 @@ export async function loadHomeDashboard(
       count: ordersToday.count,
       actionable: false,
       items: [],
-      ...(ordersToday.state === 'no-timezone'
-        ? {
-            note: 'Needs the company-settings permission to read the tenant timezone (GAP-TZ-VISIBILITY).',
-          }
-        : {}),
     },
     {
       key: 'pending-approvals',

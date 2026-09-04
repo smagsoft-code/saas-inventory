@@ -9,8 +9,8 @@ import type { HomeTile } from '../../lib/home/dashboard';
  * "Needs attention" digest, and quick actions. No data fetching, no state, no `dangerouslySetInnerHTML`.
  *
  * Tile states: `ready` → the real number; `unavailable` → "No disponible" (an endpoint failed —
- * never shown as `0`); `no-timezone` → "No disponible" + the GAP-TZ-VISIBILITY note; `no-access` →
- * the tile is not rendered at all (the page filters those out before calling in).
+ * never shown as `0`, an optional `note` can explain why); `no-access` → the tile is not rendered
+ * at all (the page filters those out before calling in).
  */
 
 function KpiValue({ tile }: { tile: HomeTile }): React.JSX.Element {
@@ -27,7 +27,7 @@ function KpiValue({ tile }: { tile: HomeTile }): React.JSX.Element {
 }
 
 export function HomeKpiCard({ tile }: { tile: HomeTile }): React.JSX.Element {
-  const unavailable = tile.state === 'unavailable' || tile.state === 'no-timezone';
+  const unavailable = tile.state === 'unavailable';
   return (
     <Link
       href={tile.href}

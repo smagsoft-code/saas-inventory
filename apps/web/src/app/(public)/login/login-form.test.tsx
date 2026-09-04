@@ -32,6 +32,7 @@ const SESSION_USER = {
   fullName: 'Admin',
   status: 'active',
   permissions: [] as string[],
+  timezone: 'UTC',
 };
 
 async function renderForm(): Promise<void> {
