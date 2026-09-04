@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, gte, lt } from 'drizzle-orm';
 import { inventoryMovements } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -40,6 +40,10 @@ export class InventoryMovementsRepository {
       movementType?: string | undefined;
       referenceType?: string | undefined;
       referenceId?: string | undefined;
+      /** [occurredGte, occurredLt) — half-open, filtered on `occurred_at` (F18-03,
+       * `GAP-MOVEMENTS-DATE-FILTER`), never `created_at`. */
+      occurredGte?: Date | undefined;
+      occurredLt?: Date | undefined;
     },
   ): Promise<{ rows: InventoryMovementRow[]; total: number }> {
     const conditions = [eq(inventoryMovements.tenantId, tenantId)];
@@ -57,6 +61,12 @@ export class InventoryMovementsRepository {
     }
     if (params.referenceId) {
       conditions.push(eq(inventoryMovements.referenceId, params.referenceId));
+    }
+    if (params.occurredGte) {
+      conditions.push(gte(inventoryMovements.occurredAt, params.occurredGte));
+    }
+    if (params.occurredLt) {
+      conditions.push(lt(inventoryMovements.occurredAt, params.occurredLt));
     }
     const where = and(...conditions);
 

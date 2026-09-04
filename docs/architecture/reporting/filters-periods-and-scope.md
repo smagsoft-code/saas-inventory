@@ -26,7 +26,7 @@ exists but no endpoint filters on it. "Absent" = not modelled.
 | **invoice status** | orders | **Derivable** — `invoice_status` on the row, no param. Moot: never leaves `pending`. |
 | **movement type** | movements | `GET /inventory/movements?movementType=X`. | One value per call. |
 | **disposition** | return items | **Absent** — return items not filterable/listable outside a return. |
-| **date / period** | orders (`createdFrom`/`createdTo`), — | **Orders only.** Movements, transfers, returns, approvals, imports, customers, users, price history have **no date filter**. | The single date-filterable list in the whole API. |
+| **date / period** | orders (`createdFrom`/`createdTo`), movements (`occurredFrom`/`occurredTo`, F18-03) | **Orders and movements.** Transfers, returns, approvals, imports, customers, users, price history still have **no date filter**. | Movements' filter is half-open `[occurredFrom, occurredTo)` on `occurred_at` (F18-01's new-endpoint convention) — deliberately *not* orders' inclusive-both-bounds `createdFrom`/`createdTo` on `created_at`, since movements already carries the semantically-correct `occurred_at` column orders never had. |
 | **free-text search (`q`)** | customers (`displayName` / `taxId` / `email` / `phone`) | **Customers only.** No search on products, orders, movements, transfers, users. | api.md: "search is a distinct documented parameter … decided per-endpoint". |
 | **is_exceptional_discount** | order lines | **Absent** — flag on `order_items`, no filter, no aggregate. |
 | **is_demo** | tenants (SuperAdmin) | Client-side over the unpaginated array. |
@@ -40,8 +40,11 @@ same reason" as filtering — **none is implemented**. Any sortable-column UI in
 
 ### Grouping
 
-**No endpoint groups/aggregates.** All grouping (by day, by product, by customer, by disposition,
-by role) is a FASE 18 read-side concern.
+**No *operational* endpoint groups/aggregates** — every list above stays a flat, filtered,
+paginated row set. Grouping/aggregation is a FASE 18 read-side concern, built as its own dedicated
+endpoint per domain: `GET /reports/sales-summary` (F18-02, `groupBy: day|week|month|product|
+customer`) and `GET /reports/inventory-summary` (F18-03, `groupBy: warehouse|category`). Grouping
+by disposition, role, or any other still-open dimension remains unbuilt.
 
 ---
 
@@ -151,7 +154,8 @@ Identity → active Membership → active Tenant → active User → (if locatio
 | Subject | Tenant scope | Location scope (ADR-0024) | Permission |
 | --- | --- | --- | --- |
 | Products / categories / attributes / QR | tenant | none | `products.view` / `categories.view` / `catalog.*` |
-| Inventory balances / movements / adjustments | tenant | **yes** — a location-restricted user sees only assigned locations | `inventory.view` / `inventory.adjust` |
+| Inventory balances / movements / adjustments | tenant | **writes only** — `LocationAuthorizationService.assertAccess` gates `inventory.adjust` and every transfer state transition that targets a specific location; `GET /inventory/balances` and `GET /inventory/movements` are **not** location-scoped — a location-restricted user with read access sees every location's rows, same as an unrestricted user (verified against the real code, F18-03 — corrects this row's previous "yes" for reads) | `inventory.view` / `inventory.adjust` |
+| Inventory summary (`GET /reports/inventory-summary`, F18-03) | tenant | **no** — reuses the exact, real, current read scope of `GET /inventory/balances` above (tenant-wide); ADR-0024's guard is a write-action check, never a read filter, so this report does not invent a location-scoping policy the existing reads themselves don't have | `inventory.view` |
 | Transfers | tenant | **yes** — source/destination location authorization | `inventory.view` / `inventory.transfers.*` |
 | Customers | tenant | none | `sales.customers.view` |
 | Orders / order lines | tenant | **`orders.location_id` exists but the list endpoint does not scope by it** — deferred by F18-01 (see below), `GAP-ORDERS-LOCATION` still open | `sales.orders.view` |

@@ -6,9 +6,10 @@ import type { InventoryMovement, MovementType } from '../types/inventory';
  * Server-side reads for the inventory movement ledger (`GET /api/v1/inventory/movements`,
  * permission `inventory.view`).
  *
- * The backend contract offers only `productVariantId`, `locationId` and `movementType` filters —
- * **no date range and no sort** (`GAP-MOVEMENTS-DATE-FILTER`). Rows come back newest-first by the
- * repository's own `created_at DESC`; nothing is re-ordered here.
+ * The backend contract offers `productVariantId`, `locationId`, `movementType`, and — since F18-03
+ * (`GAP-MOVEMENTS-DATE-FILTER`, resolved) — `occurredFrom`/`occurredTo`, a half-open
+ * `[occurredFrom, occurredTo)` filter on `occurred_at` (never `created_at`). **Still no sort** —
+ * rows come back newest-first by the repository's own `created_at DESC`; nothing is re-ordered here.
  */
 export interface ListMovementsQuery {
   page?: number;
@@ -16,6 +17,8 @@ export interface ListMovementsQuery {
   productVariantId?: string;
   locationId?: string;
   movementType?: MovementType;
+  occurredFrom?: string;
+  occurredTo?: string;
 }
 
 export async function listMovements(query: ListMovementsQuery = {}): Promise<Paginated<InventoryMovement>> {
@@ -31,6 +34,12 @@ export async function listMovements(query: ListMovementsQuery = {}): Promise<Pag
   }
   if (query.movementType) {
     params['movementType'] = query.movementType;
+  }
+  if (query.occurredFrom) {
+    params['occurredFrom'] = query.occurredFrom;
+  }
+  if (query.occurredTo) {
+    params['occurredTo'] = query.occurredTo;
   }
   return serverApiFetch<Paginated<InventoryMovement>>('/api/v1/inventory/movements', { query: params });
 }

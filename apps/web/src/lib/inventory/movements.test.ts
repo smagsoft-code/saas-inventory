@@ -22,4 +22,12 @@ describe('listMovements', () => {
       query: { page: 1, pageSize: 20, locationId: 'l1', movementType: 'ADJUSTMENT_IN', productVariantId: 'v1' },
     });
   });
+
+  it('adds occurredFrom/occurredTo only when provided (F18-03, GAP-MOVEMENTS-DATE-FILTER)', async () => {
+    mocked.mockResolvedValueOnce({ data: [], meta: { page: 1, pageSize: 20, total: 0, totalPages: 1 } });
+    await listMovements({ occurredFrom: '2026-09-01T00:00:00.000Z', occurredTo: '2026-09-02T00:00:00.000Z' });
+    expect(mocked).toHaveBeenCalledWith('/api/v1/inventory/movements', {
+      query: { page: 1, pageSize: 20, occurredFrom: '2026-09-01T00:00:00.000Z', occurredTo: '2026-09-02T00:00:00.000Z' },
+    });
+  });
 });

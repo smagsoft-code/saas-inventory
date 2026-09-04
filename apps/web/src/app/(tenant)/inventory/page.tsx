@@ -1,9 +1,14 @@
 import Link from 'next/link';
 import { getSession } from '../../../lib/auth/session';
 import { createPermissionChecker } from '../../../lib/auth/permissions';
+import { httpErrorMessage, isApiError } from '../../../lib/api/errors';
 import { listBalances } from '../../../lib/inventory/balances';
+import { getInventorySummary } from '../../../lib/inventory/reports';
 import { buildLocationIndex, shortId } from '../../../lib/inventory/location-index';
+import { listWarehouses } from '../../../lib/inventory/warehouses';
+import { listCategories } from '../../../lib/catalog/categories';
 import type { InventoryBalance } from '../../../lib/types/inventory';
+import { INVENTORY_SUMMARY_GROUP_BY, type InventorySummary, type InventorySummaryGroupBy } from '../../../lib/types/inventory-reports';
 import { PageContainer } from '../../../components/ui/page-container';
 import { PageHeader } from '../../../components/ui/page-header';
 import { ButtonLink } from '../../../components/ui/button';
@@ -12,10 +17,16 @@ import { EmptyState } from '../../../components/ui/empty-state';
 import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
+import { InventoryReportFilters, type InventoryReportFilterValues } from './inventory-report-filters';
+import { InventoryReportError, InventoryReportSection } from './inventory-report-section';
 
 export const metadata = { title: 'Stock on hand · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
+
+function pickGroupBy(value: string | undefined): InventorySummaryGroupBy {
+  return (INVENTORY_SUMMARY_GROUP_BY as readonly string[]).includes(value ?? '') ? (value as InventorySummaryGroupBy) : 'warehouse';
+}
 
 /**
  * Stock on hand (`S-INV-BALANCES`) — `GET /api/v1/inventory/balances` (`inventory.view`), offset
@@ -27,7 +38,14 @@ const PAGE_SIZE = 20;
 export default async function InventoryBalancesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; locationId?: string; productVariantId?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    locationId?: string;
+    productVariantId?: string;
+    reportWarehouseId?: string;
+    reportCategoryId?: string;
+    reportGroupBy?: string;
+  }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
   const checker = createPermissionChecker(session?.permissions ?? []);
@@ -40,20 +58,50 @@ export default async function InventoryBalancesPage({
     );
   }
   const canAdjust = checker.can('inventory.adjust');
+  const canViewWarehouses = checker.can('warehouses.view');
+  const canViewCategories = checker.can('categories.view');
 
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const locationId = sp.locationId || undefined;
   const productVariantId = sp.productVariantId || undefined;
 
-  const [result, index] = await Promise.all([
+  // F18-03 inventory report filters — a separate section, independent of the balances table above.
+  const reportWarehouseId = sp.reportWarehouseId || undefined;
+  const reportCategoryId = sp.reportCategoryId || undefined;
+  const reportGroupBy = pickGroupBy(sp.reportGroupBy);
+  const reportFilters: InventoryReportFilterValues = {
+    ...(reportWarehouseId ? { warehouseId: reportWarehouseId } : {}),
+    ...(reportCategoryId ? { categoryId: reportCategoryId } : {}),
+    groupBy: reportGroupBy,
+  };
+
+  let inventorySummary: InventorySummary | undefined;
+  let summaryError: { status: number; message: string; correlationId: string | undefined } | undefined;
+  try {
+    inventorySummary = await getInventorySummary({
+      ...(reportWarehouseId ? { warehouseId: reportWarehouseId } : {}),
+      ...(reportCategoryId ? { categoryId: reportCategoryId } : {}),
+      groupBy: reportGroupBy,
+    });
+  } catch (error) {
+    summaryError = {
+      status: isApiError(error) ? error.status : 0,
+      message: httpErrorMessage(error),
+      correlationId: isApiError(error) ? error.correlationId : undefined,
+    };
+  }
+
+  const [result, index, reportWarehouses, reportCategories] = await Promise.all([
     listBalances({
       page,
       pageSize: PAGE_SIZE,
       ...(locationId ? { locationId } : {}),
       ...(productVariantId ? { productVariantId } : {}),
     }),
-    buildLocationIndex(checker.can('warehouses.view')),
+    buildLocationIndex(canViewWarehouses),
+    canViewWarehouses ? listWarehouses({ pageSize: 100 }).catch(() => null) : Promise.resolve(null),
+    canViewCategories ? listCategories({ pageSize: 100 }).catch(() => null) : Promise.resolve(null),
   ]);
   // Reuse the index's own location fetch for the filter chips — no second GET /locations.
   const locationChips = index.locations.filter((l) => l.status === 'active');
@@ -64,6 +112,11 @@ export default async function InventoryBalancesPage({
     const nextVariant = 'productVariantId' in next ? next.productVariantId : productVariantId;
     if (nextLocation) params.set('locationId', nextLocation);
     if (nextVariant) params.set('productVariantId', nextVariant);
+    // Carries the report section's own params forward too — paginating the balances table should
+    // not silently reset the report back to its default filters (mirrors /sales, F18-02).
+    if (sp.reportWarehouseId) params.set('reportWarehouseId', sp.reportWarehouseId);
+    if (sp.reportCategoryId) params.set('reportCategoryId', sp.reportCategoryId);
+    if (sp.reportGroupBy) params.set('reportGroupBy', sp.reportGroupBy);
     if (next.page && next.page > 1) params.set('page', String(next.page));
     return `/inventory${params.toString() ? `?${params}` : ''}`;
   }
@@ -79,6 +132,28 @@ export default async function InventoryBalancesPage({
         description="Physical, reserved, committed and available quantity per variant and location."
         actions={canAdjust ? <ButtonLink href={adjustHref}>Adjust stock</ButtonLink> : undefined}
       />
+
+      <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
+        <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
+          Inventory report
+        </h2>
+        <InventoryReportFilters
+          initial={reportFilters}
+          warehouses={reportWarehouses?.data ?? []}
+          categories={reportCategories?.data ?? []}
+        />
+        {inventorySummary ? (
+          <InventoryReportSection summary={inventorySummary} />
+        ) : (
+          summaryError && (
+            <InventoryReportError status={summaryError.status} message={summaryError.message} correlationId={summaryError.correlationId} />
+          )
+        )}
+      </section>
+
+      <hr className="border-slate-200" />
+
+      <h2 className="text-sm font-semibold text-slate-900">Balances</h2>
 
       <div className="flex flex-wrap items-center gap-3">
         {productVariantId && (

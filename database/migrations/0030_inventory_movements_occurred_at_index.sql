@@ -1,0 +1,1 @@
+CREATE INDEX "inventory_movements_tenant_occurred_idx" ON "inventory_movements" USING btree ("tenant_id","occurred_at");

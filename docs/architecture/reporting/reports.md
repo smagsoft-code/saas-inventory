@@ -12,10 +12,11 @@
 
 | ID | Report | Domain | Existing endpoint | State | Home |
 | --- | --- | --- | --- | --- | --- |
-| `REP-INV-STOCK` | Existencias (stock on hand) | Inventory | `GET /inventory/balances` (raw) | **B** | F17 operational list (raw) + FASE 18 (enriched/grouped) |
-| `REP-INV-KARDEX` | Stock card / kardex | Inventory | `GET /inventory/movements` (partial) | **B** | FASE 18 (needs date range + sort + enrich) |
-| `REP-INV-MOVEMENTS` | Movement history | Inventory | `GET /inventory/movements` | **B** | F17 raw list; FASE 18 for period/enrichment |
-| `REP-INV-ADJUSTMENTS` | Adjustments | Inventory | `GET /inventory/movements?movementType=ADJUSTMENT_*` | **B** | F17 (filtered list) / FASE 18 (period, grouping) |
+| `REP-INV-STOCK` | Existencias (stock on hand) | Inventory | `GET /inventory/balances` (raw) | **B** | F17 operational list (raw); the grouped/enriched view is now `GET /reports/inventory-summary` (FASE 18-03) |
+| `REP-INV-KARDEX` | Stock card / kardex | Inventory | `GET /inventory/movements` (date range added, F18-03) | **B** | Still needs an explicit sort guarantee + name enrichment |
+| `REP-INV-MOVEMENTS` | Movement history | Inventory | `GET /inventory/movements` (+ `occurredFrom`/`occurredTo`, F18-03) | **A** (list + date range) / **B** (by-actor, grouped) |
+| `REP-INV-ADJUSTMENTS` | Adjustments | Inventory | `GET /inventory/movements?movementType=ADJUSTMENT_*` (+ `occurredFrom`/`occurredTo`, F18-03) | **A** (filtered + dated list) / **B** (grouping) |
+| `REP-INV-SUMMARY` | Inventory summary (available/reserved/out-of-stock by warehouse or category) | Inventory | `GET /reports/inventory-summary` | **A** | FASE 18-03 |
 | `REP-INV-TRANSFERS` | Transfers | Inventory | `GET /inventory/transfers` | **A** (list) / **B** (names, cycle time) | F17 |
 | `REP-INV-INTRANSIT` | In-transit stock | Inventory | — | **B** | FASE 18 |
 | `REP-INV-VALUATION` | Inventory valuation | Inventory | — | **C** | Blocked ([data-gaps.md](data-gaps.md#gap-cost)) |
@@ -85,31 +86,36 @@ Export · Drill-down · Related operational screen · State**.
 - **Domain:** Inventory · **Permission:** `inventory.view` · **Scope:** tenant / location.
 - **Source:** `inventory_movements` (append-only; `balance_after` snapshot is stored per row).
 - **Endpoint:** `GET /inventory/movements` (partial).
-- **Query params (today):** `page`, `pageSize`, `productVariantId`, `locationId`, `movementType`.
+- **Query params (today):** `page`, `pageSize`, `productVariantId`, `locationId`, `movementType`,
+  `occurredFrom`/`occurredTo` (F18-03 — half-open `[occurredFrom, occurredTo)` on `occurred_at`,
+  never `created_at`; `occurredFrom` requires `occurredFrom < occurredTo` when both are given).
 - **Columns:** Fecha (`occurred_at`), Tipo, Cantidad (signed), Saldo después (`balance_after`),
   Motivo, Referencia (`reference_type`/`reference_id`), Actor.
-- **Filters (desired):** **date range** (missing), reference type. **Sort:** chronological —
-  **no explicit sort param** (repo default). **Grouping:** none. **Totals:** period net movement.
+- **Filters (desired):** date range — **resolved, F18-03**; reference type still missing.
+  **Sort:** chronological — **no explicit sort param** (repo default,
+  `created_at DESC`). **Grouping:** none. **Totals:** period net movement.
 - **Export:** none. **Drill-down:** reference → the order/transfer/adjustment that caused it
   (needs `reference_type` → route mapping).
 - **Related screen:** Inventory (row → detail).
-- **State: B.** The ledger fully supports a kardex; the endpoint lacks a date-range filter, an
-  explicit chronological sort guarantee, name enrichment, and reference resolution.
+- **State: B.** The ledger fully supports a kardex; the date-range filter is now real (F18-03), but
+  the endpoint still lacks an explicit chronological sort guarantee, name enrichment, and reference
+  resolution.
 
 ### `REP-INV-MOVEMENTS` — Movement history
 
 - As `REP-INV-KARDEX` but not scoped to a single variant/location — a tenant/location-wide
-  movement feed. Same endpoint, same gaps. **State: B** (raw list is A for the 3 existing filters;
-  "movements this month" / by-actor / grouped is B).
+  movement feed. Same endpoint, same date filter. **State: A** for the list + its 4 filters
+  (including `occurredFrom`/`occurredTo`, F18-03); by-actor / grouped is still **B**.
 
 ### `REP-INV-ADJUSTMENTS` — Adjustments
 
 - **Objective:** audit manual stock corrections (`RECEIPT` / `ADJUSTMENT_IN` / `ADJUSTMENT_OUT`),
   who made them and why.
-- **Endpoint:** `GET /inventory/movements?movementType=ADJUSTMENT_IN` (one type per call).
+- **Endpoint:** `GET /inventory/movements?movementType=ADJUSTMENT_IN` (one type per call) `+
+  occurredFrom`/`occurredTo` (F18-03).
 - **Columns:** Fecha, Tipo, Producto, Ubicación, Cantidad, Motivo (`reason`), Usuario (`actor_id`).
-- **Filters (desired):** date range (missing), user, reason. **State: B** — subset of movements;
-  same limitations; `actor_id`/product/location not name-resolved.
+- **Filters (desired):** date range — **resolved, F18-03**; user, reason still missing. **State: A**
+  for the dated, typed list; `actor_id`/product/location are still not name-resolved.
 
 ### `REP-INV-TRANSFERS` — Transfers
 
@@ -135,6 +141,49 @@ Export · Drill-down · Related operational screen · State**.
 - **Source:** open `inventory_transfers` + `inventory_transfer_items` (`dispatched − received`).
 - **Endpoint:** none (per-transfer `quantityInTransit` only).
 - **State: B** — a cross-transfer aggregate query is a FASE 18 read-side item.
+
+### `REP-INV-SUMMARY` — Inventory summary (available/reserved/out-of-stock)
+
+**RESOLVED — F18-03.** `GET /reports/inventory-summary` (`inventory.view`, tenant-wide — see
+[filters-periods-and-scope.md](filters-periods-and-scope.md#3-security--multi-tenancy-model--non-negotiable-for-all-reporting)
+for why this endpoint is not location-scoped) — real server-side aggregation over current
+`inventory_balances`, no client-side sum, no full-table fetch.
+
+- **Objective:** Σ available/reserved stock and a count of out-of-stock SKUs, grouped by warehouse
+  or category, without paging every balance row.
+- **Query params:** `warehouseId?`, `categoryId?` (independent filters, compose with either
+  grouping), `groupBy` (`warehouse|category`, default `warehouse`). **No date range** — this is a
+  live snapshot of current state, not a period query (`inventory_balances` carries no history to
+  bucket by; `GAP-SNAPSHOTS` stays open).
+- **Response:** `{ generatedAt, groupBy, totals: { availableQuantity, reservedQuantity,
+  outOfStockCount }, buckets[] }`. `generatedAt` is the server clock at query time — an honest
+  "as of now" marker, never a persisted historical snapshot.
+- **Bucket shape per `groupBy`:**
+  - `warehouse`: `{ key: warehouseId, warehouseName, availableQuantity, reservedQuantity,
+    outOfStockCount }`.
+  - `category`: `{ key: categoryId | 'uncategorized', categoryName, availableQuantity,
+    reservedQuantity, outOfStockCount }` — a variant with no category lands in an explicit
+    `'uncategorized'` bucket (`categoryName: 'Uncategorized'`), never an invented id, never
+    silently dropped.
+- **`availableQuantity`/`reservedQuantity`:** `Σ inventory_balances.quantity_available` /
+  `Σ quantity_reserved` across every balance row in the bucket — never computed by the app, always
+  summed from the DB-generated `quantity_available` column.
+- **`outOfStockCount`:** distinct `product_variant_id` whose `Σ quantity_available` **within the
+  bucket** is exactly `0` (never a threshold — `GAP-REORDER` stays closed to invented low-stock
+  rules). A variant with several balance rows in the same bucket is counted once, not once per row
+  (a two-level aggregate: per-(bucket, variant) sum first, then count-where-zero). A variant with
+  **zero** balance rows anywhere in the bucket (never stocked there) is **not** counted — this
+  report only aggregates rows that exist, the same "no synthetic zero row" rule F18-02 established
+  for `GAP-CUSTOMER-HISTORY`.
+- **No monetary field anywhere** — `NO COSTING` (rule, this phase): `inventory_movements`/
+  `inventory_balances` carry no cost; `product_variants.cost` is current/nullable/mutable, not an
+  as-of cost; no costing method exists (`GAP-COST`, still open).
+- **Source:** `inventory_balances`, joined (never written) to `locations`/`warehouses` and
+  `product_variants`/`products`/`categories` — read-side only
+  (`apps/api/src/reports/inventory/`), never `InventoryBalancesRepository`/
+  `InventoryMovementsRepository` (modules.md's read-side rule, same precedent as F18-02's
+  `SalesReportRepository`).
+- **State: A.**
 
 ### `REP-CAT-PRODUCTS` — Product catalogue
 

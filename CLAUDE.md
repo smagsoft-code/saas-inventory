@@ -740,3 +740,63 @@ functional-scope change**. Tests: web unit 12 → 33; api unit 459; typecheck + 
 routes, then fails at *Collecting build traces* on the **pre-existing Windows `EPERM` symlink** in
 Next.js standalone output-tracing — the same environmental issue documented since FASE 12,
 not introduced here. **FASE 16 CLOSED.** FASE 17 (Frontend Main Modules) is next.
+
+> **Documentation gap, not a code gap:** this "Current project status" narrative was not updated
+> for FASE 17's 14 sub-phases (F17-01 through F17-14, plus the F17-AUDIT-01 correction) or for
+> F18-00/F18-01/F18-02 — all real, already-merged work (see `git log`), just never appended here.
+> F18-03's own paragraph below assumes that already-landed context (the FASE 18 reporting
+> read-side pattern, the F17 frontend's app shell/permission model, etc.) without re-narrating it.
+> Backfilling the missing entries is out of scope for F18-03 and was not attempted.
+
+FASE 18 (roadmap.md's REPORTS read-side) started with **F18-01** (reporting foundations:
+`ReportDateRangeQueryDto`/`toHalfOpenRange()`, tenant-timezone visibility on every session
+response, the F18 permission rule — reuse the domain's `*.view`, no `reports.*` family) and
+**F18-02** (`apps/api/src/reports/sales/` — `GET /reports/sales-summary`, day/week/month/product/
+customer grouping over `orders`/`order_items`, integrated into `/sales`). **F18-03** extends the
+same read-side pattern to INVENTORY and closes a standing F17 gap. **A. Inventory summary**
+(`apps/api/src/reports/inventory/`) — `GET /reports/inventory-summary` (`inventory.view`, no new
+permission): `Σ inventory_balances.quantity_available`/`quantity_reserved` and a distinct-variant
+`outOfStockCount` (`available = 0`, never a threshold — `GAP-REORDER` stays closed to invented
+low-stock rules), grouped by `warehouse` (default) or `category` via a two-level raw-SQL CTE
+(`InventoryReportRepository`, mirroring `SalesReportRepository`'s precedent — never
+`InventoryBalancesRepository`/`InventoryMovementsRepository`). A product with no category lands in
+an explicit `'uncategorized'` bucket, never an invented id. No date range (a live snapshot —
+`generatedAt` is the query-time clock, not a stored snapshot; `GAP-SNAPSHOTS` stays open) and no
+monetary field anywhere (`GAP-COST` stays open). Scope is **tenant-wide**, matching the real,
+already-shipped behaviour of `GET /inventory/balances`/`GET /inventory/movements` — neither is
+restricted by `user_location_assignments` today; `LocationAuthorizationService` (ADR-0024) only
+ever gates a *write* action (adjustments, transfer prepare/dispatch/receive), never a read, so this
+report reuses that real policy rather than inventing per-report location scoping (a discrepancy
+found and corrected in `filters-periods-and-scope.md`, which had previously and incorrectly
+documented inventory reads as location-scoped). **B. Movements date filter** — `occurredFrom`/
+`occurredTo` added to the pre-existing `GET /inventory/movements` (`GAP-MOVEMENTS-DATE-FILTER`),
+half-open `[occurredFrom, occurredTo)` on `occurred_at` (the canonical "when the movement
+happened" timestamp — confirmed distinct from `created_at`, "when the row was written"; both
+already existed on the schema). A real, additive index was required and added — migration `0030`,
+`inventory_movements_tenant_occurred_idx (tenant_id, occurred_at)` — since every pre-existing
+index on this table covers `created_at`, not `occurred_at`. Frontend: a new "Inventory report"
+section on `/inventory` (KPI tiles + warehouse/category filters + grouped table,
+`InventoryReportSection`/`InventoryReportFilters`) above the unchanged balances list, and a new
+`occurredFrom`/`occurredTo` date-range filter on `/inventory/movements`
+(`MovementsDateFilter`) — self-contained via `useSearchParams()`/`usePathname()` rather than a
+server-passed callback prop, after a real bug surfaced only under real-browser testing (React
+rejects a plain function passed from a Server Component to a Client Component). Real-PostgreSQL:
+`pg-verify` **412 integration tests, 33 files, 0 skipped** (up from 378 at FASE 17's close) —
+including `test/reports/inventory-summary.integration.test.ts` (warehouse/category grouping,
+reserved-quantity via a real cart→checkout reservation, distinct-SKU out-of-stock counting across
+multiple depleted locations in one warehouse, tenant isolation, RBAC) and
+`test/inventory/inventory-movements-date-filter.integration.test.ts` (boundary movements placed at
+`from−1`/`from`/interior/`to`/`to+1` via the real backdatable `occurredAt` adjustment field). Web
+unit 348 → 379 (12 new files); API unit 466 → 502. No new permission code, no new migration beyond
+`0030`, no change to `InventoryBalancesRepository`/`InventoryMovementsRepository`/
+`LocationAuthorizationService`. Visually validated end to end against a real local PostgreSQL +
+real `nest start --watch`/`next dev` (no Docker; the same disposable-`embedded-postgres` mechanism
+`tools/pg-verify` uses, seeded via the real HTTP API, torn down afterward) — desktop and mobile
+(390×844) screenshots, a real login, real warehouse/category/reservation/out-of-stock data. One
+genuine, pre-existing, out-of-scope finding surfaced by that testing: `/inventory`'s existing
+8-column balances table (and, independently, `/locations`'/`/sales`'s own wide tables) overflow the
+page horizontally at 390px — reproduced on pages this phase never touched, so left unfixed here,
+not caused by F18-03; the new report table itself (4 columns) does not meaningfully contribute to
+it. `pnpm --filter @saas-inventory/web build` still fails only at the pre-existing Windows `EPERM`
+symlink step (unchanged, documented since FASE 12) after compiling/type-checking/statically
+generating every route successfully. **FASE 18-03 CLOSED, not pushed.**

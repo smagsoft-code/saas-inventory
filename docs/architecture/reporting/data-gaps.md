@@ -13,8 +13,8 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-COST`](#gap-cost) | Inventory cost / valuation / COGS | future |
 | [`GAP-SNAPSHOTS`](#gap-snapshots) | Historical snapshots for trend KPIs | F18-needed |
 | [`GAP-SALES-AGGREGATE`](#gap-sales-aggregate) | Sales aggregation endpoint | ~~F18-needed~~ **RESOLVED (F18-02)** — `location` grouping still open |
-| [`GAP-INV-AGGREGATE`](#gap-inv-aggregate) | Inventory aggregation + name enrichment | F17-needed (partial) / F18 |
-| [`GAP-MOVEMENTS-DATE-FILTER`](#gap-movements-date-filter) | Date range + sort on movements | F17-needed |
+| [`GAP-INV-AGGREGATE`](#gap-inv-aggregate) | Inventory aggregation + name enrichment | ~~F17-needed (partial) / F18~~ **PARTIALLY RESOLVED (F18-03)** — Σ available/reserved + out-of-stock count by warehouse/category built; name enrichment on the *raw* balances/movements lists stays open |
+| [`GAP-MOVEMENTS-DATE-FILTER`](#gap-movements-date-filter) | Date range + sort on movements | ~~F17-needed~~ **PARTIALLY RESOLVED (F18-03)** — `occurredFrom`/`occurredTo` built; `sort` and `referenceType`/`referenceId` filters still open |
 | [`GAP-MULTI-STATUS`](#gap-multi-status) | Multi-status filter on lists | F17-needed |
 | [`GAP-ORDERS-LOCATION-FILTER`](#gap-orders-location-filter) | `locationId` filter on orders | F18-needed |
 | [`GAP-ORDER-CONFIRMED-AT`](#gap-order-confirmed-at) | `confirmed_at` timestamp on orders | F18-needed |
@@ -98,28 +98,48 @@ needs that product decision first. `REP-SALES-BY-LOCATION` stays **C**.
   client-side. Recommended phase was F18-needed, the core REPORTS read-side deliverable — done.
 
 ### `GAP-INV-AGGREGATE`
-- **Required:** aggregated inventory reads — `Σ available/reserved/committed` by tenant / warehouse
-  / category; count of zero/out-of-stock SKUs; in-transit per variant/location across all open
-  transfers — **with product/location/warehouse names**.
-- **Why:** `KPI-INV-ONHAND`, `KPI-INV-OOS-SKUS`, `KPI-INV-INTRANSIT`, `REP-INV-STOCK`,
-  `REP-INV-INTRANSIT`, the Inventory screen's columns and tabs.
-- **Missing:** `GET /inventory/balances` returns raw rows, no joins, no warehouse/category filter,
-  no Σ; no cross-transfer in-transit aggregate.
-- **Impact:** the Inventory list is IDs + numbers only; totals and the enriched view are not
-  available.
-- **Recommended phase:** **F17-needed (partial)** — name enrichment + a warehouse filter on the
-  operational list is a small F17 addition; the Σ / grouped / valuation views are **F18**.
+**PARTIALLY RESOLVED — F18-03.** `GET /reports/inventory-summary` (`inventory.view`, tenant-wide,
+matching `GET /inventory/balances`'s real current read scope) — `{ warehouseId?, categoryId?,
+groupBy: warehouse|category }` → `{ generatedAt, groupBy, totals, buckets[] }`, each bucket carrying
+`availableQuantity` (`Σ quantity_available`), `reservedQuantity` (`Σ quantity_reserved`) and
+`outOfStockCount` (distinct variants at `availableQuantity = 0` within the bucket). Real server-side
+`SUM`/`COUNT(*) FILTER`/`GROUP BY` via a two-level CTE in
+`apps/api/src/reports/inventory/inventory-report.repository.ts` — never
+`InventoryBalancesRepository` (modules.md's read-side rule honored, same precedent as F18-02's
+`SalesReportRepository`). Names ARE resolved here (warehouse/category joined server-side) — this
+report does not inherit the raw-list id-only gap. Integrated into `/inventory` as its own report
+section, F18-03.
+
+**Still missing:** `Σ committed`, in-transit aggregate (`TRF-INTRANSIT-QTY`), valuation
+(`GAP-COST`), low-stock (`GAP-REORDER`), and — separately — **name enrichment on the raw
+`GET /inventory/balances` / `GET /inventory/movements` list responses themselves** stays open
+(that is `GAP-NAME-ENRICHMENT`'s job, not this endpoint's).
+
+- **Original text (for history):** aggregated inventory reads were needed — `Σ available/reserved/
+  committed` by tenant/warehouse/category, count of zero/out-of-stock SKUs, in-transit per variant/
+  location across all open transfers, with names; `GET /inventory/balances` returned raw rows only,
+  no joins, no warehouse/category filter, no Σ. Recommended F18 for the Σ/grouped views — done for
+  available/reserved/out-of-stock by warehouse/category; committed and in-transit remain a future,
+  smaller addition if actually needed.
 
 ### `GAP-MOVEMENTS-DATE-FILTER`
-- **Required:** `occurredFrom` / `occurredTo` (and/or `createdFrom`/`createdTo`), a `sort` param,
-  and a `referenceType` / `referenceId` filter on `GET /inventory/movements`.
-- **Why:** kardex (`REP-INV-KARDEX`), "movements this month", adjustments audit, drill-down from a
-  reference.
-- **Missing:** the DTO has only `productVariantId` / `locationId` / `movementType`.
-- **Impact:** a proper stock card (which the ledger fully supports — `balance_after` is stored)
-  cannot be rendered for a date range or guaranteed chronological.
-- **Recommended phase:** **F17-needed** — small, additive DTO/query change, no schema impact
-  (`inventory_movements(tenant_id, created_at)` index already exists).
+**PARTIALLY RESOLVED — F18-03.** `occurredFrom`/`occurredTo` added to `GET /inventory/movements` —
+half-open `[occurredFrom, occurredTo)`, filtered on `inventory_movements.occurred_at` (the
+canonical "when the physical movement happened" timestamp — confirmed distinct from `created_at`,
+"when the row was written"; the schema already carries both). A new additive index,
+`inventory_movements_tenant_occurred_idx (tenant_id, occurred_at)` (migration `0030`), was required
+— the pre-existing `(tenant_id, created_at)` index this gap's original text assumed would cover it
+does **not**, since the real business timestamp is `occurred_at`, not `created_at`.
+
+**Still missing:** a `sort` param (`GAP-SORT`) and a `referenceType`/`referenceId` filter on this
+same endpoint — neither was in this phase's scope.
+
+- **Original text (for history):** `occurredFrom`/`occurredTo` (and/or `createdFrom`/`createdTo`),
+  a `sort` param, and a `referenceType`/`referenceId` filter were needed for kardex/"movements this
+  month"/adjustments audit/drill-down; the DTO had only `productVariantId`/`locationId`/
+  `movementType`. Recommended F17-needed, assumed no schema impact — done for the date filter
+  (a real, additive index *was* needed, on the correct column); sort and the reference filter
+  remain open, tracked separately.
 
 ### `GAP-MULTI-STATUS`
 - **Required:** `status` as a repeatable/array param on the list endpoints (transfers, returns,

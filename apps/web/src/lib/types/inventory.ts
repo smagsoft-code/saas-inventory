@@ -116,9 +116,13 @@ export interface UpdateLocationInput {
 //  - `POST /api/v1/inventory/adjustments`                                     (`inventory.adjust`)
 //
 // The read endpoints return **FK ids only** — no product/variant/location/warehouse names, no
-// SKU, no serial/lot, no in-transit column, no date-range or sort params (`GAP-NAME-ENRICHMENT`,
-// `GAP-MOVEMENTS-DATE-FILTER`, `GAP-INV-AGGREGATE`). None of that is invented here. There is no
-// tenant-wide product-name/status filter and no warehouse filter on either list.
+// SKU, no serial/lot, no in-transit column, no sort param (`GAP-NAME-ENRICHMENT`). None of that is
+// invented here. There is no tenant-wide product-name/status filter and no warehouse filter on
+// either list. Movements now supports a real `[occurredFrom, occurredTo)` date filter (F18-03,
+// `GAP-MOVEMENTS-DATE-FILTER` resolved) — see `ListMovementsQuery` below. A separate,
+// server-aggregated inventory summary (available/reserved/out-of-stock by warehouse or category,
+// `GAP-INV-AGGREGATE` resolved) lives at `GET /api/v1/reports/inventory-summary` —
+// `lib/inventory/reports.ts`, not this file.
 
 /** `GET /inventory/balances` item / `GET /inventory/balances/:id` — `BalanceResponseDto`.
  * `quantityAvailable` is a DB GENERATED column (`physical - reserved - committed`). */

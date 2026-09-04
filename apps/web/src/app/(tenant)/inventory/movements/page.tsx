@@ -16,6 +16,7 @@ import { EmptyState } from '../../../../components/ui/empty-state';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { Pagination } from '../../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
+import { MovementsDateFilter } from './movements-date-filter';
 
 export const metadata = { title: 'Inventory movements · SaaS Inventory' };
 
@@ -27,14 +28,22 @@ function parseMovementType(value: string | undefined): MovementType | undefined 
 
 /**
  * Movement history / kardex (`S-INV-MOVEMENTS`) — `GET /api/v1/inventory/movements`
- * (`inventory.view`), offset paginated. Real filters only: `locationId`, `movementType` and (from
- * a drill-in) `productVariantId`. **No date range and no sort** (`GAP-MOVEMENTS-DATE-FILTER`) —
- * rows are shown in the order the endpoint returns them (newest first). FK ids only.
+ * (`inventory.view`), offset paginated. Real filters: `locationId`, `movementType`,
+ * `occurredFrom`/`occurredTo` (half-open `[occurredFrom, occurredTo)` on `occurred_at`, F18-03 —
+ * `GAP-MOVEMENTS-DATE-FILTER` resolved) and (from a drill-in) `productVariantId`. **Still no
+ * sort** — rows are shown in the order the endpoint returns them (newest first). FK ids only.
  */
 export default async function MovementsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; locationId?: string; movementType?: string; productVariantId?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    locationId?: string;
+    movementType?: string;
+    productVariantId?: string;
+    occurredFrom?: string;
+    occurredTo?: string;
+  }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
   const checker = createPermissionChecker(session?.permissions ?? []);
@@ -51,6 +60,8 @@ export default async function MovementsPage({
   const locationId = sp.locationId || undefined;
   const movementType = parseMovementType(sp.movementType);
   const productVariantId = sp.productVariantId || undefined;
+  const occurredFrom = sp.occurredFrom || undefined;
+  const occurredTo = sp.occurredTo || undefined;
 
   const [result, index] = await Promise.all([
     listMovements({
@@ -59,6 +70,8 @@ export default async function MovementsPage({
       ...(locationId ? { locationId } : {}),
       ...(movementType ? { movementType } : {}),
       ...(productVariantId ? { productVariantId } : {}),
+      ...(occurredFrom ? { occurredFrom } : {}),
+      ...(occurredTo ? { occurredTo } : {}),
     }),
     buildLocationIndex(checker.can('warehouses.view')),
   ]);
@@ -70,14 +83,20 @@ export default async function MovementsPage({
     locationId?: string | undefined;
     movementType?: MovementType | undefined;
     productVariantId?: string | undefined;
+    occurredFrom?: string | undefined;
+    occurredTo?: string | undefined;
   }): string {
     const params = new URLSearchParams();
     const nextLocation = 'locationId' in next ? next.locationId : locationId;
     const nextType = 'movementType' in next ? next.movementType : movementType;
     const nextVariant = 'productVariantId' in next ? next.productVariantId : productVariantId;
+    const nextFrom = 'occurredFrom' in next ? next.occurredFrom : occurredFrom;
+    const nextTo = 'occurredTo' in next ? next.occurredTo : occurredTo;
     if (nextLocation) params.set('locationId', nextLocation);
     if (nextType) params.set('movementType', nextType);
     if (nextVariant) params.set('productVariantId', nextVariant);
+    if (nextFrom) params.set('occurredFrom', nextFrom);
+    if (nextTo) params.set('occurredTo', nextTo);
     if (next.page && next.page > 1) params.set('page', String(next.page));
     return `/inventory/movements${params.toString() ? `?${params}` : ''}`;
   }
@@ -87,7 +106,7 @@ export default async function MovementsPage({
       ? 'rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-medium text-white'
       : 'rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50';
 
-  const hasFilter = Boolean(locationId || movementType || productVariantId);
+  const hasFilter = Boolean(locationId || movementType || productVariantId || occurredFrom || occurredTo);
 
   return (
     <PageContainer>
@@ -95,6 +114,8 @@ export default async function MovementsPage({
         title="Inventory movements"
         description="The append-only stock ledger: every receipt, sale, transfer, reservation and adjustment."
       />
+
+      <MovementsDateFilter initial={{ occurredFrom, occurredTo }} />
 
       <div className="flex flex-col gap-3">
         {productVariantId && (
@@ -147,7 +168,7 @@ export default async function MovementsPage({
       {result.data.length === 0 ? (
         <EmptyState
           title={hasFilter ? 'No movements match these filters' : 'No movements recorded yet'}
-          description={hasFilter ? 'Try a different location or type.' : 'Movements appear here as stock changes.'}
+          description={hasFilter ? 'Try a different location, type or date range.' : 'Movements appear here as stock changes.'}
         />
       ) : (
         <>

@@ -171,5 +171,13 @@ export const inventoryMovements = pgTable('inventory_movements', {
   index('inventory_movements_tenant_variant_location_created_idx').on(t.tenantId, t.productVariantId, t.locationId, t.createdAt),
   index('inventory_movements_tenant_reference_idx').on(t.tenantId, t.referenceType, t.referenceId).where(sql`${t.referenceId} IS NOT NULL`),
   index('inventory_movements_tenant_created_idx').on(t.tenantId, t.createdAt),
+  /** F18-03 (`GAP-MOVEMENTS-DATE-FILTER`): the new `occurredFrom`/`occurredTo` filter on
+   * `GET /inventory/movements` filters on `occurred_at` — the canonical "when the physical
+   * movement happened" timestamp, backdatable, distinct from `created_at` ("when the row was
+   * written"). Every existing index above covers `created_at`, none cover `occurred_at`, so a
+   * date-range query on the actual business timestamp would otherwise force a full per-tenant
+   * scan of an unboundedly growing ledger table. Additive, mirrors
+   * `inventory_movements_tenant_created_idx`'s shape exactly. */
+  index('inventory_movements_tenant_occurred_idx').on(t.tenantId, t.occurredAt),
   tenantIsolationPolicy('inventory_movements'),
 ]).enableRLS();

@@ -293,12 +293,31 @@ notification or vice versa.
 **Consumed by:** nothing inside the backend — its only consumer is the external Event Processor
 deployable, which (from FASE 15) forwards to n8n.
 
-## REPORTS (future — not built in this phase)
+## REPORTS
 
 **Responsibility:** read-side aggregation across CORE/CATALOG/INVENTORY/SALES for dashboards and
-reports. Expected to be built as read-optimized queries (and, later, materialized views or a
-read replica) rather than reusing the transactional write-path repositories — `PENDING DECISION`
-on the exact approach, to be revisited when reporting is actually scoped.
+reports. Built as read-optimized queries, one dedicated repository/service/controller per domain
+under `apps/api/src/reports/<domain>/` — never reusing the transactional write-path repositories
+(`OrdersRepository`/`OrderItemsRepository`, `InventoryBalancesRepository`/
+`InventoryMovementsRepository`, etc.). Materialized views / a read replica remain a future option,
+not needed yet at current scale.
+
+**Implemented in `apps/api/src/reports/`:**
+- **`sales/` (F18-02):** `GET /reports/sales-summary` (`sales.orders.view`) — day/week/month/
+  product/customer grouping over `orders`/`order_items`, half-open `[from, to)`, tenant timezone
+  resolved server-side. See
+  [reporting/reports.md#rep-sales-by-period--rep-sales-by-product--rep-sales-by-customer](../reporting/reports.md#rep-sales-by-period--rep-sales-by-product--rep-sales-by-customer).
+- **`inventory/` (F18-03):** `GET /reports/inventory-summary` (`inventory.view`) — available/
+  reserved/out-of-stock aggregation over `inventory_balances`, grouped by warehouse or category; a
+  live snapshot (no period, no `from`/`to` — `inventory_balances` carries no history to bucket by).
+  Also closed in F18-03: `occurredFrom`/`occurredTo` on the pre-existing `GET
+  /inventory/movements` (an F17 operational list, not a REPORTS endpoint — the date filter lives on
+  `apps/api/src/inventory/movements/`, not under `reports/`). See
+  [reporting/reports.md#rep-inv-summary--inventory-summary-availablereservedout-of-stock](../reporting/reports.md#rep-inv-summary--inventory-summary-availablereservedout-of-stock).
+
+No `reports.*`/`analytics.*` permission family exists — each report reuses the `*.view` permission
+of the domain it reports on (F18-01, ratified in
+[reporting/filters-periods-and-scope.md#4-permission-catalogue-41-codes](../reporting/filters-periods-and-scope.md#4-permission-catalogue-41-codes)).
 
 ## ADMINISTRATION
 

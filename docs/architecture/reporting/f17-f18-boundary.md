@@ -29,7 +29,7 @@ aggregate endpoint.
 | **Attributes** | definitions + options CRUD | A | — |
 | **Products** | list (status, category) + detail + variants (prices, gated) + create/edit + attribute validation | A | `GAP-NAME-ENRICHMENT` (category name), `GAP-SEARCH` (name/SKU), `GAP-SORT`, `GAP-VARIANT-LIST` (for New Sale + flat variant view), `GAP-BRAND-SUPPLIER-LIST` (or drop the fields) |
 | **Warehouses / Locations** | list + create/edit; default "General" location | A | — |
-| **Inventory / Existencias** | balance list (variant/location filter) + adjust (RECEIPT / ADJUSTMENT_IN/OUT) | A (numbers) / B (view) | `GAP-NAME-ENRICHMENT`, `GAP-INV-AGGREGATE` (warehouse filter + names), `GAP-MOVEMENTS-DATE-FILTER` (kardex/movements) |
+| **Inventory / Existencias** | balance list (variant/location filter) + adjust (RECEIPT / ADJUSTMENT_IN/OUT) | A (numbers) / B (view) | `GAP-NAME-ENRICHMENT` (balances/movements rows are still id-only); `GAP-INV-AGGREGATE` and `GAP-MOVEMENTS-DATE-FILTER` **resolved — F18-03** |
 | **Transfers** | list (status/source/dest) + detail + full lifecycle (request→approve→prepare→dispatch→receive / cancel) + in-transit per transfer | A | `GAP-NAME-ENRICHMENT` (route names), `GAP-MULTI-STATUS` |
 | **QR** | code list + create + resolve | A | — |
 | **Import** | staged pipeline (upload→map→validate→preview→confirm), job list, rows, error report download, templates | A | — |
@@ -58,12 +58,12 @@ aggregate endpoint.
 | Capability | Examples | Blocking gap(s) |
 | --- | --- | --- |
 | **Sales aggregation** | revenue / avg ticket / order count **summed and grouped** by day/week/month/product/customer — **built, F18-02** (`GET /reports/sales-summary`, integrated into `/sales`); by **location** still blocked | `GAP-ORDERS-LOCATION-FILTER` (location grouping only), `GAP-ORDER-CONFIRMED-AT`, `GAP-ORDER-MARGIN` |
-| **Inventory aggregation & valuation** | total on-hand by warehouse; inventory value; out-of-stock/low-stock rollups; aged stock; in-transit aggregate | `GAP-INV-AGGREGATE`, `GAP-COST`, `GAP-REORDER` |
+| **Inventory aggregation** | total available/reserved by warehouse or category; out-of-stock SKU count — **built, F18-03** (`GET /reports/inventory-summary`, integrated into `/inventory`); valuation, low-stock, aged stock, in-transit aggregate still blocked | `GAP-COST`, `GAP-REORDER`, `GAP-SNAPSHOTS` |
 | **Trends & comparisons** | any "vs last period", any line chart over time for a point-in-time metric | `GAP-SNAPSHOTS` |
 | **Rankings / top-N** | best-selling products (**built, F18-02** — server-ranked `groupBy=product`), top customers (**built, F18-02** — server-ranked `groupBy=customer`), most-adjusted items | `GAP-CUSTOMER-HISTORY` (last-order-date / zero-order view only) |
 | **Pricing governance analytics** | exceptional-discount volume/value, approval rate over time, discount leakage | `GAP-EXCEPTIONAL-FILTER` |
 | **Returns analytics** | return rate, returns by disposition, returned value | `GAP-RETURN-AGGREGATE` |
-| **Movement analytics** | movement volume charts, throughput by location, receipt/adjustment trends | `GAP-MOVEMENTS-DATE-FILTER` + aggregation |
+| **Movement analytics** | movement volume charts, throughput by location, receipt/adjustment trends — the date-range filter itself is **resolved, F18-03**; grouped/charted aggregation over it is not built | (aggregation still open) |
 | **Advanced / scheduled exports** | full-dataset CSV/XLSX, scheduled report delivery | `GAP-EXPORT` |
 | **Audit / activity reporting** | who-changed-what dashboards | `GAP-AUDIT-READ` |
 | **Serial / lot traceability** | unit history, expiry dashboards | `GAP-SERIAL-LOT-READ` |

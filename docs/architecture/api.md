@@ -112,6 +112,14 @@ per-endpoint default rules, and the explicit exception below) — not duplicated
 `GET /orders`'s pre-existing `createdFrom`/`createdTo` (SALES, FASE 12) is a deliberate exception:
 it keeps its original inclusive-both-bounds semantics, unchanged by F18-01.
 
+`GET /inventory/movements`'s `occurredFrom`/`occurredTo` (F18-03, `GAP-MOVEMENTS-DATE-FILTER`) is a
+**third** date-filter shape, distinct from both of the above: it applies the same half-open
+`[occurredFrom, occurredTo)` semantics as the FASE 18 convention, but on `occurred_at` (not
+`created_at`) and under its own field names — deliberately not `from`/`to`, since this is an F17
+operational list filter on an existing endpoint, not a new FASE 18 report. `GET
+/reports/inventory-summary` (F18-03) has no date filter at all — it is a live snapshot of current
+`inventory_balances` state, not a period query.
+
 ## Idempotency
 
 State-changing endpoints where a client retry could otherwise duplicate an effect (most notably

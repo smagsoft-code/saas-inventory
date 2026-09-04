@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
@@ -49,6 +49,13 @@ export class MovementsService {
   ) {}
 
   async list(tenantId: string, query: ListMovementsQueryDto): Promise<PaginatedResult<MovementResponseDto>> {
+    // [occurredFrom, occurredTo) — half-open, same convention as every FASE 18 reporting endpoint
+    // (F18-03, GAP-MOVEMENTS-DATE-FILTER). `occurredFrom >= occurredTo` is a caller mistake no date
+    // format check catches on its own, so it is rejected here rather than silently returning empty.
+    if (query.occurredFrom && query.occurredTo && new Date(query.occurredFrom).getTime() >= new Date(query.occurredTo).getTime()) {
+      throw new BadRequestException('`occurredFrom` must be strictly before `occurredTo`.');
+    }
+
     return withTenantTransaction(tenantId, async (tx) => {
       const { rows, total } = await this.movementsRepository.listByTenant(tx, tenantId, {
         page: query.page,
@@ -56,6 +63,8 @@ export class MovementsService {
         productVariantId: query.productVariantId,
         locationId: query.locationId,
         movementType: query.movementType,
+        ...(query.occurredFrom ? { occurredGte: new Date(query.occurredFrom) } : {}),
+        ...(query.occurredTo ? { occurredLt: new Date(query.occurredTo) } : {}),
       });
       return {
         data: rows.map(toResponse),

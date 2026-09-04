@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InsufficientStockError } from '../stock-ledger.service';
 import { MovementsService } from './movements.service';
@@ -119,6 +119,82 @@ describe('MovementsService', () => {
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
+    });
+
+    describe('occurredFrom/occurredTo (F18-03, GAP-MOVEMENTS-DATE-FILTER)', () => {
+      it('rejects when occurredFrom is not strictly before occurredTo', async () => {
+        const { service } = buildService();
+        await expect(
+          service.list(TENANT_ID, {
+            page: 1,
+            pageSize: 20,
+            occurredFrom: '2026-09-02T00:00:00.000Z',
+            occurredTo: '2026-09-02T00:00:00.000Z',
+          }),
+        ).rejects.toThrow(BadRequestException);
+        await expect(
+          service.list(TENANT_ID, {
+            page: 1,
+            pageSize: 20,
+            occurredFrom: '2026-09-03T00:00:00.000Z',
+            occurredTo: '2026-09-02T00:00:00.000Z',
+          }),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('applies only occurredGte when occurredTo is omitted', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+        await service.list(TENANT_ID, { page: 1, pageSize: 20, occurredFrom: '2026-09-01T00:00:00.000Z' });
+        expect(movementsRepository.listByTenant).toHaveBeenCalledWith(
+          expect.anything(),
+          TENANT_ID,
+          expect.objectContaining({ occurredGte: new Date('2026-09-01T00:00:00.000Z') }),
+        );
+        const call = movementsRepository.listByTenant.mock.calls[0]![2] as Record<string, unknown>;
+        expect(call).not.toHaveProperty('occurredLt');
+      });
+
+      it('applies only occurredLt when occurredFrom is omitted', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+        await service.list(TENANT_ID, { page: 1, pageSize: 20, occurredTo: '2026-09-02T00:00:00.000Z' });
+        expect(movementsRepository.listByTenant).toHaveBeenCalledWith(
+          expect.anything(),
+          TENANT_ID,
+          expect.objectContaining({ occurredLt: new Date('2026-09-02T00:00:00.000Z') }),
+        );
+        const call = movementsRepository.listByTenant.mock.calls[0]![2] as Record<string, unknown>;
+        expect(call).not.toHaveProperty('occurredGte');
+      });
+
+      it('applies both bounds when both are given', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+        await service.list(TENANT_ID, {
+          page: 1,
+          pageSize: 20,
+          occurredFrom: '2026-09-01T00:00:00.000Z',
+          occurredTo: '2026-09-02T00:00:00.000Z',
+        });
+        expect(movementsRepository.listByTenant).toHaveBeenCalledWith(
+          expect.anything(),
+          TENANT_ID,
+          expect.objectContaining({
+            occurredGte: new Date('2026-09-01T00:00:00.000Z'),
+            occurredLt: new Date('2026-09-02T00:00:00.000Z'),
+          }),
+        );
+      });
+
+      it('passes no occurred bounds at all when neither is given (no regression)', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+        await service.list(TENANT_ID, { page: 1, pageSize: 20 });
+        const call = movementsRepository.listByTenant.mock.calls[0]![2] as Record<string, unknown>;
+        expect(call).not.toHaveProperty('occurredGte');
+        expect(call).not.toHaveProperty('occurredLt');
+      });
     });
   });
 });
