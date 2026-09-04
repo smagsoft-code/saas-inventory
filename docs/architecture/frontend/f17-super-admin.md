@@ -23,6 +23,25 @@
 `(superadmin)/` layout calls `GET /platform/auth/me`; a tenant session there is not a platform
 principal → redirect to platform login.
 
+**BUILT — F17-13 (2026-09).** `S-SA-LOGIN` and the `(superadmin)` shell shipped in FASE 16;
+F17-13 adds the two company screens under `/platform/*` (so `middleware.ts` and the login redirect
+keep working):
+- `S-SA-TENANTS` — `apps/web/src/app/(superadmin)/platform/tenants/page.tsx` (server read of
+  `GET /platform/tenants`) + `platform-tenants-table.tsx` (client: status / type / name-slug search
+  + sort, **all over the fetched array — zero extra requests**, no server params invented).
+- `S-SA-TENANT-DETAIL` — `.../tenants/[id]/page.tsx` (the 6 DTO fields, `notFound()` on 404) +
+  `tenant-lifecycle-actions.tsx` (client: `POST …/suspend` behind a confirm step, `POST …/activate`;
+  `apiFetch` attaches the `platform_csrf_token` double-submit header; audit implication stated in
+  the copy, managed server-side).
+- Nav: `PLATFORM_NAVIGATION` gains "Companies" (`/platform/tenants`). The `(superadmin)/platform`
+  home links to it (no metrics — `GAP-PLATFORM-AGGREGATE`).
+- Reads use the shared `serverApiFetch` (forwards the `platform_*` cookies) — no parallel client.
+  One known minor limitation: a browser 401 during a suspend/activate goes through the shared
+  client's tenant-oriented `/auth/refresh` path and, since the platform shell mounts no
+  `SessionExpiryListener`, surfaces as a "session expired" alert rather than an auto-redirect to
+  `/platform/login` — the admin reloads and the layout redirects. Tracked as `GAP-SA-PLATFORM-401`
+  (additive, non-blocking).
+
 ## 2. What the Super-Admin can do TODAY (supported — build in F17)
 
 | Capability | Endpoint | Response | Notes |

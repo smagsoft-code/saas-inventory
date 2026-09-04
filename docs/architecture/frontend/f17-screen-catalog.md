@@ -701,6 +701,12 @@ See [f17-super-admin.md](f17-super-admin.md) for the full analysis. Summary of s
 - **Gaps:** no user counts / activity / any tenant-scoped data (isolation — **C**); no create-tenant
   (platform-initiated) → [`GAP-SA-CREATE-TENANT`](f17-gaps.md#gap-sa-create-tenant).
 - **F17** (for exactly these 6 fields + suspend/activate).
+- **BUILT — F17-13 (2026-09)** at `/platform/tenants`. `page.tsx` (server, `listPlatformTenants()`)
+  + `platform-tenants-table.tsx` (client): search (name/slug), status filter, demo/real filter,
+  sort (created ↕ / name) — all over the one fetched array, **no extra request, no server param
+  invented**. `Table`/`Badge`/`EmptyState`/`Field` reused. Read-only: no "New company" (no
+  endpoint). "N of M companies" live count; "no companies match these filters" ≠ page-level "no
+  companies yet" empty state.
 
 ### `S-SA-TENANT-DETAIL` — Company detail
 - **Persona:** PA · **Route:** `(superadmin)/tenants/[id]` · **Scope:** platform.
@@ -712,6 +718,14 @@ See [f17-super-admin.md](f17-super-admin.md) for the full analysis. Summary of s
   [`GAP-SA-TENANT-ADMINS`](f17-gaps.md#gap-sa-tenant-admins)); cannot see login activity,
   storage, plan, billing (none exist).
 - **F17** (view + suspend/activate).
+- **BUILT — F17-13 (2026-09)** at `/platform/tenants/[id]`. `page.tsx` (server,
+  `getPlatformTenant()`, `notFound()` on 404) shows the 6 DTO fields verbatim — nothing derived.
+  `tenant-lifecycle-actions.tsx` (client): **Suspend** (behind a confirm step — 011-A makes it
+  effective on the next request) → `POST /platform/tenants/:id/suspend`; **Activate** →
+  `POST …/activate`. Both audited server-side (`PlatformAuditLogService`); the UI states the audit
+  implication, does not manage it. `apiFetch` carries the `platform_csrf_token` double-submit
+  header. `archived` → no action (no endpoint sets it) — the state is shown with an explanatory
+  line. No edit / delete (no endpoint).
 
 ### Not built in F17 Super-Admin (GAP / future)
 - Platform dashboard with real per-tenant metrics — [`GAP-PLATFORM-AGGREGATE`](../reporting/data-gaps.md#gap-platform-aggregate).

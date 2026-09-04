@@ -5,9 +5,10 @@ import type { NavIcon } from './navigation';
  * `(superadmin)` context, kept as its own source so the two navigations can never leak into each
  * other (F17-01 §11 / §14, [f17-navigation.md](../../../docs/architecture/frontend/f17-navigation.md)).
  *
- * F17-01 ships only the platform Home entry. Company management (`/platform/tenants`, the
- * `S-SA-TENANTS` screen) is **F17-13** and its nav entry is added by that sub-prompt when the
- * route exists — no placeholder link to an unbuilt page (F17-01 §12).
+ * F17-01 shipped only the platform Home entry. **F17-13** adds "Companies" (`/platform/tenants`,
+ * the `S-SA-TENANTS` screen) now that the route exists. There is deliberately nothing else: a
+ * platform dashboard, platform-admin management and platform-initiated tenant creation are all
+ * `GAP-SA-*` (future) — no placeholder link to an unbuilt page (F17-01 §12).
  */
 export interface PlatformNavItem {
   label: string;
@@ -18,6 +19,7 @@ export interface PlatformNavItem {
 
 export const PLATFORM_NAVIGATION: PlatformNavItem[] = [
   { label: 'Home', href: '/platform', icon: 'home' },
+  { label: 'Companies', href: '/platform/tenants', icon: 'building', activePaths: ['/platform/tenants'] },
 ];
 
 /** `/platform` matches only itself; every other item matches its `href` and any `activePaths`

@@ -89,9 +89,9 @@
 
 | Screen | Endpoint(s) | Req DTO | Resp DTO | Permission | Entity | ADR | Ref | State |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `S-SA-LOGIN` | `POST /platform/auth/login`\|`/refresh`\|`/logout` · `GET /platform/auth/me` | platform login DTO | platform session | `@Public` / `@PlatformOnly` | `platform_admins`,`platform_admin_refresh_tokens` | 0032 | multi-tenancy.md#superadmin-vs-tenant | A |
-| `S-SA-TENANTS` | `GET /platform/tenants` | — | `PlatformTenantResponseDto[]` (**unpaginated**) | `@PlatformOnly` | `tenants` | 0032 | [017-A `REP-PLAT-TENANTS`](../reporting/reports.md#rep-plat-tenants--companies-superadmin) | A |
-| `S-SA-TENANT-DETAIL` | `GET /platform/tenants/:id` · `POST /platform/tenants/:id/suspend`\|`/activate` | — | `PlatformTenantResponseDto` | `@PlatformOnly` (audited) | `tenants`,`audit_log` | 0032, 0015 | — | A; admins/metrics/create = `GAP-SA-*` |
+| `S-SA-LOGIN` | `POST /platform/auth/login`\|`/refresh`\|`/logout` · `GET /platform/auth/me` | `PlatformLoginDto {email,password}` | `PlatformAuthSessionResponseDto`, `CurrentPlatformAdminResponseDto` | `@Public` / `@PlatformOnly` | `platform_admins`,`platform_admin_refresh_tokens` | 0032 | multi-tenancy.md#superadmin-vs-tenant | A; built FASE 16 at `/platform/login` (+ `(superadmin)` shell, `getPlatformSession`, `middleware` gate) |
+| `S-SA-TENANTS` | `GET /platform/tenants` | — | `PlatformTenantResponseDto[]` `{id,name,slug,status,isDemo,createdAt}` (**whole array, unpaginated, no server filter/sort/search**) | `@PlatformOnly` (no permission code — the platform principal is the authorization) | `tenants` | 0032 | [017-A `REP-PLAT-TENANTS`](../reporting/reports.md#rep-plat-tenants--companies-superadmin) | A; built F17-13 at `/platform/tenants`. Client-side filter/sort/search over the fetched array (no extra request). Read-only — no create/edit/delete endpoint (`GAP-SA-CREATE-TENANT`) |
+| `S-SA-TENANT-DETAIL` | `GET /platform/tenants/:tenantId` · `POST /platform/tenants/:tenantId/suspend`\|`/activate` | — (path param only; `:tenantId` is a legit segment here — caller has no tenant) | `PlatformTenantResponseDto` | `@PlatformOnly`, CSRF + platform audit log on the mutations | `tenants`,`audit_log` | 0032, 0015 | — | A; built F17-13 at `/platform/tenants/[id]`. 6 fields verbatim; Suspend (confirm step) / Activate only; `archived` = badge, no action; admins/metrics/create/edit/delete/impersonation = `GAP-SA-*` |
 
 ## Referenced but not F17 (traceability of exclusions)
 

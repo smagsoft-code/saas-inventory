@@ -40,7 +40,8 @@ export type NavIcon =
   | 'receipt'
   | 'approval'
   | 'undo'
-  | 'upload';
+  | 'upload'
+  | 'building';
 
 export interface NavSection {
   /** `null` for the top-level group that needs no heading. */

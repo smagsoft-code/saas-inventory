@@ -75,12 +75,16 @@ Notes:
 
 | Label | Route | Permission | Support | Screen |
 | --- | --- | --- | --- | --- |
-| Empresas | `(superadmin)/tenants` | `@PlatformOnly()` | **A** | `S-SA-TENANTS` |
-| *(company detail)* | `(superadmin)/tenants/[id]` | `@PlatformOnly()` | **A** | `S-SA-TENANT-DETAIL` |
+| Home | `/platform` | `@PlatformOnly()` | **A** — built FASE 16 | — |
+| Companies | `/platform/tenants` | `@PlatformOnly()` | **A** — built F17-13 | `S-SA-TENANTS` |
+| *(company detail)* | `/platform/tenants/[id]` | `@PlatformOnly()` | **A** — built F17-13 | `S-SA-TENANT-DETAIL` |
 
-That is the **entire** supported Super-Admin surface today. A platform dashboard, platform-admin
-management, and platform-initiated tenant creation are **GAPs** (see
-[f17-super-admin.md](f17-super-admin.md)) — no nav entry until a backend contract exists.
+Every platform route lives under the `/platform/*` URL prefix (the `(superadmin)` route group
+contains a `platform/` segment) so `middleware.ts`'s `platform_access_token` presence-gate and the
+`/platform/login?returnTo=` flow apply uniformly. That is the **entire** supported Super-Admin
+surface today. A platform dashboard, platform-admin management, and platform-initiated tenant
+creation are **GAPs** (see [f17-super-admin.md](f17-super-admin.md)) — no nav entry until a backend
+contract exists.
 
 ## Route protection summary
 

@@ -532,14 +532,35 @@ No `POST /platform/tenants` — companies are created only via the tenant's own 
 `POST /auth/register`. **future** — a platform-ops phase, ADR first (who becomes the first admin,
 invite flow). Super-Admin in F17 does not create tenants.
 
+**F17-13 (2026-09) — OPEN, confirmed by code audit.** No create endpoint exists; the built
+`S-SA-TENANTS` list is read-only (no "New company" control anywhere). Also confirmed there is **no**
+platform `PATCH`/`DELETE` for a tenant (`TenantsPlatformRepository.updateName` is wired only to the
+tenant's own `PATCH /tenant`), so `S-SA-TENANT-DETAIL` offers view + suspend/activate only — no
+edit, no delete. Still `future`.
+
 ### `GAP-SA-TENANT-ADMINS`
 No endpoint lets a Platform Admin list/manage a company's administrators or users. A Platform
 Admin **must not** read tenant-scoped data (multi-tenancy.md) — this needs an explicit, audited,
 SuperAdmin-scoped aggregate path that does not exist. **future.**
 
+**F17-13 (2026-09) — OPEN, unchanged.** `S-SA-TENANT-DETAIL` shows only the 6 `tenants`-row fields;
+it reads no tenant-scoped data and has no "users of this company" section. Still `future`.
+
 ### `GAP-SA-ADMIN-CRUD`
 `platform_admins` has no CRUD endpoint — only the `seed:platform-admin` script. Managing other
 platform admins from the UI is **future** (ADR: bootstrap vs UI, MFA).
+
+**F17-13 (2026-09) — OPEN, unchanged.** No platform-admin management screen was built. Still `future`.
+
+### `GAP-SA-PLATFORM-401`
+The shared `apiFetch` 401 path always calls the **tenant** `POST /auth/refresh` and, on failure,
+emits `session-expired`. The `(superadmin)` shell mounts no `SessionExpiryListener`, so a browser
+401 during a platform mutation (suspend/activate) surfaces as a "session expired" alert in the
+action panel rather than an automatic redirect to `/platform/login` (the admin reloads → the layout
+redirects). Reads are unaffected (server-side, gated by `getPlatformSession()` in the layout).
+**Class:** F17-additive. **Blocking:** no. **Fix:** a platform-aware refresh path + a platform
+`SessionExpiryListener` (or a small platform variant of the client). Discovered in F17-13; not
+worth a parallel HTTP client for the current surface.
 
 ### `GAP-AUDIT-READ`
 `audit_log` is write-only from the app — no controller, no permission. Indexes for the reads
