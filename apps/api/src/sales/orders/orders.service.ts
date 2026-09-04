@@ -37,8 +37,10 @@ const IDEMPOTENCY_SCOPE = 'orders.create';
 const IDEMPOTENCY_TTL_MS = 48 * 60 * 60 * 1000;
 /** Single-currency-per-tenant is assumed by the schema (`orders.currency`, database.md#orders);
  * no tenant currency setting exists yet. USD is the FASE 12 default — a documented assumption,
- * revisited if/when multi-currency or a tenant currency config is introduced. */
-const DEFAULT_CURRENCY = 'USD';
+ * revisited if/when multi-currency or a tenant currency config is introduced. Exported so
+ * `SalesReportService` (F18-02) echoes the same constant on `GET /reports/sales-summary` rather
+ * than a second, potentially-drifting 'USD' literal. */
+export const DEFAULT_CURRENCY = 'USD';
 
 function hashRequest(body: unknown): string {
   return createHash('sha256').update(JSON.stringify(body)).digest('hex');

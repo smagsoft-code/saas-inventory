@@ -32,12 +32,12 @@ FASE 18 snapshot/rollup exists.
 | ID | Name | Business question | Metric(s) | Formula | Period | Comparison | Filters | Scope | Permission | State |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `KPI-SALES-ORDERS` | Orders in the period | *How many sales did we make?* | `SALES-ORDER-COUNT` | `count(orders)` where `status='confirmed'` (or any status) and `created_at` in range | day / week / month / custom | **A** | status, documentType, customerId, date range | tenant | `sales.orders.view` | **A** — `GET /orders?status=confirmed&createdFrom&createdTo` → `meta.total`; prior period = a second call |
-| `KPI-SALES-REVENUE` | Revenue in the period | *How much did we sell (money)?* | `SALES-REVENUE` | `Σ orders.total` where `status='confirmed'` and `created_at` in range | day / week / month / custom | **B** | status, documentType, customerId, date range | tenant | `sales.orders.view` | **B** — rows filterable; **no server-side sum** (client pages + folds, or FASE 18) |
-| `KPI-SALES-AVG-TICKET` | Average ticket | *What is the average sale size?* | `SALES-REVENUE`, `SALES-ORDER-COUNT` | `revenue ÷ count` (confirmed, period) | period | **B** | date range | tenant | `sales.orders.view` | **B** — inherits from `SALES-REVENUE` |
+| `KPI-SALES-REVENUE` | Revenue in the period | *How much did we sell (money)?* | `SALES-REVENUE` | `Σ orders.total` where `status='confirmed'` and `created_at` in range | day / week / month / custom | **A** | status, date range, groupBy | tenant | `sales.orders.view` | **A** — F18-02, `GET /reports/sales-summary` — real server-side `SUM`, tenant timezone-aware day/week/month buckets |
+| `KPI-SALES-AVG-TICKET` | Average ticket | *What is the average sale size?* | `SALES-REVENUE`, `SALES-ORDER-COUNT` | `revenue ÷ count` (confirmed, period) | period | **A** | date range | tenant | `sales.orders.view` | **A** — F18-02, `avgTicket` on each `day`/`week`/`month`/`customer` bucket (half-up 2dp, `roundMoney`) |
 | `KPI-SALES-CONFIRM-RATE` | Confirmation rate | *What share of orders complete?* | `SALES-ORDER-COUNT` (per status) | `confirmed ÷ (confirmed + pending + cancelled)` created in range | period | **A** | date range | tenant | `sales.orders.view` | **A** — three `meta.total` calls (status filter + date filter both exist) |
 | `KPI-SALES-DOCTYPE-MIX` | Invoice vs sales-note mix | *How many sales need a fiscal document?* | `SALES-BY-DOCTYPE` | count per `document_type`, period | period | **A** (count) | date range | tenant | `sales.orders.view` | **A** (count) / **B** (revenue split) |
 | `KPI-SALES-EXCEPTIONAL` | Exceptional-discount rate | *How often do vendors sell below floor?* | `SALES-EXCEPTIONAL-LINES` | `exceptional lines ÷ total lines`, period | period | **C** | date range | tenant | `sales.orders.view` (+ `pricing.floor.view`) | **C** — `is_exceptional_discount` is not filterable or aggregated; visible only per-order |
-| `KPI-SALES-TOP-PRODUCTS` | Best-selling products | *What sells the most?* | `SALES-BY-PRODUCT` | rank variants by `Σ quantity` / `Σ line_total`, period | period | **B** | date range, category | tenant | `sales.orders.view` | **B** — requires grouping over `order_items`; FASE 18 |
+| `KPI-SALES-TOP-PRODUCTS` | Best-selling products | *What sells the most?* | `SALES-BY-PRODUCT` | rank variants by `Σ quantity` / `Σ line_total`, period | period | **A** | date range | tenant | `sales.orders.view` | **A** — F18-02, `GET /reports/sales-summary?groupBy=product`, server-ordered by `Σ line_total DESC`; no `category` filter yet (not in scope) |
 | `KPI-SALES-BY-LOCATION` | Sales by sales point | *Which branch sells the most?* | `SALES-BY-LOCATION` | `Σ total` grouped by `orders.location_id`, period | period | **C** | date range | tenant / location | `sales.orders.view` | **C** — `orders.location_id` is **not a filter** on `GET /orders`; no grouping |
 
 ## 3. Operations — attention queues
@@ -75,7 +75,7 @@ FASE 18 snapshot/rollup exists.
 
 ## Summary — KPIs that are honestly usable today (state A)
 
-Only these compute correctly against the real backend **now**, with no new endpoint:
+Compute correctly against the real backend **now**, with no new endpoint:
 
 - `KPI-SALES-ORDERS` — order count for {status, document type, customer, date range} + prior-period comparison.
 - `KPI-SALES-CONFIRM-RATE` — order status mix over a period.
@@ -84,6 +84,12 @@ Only these compute correctly against the real backend **now**, with no new endpo
 - `KPI-OPS-IMPORTS-ATTENTION` — failed / completed-with-errors import count.
 - `KPI-USR-ACTIVE` — active user count.
 - `KPI-PLAT-TENANTS`, `KPI-PLAT-TENANTS-STATUS` — company counts (SuperAdmin).
+
+**Added by F18-02** (`GET /reports/sales-summary`, real server-side aggregation):
+
+- `KPI-SALES-REVENUE` — Σ total, tenant-timezone-aware day/week/month/customer grouping.
+- `KPI-SALES-AVG-TICKET` — total ÷ orderCount per bucket.
+- `KPI-SALES-TOP-PRODUCTS` — Σ line_total by variant, server-ranked descending.
 
 Everything else is **B** (needs a FASE 18 aggregate / a filter / a join) or **C** (needs a schema
 or contract change first — see [data-gaps.md](data-gaps.md)).

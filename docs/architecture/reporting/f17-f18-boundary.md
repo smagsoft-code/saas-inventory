@@ -57,10 +57,10 @@ aggregate endpoint.
 
 | Capability | Examples | Blocking gap(s) |
 | --- | --- | --- |
-| **Sales aggregation** | revenue / avg ticket / order count **summed and grouped** by day/week/month/product/customer/location; executive dashboard; sales-history KPI tiles | `GAP-SALES-AGGREGATE`, `GAP-ORDERS-LOCATION-FILTER`, `GAP-ORDER-CONFIRMED-AT`, `GAP-ORDER-MARGIN` |
+| **Sales aggregation** | revenue / avg ticket / order count **summed and grouped** by day/week/month/product/customer — **built, F18-02** (`GET /reports/sales-summary`, integrated into `/sales`); by **location** still blocked | `GAP-ORDERS-LOCATION-FILTER` (location grouping only), `GAP-ORDER-CONFIRMED-AT`, `GAP-ORDER-MARGIN` |
 | **Inventory aggregation & valuation** | total on-hand by warehouse; inventory value; out-of-stock/low-stock rollups; aged stock; in-transit aggregate | `GAP-INV-AGGREGATE`, `GAP-COST`, `GAP-REORDER` |
 | **Trends & comparisons** | any "vs last period", any line chart over time for a point-in-time metric | `GAP-SNAPSHOTS` |
-| **Rankings / top-N** | best-selling products, top customers, most-adjusted items | `GAP-SALES-AGGREGATE`, `GAP-CUSTOMER-HISTORY` |
+| **Rankings / top-N** | best-selling products (**built, F18-02** — server-ranked `groupBy=product`), top customers (**built, F18-02** — server-ranked `groupBy=customer`), most-adjusted items | `GAP-CUSTOMER-HISTORY` (last-order-date / zero-order view only) |
 | **Pricing governance analytics** | exceptional-discount volume/value, approval rate over time, discount leakage | `GAP-EXCEPTIONAL-FILTER` |
 | **Returns analytics** | return rate, returns by disposition, returned value | `GAP-RETURN-AGGREGATE` |
 | **Movement analytics** | movement volume charts, throughput by location, receipt/adjustment trends | `GAP-MOVEMENTS-DATE-FILTER` + aggregation |

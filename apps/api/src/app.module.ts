@@ -10,6 +10,7 @@ import { HealthModule } from './health/health.module';
 import { ImportModule } from './import/import.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { QrModule } from './qr/qr.module';
+import { ReportsModule } from './reports/reports.module';
 import { SalesModule } from './sales/sales.module';
 
 @Module({
@@ -25,6 +26,7 @@ import { SalesModule } from './sales/sales.module';
     ImportModule,
     AdministrationModule,
     SalesModule,
+    ReportsModule,
     EventProcessorModule,
   ],
 })

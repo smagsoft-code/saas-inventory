@@ -1,0 +1,66 @@
+/**
+ * F18-02 — mirrors `GET /api/v1/reports/sales-summary`'s real response shape
+ * (`apps/api/src/reports/sales/dto/sales-summary-response.dto.ts`), the same "no field is added
+ * that the endpoint does not send" convention as `lib/types/session.ts` (F18-01) — `apps/web` does
+ * not import `@saas-inventory/types` at runtime, so `ReportResult<T>`/`ReportBucket` are mirrored
+ * here rather than imported.
+ */
+
+export const SALES_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'product', 'customer'] as const;
+export type SalesSummaryGroupBy = (typeof SALES_SUMMARY_GROUP_BY)[number];
+
+export const SALES_SUMMARY_GROUP_BY_LABELS: Record<SalesSummaryGroupBy, string> = {
+  day: 'Day',
+  week: 'Week',
+  month: 'Month',
+  product: 'Product',
+  customer: 'Customer',
+};
+
+export interface SalesPeriodBucket {
+  key: string;
+  orderCount: number;
+  subtotal: number;
+  discountTotal: number;
+  total: number;
+  avgTicket: number;
+}
+
+export interface SalesCustomerBucket {
+  key: string;
+  customerName: string;
+  orderCount: number;
+  subtotal: number;
+  discountTotal: number;
+  total: number;
+  avgTicket: number;
+}
+
+export interface SalesProductBucket {
+  key: string;
+  sku: string;
+  productName: string;
+  orderCount: number;
+  quantity: number;
+  discountTotal: number;
+  total: number;
+}
+
+export type SalesSummaryBucket = SalesPeriodBucket | SalesCustomerBucket | SalesProductBucket;
+
+export interface SalesSummary {
+  from: string;
+  to: string;
+  timezone: string;
+  currency: string;
+  groupBy: SalesSummaryGroupBy;
+  buckets: SalesSummaryBucket[];
+}
+
+export function isProductBucket(bucket: SalesSummaryBucket): bucket is SalesProductBucket {
+  return 'productName' in bucket;
+}
+
+export function isCustomerBucket(bucket: SalesSummaryBucket): bucket is SalesCustomerBucket {
+  return 'customerName' in bucket;
+}

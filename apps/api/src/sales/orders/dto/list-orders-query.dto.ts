@@ -2,7 +2,9 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsDateString, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
-const ORDER_STATUSES = ['draft', 'pending', 'confirmed', 'fulfilled', 'cancelled'] as const;
+/** Exported for reuse by `apps/api/src/reports/sales/dto/sales-summary-query.dto.ts` — the real
+ * order status enum, not redefined (modules.md: Reports --> Sales is an allowed dependency). */
+export const ORDER_STATUSES = ['draft', 'pending', 'confirmed', 'fulfilled', 'cancelled'] as const;
 const DOCUMENT_TYPES = ['invoice', 'sales_note'] as const;
 
 /** Offset pagination + explicit documented filters only (api.md). This is a transactional

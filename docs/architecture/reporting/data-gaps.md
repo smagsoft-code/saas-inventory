@@ -12,7 +12,7 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-REORDER`](#gap-reorder) | Reorder point / low-stock threshold | F18-needed |
 | [`GAP-COST`](#gap-cost) | Inventory cost / valuation / COGS | future |
 | [`GAP-SNAPSHOTS`](#gap-snapshots) | Historical snapshots for trend KPIs | F18-needed |
-| [`GAP-SALES-AGGREGATE`](#gap-sales-aggregate) | Sales aggregation endpoint | F18-needed |
+| [`GAP-SALES-AGGREGATE`](#gap-sales-aggregate) | Sales aggregation endpoint | ~~F18-needed~~ **RESOLVED (F18-02)** — `location` grouping still open |
 | [`GAP-INV-AGGREGATE`](#gap-inv-aggregate) | Inventory aggregation + name enrichment | F17-needed (partial) / F18 |
 | [`GAP-MOVEMENTS-DATE-FILTER`](#gap-movements-date-filter) | Date range + sort on movements | F17-needed |
 | [`GAP-MULTI-STATUS`](#gap-multi-status) | Multi-status filter on lists | F17-needed |
@@ -20,7 +20,7 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-ORDER-CONFIRMED-AT`](#gap-order-confirmed-at) | `confirmed_at` timestamp on orders | F18-needed |
 | [`GAP-NOTIF-STATUS`](#gap-notif-status) | Notification status per order + retry | F17-needed |
 | [`GAP-AUDIT-READ`](#gap-audit-read) | Audit-log read endpoint | future |
-| [`GAP-CUSTOMER-HISTORY`](#gap-customer-history) | Per-customer order history / LTV | F18-needed |
+| [`GAP-CUSTOMER-HISTORY`](#gap-customer-history) | Per-customer order history / LTV | ~~F18-needed~~ **PARTIALLY RESOLVED (F18-02)** — ranking done; last-order-date / zero-order view still open |
 | [`GAP-CUSTOMER-DATE-FILTER`](#gap-customer-date-filter) | Date filter on customers | F18-needed |
 | [`GAP-EXCEPTIONAL-FILTER`](#gap-exceptional-filter) | Filter/aggregate exceptional-discount lines | F18-needed |
 | [`GAP-RETURN-AGGREGATE`](#gap-return-aggregate) | Return lines by disposition / value | F18-needed |
@@ -79,16 +79,23 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
   "materialized views or a read replica").
 
 ### `GAP-SALES-AGGREGATE`
-- **Required:** a read-side endpoint that returns grouped sales figures:
-  `{ from, to, groupBy: day|week|month|product|customer|location, status }` →
-  `{ orderCount, subtotal, discountTotal, total, avgTicket }` per group.
-- **Why:** `KPI-SALES-REVENUE`, `KPI-SALES-AVG-TICKET`, `REP-SALES-BY-PERIOD/PRODUCT/CUSTOMER`,
-  the executive dashboard, `SalesHistoryDesktop` KPI tiles.
-- **Missing:** `GET /orders` returns rows only, `meta.total` gives counts but no sums, no grouping.
-- **Impact:** revenue and everything derived from it require paging every matching order and
-  folding client-side — acceptable for a tiny tenant, wrong at scale.
-- **Recommended phase:** **F18-needed** — the core REPORTS read-side deliverable. Must not reuse
-  `OrdersRepository` (modules.md / roadmap FASE 18).
+**RESOLVED (day/week/month/product/customer) — F18-02.** `GET /reports/sales-summary`
+(`sales.orders.view`) — `{ from, to, groupBy: day|week|month|product|customer, status }` →
+`{ orderCount, subtotal, discountTotal, total, avgTicket }` (period/customer buckets) or
+`{ quantity, discountTotal, total }` (product buckets, no `avgTicket` — a "ticket" is order-level).
+Real server-side `SUM`/`COUNT`/`GROUP BY`/`date_trunc(... AT TIME ZONE tenant_tz)` in
+`apps/api/src/reports/sales/sales-report.repository.ts` — never `OrdersRepository`/
+`OrderItemsRepository` (modules.md's read-side rule honored). Integrated into `/sales` (Sales
+History) as its own report section, F18-02.
+
+**`groupBy: location` — still not implemented.** `GAP-ORDERS-LOCATION` (F18-01, still open) blocks
+it: order visibility has no location scope anywhere in SALES, so grouping by `orders.location_id`
+needs that product decision first. `REP-SALES-BY-LOCATION` stays **C**.
+
+- **Original text (for history):** a read-side endpoint that returns grouped sales figures was
+  needed; `GET /orders` returned rows only, `meta.total` gave counts but no sums, no grouping —
+  revenue and everything derived from it required paging every matching order and folding
+  client-side. Recommended phase was F18-needed, the core REPORTS read-side deliverable — done.
 
 ### `GAP-INV-AGGREGATE`
 - **Required:** aggregated inventory reads — `Σ available/reserved/committed` by tenant / warehouse
@@ -178,13 +185,18 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
   redaction rules.
 
 ### `GAP-CUSTOMER-HISTORY`
-- **Required:** per-customer order rollup (order count, total spent, last order date, avg ticket),
-  and a "customers with no orders" view.
-- **Why:** `CUST-LTV`, `REP-SALES-BY-CUSTOMER`, a "Clientes" detail screen, executive "top
-  customers".
-- **Missing:** `GET /orders?customerId=` gives one customer's orders (client-side sum); no
-  rollup, no ranking, no "zero orders".
-- **Recommended phase:** **F18-needed** (part of `GAP-SALES-AGGREGATE` with `groupBy: customer`).
+**PARTIALLY RESOLVED — F18-02.** `GET /reports/sales-summary?groupBy=customer` gives order
+count/subtotal/discountTotal/total/avgTicket **per customer, ranked** (server-ordered by
+`Σ total DESC` — top-customers "ranking" is answered) for a chosen period. **Still missing:**
+"last order date" (not a bucket field) and a "customers with no orders" view (a customer with zero
+matching orders simply produces no bucket — never a synthetic zero row, consistent with the "no
+data is invented" rule; a dedicated left-join view would be needed to see the zero-order set).
+
+- **Original text (for history):** per-customer order rollup (order count, total spent, last order
+  date, avg ticket) and a "customers with no orders" view were needed; `GET /orders?customerId=`
+  gave one customer's orders with a client-side sum only, no rollup, no ranking. Recommended F18
+  as part of `GAP-SALES-AGGREGATE` with `groupBy: customer` — done for the ranking; the two
+  remaining pieces are a future, smaller addition if actually needed.
 
 ### `GAP-CUSTOMER-DATE-FILTER`
 - **Required:** `createdFrom`/`createdTo` on `GET /customers`.

@@ -15,7 +15,7 @@
 | Login + company selection + session/refresh | ✅ | | (done 016-D) |
 | Register (self-service tenant) | ✅ | | |
 | Operational Home — attention queues + quick actions | ✅ | | `GAP-MULTI-STATUS` (`GAP-HOME-DATE-TZ` resolved F18-01) |
-| Home — revenue / ticket KPI numerals | | ✅ | `GAP-SALES-AGGREGATE` (017-A) |
+| Home — revenue / ticket KPI numerals | | ✅ | not built — the aggregate exists since F18-02 (`GET /reports/sales-summary`) but Home itself was not touched this phase (§29, out of scope); a future sub-prompt can wire it |
 | Home — inventory-movement chart | | ✅ | `GAP-MOVEMENTS-DATE-FILTER` + aggregation |
 | Home — "Exportar" | | ✅ | `GAP-EXPORT` (017-A) |
 | Home — low-stock section | | | ❌ `GAP-REORDER` (future/ADR) |
@@ -41,12 +41,13 @@
 | New Sale / cart / checkout | ✅ | | `GAP-VARIANT-LIST` (SKU search) |
 | Customers list + form + detail | ✅ | | |
 | Customer — order history (single customer) | ✅ | | via `?customerId=` (client-side) |
-| Customer — LTV / ranking / "no orders" | | ✅ | `GAP-CUSTOMER-HISTORY` |
+| Customer — LTV / ranking / "no orders" | | ✅ built F18-02 (ranking, not "no orders") | `GAP-CUSTOMER-HISTORY` (last-order-date / zero-order view only) |
 | Sales history list + filters (status/customer/docType/date) + detail | ✅ | | `GAP-SEARCH`, `GAP-DATE-SEMANTICS` |
-| Sales history — KPI tiles (ventas del mes, ticket) | | ✅ | `GAP-SALES-AGGREGATE` |
+| Sales history — KPI tiles (ventas del mes, ticket) | | ✅ built F18-02 | — |
 | Sales history — order-count / pending tiles | ✅ | | `meta.total` (state A) |
 | Sales history — "Exportar" | | ✅ | `GAP-EXPORT` |
-| Sales by product / customer / location / period | | ✅ | `GAP-SALES-AGGREGATE`, `GAP-ORDERS-LOCATION` |
+| Sales by product / customer / period | | ✅ built F18-02 | — |
+| Sales by location | | ✅ | `GAP-ORDERS-LOCATION` |
 | Order confirm / cancel | ✅ | | |
 | Order notification status + retry | ✅ (feature) | | `GAP-NOTIF-STATUS` — new read + guarded requeue first |
 | Order margin display | | ✅ | `GAP-ORDER-MARGIN` |

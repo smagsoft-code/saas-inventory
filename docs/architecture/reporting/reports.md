@@ -28,9 +28,9 @@
 | `REP-CAT-ATTRIBUTES` | Attribute definitions | Catalog | `GET /attribute-definitions` | **A** | F17 |
 | `REP-SALES-ORDERS` | Sales / orders list | Sales | `GET /orders` | **A** | F17 |
 | `REP-SALES-ORDER-DETAIL` | Order detail | Sales | `GET /orders/:id` | **A** | F17 |
-| `REP-SALES-BY-PERIOD` | Sales by period (day/week/month) | Sales | — | **B** | FASE 18 |
-| `REP-SALES-BY-PRODUCT` | Sales by product | Sales | — | **B** | FASE 18 |
-| `REP-SALES-BY-CUSTOMER` | Sales by customer / customer history | Sales | `GET /orders?customerId=` (one at a time) | **B** | F17 (single customer) / FASE 18 (ranking) |
+| `REP-SALES-BY-PERIOD` | Sales by period (day/week/month) | Sales | `GET /reports/sales-summary` | **A** | F18-02 |
+| `REP-SALES-BY-PRODUCT` | Sales by product | Sales | `GET /reports/sales-summary?groupBy=product` | **A** | F18-02 |
+| `REP-SALES-BY-CUSTOMER` | Sales by customer / customer history | Sales | `GET /orders?customerId=` (one at a time) / `GET /reports/sales-summary?groupBy=customer` (ranking) | **A** | F17 (single customer) / F18-02 (ranking) |
 | `REP-SALES-BY-LOCATION` | Sales by sales point | Sales | — | **C** (no `locationId` filter) | FASE 18 (+ contract change) |
 | `REP-SALES-APPROVALS` | Price-approval queue & history | Sales | `GET /price-approvals` | **A** | F17 |
 | `REP-SALES-EXCEPTIONAL` | Exceptional-discount lines | Sales | — | **C** | No filter/aggregate on `is_exceptional_discount` |
@@ -199,14 +199,33 @@ Export · Drill-down · Related operational screen · State**.
 
 ### `REP-SALES-BY-PERIOD` / `REP-SALES-BY-PRODUCT` / `REP-SALES-BY-CUSTOMER`
 
-- **Objective:** sales rolled up by calendar bucket / by variant / by customer.
-- **Source:** `orders` / `order_items`.
-- **Endpoint:** none for grouping. `REP-SALES-BY-CUSTOMER` for **one** customer is doable via
-  `?customerId=` + client-side sum.
-- **Totals / grouping:** the whole point — server-side.
-- **State: B** — FASE 18 read-side queries (`Σ total` / `Σ line_total` grouped by
-  `date_trunc(...)` / `product_variant_id` / `customer_id`, `status='confirmed'`, date range).
-  Not blocked by the schema — blocked by the absence of an aggregate endpoint.
+**RESOLVED — F18-02.** `GET /reports/sales-summary` (`sales.orders.view`, tenant-wide) — real
+server-side aggregation, no client-side sum, no full-table fetch.
+
+- **Query params:** `from`, `to` (both **required** — half-open `[from, to)`, F18-01), `groupBy`
+  (`day|week|month|product|customer` — no `location` yet, `GAP-ORDERS-LOCATION` still open),
+  `status` (defaults to `confirmed`; any real `orders.status` value accepted).
+- **Response:** `ReportResult<T>` shape — `{ from, to, timezone, currency, groupBy, buckets[] }`.
+  `timezone` is the caller's own tenant timezone (`session.timezone`/`GET /auth/me`, F18-01),
+  applied server-side via `date_trunc(unit, created_at AT TIME ZONE tenant_tz)` so day/week/month
+  boundaries land on the tenant's real calendar days, not UTC ones.
+- **Bucket shape per `groupBy`** (never a field that doesn't apply to that grouping):
+  - `day`/`week`/`month`: `{ key: 'YYYY-MM-DD', orderCount, subtotal, discountTotal, total, avgTicket }`
+    — order-level, from `orders` alone (no join; `subtotal`/`discountTotal`/`total` already live on
+    the row).
+  - `customer`: same shape as above + `customerName` (frozen `customer_name_snapshot`) instead of a
+    period `key` — also `orders`-only, no join to `customers`.
+  - `product`: `{ key: variantId, sku, productName, orderCount, quantity, discountTotal, total }` —
+    from `order_items` joined to `orders` (only `orders` carries `status`/`created_at`); `sku`/
+    `productName` are the frozen `sku_snapshot`/`product_name_snapshot`, no join to `products`/
+    `product_variants`.
+- **Source:** `orders` / `order_items` — read-side only (`apps/api/src/reports/sales/`), never
+  `OrdersRepository`/`OrderItemsRepository` (modules.md's REPORTS-is-a-separate-read-side rule).
+- **State: A.**
+
+`REP-SALES-BY-CUSTOMER` for **one** customer via `?customerId=` on `GET /orders` (client-side sum)
+remains available as a lighter alternative when only one customer's history is needed (e.g. the
+Customer detail screen, F17-08) — unchanged by this endpoint.
 
 ### `REP-SALES-BY-LOCATION` — Sales by sales point
 
