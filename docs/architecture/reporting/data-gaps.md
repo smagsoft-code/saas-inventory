@@ -23,7 +23,8 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-CUSTOMER-HISTORY`](#gap-customer-history) | Per-customer order history / LTV | ~~F18-needed~~ **PARTIALLY RESOLVED (F18-02)** — ranking done; last-order-date / zero-order view still open |
 | [`GAP-CUSTOMER-DATE-FILTER`](#gap-customer-date-filter) | Date filter on customers | F18-needed |
 | [`GAP-EXCEPTIONAL-FILTER`](#gap-exceptional-filter) | Filter/aggregate exceptional-discount lines | F18-needed |
-| [`GAP-RETURN-AGGREGATE`](#gap-return-aggregate) | Return lines by disposition / value | F18-needed |
+| [`GAP-RETURN-AGGREGATE`](#gap-return-aggregate) | Return lines by disposition / value | ~~F18-needed~~ **PARTIALLY RESOLVED (F18-04)** — day/week/month/product/customer/disposition grouping + returned value built; return rate vs sales stays a client-side combination of two endpoints |
+| [`GAP-RETURN-RESOLVED-AT`](#gap-return-resolved-at) | `resolved_at`/`received_at` timestamp on `sales_returns` | F18-needed |
 | [`GAP-SERIAL-LOT-READ`](#gap-serial-lot-read) | Serial / lot read + traceability | future |
 | [`GAP-PRICE-HISTORY-READ`](#gap-price-history-read) | Price-history read endpoint | F18-needed |
 | [`GAP-VARIANT-LIST`](#gap-variant-list) | Tenant-wide variant list + search | F17-needed |
@@ -238,9 +239,37 @@ data is invented" rule; a dedicated left-join view would be needed to see the ze
 - **Required:** returns aggregated by disposition, by period, by product; returned value (qty ×
   `order_item.unit_price_snapshot`); return rate vs sales.
 - **Why:** `RET-BY-DISPOSITION`, `RET-VALUE`, `RET-RATE`, `REP-RET-BY-DISPOSITION`.
-- **Missing:** `sales_return_items` are only visible inside a return's detail; no list, no filter,
-  no aggregate; `sales_returns` has no date filter.
-- **Recommended phase:** **F18-needed**.
+- **Missing (pre-F18-04):** `sales_return_items` were only visible inside a return's detail; no
+  list, no filter, no aggregate; `sales_returns` had no date filter.
+- **PARTIALLY RESOLVED (F18-04):** `GET /reports/returns-summary` (`sales.returns.view`) — a
+  dedicated read-side over `sales_returns`/`sales_return_items` joined to `order_items` for the
+  frozen `unit_price_snapshot`. `groupBy=day|week|month|product|customer|disposition`, `[from,to)`
+  on `sales_returns.created_at` (see `GAP-RETURN-RESOLVED-AT` below), `status` filter (default
+  `resolved`). `returnedValue = Σ(quantity_returned × unit_price_snapshot)`; `returnCount` is
+  `COUNT(DISTINCT sales_returns.id)`, never inflated by the line/order_item join. **Still missing:**
+  `RET-RATE` (return rate vs. confirmed-order count) is **not** computed server-side — it requires
+  combining this endpoint's per-period `orderCount` with `sales-summary`'s per-period confirmed
+  order count, the same "2 calls" pattern already established for `RET-PENDING-COUNT`; no new
+  cross-module coupling was added to compute it in one call. `reason` (free text, no enum) is not a
+  groupBy value — grouping by unbounded free text would not produce a meaningful bucket set.
+- **Recommended phase:** ~~F18-needed~~ **largely done, F18-04**; `RET-RATE`'s two-call composition
+  is a frontend concern, not a further backend gap.
+
+### `GAP-RETURN-RESOLVED-AT`
+- **Required:** a timestamp on `sales_returns` (or `sales_return_items`) that answers "when was this
+  return physically resolved/received", distinct from "when was it requested".
+- **Why:** `GET /reports/returns-summary` (F18-04) buckets by `sales_returns.created_at` (when the
+  return was *requested*) for every `groupBy`, including when the caller filters to
+  `status=resolved` — there is no way to instead bucket "when the resolution actually happened".
+  The direct analogue of `GAP-ORDER-CONFIRMED-AT` for the returns lifecycle.
+- **Missing:** `sales_returns` has `created_at`/`updated_at` only; `updated_at` is rewritten by
+  every transition (`inspect`, `resolve`, `cancel` alike per FASE 13's own state machine), so it
+  cannot answer "when did resolution specifically happen" even as an approximation.
+  `sales_return_items.inspected_at` exists but is line-level and reflects `inspect`, not `resolve`.
+- **Recommended phase:** **F18-needed** (a small additive migration — a nullable `resolved_at`
+  timestamp set once in `ReturnsService.resolve` — would close this without touching FASE 13's
+  approved state machine; not attempted in F18-04 per its own "no returns workflow changes"
+  scope boundary).
 
 ### `GAP-SERIAL-LOT-READ`
 - **Required:** read endpoints for `product_serials` (by variant, by status) and `product_lots`

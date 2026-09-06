@@ -800,3 +800,59 @@ not caused by F18-03; the new report table itself (4 columns) does not meaningfu
 it. `pnpm --filter @saas-inventory/web build` still fails only at the pre-existing Windows `EPERM`
 symlink step (unchanged, documented since FASE 12) after compiling/type-checking/statically
 generating every route successfully. **FASE 18-03 CLOSED, not pushed.**
+
+**F18-04** extends the same read-side pattern to the last SALES-dependent aggregate FASE 13 left
+unbuilt and closes most of `GAP-RETURN-AGGREGATE`. **`GET /reports/returns-summary`**
+(`apps/api/src/reports/returns/`, `sales.returns.view` — the exact permission `metrics.md`'s own
+`RET-BY-DISPOSITION`/`RET-VALUE` rows already named, no `reports.*` permission added) aggregates
+`sales_returns`/`sales_return_items` joined to `order_items` (never
+`SalesReturnsRepository`/`SalesReturnItemsRepository` — reporting stays a separate read-side, same
+rule as `sales/`/`inventory/`). `groupBy: day|week|month|product|customer|disposition` (default
+`day`); half-open `[from, to)` on `sales_returns.created_at` — the only immutable, always-present
+timestamp on that table (`updated_at` is rewritten by every transition alike: `inspect`, `resolve`,
+`cancel`; no `resolved_at` column exists, documented as the new `GAP-RETURN-RESOLVED-AT`, the direct
+analogue of `GAP-ORDER-CONFIRMED-AT`). `status` filter defaults to `resolved` (the return's
+inventory effect is only committed once `resolve` runs — the direct analogue of `sales-summary`'s
+`status=confirmed` default), any of the four real statuses selectable. `returnedValue = Σ
+(quantity_returned × order_items.unit_price_snapshot)` — the frozen sale price, never the current
+catalog price; `returnCount`/`orderCount` are `COUNT(DISTINCT sales_returns.id)`/`COUNT(DISTINCT
+sales_returns.order_id)`, never inflated by the return→line→order_item join (a three-line return
+counts as one return, verified against real data). The `disposition` grouping deliberately omits
+`returnCount` — ADR-0021 fixes one disposition per *line*, not per return, so a multi-disposition
+return legitimately lands in more than one bucket; only lines with a non-`NULL` `disposition`
+(i.e., already inspected) are grouped — an uninspected line is excluded, never bucketed as an
+invented "pending" disposition. `reason` (free text, no enum) is not a groupBy value. `RET-RATE`
+(return rate vs. confirmed orders) is **not** computed server-side — it is a frontend combination of
+this endpoint's `orderCount` and `sales-summary`'s confirmed-order count for the same period, the
+same "2 calls" pattern already established for `RET-PENDING-COUNT`; no cross-read-side coupling was
+added to compute it in one call. `unit_price_snapshot` is **not** gated by `pricing.floor.view`
+(ADR-0028 only gates `min_price`/`max_price` visibility), so no second permission was needed to
+expose `returnedValue`. Frontend: a new "Returns report" section on `/returns`
+(`ReturnsReportSection`/`ReturnsReportFilters`, mirroring `SalesReportSection`/`SalesReportFilters`
+exactly — same KPI-tiles-that-are-safe-to-sum rule, same `#report`-anchored filter navigation, same
+local `ReturnsReportError` never redirecting on a 403) above the unchanged return list. **No schema
+change, no migration, no new permission code, no change to the FASE 13 returns/disposition write
+path.** Real-PostgreSQL: `pg-verify`'s actual `vitest` run reported **430 integration tests, 34
+files, 0 failed** (up from 412/33 at FASE 18-03's close — 18 new tests in
+`test/reports/returns-summary.integration.test.ts`: RBAC including a 403 case reached only by
+stripping `sales.returns.view` from a throwaway tenant's own role row via direct DB access, since
+**every** `DEFAULT_ROLE_TEMPLATES` role carries that permission by default; tenant isolation;
+`[from,to)` boundary exactness; the `resolved` default excluding a `requested`/`cancelled` return;
+known-quantity aggregation math; a multi-line return counting as one; product/customer grouping;
+disposition grouping including the two-dispositions-per-return non-inflation case) — but the
+`pg-verify` harness process itself then hit a Windows-only `EBUSY` (`rmdir` on `.verify-pgdata`)
+during its own post-test cleanup, the same class of Windows-filesystem artifact already documented
+for the web build's `EPERM` symlink issue, not a functional failure and not something this phase's
+diff touches (`tools/pg-verify` was not modified). API unit 519 (+17, `returns-report.service.spec.ts`);
+web unit 391 (+12: `returns-report-section.test.tsx`, `returns-report-filters.test.tsx`). Lint and
+typecheck pass on both apps; API build passes; `pnpm --filter @saas-inventory/web build` compiles,
+type-checks and statically generates all 40 routes, then fails only at the pre-existing Windows
+`EPERM` symlink step during *Collecting build traces* (documented since FASE 12, reproduced
+verbatim, `apps/web`'s own source is otherwise untouched by this class of issue). **No browser
+automation tool was available in this environment this phase, so real-browser visual validation
+(screenshots, console-error checks) was not performed** — substituted by the real-HTTP pg-verify
+integration coverage above (exercising every path the UI calls) plus jsdom component-render tests
+for the new report section/filters/error states; this is explicitly **not** claimed as a browser
+check. `GAP-RETURN-AGGREGATE` is now `PARTIALLY RESOLVED` (day/week/month/product/customer/
+disposition + returned value built; only the cross-endpoint return-rate composition remains a
+frontend concern). **FASE 18-04 CLOSED, not pushed.**

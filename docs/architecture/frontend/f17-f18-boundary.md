@@ -54,7 +54,8 @@
 | Price approvals queue + approve/reject + request | ✅ | | `GAP-APPROVALS-PERMISSION` (fix first) |
 | Approvals — approval-rate / discount-value over time | | ✅ | no date filter + aggregation |
 | Returns list + detail + create + inspect + resolve + cancel | ✅ | | |
-| Returns — by disposition / returned value / return rate | | ✅ | `GAP-RETURN-AGGREGATE` (017-A) |
+| Returns — by disposition / period / product / customer / returned value | | ✅ built F18-04 | — |
+| Returns — return rate (vs. confirmed orders) | | ✅ | `GAP-RETURN-AGGREGATE` — a frontend 2-call combination with sales-summary, not built this phase |
 | Import wizard + history + rows + error report + templates | ✅ | | `GAP-IMPORT-PROGRESS` (polling decision) |
 | Import — rows-imported rollup over a period | | ✅ | aggregation |
 | Users list + create/edit + status | ✅ | | `GAP-USER-FILTERS` |

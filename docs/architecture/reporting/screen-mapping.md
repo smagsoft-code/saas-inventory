@@ -146,8 +146,8 @@ Legend: **A/B/C** = support state of that specific piece (see [README](README.md
 | Actions | `POST /sales-returns` (`sales.returns.create`, `Idempotency-Key`), `/:id/inspect` + `/:id/resolve` (`inventory.returns.manage`), `/:id/cancel` | A |
 | Price Approvals (same layout) | `GET /price-approvals` (list), `/:id`, `POST` (`pricing.discount.request`), `/:id/approve` + `/:id/reject` (`pricing.discount.approve`) | A — **GET has no permission declared** |
 | KPIs | `RET-COUNT-STATUS` (A), `KPI-OPS-APPROVALS-PENDING` (A) | A |
-| **"Returns by disposition" / returned value** | `RET-BY-DISPOSITION` / `RET-VALUE` | **C** |
-| Filters | returns: status, orderId; approvals: status, orderId (**exist**); **no date filter** | A / C |
+| **"Returns by disposition" / returned value** | `RET-BY-DISPOSITION` / `RET-VALUE` — `GET /reports/returns-summary`, integrated into `/returns` (F18-04) | **A** |
+| Filters | returns list: status, orderId; approvals: status, orderId (**exist**), **no date filter**; returns *report*: `from`/`to` (required, half-open), `groupBy`, `status` (**exist**, F18-04) | A / A |
 | Scope / permission | tenant, location-aware for disposition; `sales.returns.view` / `inventory.returns.manage` | — |
 
 ## Visual System — `VisualSystem`

@@ -1,14 +1,18 @@
 import Link from 'next/link';
 import { getSession } from '../../../lib/auth/session';
 import { createPermissionChecker } from '../../../lib/auth/permissions';
+import { httpErrorMessage, isApiError } from '../../../lib/api/errors';
 import { listReturns } from '../../../lib/sales/returns';
+import { getReturnsSummary } from '../../../lib/sales/returns-reports';
 import { buildLocationIndex, shortId } from '../../../lib/inventory/location-index';
+import { tenantStartOfDayUtc } from '../../../lib/home/tenant-day';
 import {
   RETURN_STATUSES,
   RETURN_STATUS_LABELS,
   returnStatusTone,
   type ReturnStatus,
 } from '../../../lib/types/sales';
+import { RETURNS_SUMMARY_GROUP_BY, type ReturnsSummary, type ReturnsSummaryGroupBy } from '../../../lib/types/returns-reports';
 import { PageContainer } from '../../../components/ui/page-container';
 import { PageHeader } from '../../../components/ui/page-header';
 import { ButtonLink } from '../../../components/ui/button';
@@ -17,13 +21,20 @@ import { EmptyState } from '../../../components/ui/empty-state';
 import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
+import { ReturnsReportFilters, type ReturnsReportFilterValues } from './returns-report-filters';
+import { ReturnsReportError, ReturnsReportSection } from './returns-report-section';
 
 export const metadata = { title: 'Returns · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function pickStatus(value: string | undefined): ReturnStatus | undefined {
   return (RETURN_STATUSES as readonly string[]).includes(value ?? '') ? (value as ReturnStatus) : undefined;
+}
+
+function pickGroupBy(value: string | undefined): ReturnsSummaryGroupBy {
+  return (RETURNS_SUMMARY_GROUP_BY as readonly string[]).includes(value ?? '') ? (value as ReturnsSummaryGroupBy) : 'day';
 }
 
 /**
@@ -37,7 +48,14 @@ function pickStatus(value: string | undefined): ReturnStatus | undefined {
 export default async function ReturnsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; status?: string; orderId?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    status?: string;
+    orderId?: string;
+    reportFrom?: string;
+    reportTo?: string;
+    reportGroupBy?: string;
+  }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
   const checker = createPermissionChecker(session?.permissions ?? []);
@@ -53,6 +71,28 @@ export default async function ReturnsPage({
   const canViewOrders = checker.can('sales.orders.view');
 
   const sp = await searchParams;
+
+  // F18-04 report period default: last 30 days, resolved in the tenant's own timezone
+  // (session.timezone — F18-01), matching the /sales page's identical precedent so a normal visit
+  // to /returns never has to hit the required-from/to 400 the endpoint itself enforces.
+  const now = new Date();
+  const reportFrom = sp.reportFrom || tenantStartOfDayUtc(session?.timezone ?? 'UTC', new Date(now.getTime() - THIRTY_DAYS_MS));
+  const reportTo = sp.reportTo || now.toISOString();
+  const reportGroupBy = pickGroupBy(sp.reportGroupBy);
+  const reportFilters: ReturnsReportFilterValues = { from: reportFrom, to: reportTo, groupBy: reportGroupBy };
+
+  let summary: ReturnsSummary | undefined;
+  let summaryError: { status: number; message: string; correlationId: string | undefined } | undefined;
+  try {
+    summary = await getReturnsSummary({ from: reportFrom, to: reportTo, groupBy: reportGroupBy });
+  } catch (error) {
+    summaryError = {
+      status: isApiError(error) ? error.status : 0,
+      message: httpErrorMessage(error),
+      correlationId: isApiError(error) ? error.correlationId : undefined,
+    };
+  }
+
   const page = Math.max(1, Number(sp.page) || 1);
   const status = pickStatus(sp.status);
   const orderId = sp.orderId || undefined;
@@ -68,6 +108,12 @@ export default async function ReturnsPage({
     const nextOrderId = next.orderId === undefined ? orderId : next.orderId || undefined;
     if (nextStatus) params.set('status', nextStatus);
     if (nextOrderId) params.set('orderId', nextOrderId);
+    // Carries the report section's own params forward too — the two filter sets are independent,
+    // matching the /sales page's identical precedent (paginating/filtering the list should not
+    // silently reset the report back to its default period).
+    if (sp.reportFrom) params.set('reportFrom', sp.reportFrom);
+    if (sp.reportTo) params.set('reportTo', sp.reportTo);
+    if (sp.reportGroupBy) params.set('reportGroupBy', sp.reportGroupBy);
     if (next.page && next.page > 1) params.set('page', String(next.page));
     return `/returns${params.toString() ? `?${params}` : ''}`;
   }
@@ -86,6 +132,24 @@ export default async function ReturnsPage({
         description="Reversals of confirmed sales — request, inspect, and resolve the disposition of returned goods."
         actions={canCreate ? <ButtonLink href="/returns/new">New return</ButtonLink> : undefined}
       />
+
+      <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
+        <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
+          Returns report
+        </h2>
+        <ReturnsReportFilters initial={reportFilters} />
+        {summary ? (
+          <ReturnsReportSection summary={summary} currency={summary.currency} />
+        ) : (
+          summaryError && (
+            <ReturnsReportError status={summaryError.status} message={summaryError.message} correlationId={summaryError.correlationId} />
+          )
+        )}
+      </section>
+
+      <hr className="border-slate-200" />
+
+      <h2 className="text-sm font-semibold text-slate-900">Return history</h2>
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">

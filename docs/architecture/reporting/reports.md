@@ -38,7 +38,7 @@
 | `REP-CUST-LIST` | Customers | Sales | `GET /customers` | **A** | F17 |
 | `REP-RET-LIST` | Returns list | Sales | `GET /sales-returns` | **A** | F17 |
 | `REP-RET-DETAIL` | Return detail (lines + disposition) | Sales | `GET /sales-returns/:id` | **A** | F17 |
-| `REP-RET-BY-DISPOSITION` | Returns by disposition / value | Sales | — | **C** | Return items unaggregated; value needs a price join |
+| `REP-RET-BY-DISPOSITION` | Returns by disposition / period / product / customer / value | Sales | `GET /reports/returns-summary` | **A** | F18-04 |
 | `REP-IMP-JOBS` | Import jobs | Import | `GET /imports` | **A** | F17 |
 | `REP-IMP-ROWS` | Import job rows | Import | `GET /imports/:id/rows` | **A** | F17 |
 | `REP-IMP-ERRORS` | Import error report | Import | `GET /imports/:id/errors` | **A** | F17 |
@@ -319,7 +319,31 @@ Customer detail screen, F17-08) — unchanged by this endpoint.
 - **Drill-down:** → order detail; → the `RETURN` movement per line (via `reference_type =
   'sales_return_item'` on `inventory_movements` — needs the movement reference filter, currently
   missing).
-- **State: A** (list + detail). `REP-RET-BY-DISPOSITION` and returned-value are **C**.
+- **State: A** (list + detail). `REP-RET-BY-DISPOSITION` (aggregation) is now its own report below —
+  **A** as of F18-04.
+
+### `REP-RET-BY-DISPOSITION`
+
+- **Permission:** `sales.returns.view` (no `reports.*` permission — F18-01's ratified decision) ·
+  **Endpoint:** `GET /reports/returns-summary` (F18-04).
+- **Grouping:** `day` | `week` | `month` | `product` | `customer` | `disposition` (default `day`).
+- **Filters:** `from`/`to` (both required, half-open `[from, to)` on `sales_returns.created_at` —
+  see [`GAP-RETURN-RESOLVED-AT`](data-gaps.md#gap-return-resolved-at)), `status` (default
+  `resolved` — the return's inventory effect is only committed once `resolve` runs, the direct
+  analogue of `sales-summary`'s `status=confirmed` default).
+- **Metrics:** `returnCount` (`COUNT(DISTINCT sales_returns.id)`), `orderCount`
+  (`COUNT(DISTINCT sales_returns.order_id)`), `lineCount`, `quantity` (Σ `quantity_returned`),
+  `returnedValue` (Σ `quantity_returned × order_items.unit_price_snapshot`), `avgReturnValue`
+  (period/customer only). The `disposition` grouping omits `returnCount` — a return with lines in
+  more than one disposition legitimately appears in more than one bucket (ADR-0021 fixes one
+  disposition per *line*, not per return).
+- **Not available:** return rate vs. confirmed orders (`RET-RATE`) — a frontend combination of this
+  endpoint's `orderCount` and `sales-summary`'s confirmed-order count for the same period, the same
+  "2 calls" pattern already used for `RET-PENDING-COUNT`; no costing/margin (unit_cost_snapshot is
+  never read, per FASE 18's `NO COSTING` rule).
+- **State: A** (day/week/month/product/customer/disposition, real SUM/COUNT aggregation in
+  PostgreSQL). See [`GAP-RETURN-AGGREGATE`](data-gaps.md#gap-return-aggregate) for what remains
+  open.
 
 ### `REP-IMP-JOBS` / `REP-IMP-ROWS` / `REP-IMP-ERRORS`
 

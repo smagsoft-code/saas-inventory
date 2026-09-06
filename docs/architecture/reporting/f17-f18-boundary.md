@@ -62,7 +62,7 @@ aggregate endpoint.
 | **Trends & comparisons** | any "vs last period", any line chart over time for a point-in-time metric | `GAP-SNAPSHOTS` |
 | **Rankings / top-N** | best-selling products (**built, F18-02** — server-ranked `groupBy=product`), top customers (**built, F18-02** — server-ranked `groupBy=customer`), most-adjusted items | `GAP-CUSTOMER-HISTORY` (last-order-date / zero-order view only) |
 | **Pricing governance analytics** | exceptional-discount volume/value, approval rate over time, discount leakage | `GAP-EXCEPTIONAL-FILTER` |
-| **Returns analytics** | return rate, returns by disposition, returned value | `GAP-RETURN-AGGREGATE` |
+| **Returns analytics** | returns by disposition/period/product/customer, returned value — **built, F18-04** (`GET /reports/returns-summary`, integrated into `/returns`); return rate vs. confirmed orders is a frontend 2-call combination, not built | `GAP-RETURN-AGGREGATE` (mostly resolved), `GAP-RETURN-RESOLVED-AT` |
 | **Movement analytics** | movement volume charts, throughput by location, receipt/adjustment trends — the date-range filter itself is **resolved, F18-03**; grouped/charted aggregation over it is not built | (aggregation still open) |
 | **Advanced / scheduled exports** | full-dataset CSV/XLSX, scheduled report delivery | `GAP-EXPORT` |
 | **Audit / activity reporting** | who-changed-what dashboards | `GAP-AUDIT-READ` |

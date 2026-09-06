@@ -314,6 +314,12 @@ not needed yet at current scale.
   /inventory/movements` (an F17 operational list, not a REPORTS endpoint — the date filter lives on
   `apps/api/src/inventory/movements/`, not under `reports/`). See
   [reporting/reports.md#rep-inv-summary--inventory-summary-availablereservedout-of-stock](../reporting/reports.md#rep-inv-summary--inventory-summary-availablereservedout-of-stock).
+- **`returns/` (F18-04):** `GET /reports/returns-summary` (`sales.returns.view`) —
+  day/week/month/product/customer/disposition grouping over `sales_returns`/`sales_return_items`
+  joined to `order_items` for the frozen `unit_price_snapshot`, half-open `[from, to)` on
+  `sales_returns.created_at` (`GAP-RETURN-RESOLVED-AT` — no `resolved_at` column exists), `status`
+  filter (default `resolved`). Never `SalesReturnsRepository`/`SalesReturnItemsRepository`. See
+  [reporting/reports.md#rep-ret-by-disposition](../reporting/reports.md#rep-ret-by-disposition).
 
 No `reports.*`/`analytics.*` permission family exists — each report reuses the `*.view` permission
 of the domain it reports on (F18-01, ratified in

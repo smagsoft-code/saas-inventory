@@ -25,8 +25,8 @@ exists but no endpoint filters on it. "Absent" = not modelled.
 | **document type** | orders | `GET /orders?documentType=invoice|sales_note`. | |
 | **invoice status** | orders | **Derivable** — `invoice_status` on the row, no param. Moot: never leaves `pending`. |
 | **movement type** | movements | `GET /inventory/movements?movementType=X`. | One value per call. |
-| **disposition** | return items | **Absent** — return items not filterable/listable outside a return. |
-| **date / period** | orders (`createdFrom`/`createdTo`), movements (`occurredFrom`/`occurredTo`, F18-03) | **Orders and movements.** Transfers, returns, approvals, imports, customers, users, price history still have **no date filter**. | Movements' filter is half-open `[occurredFrom, occurredTo)` on `occurred_at` (F18-01's new-endpoint convention) — deliberately *not* orders' inclusive-both-bounds `createdFrom`/`createdTo` on `created_at`, since movements already carries the semantically-correct `occurred_at` column orders never had. |
+| **disposition** | return items | **Absent** on the operational `GET /sales-returns` list. **Groupable** (not filterable) via `GET /reports/returns-summary?groupBy=disposition` (F18-04). | The report groups; it does not add a `disposition` query param to the operational list. |
+| **date / period** | orders (`createdFrom`/`createdTo`), movements (`occurredFrom`/`occurredTo`, F18-03), returns report (`from`/`to`, F18-04) | **Orders, movements, and the returns *report*.** The operational `GET /sales-returns` list itself, transfers, approvals, imports, customers, users, price history still have **no date filter**. | Movements' and the returns report's filters are half-open `[from, to)` (F18-01's new-endpoint convention) — deliberately *not* orders' inclusive-both-bounds `createdFrom`/`createdTo`. The returns report buckets by `sales_returns.created_at` (when *requested*, not resolved — `GAP-RETURN-RESOLVED-AT`). |
 | **free-text search (`q`)** | customers (`displayName` / `taxId` / `email` / `phone`) | **Customers only.** No search on products, orders, movements, transfers, users. | api.md: "search is a distinct documented parameter … decided per-endpoint". |
 | **is_exceptional_discount** | order lines | **Absent** — flag on `order_items`, no filter, no aggregate. |
 | **is_demo** | tenants (SuperAdmin) | Client-side over the unpaginated array. |
@@ -43,8 +43,9 @@ same reason" as filtering — **none is implemented**. Any sortable-column UI in
 **No *operational* endpoint groups/aggregates** — every list above stays a flat, filtered,
 paginated row set. Grouping/aggregation is a FASE 18 read-side concern, built as its own dedicated
 endpoint per domain: `GET /reports/sales-summary` (F18-02, `groupBy: day|week|month|product|
-customer`) and `GET /reports/inventory-summary` (F18-03, `groupBy: warehouse|category`). Grouping
-by disposition, role, or any other still-open dimension remains unbuilt.
+customer`), `GET /reports/inventory-summary` (F18-03, `groupBy: warehouse|category`), and
+`GET /reports/returns-summary` (F18-04, `groupBy: day|week|month|product|customer|disposition`).
+Grouping by role, or any other still-open dimension, remains unbuilt.
 
 ---
 
@@ -160,7 +161,8 @@ Identity → active Membership → active Tenant → active User → (if locatio
 | Customers | tenant | none | `sales.customers.view` |
 | Orders / order lines | tenant | **`orders.location_id` exists but the list endpoint does not scope by it** — deferred by F18-01 (see below), `GAP-ORDERS-LOCATION` still open | `sales.orders.view` |
 | Price approvals | tenant | none | *(GET undeclared)* / `pricing.discount.approve` to act |
-| Returns | tenant | **yes** for disposition location | `sales.returns.view` / `inventory.returns.manage` |
+| Returns | tenant | **yes** for disposition location (writes only — `inspect`/`resolve`) | `sales.returns.view` / `inventory.returns.manage` |
+| Returns summary (`GET /reports/returns-summary`, F18-04) | tenant | **no** — reuses the exact, real, current read scope of `GET /sales-returns` above (tenant-wide); `LocationAuthorizationService` only ever gates a write action (inspect/resolve), never a read, so this report does not invent a location-scoping policy the existing reads themselves don't have | `sales.returns.view` |
 | Imports | tenant | `default_location_id` is authorized at validation; the job list is not location-scoped | `import.execute` |
 | Users / roles / audit | tenant | none | `core.users.read` / `core.roles.read` |
 | Companies | platform | n/a | `@PlatformOnly()` |
@@ -225,6 +227,12 @@ sales + inventory + returns tiles) is the one case where reusing a single domain
 be wrong — that dashboard's own sub-prompt decides then whether it needs a dedicated gate
 (documented, justified by the specific mixing, never invented speculatively here). No such
 dashboard is built in F18-01.
+
+**F18-04** applied this rule a third time: `GET /reports/returns-summary` gates on
+`sales.returns.view` (already the exact permission `RET-BY-DISPOSITION`/`RET-VALUE` name in
+`metrics.md`), no `reports.*` code added. `returnedValue` reads `order_items.unit_price_snapshot`,
+which is **not** one of the two gated fields below (`pricing.floor.view` gates `min_price`/
+`max_price` visibility only) — so no second permission was needed to expose it.
 
 `pricing.cost.view`/`pricing.floor.view` continue to gate the specific gated fields
 (`min_price`/`unit_cost_snapshot` and anything derived from them, e.g. a future margin report)

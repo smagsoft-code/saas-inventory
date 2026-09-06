@@ -42,7 +42,7 @@
 | D4 | Executive · Top customers | `SALES-BY-CUSTOMER` (ranked) | `REP-SALES-BY-CUSTOMER` | analytical | **B** | grouping over `orders` |
 | D5 | Executive · Sales by branch | `KPI-SALES-BY-LOCATION` | `REP-SALES-BY-LOCATION` | analytical | **C** | `locationId` not a filter + no grouping |
 | D6 | Analytical · Movement volume chart | `KPI-INV-MOVEMENTS` | `REP-INV-MOVEMENTS` | `Main` (chart — PROTOTYPE ONLY) | **B** | no date filter + no aggregation on movements |
-| D7 | Executive · Return rate | `RET-RATE` | `REP-RET-BY-DISPOSITION` | analytical | **B/C** | no date filter on returns; line aggregation missing |
+| D7 | Executive · Return rate | `RET-RATE` | `REP-RET-BY-DISPOSITION` | analytical | **B** | `REP-RET-BY-DISPOSITION` itself is **A** (F18-04, `GET /reports/returns-summary`); the rate (returns ÷ confirmed orders) is a frontend division across this endpoint + `sales-summary`, not computed server-side |
 | D8 | Executive · Exceptional-discount leakage | `KPI-SALES-EXCEPTIONAL` | `REP-SALES-EXCEPTIONAL` | analytical | **C** | `is_exceptional_discount` not filterable/aggregated |
 | D9 | Executive · Inventory value | `KPI-INV-VALUE` | `REP-INV-VALUATION` | `Main` | **C** | no historical/as-of cost; no costing method |
 | D10 | Any · Trend line for a point-in-time KPI | — | — | dashboards | **C** | no snapshot/rollup table |
