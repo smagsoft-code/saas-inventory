@@ -132,9 +132,10 @@ Legend: **A/B/C** = support state of that specific piece (see [README](README.md
 | Row table + per-row errors | `GET /imports/:id/rows` (`errors[]`, `warnings[]`, `matchAction`) | A |
 | Error report download | `GET /imports/:id/errors` (sanitized, formula-injection-safe) — **already exists** | A |
 | Actions | staged pipeline commands; `POST /imports/:id/confirm`; `Descargar plantilla` | A |
-| KPIs | `IMP-JOBS-STATUS` (A), `IMP-ERROR-RATE` (A per job) | A |
-| Report | `REP-IMP-JOBS` / `REP-IMP-ROWS` / `REP-IMP-ERRORS` | A |
-| Scope / permission | tenant; `import.execute` (+ `import.inventory` for `update_catalog_and_inventory`) | — |
+| KPIs | `IMP-JOBS-STATUS` (A), `IMP-ERROR-RATE` (A per job); `IMP-ROWS-PERIOD` — `GET /reports/imports-summary` (F18-09), integrated as an "Imports report" section on `/imports` | **A** |
+| Report | `REP-IMP-JOBS` / `REP-IMP-ROWS` / `REP-IMP-ERRORS` (per-job) + `REP-IMP-SUMMARY` (cross-job job/row throughput by day/week/month or terminal outcome, F18-09) | A |
+| Report filters | list: single `status` (**exist**); report: `from`/`to` on `completed_at`, `groupBy` (`day`/`week`/`month`/`status`), `status` (**exist**, F18-09) | A |
+| Scope / permission | tenant (no location dimension); `import.execute` (+ `import.inventory` for `update_catalog_and_inventory` commits only — never a read gate) | — |
 
 ## Devoluciones / Disposición — `ReturnsDesktop` (also hosts Price Approvals)
 

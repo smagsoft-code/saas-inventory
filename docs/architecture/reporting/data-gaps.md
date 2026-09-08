@@ -18,6 +18,8 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-MOV-AGGREGATE`](#gap-mov-aggregate) | Movement count / signed quantity aggregated by period or type | ~~F18-needed~~ **RESOLVED (F18-07)** — `GET /reports/movements-summary` (`inventory.view`), `groupBy=day\|week\|month\|type`, `[from,to)` on `occurred_at`, `movementType`/`locationId`/`productVariantId` filters |
 | [`GAP-TRANSFER-AGGREGATE`](#gap-transfer-aggregate) | Transfer status rollup + in-transit stock aggregated across transfers | ~~F18-needed~~ **RESOLVED (F18-08)** — `GET /reports/transfers-summary` (`inventory.view`), `groupBy=status\|destination\|variant`, live snapshot (no period); `TRF-OPEN-COUNT`/`TRF-INTRANSIT-COUNT`/`TRF-INTRANSIT-QTY` + `KPI-INV-INTRANSIT` all **B → A** |
 | [`GAP-TRANSFER-CYCLE-TIME`](#gap-transfer-cycle-time) | Transfer cycle-time aggregation (avg / distribution) | F18-needed (with a definition) |
+| [`GAP-IMPORT-ROWS-PERIOD`](#gap-import-rows-period) | Cross-job import row/job throughput aggregated by period or outcome | ~~F18-needed~~ **RESOLVED (F18-09)** — `GET /reports/imports-summary` (`import.execute`), `[from,to)` on `completed_at`, `groupBy=day\|week\|month\|status` |
+| [`GAP-IMPORT-ERROR-RATE-PERIOD`](#gap-import-error-rate-period) | Period-level import error rate (a defined ratio) | F18-needed (with a definition) |
 | [`GAP-MULTI-STATUS`](#gap-multi-status) | Multi-status filter on lists | F17-needed |
 | [`GAP-ORDERS-LOCATION-FILTER`](#gap-orders-location-filter) | `locationId` filter on orders | F18-needed |
 | [`GAP-ORDER-CONFIRMED-AT`](#gap-order-confirmed-at) | `confirmed_at` timestamp on orders | F18-needed |
@@ -186,6 +188,12 @@ monetary field, no `currency`. Resolves `metrics.md` `MOV-QTY-BY-TYPE` / `MOV-RE
   / `TRF-INTRANSIT-COUNT` → **A**). This gap stays **open** for the array-`status` *filter* on the
   operational **list** endpoints (`GET /sales-returns`, `GET /imports`, `GET /orders`, and
   `GET /inventory/transfers` itself when you want the rows, not a count).
+- **F18-09 note:** `GET /reports/imports-summary?groupBy=status` covers the *terminal* import
+  outcome mix (`completed`/`completed_with_errors`/`failed`/`cancelled`) for a completed-in-period
+  window — but **not** `IMP-JOBS-PENDING` / `KPI-OPS-IMPORTS-RUNNING` (jobs currently
+  `validating`/`importing`), which are a point-in-time queue depth over jobs with `completed_at
+  IS NULL`. That count stays this gap's territory: an array-`status` (or a `NOT IN`) filter on
+  `GET /imports`.
 
 ### `GAP-TRANSFER-AGGREGATE`
 - **RESOLVED — F18-08 ("Transfer analytics").** `GET /reports/transfers-summary` (`inventory.view`,
@@ -229,6 +237,47 @@ monetary field, no `currency`. Resolves `metrics.md` `MOV-QTY-BY-TYPE` / `MOV-RE
 - **Recommended phase:** **F18-needed**, but only **after** the definition is pinned (an ADR or a
   metrics.md addition) — it is a genuinely new metric, not a gap-fill. The `[from, to)` +
   `date_trunc` machinery from the other FASE 18 reports would apply once the anchor is chosen.
+
+### `GAP-IMPORT-ROWS-PERIOD`
+- **RESOLVED — F18-09 ("Imports analytics").** `GET /reports/imports-summary` (`import.execute`,
+  **tenant-wide** — `import_jobs` has no location dimension) — a dedicated read-side over
+  `import_jobs` **alone** (never `ImportJobsRepository`/`ImportJobRowsRepository` — modules.md's
+  read-side rule; and never a join to `import_job_rows`, so `COUNT(*)` = jobs and every `SUM(*_rows)`
+  is exact with zero fan-out). `groupBy=day|week|month|status` (default `day`); half-open
+  `[from, to)` on `import_jobs.completed_at`.
+  - **Anchor `completed_at`:** the field `IMP-ROWS-PERIOD` explicitly names ("jobs *completed* in
+    range"), set on **every** terminal transition (`completed`/`completed_with_errors`/`failed`/
+    `cancelled` — verified in `ImportJobService`), `NULL` only while a job is non-terminal. Jobs
+    with `NULL` `completed_at` are excluded from every bucket.
+  - `day`/`week`/`month` — `jobCount` + `Σ total_rows`/`valid_rows`/`invalid_rows`/`warning_rows`/
+    `imported_rows` per period. Resolves `metrics.md` `IMP-ROWS-PERIOD` (**B → A**).
+  - `status` — the **terminal outcome mix** (only terminal statuses have a non-`NULL` `completed_at`)
+    — resolves `KPI-OPS-IMPORTS-ATTENTION` (sum `failed` + `completed_with_errors`) in one call.
+  - `totals` — `groupBy`-independent aggregate over the completed-job window.
+  - **No monetary field** (`currency` omitted — an import has no value).
+- **Was:** the requirement had **no `GAP-` id** before F18-09 — it lived only in `metrics.md`'s
+  `IMP-ROWS-PERIOD` row (**B**) and `reports.md`'s "a cross-job 'rows imported this month' rollup is
+  **B**" and `information-inventory.md` §12's "Import jobs summary per period". F18-09 registers it
+  here.
+- **Still open (separate):** a live "imports in progress" count (`IMP-JOBS-PENDING` /
+  `KPI-OPS-IMPORTS-RUNNING`) is a point-in-time queue depth over non-terminal jobs and is not a
+  completed-in-period metric — `GAP-MULTI-STATUS`. A period-level error *rate* —
+  `GAP-IMPORT-ERROR-RATE-PERIOD` below. No `import_job_rows` content is ever surfaced (raw/mapped
+  uploaded values, error messages — sensitive, out of any analytic contract).
+
+### `GAP-IMPORT-ERROR-RATE-PERIOD`
+- **Required:** a defined period-level import error rate — numerator, denominator, and `0÷0`
+  behaviour all specified.
+- **Why:** an "import quality over time" KPI (analogous to `KPI-SALES-EXCEPTIONAL`'s rate half).
+- **Missing:** **not the data** — `GET /reports/imports-summary` (F18-09) already returns
+  `Σ invalidRows` / `Σ totalRows` / `Σ warningRows` per bucket. What is missing is a **definition**:
+  is the rate `Σ invalid ÷ Σ total`? `Σ (invalid + warning) ÷ Σ total`? per-job-averaged? and what
+  does it read when a bucket has `Σ total = 0` (only `failed`/`cancelled` jobs that never
+  validated)? `IMP-ERROR-RATE` is defined **per job only**. F18-09 deliberately exposes the raw
+  components and computes **no** period rate (the same "components, not the ratio" stance F18-04
+  took for `RET-RATE`).
+- **Recommended phase:** **F18-needed**, but only after the ratio is pinned (a `metrics.md`
+  addition) — a genuinely new metric, not a gap-fill.
 
 ### `GAP-ORDERS-LOCATION-FILTER`
 - **Required:** `locationId` query param on `GET /orders`.

@@ -89,9 +89,11 @@ actually built. **Git history is never rewritten to match** — this table is th
 | F18-06 | Customer analytics | F18-02 | `d9a6516` | `GET /reports/sales-summary?groupBy=customer` |
 | F18-07 | Approvals analytics | F18-05 | `d6812af` | `GET /reports/approvals-summary` |
 | F18-08 | Returns analytics | F18-04 | `38ca0b5` | `GET /reports/returns-summary` |
-| F18-09 | Imports analytics | *not yet built* | — | — |
+| **F18-09** | **Imports analytics** | **F18-09** | *(this phase)* | **`GET /reports/imports-summary`** |
 | F18-10 | Super-Admin platform metrics | *not yet built* | — | — |
 
 Movement analytics also has a dedicated aggregate (`GET /reports/movements-summary`, F18-07,
-commit `e640405`) beyond the F18-03 date filter. The conceptual "F18-04 Transfer analytics" slot is
-what this phase (commit *feat(reporting): implement transfer analytics*) delivers.
+commit `e640405`) beyond the F18-03 date filter. "F18-04 Transfer analytics" landed as commit
+`b02825e` (execution F18-08). The conceptual "F18-09 Imports analytics" slot is what this phase
+(commit *feat(reporting): implement imports analytics*) delivers — the execution and conceptual
+numbers happen to coincide here.

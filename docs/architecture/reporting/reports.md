@@ -45,6 +45,7 @@
 | `REP-IMP-JOBS` | Import jobs | Import | `GET /imports` | **A** | F17 |
 | `REP-IMP-ROWS` | Import job rows | Import | `GET /imports/:id/rows` | **A** | F17 |
 | `REP-IMP-ERRORS` | Import error report | Import | `GET /imports/:id/errors` | **A** | F17 |
+| `REP-IMP-SUMMARY` | Imports summary (job & row throughput by period or outcome) | Import | `GET /reports/imports-summary` | **A** | F18-09 |
 | `REP-ADMIN-USERS` | Users & roles | Core | `GET /users`, `GET /roles` | **A** | F17 |
 | `REP-ADMIN-LOCATION-ACCESS` | User → location access | Core | `GET /users/:id/locations` | **A** (per user) / **B** (matrix) | F17 |
 | `REP-ADMIN-AUDIT` | Audit trail | Core | — | **C** | No `audit_log` read endpoint |
@@ -481,7 +482,51 @@ Customer detail screen, F17-08) — unchanged by this endpoint.
 - **Row columns:** rowNumber, status, matchAction, errors[], warnings[].
 - **Errors:** the sanitized, formula-injection-safe downloadable report already exists
   (`/:id/errors`).
-- **State: A.** A cross-job "rows imported this month" rollup is **B**.
+- **State: A** (per-job). The cross-job "rows imported this month" rollup is now `REP-IMP-SUMMARY`
+  below (**A**, F18-09).
+
+### `REP-IMP-SUMMARY` — Imports summary (job & row throughput by period or outcome)
+
+**RESOLVED — F18-09 ("Imports analytics").** `GET /reports/imports-summary` (`import.execute`,
+tenant-wide — `import_jobs` has no location dimension) — real server-side aggregation over
+`import_jobs`, never `ImportJobsRepository`/`ImportJobRowsRepository`.
+
+- **Objective:** "how much import work finished, and how did it turn out" — job count and the five
+  row-count sums (`total`/`valid`/`invalid`/`warning`/`imported`), by calendar period or by terminal
+  outcome, without paging every job. Resolves `metrics.md` `IMP-ROWS-PERIOD` (**B → A**) and this
+  report's own former "cross-job rollup is B".
+- **Query params:** `from`, `to` (both **required** — half-open `[from, to)` on
+  `import_jobs.completed_at`, F18-01 convention), `groupBy` (`day` | `week` | `month` | `status`,
+  default `day`), `status` (one of the 9 real `import_jobs.status` values, **no default**).
+- **Timestamp — `completed_at`:** the field `IMP-ROWS-PERIOD` names, set on **every** terminal
+  transition (`ImportJobService.runCommit`/`.cancel`/`.markFailedAndAudit` → `completed` /
+  `completed_with_errors` / `failed` / `cancelled`). A job still non-terminal has
+  `completed_at IS NULL` and is **excluded from every bucket** — it has not completed in any period
+  yet. A live "imports running now" count (`IMP-JOBS-PENDING` / `KPI-OPS-IMPORTS-RUNNING`) is a
+  queue depth over exactly those excluded jobs and is **not** what this period report answers —
+  `GAP-MULTI-STATUS`, the same boundary F18-05 drew for `APPR-AGE`.
+- **Response:** `{ from, to, timezone, groupBy, totals, buckets[] }` — **no `currency`** (an import
+  has no monetary value). `totals` and every bucket share one shape:
+  `{ key, jobCount, totalRows, validRows, invalidRows, warningRows, importedRows }`. `key` is a
+  tenant-local `YYYY-MM-DD` (period), an `import_jobs.status` value (status — necessarily a terminal
+  one), or the literal `'total'` (totals). Every field is safe to sum across buckets:
+  `jobCount` because one job lands in exactly one bucket; the row sums because they are frozen per
+  job (`COALESCE(SUM(col), 0)` — `0`, never `null`, for a job that never reached validation / never
+  committed).
+- **Aggregation:** `COUNT(*)` / `SUM(*_rows)` over `import_jobs` **alone** — no join, no fan-out
+  (a join to `import_job_rows` would multiply the job count by its row count — the trap the sales /
+  returns reports guard with `DISTINCT`; here it is structurally absent).
+  `date_trunc(unit, completed_at AT TIME ZONE tenant_tz)` for the period key.
+- **No new index / migration** — `import_jobs` is a naturally small table (one row per
+  human-initiated import), so the tenant scan is trivial; `(tenant_id, completed_at)` is the
+  additive index to add if a high-volume tenant emerges (F18-05 precedent for `price_approvals`).
+- **Not built:** grouping by `mapping_template_id` / `created_by` / `duplicate_handling_mode`
+  (no `metrics.md` row, KPI or gap asks); a period-level error *rate* (`GAP-IMPORT-ERROR-RATE-PERIOD`
+  — no defined numerator/denominator/`0÷0`; the raw components are exposed instead); any
+  `import_job_rows` content (`raw_data`/`mapped_data`/error messages never enter a reporting
+  response).
+- **Related screen:** an "Imports report" section on `/imports` above the unchanged job list.
+- **State: A.**
 
 ### `REP-ADMIN-USERS` — Users & roles
 

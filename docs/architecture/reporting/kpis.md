@@ -49,8 +49,8 @@ FASE 18 snapshot/rollup exists.
 | `KPI-OPS-RETURNS-PENDING` | Returns to process | *What returns need handling?* | `RET-PENDING-COUNT` | `count(sales_returns where status IN ('requested','inspecting'))` | point-in-time | n/a | — | tenant | `sales.returns.view` | **B** — two calls (`requested`, `inspecting`); or one aggregate |
 | `KPI-OPS-TRANSFERS-OPEN` | Open transfers | *What transfers are in flight?* | `TRF-OPEN-COUNT` | `count(transfers where status NOT IN ('received','cancelled'))` | point-in-time | n/a | — | tenant | `inventory.view` | **A** — F18-08, `GET /reports/transfers-summary?groupBy=status` (sum the non-`received`/`cancelled` buckets). Was **B** |
 | `KPI-OPS-TRANSFERS-TO-RECEIVE` | Transfers awaiting receipt | *What is arriving at my location?* | `TRF-INTRANSIT-COUNT` | `count(transfers where status IN ('dispatched','partially_received'))` | point-in-time | n/a | — | tenant | `inventory.transfers.receive` (to act) / `inventory.view` (to see) | **A** — F18-08, `GET /reports/transfers-summary` `totals.openTransferCount`. Was **B** (two calls). The report is tenant-wide, not per-destination-location-scoped; `groupBy=destination` gives the per-arrival-point breakdown |
-| `KPI-OPS-IMPORTS-ATTENTION` | Imports needing attention | *Did any import fail?* | `IMP-JOBS-STATUS` | `count` where `status IN ('completed_with_errors','failed')` | point-in-time | n/a | — | tenant | `import.execute` | **A** — two `meta.total` calls |
-| `KPI-OPS-IMPORTS-RUNNING` | Imports in progress | *Is anything still processing?* | `IMP-JOBS-PENDING` | `count` where `status IN ('validating','importing', …)` | point-in-time | n/a | — | tenant | `import.execute` | **B** — multi-status |
+| `KPI-OPS-IMPORTS-ATTENTION` | Imports needing attention | *Did any import fail?* | `IMP-JOBS-STATUS` | `count` where `status IN ('completed_with_errors','failed')` | point-in-time | n/a | date range (report) | tenant | `import.execute` | **A** — two `meta.total` calls, **or** one `GET /reports/imports-summary?groupBy=status` (F18-09, sum the `completed_with_errors` + `failed` buckets over a period) |
+| `KPI-OPS-IMPORTS-RUNNING` | Imports in progress | *Is anything still processing?* | `IMP-JOBS-PENDING` | `count` where `status IN ('validating','importing', …)` | point-in-time | n/a | — | tenant | `import.execute` | **B** — multi-status; a live count over non-terminal jobs, **not** resolved by F18-09 (which anchors on `completed_at`) — `GAP-MULTI-STATUS` |
 
 ## 4. Administration
 
@@ -97,6 +97,14 @@ Compute correctly against the real backend **now**, with no new endpoint:
   by-destination / by-variant breakdown.
 - `KPI-OPS-TRANSFERS-OPEN` / `KPI-OPS-TRANSFERS-TO-RECEIVE` — one call for the whole status rollup
   (was 2-5 calls).
+
+**Added by F18-09** (`GET /reports/imports-summary`, `[from,to)` on `import_jobs.completed_at`):
+
+- `IMP-ROWS-PERIOD` — Σ imported / valid / invalid / warning / total rows over completed jobs,
+  by day/week/month, plus `groupBy=status` for the terminal-outcome mix.
+- `KPI-OPS-IMPORTS-ATTENTION` — the `failed` + `completed_with_errors` buckets in one call (for a
+  period). `KPI-OPS-IMPORTS-RUNNING` stays **B** (a live count of non-terminal jobs, not a
+  completed-in-period metric).
 
 Everything else is **B** (needs a FASE 18 aggregate / a filter / a join) or **C** (needs a schema
 or contract change first — see [data-gaps.md](data-gaps.md)).

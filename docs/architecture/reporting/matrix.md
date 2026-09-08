@@ -9,8 +9,9 @@
 | # | Dashboard tile | KPI | Report | Operational screen | Drill-down target | State | Permission |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 1 | Home · Pending price approvals | `KPI-OPS-APPROVALS-PENDING` | `REP-SALES-APPROVALS` | `ReturnsDesktop` (Approvals master-detail) | Approval → order (`REP-SALES-ORDER-DETAIL`) | **A** | *(GET undeclared)* / `pricing.discount.approve` to act |
-| 2 | Home · Imports needing attention | `KPI-OPS-IMPORTS-ATTENTION` | `REP-IMP-JOBS` | `ImportDesktop` | Job → `REP-IMP-ROWS` / `REP-IMP-ERRORS` | **A** | `import.execute` |
-| 3 | Home · Imports running | `KPI-OPS-IMPORTS-RUNNING` | `REP-IMP-JOBS` | `ImportDesktop` | Job detail | **B** | `import.execute` |
+| 2 | Home · Imports needing attention | `KPI-OPS-IMPORTS-ATTENTION` | `REP-IMP-JOBS` / `REP-IMP-SUMMARY` | `ImportDesktop` | Job → `REP-IMP-ROWS` / `REP-IMP-ERRORS` | **A** | `import.execute` |
+| 3 | Home · Imports running | `KPI-OPS-IMPORTS-RUNNING` | `REP-IMP-JOBS` | `ImportDesktop` | Job detail | **B** (live queue over non-terminal jobs — not F18-09, which anchors on `completed_at`) | `import.execute` |
+| 3b | Imports · Row/job throughput by period | `IMP-ROWS-PERIOD` | `REP-IMP-SUMMARY` | `ImportDesktop` (report section) | Job list filtered by status | **A** (F18-09) | `import.execute` |
 | 4 | Home · Orders today | `KPI-SALES-ORDERS` | `REP-SALES-ORDERS` | `SalesHistoryDesktop` | Order → `REP-SALES-ORDER-DETAIL` | **A** | `sales.orders.view` |
 | 5 | Home · Order status mix (period) | `KPI-SALES-CONFIRM-RATE` | `REP-SALES-ORDERS` | `SalesHistoryDesktop` | Order list filtered by status | **A** | `sales.orders.view` |
 | 6 | Home · Returns to process | `KPI-OPS-RETURNS-PENDING` | `REP-RET-LIST` | `ReturnsDesktop` | Return → `REP-RET-DETAIL` → order | **B** | `sales.returns.view` |
@@ -59,6 +60,7 @@
 | Serial/lot traceability | `GAP-SERIAL-LOT-READ` | after the deferred serial/lot sale design |
 | Per-tenant platform metrics | `GAP-PLATFORM-AGGREGATE` | FASE 18+ (audited cross-tenant read path) |
 | Movements by period / kardex date range | `GAP-MOVEMENTS-DATE-FILTER` | FASE 17 (small filter add) or FASE 18 |
-| Multi-status count filters (pending returns, running imports) | `GAP-MULTI-STATUS` | FASE 17 (cheap `status` array) or FASE 18 — the *transfer* status rollup is resolved by `GAP-TRANSFER-AGGREGATE` (F18-08) |
+| Multi-status count filters (pending returns, running imports) | `GAP-MULTI-STATUS` | FASE 17 (cheap `status` array) or FASE 18 — the *transfer* status rollup is resolved by `GAP-TRANSFER-AGGREGATE` (F18-08); the *completed* import outcome mix by `GAP-IMPORT-ROWS-PERIOD` (F18-09) |
 | Transfer cycle-time aggregation | `GAP-TRANSFER-CYCLE-TIME` | FASE 18 — needs a metric definition (aggregation fn + period anchor), not just a query |
+| Period-level import error rate | `GAP-IMPORT-ERROR-RATE-PERIOD` | FASE 18 — needs a metric definition (numerator/denominator/`0÷0`); the raw Σ components are already returned by `REP-IMP-SUMMARY` (F18-09) |
 | New customers by period | `GAP-CUSTOMER-DATE-FILTER` | FASE 18 |

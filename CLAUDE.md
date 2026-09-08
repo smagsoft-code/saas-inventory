@@ -1067,3 +1067,76 @@ API tests + web); API build passes. **No browser automation tool was available i
 environment**, so real-browser visual validation was not performed — substituted by the real-HTTP
 pg-verify integration coverage plus jsdom component-render tests; **not** claimed as a browser
 check. **FASE 18-08 CLOSED, not pushed.**
+
+**F18-09** ("Imports analytics" — the conceptual and execution numbers coincide here) adds the
+**IMPORTS read-side** — `GET /reports/imports-summary` (`apps/api/src/reports/imports/`,
+`import.execute`, **tenant-wide** — `import_jobs` has no location dimension). Resolves the one
+import metric the reporting catalogue marks a FASE 18 aggregate: `metrics.md` `IMP-ROWS-PERIOD`
+("`Σ imported_rows` over jobs completed in range … no filter/sum", **B**) and `reports.md`'s "a
+cross-job 'rows imported this month' rollup is **B**" — both now **A**. Aggregates `import_jobs`
+**alone** (never `ImportJobsRepository`/`ImportJobRowsRepository` — modules.md's read-side rule;
+and critically **never a join to `import_job_rows`**, so `COUNT(*)` = jobs and every `SUM(*_rows)`
+is exact with zero fan-out — a `import_job_rows` join would multiply the job count by its row
+count, the trap the sales/returns reports guard with `DISTINCT`). `groupBy=day|week|month|status`
+(default `day`); half-open `[from, to)` (both required) on **`import_jobs.completed_at`** — the
+field `IMP-ROWS-PERIOD` explicitly names, and code evidence confirms it is set on **every**
+terminal transition (`ImportJobService.runCommit` → `completed`/`completed_with_errors`, `.cancel`
+→ `cancelled`, `.markFailedAndAudit` → `failed`) and `NULL` only while a job is non-terminal
+(`uploaded`…`importing`). **Jobs with `NULL` `completed_at` are excluded from every bucket** — they
+have not completed in any period; a live "imports in progress" count (`IMP-JOBS-PENDING` /
+`KPI-OPS-IMPORTS-RUNNING`) is a queue depth over exactly those and is **not** what this period
+report answers — it stays `GAP-MULTI-STATUS` territory, the same boundary F18-05 drew for
+`APPR-AGE`. `groupBy=status` therefore surfaces only the **terminal outcome mix** (`completed` /
+`completed_with_errors` / `failed` / `cancelled`) — the direct analogue of
+`approvals-summary?groupBy=status` — and resolves `KPI-OPS-IMPORTS-ATTENTION` (sum the `failed` +
+`completed_with_errors` buckets) in one call. `status` filter, **no default**. `totals` and every
+bucket share one shape: `{ key, jobCount, totalRows, validRows, invalidRows, warningRows,
+importedRows }` (`COALESCE(SUM(col), 0)` — `0`, never `null`, for a job that never validated /
+committed). **No `currency`** (an import has no monetary value — same as `movements-summary`).
+**Sensitive-data posture:** the report exposes only `status` + the six numeric aggregates — **no**
+`original_filename`, `storage_key`, `created_by`, `column_mapping`, and **zero** `import_job_rows`
+content (`raw_data`/`mapped_data` raw uploaded cell values, `errors`/`warnings` messages) — the
+prompt's explicit "raw uploaded row contents must not appear in an analytic response" rule.
+**Deliberately not built** (`BLOCKED BY DEFINITION`, documented as gaps, not implemented
+speculatively): a **period-level import error rate** (`IMP-ERROR-RATE` is defined **per job only** —
+`invalid_rows ÷ total_rows`; a *period* ratio has no defined numerator/denominator/`0÷0` behaviour;
+new `GAP-IMPORT-ERROR-RATE-PERIOD`, F18-09 exposes the raw `Σ` components instead, the same
+"components, not the ratio" stance F18-04 took for `RET-RATE`); grouping by `mapping_template_id` /
+`created_by` / `duplicate_handling_mode` (no `metrics.md` row, KPI or gap asks). **No schema
+change, no migration, no new index** (`import_jobs` is a naturally small table — one row per
+human-initiated import — so the tenant scan is trivial; `(tenant_id, completed_at)` is the additive
+index for a future high-volume tenant, F18-05 precedent), **no new permission code** (`import.execute`
+reused per F18-01 — IMPORT's single-permission-for-the-whole-flow design, database.md's RBAC), **no
+new ADR**, **no change to the FASE 10 import pipeline / validation / retry / idempotency / stock
+ledger**. Frontend: an "Imports report" section on `/imports` (`ImportsReportSection` /
+`ImportsReportFilters`, mirroring `ApprovalsReportSection` — `#report`-anchored `reportFrom`/
+`reportTo`/`reportGroupBy`/`reportStatus` params independent of the operational list's `status`
+chip, a local `ImportsReportError` that never redirects on a 403) above the unchanged job list.
+New gaps: `GAP-IMPORT-ROWS-PERIOD` (**RESOLVED**), `GAP-IMPORT-ERROR-RATE-PERIOD` (open).
+`GAP-MULTI-STATUS` stays open (the *completed* import outcome mix is covered; the live "running"
+count and the array-`status` filter on `GET /imports` are not). Real-PostgreSQL: `tools/pg-verify`
+— **`Test Files 39 passed (39)`, `Tests 495 passed (495)`, `0 failed`, `0 skipped`, `[PASS]
+"test:integration" exited 0`** (up from 38/484 at F18-08's close —
+`test/reports/imports-summary.integration.test.ts` = +11 tests, +1 file: RBAC incl. a
+Vendedor-is-403 case — `import.execute` is Administrador-only in `DEFAULT_ROLE_TEMPLATES`; tenant
+isolation; `[from,to)` on `completed_at` via a direct backdating `UPDATE` on the disposable
+pg-verify DB only, since the HTTP contract has no `completedAt` override unlike
+`inventory/adjustments`' `occurredAt`; the **cardinality** guarantee — a job that imported 3 rows
+is **one** job with `importedRows: 3`, never 3 jobs; error isolation — a job's `invalidRows` is
+that one job's, never multiplied; multi-job aggregation; `groupBy=status` bucketing a `cancelled`
+job; empty tenant → `buckets: []` + zeroed totals; 400 batch on missing/invalid params). Every
+fixture job is produced by the real upload → validate → confirm/cancel pipeline through
+`buildImportTestApp()` (only `ObjectStorageService` is the in-memory stand-in — Postgres/RLS/the
+pipeline are real). The harness process then hit the same Windows-only `EBUSY` (`rmdir` on
+`.verify-pgdata`) during its own post-test cleanup that F18-04/05/06/07/08 documented — the
+`embedded-postgres@18.4.0-beta.17` teardown artifact, **not a functional failure** (`test:integration`
+exited 0 before it); controlled manual cleanup applied and verified (orphan `postgres.exe` +
+pg-verify node tree killed, port 55432 freed, `.verify-pgdata` removed, dev servers untouched, no
+persistent DB touched). API unit 554 → 564 (`imports-report.service.spec.ts` +10); web unit 428 →
+438 (`imports-report-section.test.tsx` +6, `imports-report-filters.test.tsx` +4). Lint and
+typecheck pass on both apps (API source + API tests + web); API build passes; `pnpm --filter
+@saas-inventory/web build` compiles/type-checks/statically generates every route, then fails only
+at the pre-existing Windows `EPERM` symlink step during *Collecting build traces* (documented since
+FASE 12). **No browser automation tool was available in this environment**, so real-browser visual
+validation was not performed — substituted by the real-HTTP pg-verify integration coverage plus
+jsdom component-render tests; **not** claimed as a browser check. **FASE 18-09 CLOSED, not pushed.**

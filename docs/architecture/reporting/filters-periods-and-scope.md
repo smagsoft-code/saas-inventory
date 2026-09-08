@@ -26,7 +26,7 @@ exists but no endpoint filters on it. "Absent" = not modelled.
 | **invoice status** | orders | **Derivable** — `invoice_status` on the row, no param. Moot: never leaves `pending`. |
 | **movement type** | movements | `GET /inventory/movements?movementType=X`. | One value per call. |
 | **disposition** | return items | **Absent** on the operational `GET /sales-returns` list. **Groupable** (not filterable) via `GET /reports/returns-summary?groupBy=disposition` (F18-04). | The report groups; it does not add a `disposition` query param to the operational list. |
-| **date / period** | orders (`createdFrom`/`createdTo`), movements (`occurredFrom`/`occurredTo`, F18-03), sales report (`from`/`to`, F18-02), returns report (`from`/`to`, F18-04), approvals report (`from`/`to`, F18-05), movements report (`from`/`to` on `occurred_at`, F18-07) | **Orders, movements, and the sales / returns / approvals / movements *reports*.** The operational `GET /sales-returns` and `GET /price-approvals` lists themselves, transfers, imports, customers, users, price history still have **no date filter**. | The report filters are half-open `[from, to)` (F18-01's new-endpoint convention) — deliberately *not* orders' inclusive-both-bounds `createdFrom`/`createdTo`. Returns report buckets by `sales_returns.created_at` (when *requested* — `GAP-RETURN-RESOLVED-AT`); approvals report buckets by `price_approvals.requested_at` (a request-cohort — `resolved_at` exists but is `NULL` for `pending` rows, so it cannot anchor a period that must surface open requests). |
+| **date / period** | orders (`createdFrom`/`createdTo`), movements (`occurredFrom`/`occurredTo`, F18-03), sales report (`from`/`to`, F18-02), returns report (`from`/`to`, F18-04), approvals report (`from`/`to`, F18-05), movements report (`from`/`to` on `occurred_at`, F18-07), imports report (`from`/`to` on `completed_at`, F18-09) | **Orders, movements, and the sales / returns / approvals / movements / imports *reports*.** The operational `GET /sales-returns`, `GET /price-approvals`, `GET /imports` lists themselves, transfers, customers, users, price history still have **no date filter**. | The report filters are half-open `[from, to)` (F18-01's new-endpoint convention) — deliberately *not* orders' inclusive-both-bounds `createdFrom`/`createdTo`. Returns report buckets by `sales_returns.created_at` (when *requested* — `GAP-RETURN-RESOLVED-AT`); approvals report buckets by `price_approvals.requested_at` (a request-cohort — `resolved_at` exists but is `NULL` for `pending` rows). Imports report buckets by `import_jobs.completed_at` — the field `IMP-ROWS-PERIOD` names, set on every terminal transition; non-terminal jobs (`NULL`) are excluded, so a live "imports running" count is `GAP-MULTI-STATUS`, not this report. |
 | **free-text search (`q`)** | customers (`displayName` / `taxId` / `email` / `phone`) | **Customers only.** No search on products, orders, movements, transfers, users. | api.md: "search is a distinct documented parameter … decided per-endpoint". |
 | **is_exceptional_discount** | order lines | `GET /reports/sales-summary?exceptional=all\|only\|exclude` (F18-06). Order grain (`EXISTS` on `order_items`) for `day`/`week`/`month`/`customer`; line grain for `groupBy=product`. Source of truth is the frozen `order_items.is_exceptional_discount`, never a `price_approvals` join. The operational `GET /orders` list still has no such filter. |
 | **is_demo** | tenants (SuperAdmin) | Client-side over the unpaginated array. |
@@ -50,9 +50,11 @@ customer`), `GET /reports/inventory-summary` (F18-03, `groupBy: warehouse|catego
 `[from,to)` on `occurred_at`, filters `movementType`/`locationId`/`productVariantId`), and
 `GET /reports/transfers-summary` (F18-08, `groupBy: status|destination|variant` over
 `inventory_transfers`/`inventory_transfer_items` — a **live snapshot, no `from`/`to`**, like
-`inventory-summary`). `sales-summary` additionally takes an `exceptional=all|only|exclude`
-line-quality filter (F18-06). Grouping by role/actor, transfer cycle time
-(`GAP-TRANSFER-CYCLE-TIME`), or any other still-open dimension, remains unbuilt.
+`inventory-summary`), and `GET /reports/imports-summary` (F18-09, `groupBy: day|week|month|status`
+over `import_jobs` alone, `[from,to)` on `completed_at`, optional `status` filter). `sales-summary`
+additionally takes an `exceptional=all|only|exclude` line-quality filter (F18-06). Grouping by
+role/actor, transfer cycle time (`GAP-TRANSFER-CYCLE-TIME`), a period import error rate
+(`GAP-IMPORT-ERROR-RATE-PERIOD`), or any other still-open dimension, remains unbuilt.
 
 ---
 
@@ -173,6 +175,7 @@ Identity → active Membership → active Tenant → active User → (if locatio
 | Returns | tenant | **yes** for disposition location (writes only — `inspect`/`resolve`) | `sales.returns.view` / `inventory.returns.manage` |
 | Returns summary (`GET /reports/returns-summary`, F18-04) | tenant | **no** — reuses the exact, real, current read scope of `GET /sales-returns` above (tenant-wide); `LocationAuthorizationService` only ever gates a write action (inspect/resolve), never a read, so this report does not invent a location-scoping policy the existing reads themselves don't have | `sales.returns.view` |
 | Imports | tenant | `default_location_id` is authorized at validation; the job list is not location-scoped | `import.execute` |
+| Imports summary (`GET /reports/imports-summary`, F18-09) | tenant | **no** — `import_jobs` has no location dimension; matches the operational `GET /imports` list | `import.execute` |
 | Users / roles / audit | tenant | none | `core.users.read` / `core.roles.read` |
 | Companies | platform | n/a | `@PlatformOnly()` |
 

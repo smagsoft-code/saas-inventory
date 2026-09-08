@@ -126,6 +126,15 @@ filter at all — each is a live snapshot of current state (`inventory_balances`
 `dispatched`/`partially_received` transfers, name-resolved), plus a `groupBy`-independent
 `totals: { inTransitQuantity, openTransferCount }`.
 
+`GET /reports/imports-summary` (F18-09, `import.execute`, tenant-wide) **does** take the standard
+`from`/`to` (both required) — half-open `[from, to)` on `import_jobs.completed_at` (the anchor
+`metrics.md` `IMP-ROWS-PERIOD` names, set on every terminal transition; non-terminal jobs have
+`NULL` `completed_at` and are excluded). `groupBy=day|week|month|status`, optional `status` filter.
+Aggregates `import_jobs` **alone** (no `import_job_rows` join): `jobCount` (`COUNT(*)`) + `Σ` of
+`total_rows`/`valid_rows`/`invalid_rows`/`warning_rows`/`imported_rows` per bucket, plus a
+`groupBy`-independent `totals`. No `currency` (an import has no monetary value). No
+`import_job_rows` content (raw/mapped cell values, error messages) ever appears in the response.
+
 `GET /reports/sales-summary` (F18-02), `GET /reports/returns-summary` (F18-04),
 `GET /reports/approvals-summary` (F18-05) and `GET /reports/movements-summary` (F18-07) each follow
 the standard half-open `[from, to)` `from`/`to` convention (both **required** — 400 when either is

@@ -127,8 +127,14 @@ QR resolves identity only (product/location), never pricing.
 | Table | Key fields | States | Exposed by API |
 | --- | --- | --- | --- |
 | `import_jobs` | `created_by`, `default_location_id`, `mapping_template_id`, `column_mapping` (frozen jsonb), `duplicate_handling_mode`, `original_filename`, `total_rows`, `valid_rows`, `invalid_rows`, `warning_rows`, `imported_rows`, `error_report_storage_key`, `started_at`, `completed_at`, claim cols | `uploaded` · `mapping` · `validating` · `ready` · `importing` · `completed` · `completed_with_errors` · `failed` · `cancelled`. Modes: `update_catalog_only` · `update_catalog_and_inventory` · `skip_existing` · `reject_on_duplicate` | `GET /imports` (`import.execute`, filter `status`, paginated), `GET /imports/:id`, `/:id/rows`, `/:id/preview`, `/:id/errors`, plus the staged pipeline command routes. Row counts are **on the job row** — ready to display, no aggregation needed. |
-| `import_job_rows` | `row_number`, `raw_data`, `mapped_data`, `status`, `match_action` (`create`/`update`/`skip`), `matched_product_variant_id`, `errors` (jsonb), `warnings` (jsonb) | `pending` · `valid` · `warning` · `invalid` · `imported` · `skipped` | `GET /imports/:id/rows` (per-job). |
+| `import_job_rows` | `row_number`, `raw_data`, `mapped_data`, `status`, `match_action` (`create`/`update`/`skip`), `matched_product_variant_id`, `errors` (jsonb), `warnings` (jsonb) | `pending` · `valid` · `warning` · `invalid` · `imported` · `skipped` | `GET /imports/:id/rows` (per-job). **Never touched by reporting** — `raw_data`/`mapped_data` (raw uploaded cell values) and `errors`/`warnings` messages are sensitive and stay out of any analytic response. |
 | `import_mapping_templates` | `name`, `category_id`, `column_mapping` | — | Full CRUD. |
+
+**Aggregated (F18-09):** `GET /reports/imports-summary` (`import.execute`, tenant-wide) — `COUNT(*)`
+jobs + `Σ total_rows`/`valid_rows`/`invalid_rows`/`warning_rows`/`imported_rows` over `import_jobs`
+**alone** (no `import_job_rows` join), by `day`/`week`/`month` on `completed_at` or by terminal
+`status`. `completed_at` is set on every terminal transition; non-terminal jobs (`NULL`) are
+excluded, so a live "imports running" count is not this report (`GAP-MULTI-STATUS`).
 
 ---
 
@@ -190,7 +196,8 @@ returns it today** (→ state B or C per item in [metrics.md](metrics.md)):
 - Exceptional-discount volume & value per period.
 - Returns pending / by disposition / value.
 - Pending approvals count & age.
-- Import jobs summary per period.
+- ~~Import jobs summary per period.~~ **Built — F18-09** (`GET /reports/imports-summary`,
+  `[from,to)` on `import_jobs.completed_at`, `groupBy=day|week|month|status`).
 - Per-customer order history and lifetime value.
 - User activity detail (from `audit_log` — no read endpoint at all). `last_login_at` per user **is**
   exposed via `GET /users`.

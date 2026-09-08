@@ -359,6 +359,19 @@ not needed yet at current scale.
   `KPI-INV-INTRANSIT` (**B → A**), registers `GAP-TRANSFER-AGGREGATE` + the still-open
   `GAP-TRANSFER-CYCLE-TIME`. Never `InventoryTransfersRepository`/`InventoryTransferItemsRepository`.
   See [reporting/reports.md#rep-inv-transfers-summary--transfer-analytics](../reporting/reports.md#rep-inv-transfers-summary--transfer-analytics).
+- **`imports/` (F18-09 — "Imports analytics"):** `GET /reports/imports-summary`
+  (`import.execute` — the only import-domain permission; tenant-wide, `import_jobs` has no location
+  dimension) — `groupBy=day|week|month|status` over `import_jobs` **alone** (no `import_job_rows`
+  join, so `COUNT(*)` = jobs and every `SUM(*_rows)` is exact with zero fan-out). Half-open
+  `[from, to)` on `import_jobs.completed_at` — the field `IMP-ROWS-PERIOD` names, set on **every**
+  terminal transition (`ImportJobService`), `NULL` while a job is non-terminal (those are excluded;
+  a live "imports running" count stays `GAP-MULTI-STATUS`). `status` filter, no default.
+  Buckets + `groupBy`-independent `totals` carry `jobCount` + `Σ total_rows`/`valid_rows`/
+  `invalid_rows`/`warning_rows`/`imported_rows`. No `currency`. No `import_job_rows` content (raw/
+  mapped cell values, error messages) ever in the response. Resolves `metrics.md` `IMP-ROWS-PERIOD`
+  (**B → A**), registers `GAP-IMPORT-ROWS-PERIOD` (RESOLVED) + the still-open
+  `GAP-IMPORT-ERROR-RATE-PERIOD` (no defined period ratio). Never `ImportJobsRepository`.
+  See [reporting/reports.md#rep-imp-summary--imports-summary-job--row-throughput-by-period-or-outcome](../reporting/reports.md#rep-imp-summary--imports-summary-job--row-throughput-by-period-or-outcome).
 
 The APPROVALS report reuses `pricing.discount.approve` rather than a `*.view` code (there is none
 for `price_approvals`) — it is the exact permission `metrics.md`'s `APPR-RATE` /

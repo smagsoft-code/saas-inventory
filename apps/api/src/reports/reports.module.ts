@@ -3,6 +3,9 @@ import { TenantSettingsRepository } from '../administration/tenant-settings/tena
 import { ApprovalsReportController } from './approvals/approvals-report.controller';
 import { ApprovalsReportRepository } from './approvals/approvals-report.repository';
 import { ApprovalsReportService } from './approvals/approvals-report.service';
+import { ImportsReportController } from './imports/imports-report.controller';
+import { ImportsReportRepository } from './imports/imports-report.repository';
+import { ImportsReportService } from './imports/imports-report.service';
 import { InventoryReportController } from './inventory/inventory-report.controller';
 import { InventoryReportRepository } from './inventory/inventory-report.repository';
 import { InventoryReportService } from './inventory/inventory-report.service';
@@ -32,7 +35,9 @@ import { TransfersReportService } from './transfers/transfers-report.service';
  * `GET /reports/transfers-summary`, a live snapshot over `inventory_transfers` /
  * `inventory_transfer_items` (never the transactional `InventoryTransfers*`/`InventoryTransferItems*`
  * repositories) — status rollup + in-transit stock by destination/variant; no `from`/`to` (like
- * `inventory-summary`). `TenantSettingsRepository`
+ * `inventory-summary`). F18-09 adds the IMPORTS read-side (`imports/`) —
+ * `GET /reports/imports-summary` over `import_jobs` alone (no join), never `ImportJobsRepository` —
+ * job-count + row-total aggregation by period (`completed_at`) or by status. `TenantSettingsRepository`
  * is reused directly as a provider (same convention `AuthModule`/`AdministrationModule` already use
  * for cross-cutting repositories) rather than importing `AdministrationModule` — no module-level
  * dependency edge either way; the inventory report does not need it (no timezone-bucketed period in
@@ -46,6 +51,7 @@ import { TransfersReportService } from './transfers/transfers-report.service';
     ApprovalsReportController,
     MovementsReportController,
     TransfersReportController,
+    ImportsReportController,
   ],
   providers: [
     SalesReportService,
@@ -60,6 +66,8 @@ import { TransfersReportService } from './transfers/transfers-report.service';
     MovementsReportRepository,
     TransfersReportService,
     TransfersReportRepository,
+    ImportsReportService,
+    ImportsReportRepository,
     TenantSettingsRepository,
   ],
 })
