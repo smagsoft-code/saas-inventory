@@ -14,9 +14,10 @@
 | --- | --- | --- | --- | --- | --- |
 | `REP-INV-STOCK` | Existencias (stock on hand) | Inventory | `GET /inventory/balances` (raw) | **B** | F17 operational list (raw); the grouped/enriched view is now `GET /reports/inventory-summary` (FASE 18-03) |
 | `REP-INV-KARDEX` | Stock card / kardex | Inventory | `GET /inventory/movements` (date range added, F18-03) | **B** | Still needs an explicit sort guarantee + name enrichment |
-| `REP-INV-MOVEMENTS` | Movement history | Inventory | `GET /inventory/movements` (+ `occurredFrom`/`occurredTo`, F18-03) | **A** (list + date range) / **B** (by-actor, grouped) |
-| `REP-INV-ADJUSTMENTS` | Adjustments | Inventory | `GET /inventory/movements?movementType=ADJUSTMENT_*` (+ `occurredFrom`/`occurredTo`, F18-03) | **A** (filtered + dated list) / **B** (grouping) |
+| `REP-INV-MOVEMENTS` | Movement history | Inventory | `GET /inventory/movements` (list) / `GET /reports/movements-summary` (grouped, F18-07) | **A** (list + date range) / **A** (grouped by day/week/month/type, F18-07) — by-actor still **B** (`GAP-NAME-ENRICHMENT`) |
+| `REP-INV-ADJUSTMENTS` | Adjustments | Inventory | `GET /inventory/movements?movementType=ADJUSTMENT_*` (list) / `GET /reports/movements-summary?groupBy=type` (F18-07) | **A** (filtered + dated list) / **A** (grouped count + signed net, F18-07) |
 | `REP-INV-SUMMARY` | Inventory summary (available/reserved/out-of-stock by warehouse or category) | Inventory | `GET /reports/inventory-summary` | **A** | FASE 18-03 |
+| `REP-INV-MOV-SUMMARY` | Movements summary (count + signed quantity by period or type) | Inventory | `GET /reports/movements-summary` | **A** | F18-07 |
 | `REP-INV-TRANSFERS` | Transfers | Inventory | `GET /inventory/transfers` | **A** (list) / **B** (names, cycle time) | F17 |
 | `REP-INV-INTRANSIT` | In-transit stock | Inventory | — | **B** | FASE 18 |
 | `REP-INV-VALUATION` | Inventory valuation | Inventory | — | **C** | Blocked ([data-gaps.md](data-gaps.md#gap-cost)) |
@@ -106,7 +107,9 @@ Export · Drill-down · Related operational screen · State**.
 
 - As `REP-INV-KARDEX` but not scoped to a single variant/location — a tenant/location-wide
   movement feed. Same endpoint, same date filter. **State: A** for the list + its 4 filters
-  (including `occurredFrom`/`occurredTo`, F18-03); by-actor / grouped is still **B**.
+  (including `occurredFrom`/`occurredTo`, F18-03). **Grouped/aggregated** count + signed quantity by
+  day/week/month/type is now `REP-INV-MOV-SUMMARY` (**A**, F18-07); by-actor grouping is still **B**
+  (`GAP-NAME-ENRICHMENT`).
 
 ### `REP-INV-ADJUSTMENTS` — Adjustments
 
@@ -116,7 +119,41 @@ Export · Drill-down · Related operational screen · State**.
   occurredFrom`/`occurredTo` (F18-03).
 - **Columns:** Fecha, Tipo, Producto, Ubicación, Cantidad, Motivo (`reason`), Usuario (`actor_id`).
 - **Filters (desired):** date range — **resolved, F18-03**; user, reason still missing. **State: A**
-  for the dated, typed list; `actor_id`/product/location are still not name-resolved.
+  for the dated, typed list; `actor_id`/product/location are still not name-resolved. **Aggregated**
+  adjustment count + net quantity by period is `REP-INV-MOV-SUMMARY?groupBy=type` (**A**, F18-07).
+
+### `REP-INV-MOV-SUMMARY` — Movements summary
+
+**RESOLVED — F18-07.** `GET /reports/movements-summary` (`inventory.view`, **tenant-wide** — same
+posture as `REP-INV-SUMMARY` / `GET /inventory/movements`, neither is location-scoped) — real
+server-side aggregation over `inventory_movements`, no client-side fold.
+
+- **Objective:** "how much inventory activity happened" — movement count and signed net quantity,
+  by calendar period or by movement type, for a date range. Resolves `metrics.md`
+  `KPI-INV-MOVEMENTS` / `MOV-QTY-BY-TYPE` / `MOV-RECEIPTS-PERIOD` / `MOV-ADJUSTMENTS-PERIOD` (Σ).
+- **Query params:** `from`, `to` (both **required** — half-open `[from, to)` on
+  `inventory_movements.occurred_at`, F18-01 convention), `groupBy` (`day` | `week` | `month` |
+  `type`, default `day`), and the three filters `KPI-INV-MOVEMENTS` names: `movementType` (one of
+  the 12 real `movement_type` values), `locationId`, `productVariantId`.
+- **Response:** `{ from, to, timezone, groupBy, buckets[] }` — **no `currency`** (this report has no
+  monetary value). A `day`/`week`/`month` bucket: `{ key: 'YYYY-MM-DD', movementCount, totalQuantity }`;
+  a `type` bucket: `{ key: <MOVEMENT_TYPE>, movementCount, totalQuantity }`. `totalQuantity` is the
+  **signed** `Σ quantity` — `inventory_movements.quantity` is stored signed relative to its balance
+  bucket (`StockLedgerService`: RECEIPT / ADJUSTMENT_IN / TRANSFER_IN / RETURN / RESERVATION /
+  COMMITMENT / INITIAL_STOCK positive; SALE / ADJUSTMENT_OUT / TRANSFER_OUT / RESERVATION_RELEASE /
+  COMMITMENT_RELEASE negative). Unambiguous per `type` bucket; a mixed net for a period bucket with
+  no `movementType` filter (documented, never re-interpreted).
+- **Aggregation:** `COUNT(*)` / `SUM(quantity)` over `inventory_movements` **alone** — no join, no
+  fan-out. Bounded by `inventory_movements_tenant_occurred_idx (tenant_id, occurred_at)` (migration
+  `0030`, added by F18-03 — **no new index**). `date_trunc(unit, occurred_at AT TIME ZONE tenant_tz)`
+  for the period key, tenant timezone server-side.
+- **Not built:** grouping by actor (`GAP-NAME-ENRICHMENT` — ids only) or by location/variant as a
+  *dimension* (they are filters, not `groupBy` values — no metric/KPI asks for a per-location
+  movement rollup); a `sort` on the raw list (`GAP-SORT`). In-transit aggregation is
+  `REP-INV-INTRANSIT` / `GAP-INV-AGGREGATE`, separate.
+- **Related screen:** a "Movements report" section on `/inventory/movements` (mirrors the `/sales`
+  and `/inventory` report sections) above the unchanged movement list.
+- **State: A** (F18-07).
 
 ### `REP-INV-TRANSFERS` — Transfers
 

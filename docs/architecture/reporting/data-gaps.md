@@ -15,6 +15,7 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-SALES-AGGREGATE`](#gap-sales-aggregate) | Sales aggregation endpoint | ~~F18-needed~~ **RESOLVED (F18-02)** — `location` grouping still open |
 | [`GAP-INV-AGGREGATE`](#gap-inv-aggregate) | Inventory aggregation + name enrichment | ~~F17-needed (partial) / F18~~ **PARTIALLY RESOLVED (F18-03)** — Σ available/reserved + out-of-stock count by warehouse/category built; name enrichment on the *raw* balances/movements lists stays open |
 | [`GAP-MOVEMENTS-DATE-FILTER`](#gap-movements-date-filter) | Date range + sort on movements | ~~F17-needed~~ **PARTIALLY RESOLVED (F18-03)** — `occurredFrom`/`occurredTo` built; `sort` and `referenceType`/`referenceId` filters still open |
+| [`GAP-MOV-AGGREGATE`](#gap-mov-aggregate) | Movement count / signed quantity aggregated by period or type | ~~F18-needed~~ **RESOLVED (F18-07)** — `GET /reports/movements-summary` (`inventory.view`), `groupBy=day\|week\|month\|type`, `[from,to)` on `occurred_at`, `movementType`/`locationId`/`productVariantId` filters |
 | [`GAP-MULTI-STATUS`](#gap-multi-status) | Multi-status filter on lists | F17-needed |
 | [`GAP-ORDERS-LOCATION-FILTER`](#gap-orders-location-filter) | `locationId` filter on orders | F18-needed |
 | [`GAP-ORDER-CONFIRMED-AT`](#gap-order-confirmed-at) | `confirmed_at` timestamp on orders | F18-needed |
@@ -134,7 +135,8 @@ canonical "when the physical movement happened" timestamp — confirmed distinct
 does **not**, since the real business timestamp is `occurred_at`, not `created_at`.
 
 **Still missing:** a `sort` param (`GAP-SORT`) and a `referenceType`/`referenceId` filter on this
-same endpoint — neither was in this phase's scope.
+same operational endpoint — neither was in scope. Server-side **aggregation** over the same
+`occurred_at` axis is now `GAP-MOV-AGGREGATE` (**RESOLVED — F18-07**, `GET /reports/movements-summary`).
 
 - **Original text (for history):** `occurredFrom`/`occurredTo` (and/or `createdFrom`/`createdTo`),
   a `sort` param, and a `referenceType`/`referenceId` filter were needed for kardex/"movements this
@@ -142,6 +144,31 @@ same endpoint — neither was in this phase's scope.
   `movementType`. Recommended F17-needed, assumed no schema impact — done for the date filter
   (a real, additive index *was* needed, on the correct column); sort and the reference filter
   remain open, tracked separately.
+
+### `GAP-MOV-AGGREGATE`
+**RESOLVED — F18-07.** `GET /reports/movements-summary` (`inventory.view`, tenant-wide — matching
+`GET /inventory/movements` / `GET /reports/inventory-summary`, neither location-scoped) — a
+dedicated read-side over `inventory_movements` **alone** (no join: one row is one ledger movement,
+so `COUNT(*)` / `SUM(quantity)` are exact with zero fan-out). `groupBy=day|week|month|type`
+(default `day`); half-open `[from, to)` on `inventory_movements.occurred_at` — the same "when the
+physical movement happened" timestamp `GET /inventory/movements`'s `occurredFrom`/`occurredTo`
+filter uses (F18-03), backed by the same `inventory_movements_tenant_occurred_idx` (migration
+`0030`, **no new index**). Optional filters `movementType` / `locationId` / `productVariantId` —
+the exact three `KPI-INV-MOVEMENTS` names ("type, location, variant"). Each bucket carries
+`movementCount` (`MOV-COUNT` grouped) and `totalQuantity` (signed `Σ quantity` — `MOV-QTY-BY-TYPE`;
+unambiguous per `type` bucket, a mixed net for a period bucket with no `movementType` filter). No
+monetary field, no `currency`. Resolves `metrics.md` `MOV-QTY-BY-TYPE` / `MOV-RECEIPTS-PERIOD` /
+`MOV-ADJUSTMENTS-PERIOD` (Σ) and `kpis.md` `KPI-INV-MOVEMENTS` (all **B → A**). Never
+`InventoryMovementsRepository`.
+
+- **Was:** the flag is on `order_items`… (n/a) — the movement ledger had a date-range filter on the
+  operational list (F18-03) but no server-side `SUM`/`COUNT`/`GROUP BY`; `metrics.md` marked those
+  rows "a FASE 18 aggregation item" and `f17-f18-boundary.md` listed "Movement analytics …
+  aggregation still open". This gap id registers that requirement (it had none before — the
+  requirement lived only in `KPI-INV-MOVEMENTS` and the boundary doc).
+- **Still open (separate):** grouping by actor (`GAP-NAME-ENRICHMENT` — ids only), by
+  location/variant *dimension* (only filterable, not a `groupBy` value), and a `sort` on the raw
+  list (`GAP-SORT`). In-transit aggregation is `GAP-INV-AGGREGATE`'s remainder, not this.
 
 ### `GAP-MULTI-STATUS`
 - **Required:** `status` as a repeatable/array param on the list endpoints (transfers, returns,

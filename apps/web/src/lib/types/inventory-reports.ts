@@ -53,3 +53,36 @@ export interface InventorySummary {
 export function isCategoryBucket(bucket: InventorySummaryBucket): bucket is InventoryCategoryBucket {
   return 'categoryName' in bucket;
 }
+
+/**
+ * F18-07 — mirrors `GET /api/v1/reports/movements-summary`'s real response shape
+ * (`apps/api/src/reports/movements/dto/movements-summary-response.dto.ts`). The aggregation half of
+ * `KPI-INV-MOVEMENTS` / `MOV-QTY-BY-TYPE` — over `inventory_movements` alone, `[from, to)` on
+ * `occurred_at`, tenant timezone. No monetary field (quantities only). `totalQuantity` is the
+ * **signed** Σ quantity (positive for RECEIPT/IN/RETURN/RESERVATION/…, negative for
+ * SALE/OUT/RELEASE); it is unambiguous per `type` bucket, and a mixed net for a period bucket with
+ * no `movementType` filter.
+ */
+export const MOVEMENTS_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'type'] as const;
+export type MovementsSummaryGroupBy = (typeof MOVEMENTS_SUMMARY_GROUP_BY)[number];
+
+export const MOVEMENTS_SUMMARY_GROUP_BY_LABELS: Record<MovementsSummaryGroupBy, string> = {
+  day: 'Day',
+  week: 'Week',
+  month: 'Month',
+  type: 'Movement type',
+};
+
+export interface MovementsSummaryBucket {
+  key: string;
+  movementCount: number;
+  totalQuantity: number;
+}
+
+export interface MovementsSummary {
+  from: string;
+  to: string;
+  timezone: string;
+  groupBy: MovementsSummaryGroupBy;
+  buckets: MovementsSummaryBucket[];
+}

@@ -1,5 +1,10 @@
 import { serverApiFetch } from '../api/server';
-import type { InventorySummary, InventorySummaryGroupBy } from '../types/inventory-reports';
+import type {
+  InventorySummary,
+  InventorySummaryGroupBy,
+  MovementsSummary,
+  MovementsSummaryGroupBy,
+} from '../types/inventory-reports';
 
 /**
  * `GET /api/v1/reports/inventory-summary` (F18-03, `inventory.view` — no `reports.*` permission
@@ -25,4 +30,33 @@ export async function getInventorySummary(query: InventorySummaryQuery = {}): Pr
     params['groupBy'] = query.groupBy;
   }
   return serverApiFetch<InventorySummary>('/api/v1/reports/inventory-summary', { query: params });
+}
+
+/**
+ * `GET /api/v1/reports/movements-summary` (F18-07, `inventory.view`). `from`/`to` are required by
+ * the endpoint (half-open `[from, to)` on `occurred_at`); the caller resolves a sensible default.
+ * `movementType` / `locationId` / `productVariantId` are the optional filters `KPI-INV-MOVEMENTS`
+ * names ("type, location, variant").
+ */
+export interface MovementsSummaryQuery {
+  from: string;
+  to: string;
+  groupBy: MovementsSummaryGroupBy;
+  movementType?: string;
+  locationId?: string;
+  productVariantId?: string;
+}
+
+export async function getMovementsSummary(query: MovementsSummaryQuery): Promise<MovementsSummary> {
+  const params: Record<string, string> = { from: query.from, to: query.to, groupBy: query.groupBy };
+  if (query.movementType) {
+    params['movementType'] = query.movementType;
+  }
+  if (query.locationId) {
+    params['locationId'] = query.locationId;
+  }
+  if (query.productVariantId) {
+    params['productVariantId'] = query.productVariantId;
+  }
+  return serverApiFetch<MovementsSummary>('/api/v1/reports/movements-summary', { query: params });
 }

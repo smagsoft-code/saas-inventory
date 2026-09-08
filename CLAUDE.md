@@ -956,3 +956,56 @@ step (documented since FASE 12, `apps/web` source otherwise untouched). **No bro
 tool was available in this environment**, so real-browser visual validation was not performed —
 substituted by the real-HTTP pg-verify integration coverage plus jsdom component-render tests;
 **not** claimed as a browser check. **FASE 18-06 CLOSED, not pushed.**
+
+**F18-07** adds the **MOVEMENTS read-side** — `GET /reports/movements-summary`
+(`apps/api/src/reports/movements/`, `inventory.view`, **tenant-wide**) — the aggregation half of
+`metrics.md` `KPI-INV-MOVEMENTS` / `MOV-QTY-BY-TYPE` / `MOV-RECEIPTS-PERIOD` /
+`MOV-ADJUSTMENTS-PERIOD` (Σ), all previously **B** ("no server-side aggregation"; the date-range
+half was F18-03). Aggregates `inventory_movements` **alone** — no join, so every `COUNT(*)` /
+`SUM(quantity)` is exact with zero fan-out (same clean property as `approvals-summary`). Never
+`InventoryMovementsRepository` (reporting stays a separate read-side). `groupBy=day|week|month|type`
+(default `day`); half-open `[from, to)` on `inventory_movements.occurred_at` — the *same* column
+`GET /inventory/movements`'s `occurredFrom`/`occurredTo` filter uses (F18-03), reused under the
+standard report `from`/`to` names (both required) since this *is* a FASE 18 report, and backed by
+the *same* `inventory_movements_tenant_occurred_idx (tenant_id, occurred_at)` index F18-03's
+migration `0030` added — **no new index, no new migration, no new permission, no new ADR, no schema
+change**. Optional filters `movementType` (one of the 12 real `movement_type` values) /
+`locationId` / `productVariantId` — the exact three `KPI-INV-MOVEMENTS` names ("type, location,
+variant"), all real FK columns on `inventory_movements`. Each bucket carries `movementCount`
+(`MOV-COUNT` grouped) and `totalQuantity` — the **signed** `Σ quantity` (`inventory_movements.quantity`
+is stored signed relative to its balance bucket by `StockLedgerService`: RECEIPT / ADJUSTMENT_IN /
+TRANSFER_IN / RETURN / RESERVATION / COMMITMENT / INITIAL_STOCK positive; SALE / ADJUSTMENT_OUT /
+TRANSFER_OUT / RESERVATION_RELEASE / COMMITMENT_RELEASE negative) — this is `MOV-QTY-BY-TYPE`'s
+"signed quantity by movement type" verbatim; unambiguous per `type` bucket, a documented mixed net
+for a period bucket with no `movementType` filter. Response `{ from, to, timezone, groupBy, buckets }`
+— **no `currency`** (this report carries no monetary value, unlike sales/returns/approvals). The
+requirement had no `GAP-` id before (it lived only in `KPI-INV-MOVEMENTS` + `f17-f18-boundary.md`'s
+"Movement analytics … aggregation still open" line) — F18-07 registers it as **`GAP-MOV-AGGREGATE`
+(RESOLVED)**; `metrics.md` `MOV-QTY-BY-TYPE`/`MOV-RECEIPTS-PERIOD`/`MOV-ADJUSTMENTS-PERIOD`(Σ) and
+`kpis.md` `KPI-INV-MOVEMENTS` and `matrix.md` D6/rows 13-14 all move **B → A**; new `reports.md`
+`REP-INV-MOV-SUMMARY` (**A**). Frontend: a "Movements report" section on `/inventory/movements`
+(`MovementsReportFilters` from/to/groupBy/movementType + `MovementsReportSection` KPI tiles +
+grouped table, mirroring `SalesReportSection`/`InventoryReportSection` — same `#report`-anchored
+navigation, same local `MovementsReportError` that never redirects on a 403) above the unchanged
+movement list; `reportFrom`/`reportTo`/`reportGroupBy`/`reportMovementType` URL params, independent
+of the operational list's own `occurredFrom`/`occurredTo`/`movementType`/`locationId` chips (the
+`locationId`/`productVariantId` filters stay available on the endpoint for API callers). **Still
+open (separate):** grouping by actor (`GAP-NAME-ENRICHMENT` — ids only) and a `sort` on the raw
+list (`GAP-SORT`); in-transit aggregation is `GAP-INV-AGGREGATE`'s remainder, not this.
+Real-PostgreSQL: `tools/pg-verify` **`test:integration` exited 0 — Test Files 37 passed (37), Tests
+472 passed (472)** (up from 460/36 at F18-06's close — 12 new tests in
+`test/reports/movements-summary.integration.test.ts`: RBAC incl. a Vendedor-is-403 case + a
+Bodega-is-200 case, tenant isolation, `[from,to)` boundary exactness on `occurred_at`,
+invalid-`groupBy`/`movementType` 400, `groupBy=type` exact signed-SUM math (RECEIPT + /
+ADJUSTMENT_OUT −), day/week/month grouping, `movementType`/`locationId`/`productVariantId` filter
+composition, empty result; one shared fixture tenant in `beforeAll` + per-test fresh variants —
+the first draft's tenant-per-test caused a `registerTenant` deadlock with
+`identity-backfill.integration.test.ts` under `fileParallelism`, fixed by the shared fixture).
+API unit 535 → 545 (`movements-report.service.spec.ts` +10); web unit 408 → 417
+(`movements-report-filters.test.tsx` +4, `movements-report-section.test.tsx` +5). Lint and
+typecheck pass on both apps; API build passes; `pnpm --filter @saas-inventory/web build` compiles,
+type-checks and statically generates every route, then fails only at the pre-existing Windows
+`EPERM` symlink step (documented since FASE 12, `apps/web` source otherwise untouched). **No
+browser automation tool was available in this environment**, so real-browser visual validation was
+not performed — substituted by the real-HTTP pg-verify integration coverage plus jsdom
+component-render tests; **not** claimed as a browser check. **FASE 18-07 CLOSED, not pushed.**

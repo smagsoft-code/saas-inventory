@@ -6,6 +6,9 @@ import { ApprovalsReportService } from './approvals/approvals-report.service';
 import { InventoryReportController } from './inventory/inventory-report.controller';
 import { InventoryReportRepository } from './inventory/inventory-report.repository';
 import { InventoryReportService } from './inventory/inventory-report.service';
+import { MovementsReportController } from './movements/movements-report.controller';
+import { MovementsReportRepository } from './movements/movements-report.repository';
+import { MovementsReportService } from './movements/movements-report.service';
 import { ReturnsReportController } from './returns/returns-report.controller';
 import { ReturnsReportRepository } from './returns/returns-report.repository';
 import { ReturnsReportService } from './returns/returns-report.service';
@@ -20,14 +23,22 @@ import { SalesReportService } from './sales/sales-report.service';
  * F18-04 adds the RETURNS read-side (`returns/`) — same pattern, its own repository/service/
  * controller, never `SalesReturnsRepository`/`SalesReturnItemsRepository`. F18-05 adds the
  * APPROVALS read-side (`approvals/`) — `GET /reports/approvals-summary` over `price_approvals`
- * alone, never `PriceApprovalsRepository`. `TenantSettingsRepository`
+ * alone, never `PriceApprovalsRepository`. F18-07 adds the MOVEMENTS read-side (`movements/`) —
+ * `GET /reports/movements-summary` over `inventory_movements` alone (no join), never
+ * `InventoryMovementsRepository`. `TenantSettingsRepository`
  * is reused directly as a provider (same convention `AuthModule`/`AdministrationModule` already use
  * for cross-cutting repositories) rather than importing `AdministrationModule` — no module-level
  * dependency edge either way; the inventory report does not need it (no timezone-bucketed period in
- * that report, unlike sales-summary/returns-summary).
+ * that report, unlike sales-summary/returns-summary/movements-summary).
  */
 @Module({
-  controllers: [SalesReportController, InventoryReportController, ReturnsReportController, ApprovalsReportController],
+  controllers: [
+    SalesReportController,
+    InventoryReportController,
+    ReturnsReportController,
+    ApprovalsReportController,
+    MovementsReportController,
+  ],
   providers: [
     SalesReportService,
     SalesReportRepository,
@@ -37,6 +48,8 @@ import { SalesReportService } from './sales/sales-report.service';
     ReturnsReportRepository,
     ApprovalsReportService,
     ApprovalsReportRepository,
+    MovementsReportService,
+    MovementsReportRepository,
     TenantSettingsRepository,
   ],
 })

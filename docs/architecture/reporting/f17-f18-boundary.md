@@ -29,7 +29,7 @@ aggregate endpoint.
 | **Attributes** | definitions + options CRUD | A | — |
 | **Products** | list (status, category) + detail + variants (prices, gated) + create/edit + attribute validation | A | `GAP-NAME-ENRICHMENT` (category name), `GAP-SEARCH` (name/SKU), `GAP-SORT`, `GAP-VARIANT-LIST` (for New Sale + flat variant view), `GAP-BRAND-SUPPLIER-LIST` (or drop the fields) |
 | **Warehouses / Locations** | list + create/edit; default "General" location | A | — |
-| **Inventory / Existencias** | balance list (variant/location filter) + adjust (RECEIPT / ADJUSTMENT_IN/OUT) | A (numbers) / B (view) | `GAP-NAME-ENRICHMENT` (balances/movements rows are still id-only); `GAP-INV-AGGREGATE` and `GAP-MOVEMENTS-DATE-FILTER` **resolved — F18-03** |
+| **Inventory / Existencias** | balance list (variant/location filter) + adjust (RECEIPT / ADJUSTMENT_IN/OUT) | A (numbers) / B (view) | `GAP-NAME-ENRICHMENT` (balances/movements rows are still id-only); `GAP-INV-AGGREGATE` / `GAP-MOVEMENTS-DATE-FILTER` **resolved — F18-03**; `GAP-MOV-AGGREGATE` **resolved — F18-07** |
 | **Transfers** | list (status/source/dest) + detail + full lifecycle (request→approve→prepare→dispatch→receive / cancel) + in-transit per transfer | A | `GAP-NAME-ENRICHMENT` (route names), `GAP-MULTI-STATUS` |
 | **QR** | code list + create + resolve | A | — |
 | **Import** | staged pipeline (upload→map→validate→preview→confirm), job list, rows, error report download, templates | A | — |
@@ -63,7 +63,7 @@ aggregate endpoint.
 | **Rankings / top-N** | best-selling products (**built, F18-02** — server-ranked `groupBy=product`), top customers (**built, F18-02** — server-ranked `groupBy=customer`), most-adjusted items | `GAP-CUSTOMER-HISTORY` (last-order-date / zero-order view only) |
 | **Pricing governance analytics** | approval rate over time + approved discount value by period/status — **built, F18-05** (`GET /reports/approvals-summary`); discount *leakage* across the full `is_exceptional_discount` set (below-min sales, approved or not) — **built, F18-06** (`exceptional=only\|exclude` on `GET /reports/sales-summary`); only a per-period exceptional *line-count* / the leakage *rate* stays open | `GAP-EXCEPTIONAL-FILTER` (partially resolved — line-count/rate only) |
 | **Returns analytics** | returns by disposition/period/product/customer, returned value — **built, F18-04** (`GET /reports/returns-summary`, integrated into `/returns`); return rate vs. confirmed orders is a frontend 2-call combination, not built | `GAP-RETURN-AGGREGATE` (mostly resolved), `GAP-RETURN-RESOLVED-AT` |
-| **Movement analytics** | movement volume charts, throughput by location, receipt/adjustment trends — the date-range filter itself is **resolved, F18-03**; grouped/charted aggregation over it is not built | (aggregation still open) |
+| **Movement analytics** | movement count + signed quantity by day/week/month/type — **built, F18-07** (`GET /reports/movements-summary`, integrated into `/inventory/movements`); the date-range filter on the raw list was F18-03. Charts render frontend-side over the aggregate; throughput *grouped by location* (a dimension, not a filter) and by-actor stay open | `GAP-MOV-AGGREGATE` (resolved), `GAP-NAME-ENRICHMENT` (by-actor) |
 | **Advanced / scheduled exports** | full-dataset CSV/XLSX, scheduled report delivery | `GAP-EXPORT` |
 | **Audit / activity reporting** | who-changed-what dashboards | `GAP-AUDIT-READ` |
 | **Serial / lot traceability** | unit history, expiry dashboards | `GAP-SERIAL-LOT-READ` |

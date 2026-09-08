@@ -20,8 +20,8 @@
 | 10 | Home · Out-of-stock SKUs | `KPI-INV-OOS-SKUS` | `REP-INV-STOCK` | `InventoryDesktop/Tablet/Mobile` | Balance → `REP-INV-KARDEX` | **B** | `inventory.view` |
 | 11 | Inventory · Stock on hand | `KPI-INV-ONHAND` | `REP-INV-STOCK` | `InventoryDesktop/Tablet/Mobile` | Row → kardex / adjust drawer | **B** | `inventory.view` |
 | 12 | Inventory · Units in transit | `KPI-INV-INTRANSIT` | `REP-INV-INTRANSIT` | `InventoryDesktop` (column) / `TransfersDesktop` | Transfer detail | **B** | `inventory.view` |
-| 13 | Inventory · Movement history | — | `REP-INV-MOVEMENTS` / `REP-INV-KARDEX` | `InventoryDesktop` (Movimientos) | Reference → source doc | **B** | `inventory.view` |
-| 14 | Inventory · Adjustments audit | — | `REP-INV-ADJUSTMENTS` | `InventoryDesktop` | Movement detail | **B** | `inventory.view` |
+| 13 | Inventory · Movement history | `KPI-INV-MOVEMENTS` | `REP-INV-MOVEMENTS` / `REP-INV-KARDEX` / `REP-INV-MOV-SUMMARY` | `InventoryDesktop` (Movimientos) | Reference → source doc | **A** (list + F18-07 aggregate) | `inventory.view` |
+| 14 | Inventory · Adjustments audit | — | `REP-INV-ADJUSTMENTS` / `REP-INV-MOV-SUMMARY?groupBy=type` | `InventoryDesktop` | Movement detail | **A** (list + F18-07 aggregate) | `inventory.view` |
 | 15 | Catalog · Product catalogue | `CAT-PRODUCT-COUNT` | `REP-CAT-PRODUCTS` | `ProductsDesktop/Tablet/Mobile` | Product → variants → stock | **A** | `products.view` |
 | 16 | Catalog · QR codes | — | `REP-CAT-QR` | *(no dedicated artboard)* | QR → target (product/location) | **A** | `catalog.qr.manage` |
 | 17 | Sales · Orders list | `KPI-SALES-ORDERS` | `REP-SALES-ORDERS` | `SalesHistoryDesktop` | Order detail; exceptional line → approval; order → return | **A** | `sales.orders.view` |
@@ -41,7 +41,7 @@
 | D3 | Executive · Top products | `KPI-SALES-TOP-PRODUCTS` | `REP-SALES-BY-PRODUCT` | `Main` / analytical | **B** | grouping over `order_items` |
 | D4 | Executive · Top customers | `SALES-BY-CUSTOMER` (ranked) | `REP-SALES-BY-CUSTOMER` | analytical | **B** | grouping over `orders` |
 | D5 | Executive · Sales by branch | `KPI-SALES-BY-LOCATION` | `REP-SALES-BY-LOCATION` | analytical | **C** | `locationId` not a filter + no grouping |
-| D6 | Analytical · Movement volume chart | `KPI-INV-MOVEMENTS` | `REP-INV-MOVEMENTS` | `Main` (chart — PROTOTYPE ONLY) | **B** | no date filter + no aggregation on movements |
+| D6 | Analytical · Movement volume chart | `KPI-INV-MOVEMENTS` | `REP-INV-MOV-SUMMARY` | `Main` (chart — PROTOTYPE ONLY) | **A** | F18-07 — `GET /reports/movements-summary` (count + signed Σ quantity by day/week/month/type); the *chart* rendering itself stays a frontend concern |
 | D7 | Executive · Return rate | `RET-RATE` | `REP-RET-BY-DISPOSITION` | analytical | **B** | `REP-RET-BY-DISPOSITION` itself is **A** (F18-04, `GET /reports/returns-summary`); the rate (returns ÷ confirmed orders) is a frontend division across this endpoint + `sales-summary`, not computed server-side |
 | D8 | Executive · Exceptional-discount leakage | `KPI-SALES-EXCEPTIONAL` | `REP-SALES-EXCEPTIONAL` | analytical | **B** | F18-06 — `exceptional=only\|exclude` on `GET /reports/sales-summary` filters/aggregates below-min sales & discount value (over the frozen `order_items` flag, not `price_approvals`); only the per-period line-count *rate* stays **C** |
 | D9 | Executive · Inventory value | `KPI-INV-VALUE` | `REP-INV-VALUATION` | `Main` | **C** | no historical/as-of cost; no costing method |

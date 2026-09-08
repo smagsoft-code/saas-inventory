@@ -23,9 +23,10 @@ narrowed by `user_location_assignments` where a tile is location-aware. **Questi
 *What needs my attention right now, and where do I go?*
 
 **Design note:** `Main` / `AppShellMobile` / `AppShellTablet` prototypes show a KPI row + an
-inventory-movement chart + global search + a notifications bell. The **chart, global search and
-bell are `PROTOTYPE ONLY` / FASE 18** (no endpoint). F17's Home is the attention list + quick
-actions below.
+inventory-movement chart + global search + a notifications bell. The inventory-movement chart now
+has a backing endpoint (`GET /reports/movements-summary`, F18-07 — count + signed quantity by
+day/week/month/type); **global search and the bell remain `PROTOTYPE ONLY` / FASE 18** (no
+endpoint). F17's Home is the attention list + quick actions below.
 
 ### Tiles (built only from A/B metrics)
 

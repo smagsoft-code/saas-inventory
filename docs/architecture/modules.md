@@ -335,6 +335,17 @@ not needed yet at current scale.
   nothing decided). Resolves `metrics.md` `APPR-RATE` / `APPR-DISCOUNT-VALUE` (both **B** → **A**).
   Never `PriceApprovalsRepository`. See
   [reporting/reports.md#rep-appr-summary--approvals-workflow-summary](../reporting/reports.md#rep-appr-summary--approvals-workflow-summary).
+- **`movements/` (F18-07):** `GET /reports/movements-summary` (`inventory.view`, tenant-wide) —
+  `day`/`week`/`month`/`type` grouping over `inventory_movements` **alone** (no join — one row is
+  one ledger movement; `COUNT(*)`/`SUM(quantity)` exact, zero fan-out), half-open `[from, to)` on
+  `inventory_movements.occurred_at` (the same column `GET /inventory/movements`'s
+  `occurredFrom`/`occurredTo` filter uses, F18-03, backed by the same `0030` index — **no new
+  index**). Filters `movementType`/`locationId`/`productVariantId` (the three `KPI-INV-MOVEMENTS`
+  names). Buckets carry `movementCount` + `totalQuantity` (signed `Σ quantity` — the column is
+  stored signed by `StockLedgerService`). No monetary field / no `currency`. Resolves `metrics.md`
+  `KPI-INV-MOVEMENTS` / `MOV-QTY-BY-TYPE` / `MOV-RECEIPTS-PERIOD` / `MOV-ADJUSTMENTS-PERIOD` (Σ) —
+  all **B → A** — and registers the new `GAP-MOV-AGGREGATE`. Never `InventoryMovementsRepository`.
+  See [reporting/reports.md#rep-inv-mov-summary--movements-summary](../reporting/reports.md#rep-inv-mov-summary--movements-summary).
 
 The APPROVALS report reuses `pricing.discount.approve` rather than a `*.view` code (there is none
 for `price_approvals`) — it is the exact permission `metrics.md`'s `APPR-RATE` /

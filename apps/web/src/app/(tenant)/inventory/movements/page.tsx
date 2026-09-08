@@ -1,14 +1,22 @@
 import Link from 'next/link';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
+import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
 import { listMovements } from '../../../../lib/inventory/movements';
+import { getMovementsSummary } from '../../../../lib/inventory/reports';
 import { buildLocationIndex, shortId } from '../../../../lib/inventory/location-index';
+import { tenantStartOfDayUtc } from '../../../../lib/home/tenant-day';
 import {
   MOVEMENT_TYPES,
   MOVEMENT_TYPE_LABELS,
   type InventoryMovement,
   type MovementType,
 } from '../../../../lib/types/inventory';
+import {
+  MOVEMENTS_SUMMARY_GROUP_BY,
+  type MovementsSummary,
+  type MovementsSummaryGroupBy,
+} from '../../../../lib/types/inventory-reports';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { Badge } from '../../../../components/ui/badge';
@@ -17,13 +25,20 @@ import { NoAccess } from '../../../../components/ui/no-access';
 import { Pagination } from '../../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
 import { MovementsDateFilter } from './movements-date-filter';
+import { MovementsReportFilters, type MovementsReportFilterValues } from './movements-report-filters';
+import { MovementsReportError, MovementsReportSection } from './movements-report-section';
 
 export const metadata = { title: 'Inventory movements · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function parseMovementType(value: string | undefined): MovementType | undefined {
   return (MOVEMENT_TYPES as readonly string[]).includes(value ?? '') ? (value as MovementType) : undefined;
+}
+
+function pickReportGroupBy(value: string | undefined): MovementsSummaryGroupBy {
+  return (MOVEMENTS_SUMMARY_GROUP_BY as readonly string[]).includes(value ?? '') ? (value as MovementsSummaryGroupBy) : 'day';
 }
 
 /**
@@ -43,6 +58,10 @@ export default async function MovementsPage({
     productVariantId?: string;
     occurredFrom?: string;
     occurredTo?: string;
+    reportFrom?: string;
+    reportTo?: string;
+    reportGroupBy?: string;
+    reportMovementType?: string;
   }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -62,6 +81,39 @@ export default async function MovementsPage({
   const productVariantId = sp.productVariantId || undefined;
   const occurredFrom = sp.occurredFrom || undefined;
   const occurredTo = sp.occurredTo || undefined;
+
+  // F18-07 movements report — a separate section, its own params, independent of the list below.
+  const now = new Date();
+  const reportFrom = sp.reportFrom || tenantStartOfDayUtc(session?.timezone ?? 'UTC', new Date(now.getTime() - THIRTY_DAYS_MS));
+  const reportTo = sp.reportTo || now.toISOString();
+  const reportGroupBy = pickReportGroupBy(sp.reportGroupBy);
+  const reportMovementType = parseMovementType(sp.reportMovementType);
+  const reportFilters: MovementsReportFilterValues = {
+    from: reportFrom,
+    to: reportTo,
+    groupBy: reportGroupBy,
+    ...(reportMovementType ? { movementType: reportMovementType } : {}),
+  };
+
+  // The report section is independent of the operational list's location/variant chips — its own
+  // from/to/groupBy/movementType only (mirrors /sales, where the report and history filters never
+  // share state). `locationId`/`productVariantId` remain available on the endpoint for API callers.
+  let movementsSummary: MovementsSummary | undefined;
+  let summaryError: { status: number; message: string; correlationId: string | undefined } | undefined;
+  try {
+    movementsSummary = await getMovementsSummary({
+      from: reportFrom,
+      to: reportTo,
+      groupBy: reportGroupBy,
+      ...(reportMovementType ? { movementType: reportMovementType } : {}),
+    });
+  } catch (error) {
+    summaryError = {
+      status: isApiError(error) ? error.status : 0,
+      message: httpErrorMessage(error),
+      correlationId: isApiError(error) ? error.correlationId : undefined,
+    };
+  }
 
   const [result, index] = await Promise.all([
     listMovements({
@@ -97,6 +149,12 @@ export default async function MovementsPage({
     if (nextVariant) params.set('productVariantId', nextVariant);
     if (nextFrom) params.set('occurredFrom', nextFrom);
     if (nextTo) params.set('occurredTo', nextTo);
+    // Carry the report section's own params forward — paginating / filtering the list must not
+    // silently reset the report back to its default period (mirrors /sales, F18-02).
+    if (sp.reportFrom) params.set('reportFrom', sp.reportFrom);
+    if (sp.reportTo) params.set('reportTo', sp.reportTo);
+    if (sp.reportGroupBy) params.set('reportGroupBy', sp.reportGroupBy);
+    if (sp.reportMovementType) params.set('reportMovementType', sp.reportMovementType);
     if (next.page && next.page > 1) params.set('page', String(next.page));
     return `/inventory/movements${params.toString() ? `?${params}` : ''}`;
   }
@@ -114,6 +172,24 @@ export default async function MovementsPage({
         title="Inventory movements"
         description="The append-only stock ledger: every receipt, sale, transfer, reservation and adjustment."
       />
+
+      <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
+        <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
+          Movements report
+        </h2>
+        <MovementsReportFilters initial={reportFilters} />
+        {movementsSummary ? (
+          <MovementsReportSection summary={movementsSummary} />
+        ) : (
+          summaryError && (
+            <MovementsReportError status={summaryError.status} message={summaryError.message} correlationId={summaryError.correlationId} />
+          )
+        )}
+      </section>
+
+      <hr className="border-slate-200" />
+
+      <h2 className="text-sm font-semibold text-slate-900">Movement history</h2>
 
       <MovementsDateFilter initial={{ occurredFrom, occurredTo }} />
 
