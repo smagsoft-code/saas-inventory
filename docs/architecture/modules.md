@@ -320,9 +320,26 @@ not needed yet at current scale.
   `sales_returns.created_at` (`GAP-RETURN-RESOLVED-AT` — no `resolved_at` column exists), `status`
   filter (default `resolved`). Never `SalesReturnsRepository`/`SalesReturnItemsRepository`. See
   [reporting/reports.md#rep-ret-by-disposition](../reporting/reports.md#rep-ret-by-disposition).
+- **`approvals/` (F18-05):** `GET /reports/approvals-summary` (`pricing.discount.approve`) —
+  `day`/`week`/`month`/`status` grouping over `price_approvals` **alone** (no join — one row is one
+  request; `COUNT(*)`/`SUM(discount_amount)` are exact with zero fan-out), half-open `[from, to)`
+  on `price_approvals.requested_at` (the request-cohort anchor; `resolved_at` is `NULL` for a
+  `pending` row so it cannot anchor a period that must include open requests). `status` filter with
+  **no default** (the report's point is the outcome mix). Per-period buckets carry
+  `approved`/`rejected`/`cancelled`/`pendingCount`, `approvedDiscountValue`
+  (`Σ discount_amount FILTER approved` — computed vs `max_price`, never `min_price`, so no
+  `pricing.floor.view` gate) and `approvalRate = approved / (approved + rejected)` (`null` when
+  nothing decided). Resolves `metrics.md` `APPR-RATE` / `APPR-DISCOUNT-VALUE` (both **B** → **A**).
+  Never `PriceApprovalsRepository`. See
+  [reporting/reports.md#rep-appr-summary--approvals-workflow-summary](../reporting/reports.md#rep-appr-summary--approvals-workflow-summary).
 
-No `reports.*`/`analytics.*` permission family exists — each report reuses the `*.view` permission
-of the domain it reports on (F18-01, ratified in
+The APPROVALS report reuses `pricing.discount.approve` rather than a `*.view` code (there is none
+for `price_approvals`) — it is the exact permission `metrics.md`'s `APPR-RATE` /
+`APPR-DISCOUNT-VALUE` rows already name, and narrower than the operational `GET /price-approvals`
+queue's `@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')` gate (a
+governance aggregate, not a requester's "my requests" view). No `reports.*`/`analytics.*`
+permission family exists — every other report reuses the `*.view` permission of the domain it
+reports on (F18-01, ratified in
 [reporting/filters-periods-and-scope.md#4-permission-catalogue-41-codes](../reporting/filters-periods-and-scope.md#4-permission-catalogue-41-codes)).
 
 ## ADMINISTRATION

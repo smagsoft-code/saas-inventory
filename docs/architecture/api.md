@@ -120,6 +120,13 @@ operational list filter on an existing endpoint, not a new FASE 18 report. `GET
 /reports/inventory-summary` (F18-03) has no date filter at all — it is a live snapshot of current
 `inventory_balances` state, not a period query.
 
+`GET /reports/sales-summary` (F18-02), `GET /reports/returns-summary` (F18-04) and
+`GET /reports/approvals-summary` (F18-05) each follow the standard half-open `[from, to)` `from`/`to`
+convention (both **required** — 400 when either is missing) and anchor on the single immutable,
+always-present timestamp of their subject — `orders.created_at`, `sales_returns.created_at`,
+`price_approvals.requested_at` respectively — resolving day/week/month bucket boundaries in the
+tenant's own IANA timezone.
+
 ## Idempotency
 
 State-changing endpoints where a client retry could otherwise duplicate an effect (most notably

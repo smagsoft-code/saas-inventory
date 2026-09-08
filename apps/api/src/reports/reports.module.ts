@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { TenantSettingsRepository } from '../administration/tenant-settings/tenant-settings.repository';
+import { ApprovalsReportController } from './approvals/approvals-report.controller';
+import { ApprovalsReportRepository } from './approvals/approvals-report.repository';
+import { ApprovalsReportService } from './approvals/approvals-report.service';
 import { InventoryReportController } from './inventory/inventory-report.controller';
 import { InventoryReportRepository } from './inventory/inventory-report.repository';
 import { InventoryReportService } from './inventory/inventory-report.service';
@@ -15,14 +18,16 @@ import { SalesReportService } from './sales/sales-report.service';
  * read-optimized queries ... must not reuse the transactional write-path repositories." F18-02
  * delivered the SALES read-side (`sales/`); F18-03 added the INVENTORY read-side (`inventory/`);
  * F18-04 adds the RETURNS read-side (`returns/`) — same pattern, its own repository/service/
- * controller, never `SalesReturnsRepository`/`SalesReturnItemsRepository`. `TenantSettingsRepository`
+ * controller, never `SalesReturnsRepository`/`SalesReturnItemsRepository`. F18-05 adds the
+ * APPROVALS read-side (`approvals/`) — `GET /reports/approvals-summary` over `price_approvals`
+ * alone, never `PriceApprovalsRepository`. `TenantSettingsRepository`
  * is reused directly as a provider (same convention `AuthModule`/`AdministrationModule` already use
  * for cross-cutting repositories) rather than importing `AdministrationModule` — no module-level
  * dependency edge either way; the inventory report does not need it (no timezone-bucketed period in
  * that report, unlike sales-summary/returns-summary).
  */
 @Module({
-  controllers: [SalesReportController, InventoryReportController, ReturnsReportController],
+  controllers: [SalesReportController, InventoryReportController, ReturnsReportController, ApprovalsReportController],
   providers: [
     SalesReportService,
     SalesReportRepository,
@@ -30,6 +35,8 @@ import { SalesReportService } from './sales/sales-report.service';
     InventoryReportRepository,
     ReturnsReportService,
     ReturnsReportRepository,
+    ApprovalsReportService,
+    ApprovalsReportRepository,
     TenantSettingsRepository,
   ],
 })

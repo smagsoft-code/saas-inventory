@@ -34,6 +34,7 @@
 | `REP-SALES-BY-CUSTOMER` | Sales by customer / customer history | Sales | `GET /orders?customerId=` (one at a time) / `GET /reports/sales-summary?groupBy=customer` (ranking) | **A** | F17 (single customer) / F18-02 (ranking) |
 | `REP-SALES-BY-LOCATION` | Sales by sales point | Sales | — | **C** (no `locationId` filter) | FASE 18 (+ contract change) |
 | `REP-SALES-APPROVALS` | Price-approval queue & history | Sales | `GET /price-approvals` | **A** | F17 |
+| `REP-APPR-SUMMARY` | Approvals-workflow summary (rate / discount value by period or status) | Sales | `GET /reports/approvals-summary` | **A** | F18-05 |
 | `REP-SALES-EXCEPTIONAL` | Exceptional-discount lines | Sales | — | **C** | No filter/aggregate on `is_exceptional_discount` |
 | `REP-CUST-LIST` | Customers | Sales | `GET /customers` | **A** | F17 |
 | `REP-RET-LIST` | Returns list | Sales | `GET /sales-returns` | **A** | F17 |
@@ -284,8 +285,8 @@ Customer detail screen, F17-08) — unchanged by this endpoint.
 
 ### `REP-SALES-APPROVALS` — Price-approval queue & history
 
-- **Permission:** `pricing.discount.approve` to resolve; **the GET currently has no permission
-  declared** (any tenant member can list) — flagged, not changed.
+- **Permission:** `@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')`
+  on both GETs (F17-09 closed `GAP-APPROVALS-PERMISSION`); `pricing.discount.approve` to resolve.
 - **Endpoint:** `GET /price-approvals` — params `page`, `pageSize`, `status`, `orderId`.
 - **Columns:** order number, variant/sku/name, requestedPrice, `maxPriceAtRequest`,
   `minPriceAtRequest` *(gated `pricing.floor.view`)*, discountAmount, reason, requestedBy, status,
@@ -295,8 +296,36 @@ Customer detail screen, F17-08) — unchanged by this endpoint.
 - **Drill-down:** → order detail.
 - **Related screen:** `ReturnsDesktop` (master-detail pattern reused for Approvals) /
   `SalesHistoryDesktop`.
-- **State: A** for the queue (`status=pending`) and per-status counts; **B** for
-  time-bounded rates and discount-value sums.
+- **State: A** for the queue (`status=pending`) and per-status counts. Time-bounded rates and
+  discount-value sums are now **A** too — see `REP-APPR-SUMMARY` below (F18-05).
+
+### `REP-APPR-SUMMARY` — Approvals-workflow summary
+
+- **Permission:** `pricing.discount.approve` (F18-05). Narrower than the operational queue's
+  request-OR-approve gate — a tenant-wide governance aggregate, not a "my requests" view; the exact
+  permission `metrics.md`'s `APPR-RATE` / `APPR-DISCOUNT-VALUE` rows name. No `reports.*` code
+  (F18-01).
+- **Endpoint:** `GET /reports/approvals-summary` — params `from`, `to` (**both required**, half-open
+  `[from, to)` on `price_approvals.requested_at`), `groupBy` (`day` | `week` | `month` | `status`,
+  default `day`), `status` (`pending` | `approved` | `rejected` | `cancelled`, **no default** — the
+  outcome mix is the point).
+- **Response:** `{ from, to, timezone, currency, groupBy, buckets }`. A **period bucket**
+  (day/week/month) is a request-cohort: `key` (YYYY-MM-DD), `requestCount`, `approvedCount`,
+  `rejectedCount`, `cancelledCount`, `pendingCount`, `approvedDiscountValue`
+  (`Σ discount_amount FILTER (WHERE status = 'approved')`), `approvalRate`
+  (`approved / (approved + rejected)`, 4dp, `null` when nothing decided). A **status bucket**:
+  `key`, `requestCount`, `discountValue` (no `approvalRate`).
+- **Aggregation:** real server-side `COUNT(*)` / `COUNT(*) FILTER` / `SUM(...) FILTER` over
+  `price_approvals` **alone** — no join, so no fan-out. `discount_amount` is computed at request
+  time vs `max_price`, never `min_price`, so `approvedDiscountValue` needs no `pricing.floor.view`
+  and `min_price_at_request` is never surfaced.
+- **Not built:** grouping by requester/approver (`GAP-NAME-ENRICHMENT` — user ids only) or by
+  product/customer (no metric/KPI/gap asks for it); a queue-age aggregate (`APPR-AGE`, point-in-time,
+  not a period metric); the full `order_items.is_exceptional_discount` set including lines confirmed
+  without a filed request (`GAP-EXCEPTIONAL-FILTER`).
+- **Related screen:** an "Approvals report" section on `/approvals` (mirrors the `/returns` report
+  section), visible only to a `pricing.discount.approve` holder.
+- **State: A** (F18-05).
 
 ### `REP-CUST-LIST` — Customers
 

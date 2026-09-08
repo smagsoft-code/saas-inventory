@@ -856,3 +856,57 @@ for the new report section/filters/error states; this is explicitly **not** clai
 check. `GAP-RETURN-AGGREGATE` is now `PARTIALLY RESOLVED` (day/week/month/product/customer/
 disposition + returned value built; only the cross-endpoint return-rate composition remains a
 frontend concern). **FASE 18-04 CLOSED, not pushed.**
+
+**F18-05** extends the same read-side pattern to the exceptional-discount **approval workflow** and
+closes `GAP-APPR-AGGREGATE`. **`GET /reports/approvals-summary`** (`apps/api/src/reports/approvals/`,
+`pricing.discount.approve`) aggregates `price_approvals` **alone** — no join, so unlike the
+sales/returns reports (whose grain is multiplied by an `order_items` join) every `COUNT(*)` /
+`COUNT(*) FILTER` / `SUM(discount_amount)` / `SUM(...) FILTER` is exact with zero fan-out risk;
+never `PriceApprovalsRepository` (reporting stays a separate read-side, same rule as
+`sales/`/`inventory/`/`returns/`). `groupBy: day|week|month|status` (default `day`); half-open
+`[from, to)` on `price_approvals.requested_at` — the request-cohort anchor. `price_approvals` **does**
+carry a real `resolved_at` (unlike `sales_returns`, `GAP-RETURN-RESOLVED-AT`), but it is `NULL` for
+exactly the `pending` rows, so a period that must surface open requests cannot be anchored on it — a
+future `dateField=requested|resolved` toggle is possible but out of F18-05 scope (the F18-02/03/04
+reports each anchor on one timestamp). `status` filter has **no default** (unlike `sales-summary`'s
+`confirmed` / `returns-summary`'s `resolved`, which isolate a *committed* effect — this report's
+purpose is the outcome mix). A **period bucket** carries `requestCount`,
+`approved`/`rejected`/`cancelled`/`pendingCount`, `approvedDiscountValue`
+(`Σ discount_amount FILTER (WHERE status = 'approved')`) and
+`approvalRate = approved / (approved + rejected)` rounded 4dp — `null` when nothing has been decided;
+cancelled and pending are excluded from the denominator (neither is a decision). A **status bucket**
+carries `requestCount` + `discountValue` (no rate). `discount_amount` is computed at request time vs
+`max_price`, never `min_price` (`PriceApprovalsService`), so `approvedDiscountValue` is **not** gated
+by `pricing.floor.view` and `min_price_at_request` is never surfaced by the report. **Permission —
+`pricing.discount.approve`** (Administrador + Supervisor): the one SALES sub-domain with no `*.view`
+code, so the report reuses the exact permission `metrics.md`'s `APPR-RATE` / `APPR-DISCOUNT-VALUE`
+rows already name — narrower than the operational `GET /price-approvals` queue's
+`@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')` (a governance
+aggregate, not a requester's "my requests" view); no new permission, no `reports.*`. **Scope
+tenant-wide** — `price_approvals` has no location dimension; `GAP-ORDERS-LOCATION` untouched. **No
+schema change, no migration** (follows F18-04's precedent — `price_approvals` is a naturally small
+table, one row per escalated below-min line, and there is no evidence a `(tenant_id, requested_at)`
+index is needed at scale yet; the existing pending-queue index is partial `WHERE status = 'pending'`
+and does not cover an all-status range scan — noted for a future high-volume tenant, not added
+speculatively). Frontend: an "Approvals report" section on `/approvals`
+(`ApprovalsReportSection`/`ApprovalsReportFilters`, mirroring `ReturnsReportSection` exactly — same
+local `ApprovalsReportError` that never redirects on a 403, same `#report`-anchored filter
+navigation, KPI tiles recomputing the headline rate from summed approved/rejected totals rather than
+averaging per-bucket rates), rendered only for a `pricing.discount.approve` holder (a Vendedor still
+sees the queue below). `metrics.md` `APPR-RATE` / `APPR-DISCOUNT-VALUE` move **B → A**;
+`GAP-APPROVALS-PERMISSION` was already `RESOLVED (F17-09)` and the report relies on that fix;
+`GAP-EXCEPTIONAL-FILTER` stays **open** and distinct — the *full* `order_items.is_exceptional_discount`
+set (below-min lines confirmed without a filed `price_approvals` request) is discount-leakage
+analytics F18-05 does not cover. Real-PostgreSQL: `tools/pg-verify` **`test:integration` exited 0 —
+Test Files 35 passed (35), Tests 449 passed (449)** (up from 430/34 at F18-04's close — 19 new tests
+in `test/reports/approvals-summary.integration.test.ts`: RBAC incl. a Vendedor-is-403 case, tenant
+isolation, `[from,to)` boundary exactness on `requested_at`, no-default-status behaviour, known-set
+count/discount/rate math, multi-approval non-inflation, day/week/month/status grouping); the harness
+process then hit the same Windows-only `EBUSY` (`rmdir` on `.verify-pgdata`) during its own
+post-test cleanup that F18-04 documented — not a functional failure, `tools/pg-verify` untouched.
+API unit 533 (+14, `approvals-report.service.spec.ts`); web unit 405 (+14:
+`approvals-report-section.test.tsx`, `approvals-report-filters.test.tsx`). Lint and typecheck pass on
+both apps; API build passes. **No browser automation tool was available in this environment this
+phase**, so real-browser visual validation was not performed — substituted by the real-HTTP
+pg-verify integration coverage plus jsdom component-render tests; **not** claimed as a browser check.
+**FASE 18-05 CLOSED, not pushed.**

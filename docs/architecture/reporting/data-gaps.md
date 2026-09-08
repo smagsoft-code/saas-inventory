@@ -35,7 +35,8 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-SORT`](#gap-sort) | `sort` param on list endpoints | F17-needed |
 | [`GAP-PLATFORM-AGGREGATE`](#gap-platform-aggregate) | Cross-tenant platform metrics | future |
 | [`GAP-EXPORT`](#gap-export) | Export infrastructure | F18-needed |
-| [`GAP-APPROVALS-PERMISSION`](#gap-approvals-permission) | `GET /price-approvals` has no permission | F17-needed (defect) |
+| [`GAP-APPROVALS-PERMISSION`](#gap-approvals-permission) | `GET /price-approvals` has no permission | ~~F17-needed (defect)~~ **RESOLVED (F17-09)** |
+| [`GAP-APPR-AGGREGATE`](#gap-appr-aggregate) | Approval-workflow rate / discount-value aggregation | ~~F18-needed~~ **RESOLVED (F18-05)** |
 
 ---
 
@@ -357,13 +358,39 @@ data is invented" rule; a dedicated left-join view would be needed to see the ze
 - **Recommended phase:** **F18-needed** — see [exports](#exports) below.
 
 ### `GAP-APPROVALS-PERMISSION`
-- **Required:** `@RequirePermissions(...)` on `GET /price-approvals` and `GET /price-approvals/:id`.
-- **Why:** every other tenant read endpoint declares a permission; these two do not, so any
-  authenticated tenant member can read the price-approval queue (which carries pricing context).
-- **Missing:** the decorator. **This is a pre-existing gap, observed during the 017-A audit —
-  017-A does not change code.**
-- **Recommended phase:** **F17-needed** (or FASE 19) — pick the right gate (`pricing.discount.request`
-  to see one's own, `pricing.discount.approve` to see the queue, or a new `pricing.discount.view`).
+- **RESOLVED — F17-09.** `GET /price-approvals` and `GET /price-approvals/:id` now carry
+  `@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')` — the requester
+  reads to track their own submissions, the approver reads the queue; no new permission code was
+  added (a new `@RequireAnyPermission` guard mechanism was introduced instead). The service keeps
+  the equivalent check as defense in depth.
+- **Original text (for history):** `@RequirePermissions(...)` was missing on both GETs, so any
+  authenticated tenant member could read the price-approval queue (which carries pricing context).
+  Observed during the 017-A audit; 017-A did not change code.
+- **F18-05 note:** `GET /reports/approvals-summary` (the approvals read-side) reuses the **narrower**
+  `pricing.discount.approve` alone — a tenant-wide pricing-governance aggregate is an
+  approver/supervisor concern, not a requester's "my requests" view — matching the permission
+  `metrics.md`'s `APPR-RATE` / `APPR-DISCOUNT-VALUE` rows already name.
+
+### `GAP-APPR-AGGREGATE`
+- **RESOLVED — F18-05.** `GET /reports/approvals-summary` (`pricing.discount.approve`) — a dedicated
+  read-side over `price_approvals` **alone** (no join: one row is one exceptional-discount request,
+  so `COUNT(*)` / `COUNT(*) FILTER` / `SUM(discount_amount)` / `SUM(...) FILTER` are exact with zero
+  fan-out). `groupBy=day|week|month|status`; half-open `[from, to)` on `price_approvals.requested_at`
+  (the request-cohort anchor — `resolved_at` **does** exist, unlike `sales_returns`, but is `NULL`
+  for a `pending` row, so a period that must surface open requests cannot be anchored on it; a
+  future `dateField=requested|resolved` toggle is possible, out of F18-05 scope). `status` filter
+  with **no default** (the report's purpose is the outcome mix). Period buckets carry
+  `requestCount`, `approved`/`rejected`/`cancelled`/`pendingCount`, `approvedDiscountValue`
+  (`Σ discount_amount FILTER (WHERE status = 'approved')` — computed vs `max_price`, so no
+  `pricing.floor.view` gate, and `min_price_at_request` is never surfaced) and
+  `approvalRate = approved / (approved + rejected)` rounded 4dp (`null` when nothing decided;
+  cancelled + pending excluded from the denominator). Resolves `metrics.md` `APPR-RATE` /
+  `APPR-DISCOUNT-VALUE` (both **B** → **A**). Never `PriceApprovalsRepository`.
+- **Still open (separate gap):** the *full* exceptional-discount picture — every
+  `order_items.is_exceptional_discount = true` line, not only the subset for which a
+  `price_approvals` request was actually *filed* — remains `GAP-EXCEPTIONAL-FILTER` (discount
+  leakage across all below-min sales, including lines confirmed without a filed request). F18-05
+  covers the **approval-workflow** analytics, not that broader set.
 
 ---
 
