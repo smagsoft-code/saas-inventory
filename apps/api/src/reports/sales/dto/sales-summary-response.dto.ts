@@ -1,4 +1,5 @@
 import { ApiExtraModels, ApiProperty, getSchemaPath } from '@nestjs/swagger';
+import { SALES_SUMMARY_EXCEPTIONAL } from './sales-summary-query.dto';
 
 /**
  * Bucket shapes for `GET /reports/sales-summary` (F18-02). Each carries only the fields that make
@@ -93,6 +94,13 @@ export class SalesSummaryResponseDto {
 
   @ApiProperty({ enum: ['day', 'week', 'month', 'product', 'customer'] })
   groupBy!: 'day' | 'week' | 'month' | 'product' | 'customer';
+
+  @ApiProperty({
+    enum: SALES_SUMMARY_EXCEPTIONAL,
+    description:
+      'The `exceptional` filter that was applied (F18-06), echoed back like `groupBy`. `all` = no filter; `only`/`exclude` filter by `order_items.is_exceptional_discount` (order grain for period/customer via EXISTS, line grain for product).',
+  })
+  exceptional!: (typeof SALES_SUMMARY_EXCEPTIONAL)[number];
 
   @ApiProperty({
     type: 'array',

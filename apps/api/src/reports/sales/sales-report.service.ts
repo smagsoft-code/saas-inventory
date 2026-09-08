@@ -58,6 +58,7 @@ export class SalesReportService {
     }
     const range = toHalfOpenRange(from, to);
     const status = query.status ?? DEFAULT_STATUS;
+    const exceptional = query.exceptional ?? 'all';
 
     return withTenantTransaction(tenantId, async (tx) => {
       const timezone = await this.resolveTenantTimezone(tx, tenantId);
@@ -67,6 +68,7 @@ export class SalesReportService {
           gte: range.gte,
           lt: range.lt,
           status,
+          exceptional,
         });
         const buckets: SalesCustomerBucketDto[] = rows.map((row) => {
           const subtotal = Number(row.subtotal);
@@ -82,7 +84,7 @@ export class SalesReportService {
             avgTicket: row.orderCount > 0 ? roundMoney(total / row.orderCount) : 0,
           };
         });
-        return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
+        return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, exceptional, buckets };
       }
 
       if (query.groupBy === 'product') {
@@ -90,6 +92,7 @@ export class SalesReportService {
           gte: range.gte,
           lt: range.lt,
           status,
+          exceptional,
         });
         const buckets: SalesProductBucketDto[] = rows.map((row) => ({
           key: row.key,
@@ -100,7 +103,7 @@ export class SalesReportService {
           discountTotal: Number(row.discountTotal),
           total: Number(row.total),
         }));
-        return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
+        return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, exceptional, buckets };
       }
 
       // day | week | month
@@ -117,6 +120,7 @@ export class SalesReportService {
         status,
         unit,
         timezone,
+        exceptional,
       });
       const buckets: SalesPeriodBucketDto[] = rows.map((row) => {
         const subtotal = Number(row.subtotal);
@@ -131,7 +135,7 @@ export class SalesReportService {
           avgTicket: row.orderCount > 0 ? roundMoney(total / row.orderCount) : 0,
         };
       });
-      return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
+      return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, exceptional, buckets };
     });
   }
 }

@@ -910,3 +910,49 @@ both apps; API build passes. **No browser automation tool was available in this 
 phase**, so real-browser visual validation was not performed — substituted by the real-HTTP
 pg-verify integration coverage plus jsdom component-render tests; **not** claimed as a browser check.
 **FASE 18-05 CLOSED, not pushed.**
+
+**F18-06** partially resolves `GAP-EXCEPTIONAL-FILTER` by adding an `exceptional` filter to the
+existing `GET /reports/sales-summary` (F18-02) — **no new endpoint, no schema change, no
+migration, no new permission** (the endpoint's `sales.orders.view` is unchanged; `discount_amount`
+on `order_items` is computed vs `max_price`, so no floor is exposed and `pricing.floor.view` is
+not needed). **The source of truth is `order_items.is_exceptional_discount`** — the boolean frozen
+write-once at `POST /orders` in `OrdersService.resolveLines` when a line's negotiated price is
+below the variant's `min_price`. It is **never** a join to `price_approvals`: an exceptional line
+can exist with no approval row at all — a `pending` order nobody filed a request for, or a tenant
+whose `tenant_price_policies.exceptional_discount_requires_approval = false` (no config endpoint
+exists, but the column is real and defaults `true`) confirming a below-min order with nothing
+filed. `price_approvals` is the authorisation-workflow overlay (F18-05's `approvals-summary`), not
+the historical truth of the sale. The filter is a **three-state enum** `exceptional=all|only|
+exclude` (`all` = default = byte-for-byte the pre-F18-06 behaviour, kept distinct from `exclude`),
+echoed back in the response like `groupBy`, composing freely with `status` and the half-open
+`[from,to)` range. Applied **per grouping at that grouping's own grain** (`SalesReportRepository`):
+`day`/`week`/`month`/`customer` aggregate `orders` alone, so the filter is an `EXISTS`/`NOT EXISTS`
+**semi-join** on `order_items` — `only` = "orders containing ≥1 exceptional line" with the
+whole-order totals, `exclude` = "orders with no exceptional line" — no fan-out, every
+`SUM(orders.*)` stays exact; `product` is already `order_items`-grain, so the filter is a plain
+`is_exceptional_discount = true/false` predicate on the joined line ("exceptional **lines** of this
+variant" — summing `discountTotal` across the product buckets is `SALES-EXCEPTIONAL-LINES`'s value
+for the period). `order_items` has no `(tenant_id, order_id)` index today (a pre-existing F18-02
+performance note the `EXISTS` path inherits; the `orders` side is bounded first by
+`orders_tenant_status_created_idx` — no speculative migration added, following F18-05's precedent).
+Frontend: a fourth "Exceptional discount" `<Select>` on `SalesReportFilters` (`/sales` report
+section), `reportExceptional` URL param (omitted when `all`), the empty state names the filter when
+it is the active one. **Still open (renamed within the gap):** a per-period exceptional *line
+count* and therefore `KPI-SALES-EXCEPTIONAL`'s "exceptional lines ÷ total lines" *rate* — both
+would be new metrics with no official definition (`metrics.md` `SALES-EXCEPTIONAL-LINES` **C → B**;
+`REP-SALES-EXCEPTIONAL` **C → B**; `matrix.md` D8 **C → B**). Real-PostgreSQL: `tools/pg-verify`
+**Tests 460 passed (460), Test Files 36 passed (36)** (up from 449/35 at F18-05's close — 11 new
+tests in `test/reports/sales-summary-exceptional.integration.test.ts`: the critical
+confirmed-exceptional-with-**zero**-`price_approvals`-rows case, the approved-request case, tenant
+isolation, RBAC (401/403), invalid-value 400, default == `all`, `status=pending&exceptional=only`,
+the mixed-line order-grain-vs-line-grain case, week/month/customer grouping, empty result); the
+harness process then hit the same Windows-only `EBUSY` (`rmdir` on `.verify-pgdata`) during its own
+post-test cleanup that F18-04/05 documented — not a functional failure, `tools/pg-verify`
+untouched. API unit 533 → 535 (`sales-report.service.spec.ts` +2); web unit 405 → 408
+(`sales-report-filters.test.tsx` +2, `sales-report-section.test.tsx` +1). Lint and typecheck pass
+on both apps; API build passes; `pnpm --filter @saas-inventory/web build` compiles, type-checks and
+statically generates all 40 routes, then fails only at the pre-existing Windows `EPERM` symlink
+step (documented since FASE 12, `apps/web` source otherwise untouched). **No browser automation
+tool was available in this environment**, so real-browser visual validation was not performed —
+substituted by the real-HTTP pg-verify integration coverage plus jsdom component-render tests;
+**not** claimed as a browser check. **FASE 18-06 CLOSED, not pushed.**

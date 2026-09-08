@@ -7,6 +7,20 @@ export const SALES_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'product', 'custo
 export type SalesSummaryGroupBy = (typeof SALES_SUMMARY_GROUP_BY)[number];
 
 /**
+ * `exceptional` filter (F18-06, `GAP-EXCEPTIONAL-FILTER`). A **three-state** enum, not a boolean:
+ * `all` (the default — every matching order/line, byte-for-byte the pre-F18-06 behaviour) has to
+ * stay distinct from `exclude` (only non-exceptional). The source of truth is the frozen,
+ * write-once `order_items.is_exceptional_discount` flag (set at `POST /orders` when a line's
+ * negotiated price is below the variant's `min_price` — `OrdersService.resolveLines`), **never** a
+ * join to `price_approvals`: an exceptional line can exist with no approval row at all (a `pending`
+ * order nobody filed a request for yet, or a tenant whose
+ * `tenant_price_policies.exceptional_discount_requires_approval = false`), so `price_approvals` is
+ * the authorisation-workflow overlay, not the historical truth of the sale.
+ */
+export const SALES_SUMMARY_EXCEPTIONAL = ['all', 'only', 'exclude'] as const;
+export type SalesSummaryExceptional = (typeof SALES_SUMMARY_EXCEPTIONAL)[number];
+
+/**
  * `GET /reports/sales-summary` (F18-02). Extends the F18-01 `ReportDateRangeQueryDto` as-is —
  * `from`/`to` stay typed `string | undefined` here (redeclaring them as required conflicts with
  * `useDefineForClassFields`, TS2612, without a meaningful initializer to give them). **This report
@@ -24,6 +38,14 @@ export type SalesSummaryGroupBy = (typeof SALES_SUMMARY_GROUP_BY)[number];
  * omitted is `'confirmed'` (applied in the service, not here) — `metrics.md`'s `SALES-REVENUE`
  * definition is explicitly "Σ orders.total where status='confirmed'"; every other status remains
  * selectable for an operator who wants a non-revenue view (e.g. "how much sits in pending orders").
+ *
+ * `exceptional` (F18-06) filters by `order_items.is_exceptional_discount`. Default `'all'` — the
+ * existing behaviour. `'only'`/`'exclude'` are applied per grouping at that grouping's own grain
+ * (`SalesReportRepository`): for `day`/`week`/`month`/`customer` (which aggregate `orders` alone)
+ * the filter is an `EXISTS` semi-join — "orders that contain **at least one** exceptional line",
+ * with the whole-order totals; for `product` (already line-grain) it filters the joined
+ * `order_items` row directly — "exceptional **lines** of this variant". It composes freely with
+ * `status` and `from`/`to`.
  */
 export class SalesSummaryQueryDto extends ReportDateRangeQueryDto {
   @ApiPropertyOptional({ enum: SALES_SUMMARY_GROUP_BY, default: 'day' })
@@ -35,4 +57,9 @@ export class SalesSummaryQueryDto extends ReportDateRangeQueryDto {
   @IsOptional()
   @IsIn(ORDER_STATUSES)
   status?: (typeof ORDER_STATUSES)[number];
+
+  @ApiPropertyOptional({ enum: SALES_SUMMARY_EXCEPTIONAL, default: 'all' })
+  @IsOptional()
+  @IsIn(SALES_SUMMARY_EXCEPTIONAL)
+  exceptional: SalesSummaryExceptional = 'all';
 }

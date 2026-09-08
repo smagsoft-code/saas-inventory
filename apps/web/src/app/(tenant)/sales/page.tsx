@@ -16,7 +16,13 @@ import {
   type DocumentType,
   type OrderStatus,
 } from '../../../lib/types/sales';
-import { SALES_SUMMARY_GROUP_BY, type SalesSummary, type SalesSummaryGroupBy } from '../../../lib/types/reports';
+import {
+  SALES_SUMMARY_EXCEPTIONAL,
+  SALES_SUMMARY_GROUP_BY,
+  type SalesSummary,
+  type SalesSummaryExceptional,
+  type SalesSummaryGroupBy,
+} from '../../../lib/types/reports';
 import { PageContainer } from '../../../components/ui/page-container';
 import { PageHeader } from '../../../components/ui/page-header';
 import { Badge } from '../../../components/ui/badge';
@@ -35,6 +41,10 @@ const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function pickGroupBy(value: string | undefined): SalesSummaryGroupBy {
   return (SALES_SUMMARY_GROUP_BY as readonly string[]).includes(value ?? '') ? (value as SalesSummaryGroupBy) : 'day';
+}
+
+function pickExceptional(value: string | undefined): SalesSummaryExceptional {
+  return (SALES_SUMMARY_EXCEPTIONAL as readonly string[]).includes(value ?? '') ? (value as SalesSummaryExceptional) : 'all';
 }
 
 function pick<T extends string>(allowed: readonly T[], value: string | undefined): T | undefined {
@@ -61,6 +71,7 @@ export default async function SalesHistoryPage({
     reportFrom?: string;
     reportTo?: string;
     reportGroupBy?: string;
+    reportExceptional?: string;
   }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -84,12 +95,18 @@ export default async function SalesHistoryPage({
   const reportFrom = sp.reportFrom || tenantStartOfDayUtc(session?.timezone ?? 'UTC', new Date(now.getTime() - THIRTY_DAYS_MS));
   const reportTo = sp.reportTo || now.toISOString();
   const reportGroupBy = pickGroupBy(sp.reportGroupBy);
-  const reportFilters: SalesReportFilterValues = { from: reportFrom, to: reportTo, groupBy: reportGroupBy };
+  const reportExceptional = pickExceptional(sp.reportExceptional);
+  const reportFilters: SalesReportFilterValues = {
+    from: reportFrom,
+    to: reportTo,
+    groupBy: reportGroupBy,
+    exceptional: reportExceptional,
+  };
 
   let summary: SalesSummary | undefined;
   let summaryError: { status: number; message: string; correlationId: string | undefined } | undefined;
   try {
-    summary = await getSalesSummary({ from: reportFrom, to: reportTo, groupBy: reportGroupBy });
+    summary = await getSalesSummary({ from: reportFrom, to: reportTo, groupBy: reportGroupBy, exceptional: reportExceptional });
   } catch (error) {
     summaryError = {
       status: isApiError(error) ? error.status : 0,
@@ -139,6 +156,7 @@ export default async function SalesHistoryPage({
     if (sp.reportFrom) params.set('reportFrom', sp.reportFrom);
     if (sp.reportTo) params.set('reportTo', sp.reportTo);
     if (sp.reportGroupBy) params.set('reportGroupBy', sp.reportGroupBy);
+    if (sp.reportExceptional) params.set('reportExceptional', sp.reportExceptional);
     if (nextPage > 1) params.set('page', String(nextPage));
     return `/sales${params.toString() ? `?${params}` : ''}`;
   }

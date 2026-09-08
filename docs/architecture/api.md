@@ -125,7 +125,11 @@ operational list filter on an existing endpoint, not a new FASE 18 report. `GET
 convention (both **required** — 400 when either is missing) and anchor on the single immutable,
 always-present timestamp of their subject — `orders.created_at`, `sales_returns.created_at`,
 `price_approvals.requested_at` respectively — resolving day/week/month bucket boundaries in the
-tenant's own IANA timezone.
+tenant's own IANA timezone. `GET /reports/sales-summary` additionally accepts an
+`exceptional=all|only|exclude` filter (F18-06) over the frozen `order_items.is_exceptional_discount`
+flag — `all` (default) is the pre-F18-06 behaviour; `only`/`exclude` filter at order grain (`EXISTS`
+on `order_items`) for the `day`/`week`/`month`/`customer` groupings and at line grain for
+`groupBy=product`.
 
 ## Idempotency
 

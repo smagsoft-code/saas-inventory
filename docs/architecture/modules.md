@@ -303,9 +303,12 @@ under `apps/api/src/reports/<domain>/` — never reusing the transactional write
 not needed yet at current scale.
 
 **Implemented in `apps/api/src/reports/`:**
-- **`sales/` (F18-02):** `GET /reports/sales-summary` (`sales.orders.view`) — day/week/month/
-  product/customer grouping over `orders`/`order_items`, half-open `[from, to)`, tenant timezone
-  resolved server-side. See
+- **`sales/` (F18-02, extended F18-06):** `GET /reports/sales-summary` (`sales.orders.view`) —
+  day/week/month/product/customer grouping over `orders`/`order_items`, half-open `[from, to)`,
+  tenant timezone resolved server-side. **F18-06** added an `exceptional=all|only|exclude` filter
+  over the frozen `order_items.is_exceptional_discount` flag (`GAP-EXCEPTIONAL-FILTER`, partially
+  resolved) — order grain via `EXISTS` for the period/customer groupings, line grain for `product`;
+  never a `price_approvals` join (an exceptional line can have no approval row). See
   [reporting/reports.md#rep-sales-by-period--rep-sales-by-product--rep-sales-by-customer](../reporting/reports.md#rep-sales-by-period--rep-sales-by-product--rep-sales-by-customer).
 - **`inventory/` (F18-03):** `GET /reports/inventory-summary` (`inventory.view`) — available/
   reserved/out-of-stock aggregation over `inventory_balances`, grouped by warehouse or category; a

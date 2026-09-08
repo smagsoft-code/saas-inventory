@@ -26,6 +26,7 @@ interface QueryOverrides {
   to?: string | undefined;
   groupBy?: SalesSummaryQueryDto['groupBy'] | undefined;
   status?: SalesSummaryQueryDto['status'] | undefined;
+  exceptional?: SalesSummaryQueryDto['exceptional'] | undefined;
 }
 
 function query(overrides: QueryOverrides = {}): SalesSummaryQueryDto {
@@ -76,6 +77,36 @@ describe('SalesReportService.getSalesSummary', () => {
       't1',
       expect.objectContaining({ status: 'pending' }),
     );
+  });
+
+  it('defaults the exceptional filter to "all" and echoes it in the response (F18-06)', async () => {
+    const { service, salesReportRepository } = buildService();
+    const result = await service.getSalesSummary('t1', query({ exceptional: undefined }));
+    expect(salesReportRepository.summaryByPeriod).toHaveBeenCalledWith(
+      expect.anything(),
+      't1',
+      expect.objectContaining({ exceptional: 'all' }),
+    );
+    expect((result as { exceptional: string }).exceptional).toBe('all');
+  });
+
+  it('passes exceptional=only/exclude through to every grouping and echoes it (F18-06)', async () => {
+    for (const [groupBy, method] of [
+      ['day', 'summaryByPeriod'],
+      ['customer', 'summaryByCustomer'],
+      ['product', 'summaryByProduct'],
+    ] as const) {
+      for (const exceptional of ['only', 'exclude'] as const) {
+        const { service, salesReportRepository } = buildService();
+        const result = await service.getSalesSummary('t1', query({ groupBy, exceptional }));
+        expect(salesReportRepository[method]).toHaveBeenCalledWith(
+          expect.anything(),
+          't1',
+          expect.objectContaining({ exceptional }),
+        );
+        expect((result as { exceptional: string }).exceptional).toBe(exceptional);
+      }
+    }
   });
 
   it('dispatches groupBy=day/week/month to summaryByPeriod with the matching date_trunc unit', async () => {

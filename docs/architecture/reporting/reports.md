@@ -35,7 +35,7 @@
 | `REP-SALES-BY-LOCATION` | Sales by sales point | Sales | — | **C** (no `locationId` filter) | FASE 18 (+ contract change) |
 | `REP-SALES-APPROVALS` | Price-approval queue & history | Sales | `GET /price-approvals` | **A** | F17 |
 | `REP-APPR-SUMMARY` | Approvals-workflow summary (rate / discount value by period or status) | Sales | `GET /reports/approvals-summary` | **A** | F18-05 |
-| `REP-SALES-EXCEPTIONAL` | Exceptional-discount lines | Sales | — | **C** | No filter/aggregate on `is_exceptional_discount` |
+| `REP-SALES-EXCEPTIONAL` | Exceptional-discount lines | Sales | `GET /reports/sales-summary?exceptional=only` | **B** | F18-06 — `exceptional` filter (`all\|only\|exclude`) over `order_items.is_exceptional_discount`; no dedicated lines endpoint / per-period line count |
 | `REP-CUST-LIST` | Customers | Sales | `GET /customers` | **A** | F17 |
 | `REP-RET-LIST` | Returns list | Sales | `GET /sales-returns` | **A** | F17 |
 | `REP-RET-DETAIL` | Return detail (lines + disposition) | Sales | `GET /sales-returns/:id` | **A** | F17 |
@@ -254,8 +254,11 @@ server-side aggregation, no client-side sum, no full-table fetch.
 
 - **Query params:** `from`, `to` (both **required** — half-open `[from, to)`, F18-01), `groupBy`
   (`day|week|month|product|customer` — no `location` yet, `GAP-ORDERS-LOCATION` still open),
-  `status` (defaults to `confirmed`; any real `orders.status` value accepted).
-- **Response:** `ReportResult<T>` shape — `{ from, to, timezone, currency, groupBy, buckets[] }`.
+  `status` (defaults to `confirmed`; any real `orders.status` value accepted), `exceptional`
+  (`all` — default — `| only | exclude`, F18-06 — filters `order_items.is_exceptional_discount`:
+  order grain via `EXISTS` for period/customer, line grain for `product`).
+- **Response:** `ReportResult<T>` shape — `{ from, to, timezone, currency, groupBy, exceptional,
+  buckets[] }` (`exceptional` echoed back like `groupBy`, F18-06).
   `timezone` is the caller's own tenant timezone (`session.timezone`/`GET /auth/me`, F18-01),
   applied server-side via `date_trunc(unit, created_at AT TIME ZONE tenant_tz)` so day/week/month
   boundaries land on the tenant's real calendar days, not UTC ones.

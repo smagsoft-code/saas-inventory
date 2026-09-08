@@ -32,6 +32,9 @@ export interface ProductBucketRow {
 
 export type DateTruncUnit = 'day' | 'week' | 'month';
 
+/** F18-06 — `order_items.is_exceptional_discount` filter. `all` = no filter (default). */
+export type ExceptionalFilter = 'all' | 'only' | 'exclude';
+
 /**
  * `reports/sales` read-side (F18-02, modules.md "REPORTS -> Sales" — an explicitly allowed
  * dependency edge; this never touches `OrdersRepository`/`OrderItemsRepository`, per the
@@ -51,6 +54,18 @@ export type DateTruncUnit = 'day' | 'week' | 'month';
  * Every `*_snapshot` column used here (customer_name_snapshot, sku_snapshot,
  * product_name_snapshot) is already frozen on `orders`/`order_items` — grouping never joins to
  * `customers`/`products`/`product_variants` for a name, so there is no extra lookup per bucket.
+ *
+ * F18-06 — the `exceptional` filter (`GAP-EXCEPTIONAL-FILTER`). For the `orders`-only groupings
+ * (day/week/month/customer) it is an `EXISTS`/`NOT EXISTS` **semi-join** on `order_items` — never a
+ * real join, so it adds no fan-out: an order still contributes exactly one row to its bucket and
+ * every `SUM(orders.*)` stays exact. The `orders` side is already bounded by
+ * `orders_tenant_status_created_idx` (tenant + status + the `[from,to)` range) before the
+ * correlated check runs; `order_items` has no `(tenant_id, order_id)` index today (a documented,
+ * pre-existing F18-02 performance note — `exceptional=only`/`exclude` inherits it, `exceptional=all`
+ * is unaffected). For `groupBy=product` the filter is a plain predicate on the already-joined
+ * `order_items` row (line grain), so cardinality is unchanged. The truth is the frozen
+ * `order_items.is_exceptional_discount` flag — `price_approvals` is never consulted (an exceptional
+ * line can have no approval row).
  */
 @Injectable()
 export class SalesReportRepository {
@@ -66,10 +81,38 @@ export class SalesReportRepository {
     ];
   }
 
+  /**
+   * The `EXISTS (SELECT 1 FROM order_items ...)` semi-join condition for the `orders`-only
+   * groupings. `undefined` for `'all'` (no predicate added). Correlated on the tenant-aware FK
+   * columns (`tenant_id` + `order_id`), so RLS and the composite FK both stay satisfied.
+   */
+  private exceptionalOrdersCondition(exceptional: ExceptionalFilter): SQL | undefined {
+    if (exceptional === 'all') {
+      return undefined;
+    }
+    const hasExceptionalLine = sql`exists (select 1 from ${orderItems} where ${orderItems.tenantId} = ${orders.tenantId} and ${orderItems.orderId} = ${orders.id} and ${orderItems.isExceptionalDiscount} = true)`;
+    return exceptional === 'only' ? hasExceptionalLine : sql`not ${hasExceptionalLine}`;
+  }
+
+  /** The line-grain predicate for `groupBy=product` (the `order_items` row is already joined). */
+  private exceptionalLineCondition(exceptional: ExceptionalFilter): SQL | undefined {
+    if (exceptional === 'all') {
+      return undefined;
+    }
+    return eq(orderItems.isExceptionalDiscount, exceptional === 'only');
+  }
+
   async summaryByPeriod(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; unit: DateTruncUnit; timezone: string },
+    range: {
+      gte: Date;
+      lt: Date;
+      status: string;
+      unit: DateTruncUnit;
+      timezone: string;
+      exceptional: ExceptionalFilter;
+    },
   ): Promise<PeriodBucketRow[]> {
     // Bucket boundary is computed in the tenant's own IANA zone (never UTC/server-local), then
     // formatted back to a plain calendar date — the response never leaks a second, ambiguous
@@ -94,7 +137,9 @@ export class SalesReportRepository {
         total: sql<string>`coalesce(sum(${orders.total}), 0)`,
       })
       .from(orders)
-      .where(and(...this.dateRangeConditions(tenantId, range)))
+      .where(
+        and(...this.dateRangeConditions(tenantId, range), this.exceptionalOrdersCondition(range.exceptional)),
+      )
       .groupBy(sql`bucket_key`)
       .orderBy(sql`bucket_key`);
 
@@ -104,7 +149,7 @@ export class SalesReportRepository {
   async summaryByCustomer(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string },
+    range: { gte: Date; lt: Date; status: string; exceptional: ExceptionalFilter },
   ): Promise<CustomerBucketRow[]> {
     const rows = await tx
       .select({
@@ -126,6 +171,7 @@ export class SalesReportRepository {
           // always resolves one today — FASE 12) has no meaningful bucket to join; excluded here
           // rather than invented into a synthetic "unknown customer" row.
           sql`${orders.customerId} IS NOT NULL`,
+          this.exceptionalOrdersCondition(range.exceptional),
         ),
       )
       .groupBy(orders.customerId)
@@ -137,7 +183,7 @@ export class SalesReportRepository {
   async summaryByProduct(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string },
+    range: { gte: Date; lt: Date; status: string; exceptional: ExceptionalFilter },
   ): Promise<ProductBucketRow[]> {
     const rows = await tx
       .select({
@@ -151,7 +197,13 @@ export class SalesReportRepository {
       })
       .from(orderItems)
       .innerJoin(orders, and(eq(orders.tenantId, orderItems.tenantId), eq(orders.id, orderItems.orderId)))
-      .where(and(...this.dateRangeConditions(tenantId, range), eq(orderItems.tenantId, tenantId)))
+      .where(
+        and(
+          ...this.dateRangeConditions(tenantId, range),
+          eq(orderItems.tenantId, tenantId),
+          this.exceptionalLineCondition(range.exceptional),
+        ),
+      )
       .groupBy(orderItems.productVariantId)
       .orderBy(desc(sql`sum(${orderItems.lineTotal})`));
 

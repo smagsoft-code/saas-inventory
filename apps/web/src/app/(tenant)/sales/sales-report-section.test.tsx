@@ -10,6 +10,7 @@ function baseSummary(overrides: Partial<SalesSummary> = {}): SalesSummary {
     timezone: 'America/Bogota',
     currency: 'USD',
     groupBy: 'day',
+    exceptional: 'all',
     buckets: [],
     ...overrides,
   };
@@ -19,6 +20,11 @@ describe('SalesReportSection', () => {
   it('shows an empty state when there are no buckets — never a fake zero table', () => {
     render(<SalesReportSection summary={baseSummary()} currency="USD" />);
     expect(screen.getByText('No sales in this period')).toBeInTheDocument();
+  });
+
+  it('the empty state names the exceptional-discount filter when it is the active one (F18-06)', () => {
+    render(<SalesReportSection summary={baseSummary({ exceptional: 'only' })} currency="USD" />);
+    expect(screen.getByText('No exceptional-discount sales in this period')).toBeInTheDocument();
   });
 
   it('renders period rows with real Revenue/Orders/Avg ticket/Discounts KPI tiles (day/week/month)', () => {

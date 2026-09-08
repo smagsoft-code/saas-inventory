@@ -75,7 +75,7 @@ sales by branch, discount leakage, return rate.
 | Top 10 products | `KPI-SALES-TOP-PRODUCTS` | B |
 | Top 10 customers | `SALES-BY-CUSTOMER` (ranked) | B |
 | Sales by branch | `KPI-SALES-BY-LOCATION` | C (no filter) |
-| Exceptional-discount value | `KPI-SALES-EXCEPTIONAL` | C |
+| Exceptional-discount value | `KPI-SALES-EXCEPTIONAL` | B — F18-06 (`GET /reports/sales-summary?exceptional=only`); rate still C |
 | Return rate | `RET-RATE` | B |
 | Inventory value | `KPI-INV-VALUE` | C |
 

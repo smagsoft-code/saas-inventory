@@ -17,6 +17,17 @@ export const SALES_SUMMARY_GROUP_BY_LABELS: Record<SalesSummaryGroupBy, string> 
   customer: 'Customer',
 };
 
+/** F18-06 — the `exceptional` filter (`GAP-EXCEPTIONAL-FILTER`). Mirrors
+ * `SALES_SUMMARY_EXCEPTIONAL` in `apps/api/.../sales-summary-query.dto.ts`. `all` = no filter. */
+export const SALES_SUMMARY_EXCEPTIONAL = ['all', 'only', 'exclude'] as const;
+export type SalesSummaryExceptional = (typeof SALES_SUMMARY_EXCEPTIONAL)[number];
+
+export const SALES_SUMMARY_EXCEPTIONAL_LABELS: Record<SalesSummaryExceptional, string> = {
+  all: 'All sales',
+  only: 'Exceptional-discount only',
+  exclude: 'Exclude exceptional',
+};
+
 export interface SalesPeriodBucket {
   key: string;
   orderCount: number;
@@ -54,6 +65,7 @@ export interface SalesSummary {
   timezone: string;
   currency: string;
   groupBy: SalesSummaryGroupBy;
+  exceptional: SalesSummaryExceptional;
   buckets: SalesSummaryBucket[];
 }
 

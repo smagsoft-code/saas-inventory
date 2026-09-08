@@ -22,7 +22,7 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-AUDIT-READ`](#gap-audit-read) | Audit-log read endpoint | future |
 | [`GAP-CUSTOMER-HISTORY`](#gap-customer-history) | Per-customer order history / LTV | ~~F18-needed~~ **PARTIALLY RESOLVED (F18-02)** — ranking done; last-order-date / zero-order view still open |
 | [`GAP-CUSTOMER-DATE-FILTER`](#gap-customer-date-filter) | Date filter on customers | F18-needed |
-| [`GAP-EXCEPTIONAL-FILTER`](#gap-exceptional-filter) | Filter/aggregate exceptional-discount lines | F18-needed |
+| [`GAP-EXCEPTIONAL-FILTER`](#gap-exceptional-filter) | Filter/aggregate exceptional-discount lines | ~~F18-needed~~ **PARTIALLY RESOLVED (F18-06)** — `exceptional=all\|only\|exclude` filter on `GET /reports/sales-summary` (order grain for period/customer, line grain for product); a per-period exceptional *line-count* / the `KPI-SALES-EXCEPTIONAL` rate stays open |
 | [`GAP-RETURN-AGGREGATE`](#gap-return-aggregate) | Return lines by disposition / value | ~~F18-needed~~ **PARTIALLY RESOLVED (F18-04)** — day/week/month/product/customer/disposition grouping + returned value built; return rate vs sales stays a client-side combination of two endpoints |
 | [`GAP-RETURN-RESOLVED-AT`](#gap-return-resolved-at) | `resolved_at`/`received_at` timestamp on `sales_returns` | F18-needed |
 | [`GAP-SERIAL-LOT-READ`](#gap-serial-lot-read) | Serial / lot read + traceability | future |
@@ -227,14 +227,35 @@ data is invented" rule; a dedicated left-join view would be needed to see the ze
 - **Recommended phase:** **F18-needed** (small).
 
 ### `GAP-EXCEPTIONAL-FILTER`
-- **Required:** filter `GET /orders` (or a sales-lines read) by `is_exceptional_discount`, and/or
-  aggregate exceptional-line count and discount value by period.
-- **Why:** `KPI-SALES-EXCEPTIONAL` ("discount leakage"), `REP-SALES-EXCEPTIONAL`, pricing
-  governance oversight.
-- **Missing:** the flag is on `order_items`, not filterable, not aggregated. `price_approvals`
-  covers *below-min* lines that went through approval, but not the full exceptional set, and has
-  no date filter.
-- **Recommended phase:** **F18-needed**.
+**PARTIALLY RESOLVED — F18-06.** `GET /reports/sales-summary` gained an `exceptional` filter
+(`all` — the default, unchanged behaviour · `only` · `exclude`) over the frozen, write-once
+`order_items.is_exceptional_discount` flag — **never** a join to `price_approvals` (an exceptional
+line can exist with no approval row: a `pending` order nobody filed for, or a tenant with
+`tenant_price_policies.exceptional_discount_requires_approval = false`, so `price_approvals` is the
+authorisation-workflow overlay, not the historical truth of the sale). It composes with `status`
+and the half-open `[from,to)` range. Applied per grouping **at that grouping's own grain**:
+
+- `day`/`week`/`month`/`customer` (aggregate `orders` alone) — an `EXISTS`/`NOT EXISTS` semi-join:
+  `only` = "orders containing **at least one** exceptional line", with the whole-order totals;
+  `exclude` = "orders with **no** exceptional line". Order grain.
+- `product` (already `order_items`-grain) — a plain predicate on the joined line: `only` =
+  "exceptional **lines** of this variant". Summing `discountTotal` across the `product` buckets is
+  `SALES-EXCEPTIONAL-LINES`'s value for the period.
+
+Permission is the endpoint's existing `sales.orders.view` (no `pricing.floor.view` needed —
+`order_items.discount_amount` is computed vs `max_price`, so no floor is ever exposed). No schema
+change, no migration, no new permission.
+
+- **Still open:** a per-period exceptional **line count** (the `product` grouping has no period
+  axis; the period grouping is order-grain, not line-grain) and therefore
+  `KPI-SALES-EXCEPTIONAL`'s "exceptional lines ÷ total lines" rate — both would be **new metrics**
+  with no official definition today. `REP-SALES-EXCEPTIONAL` stays a filter/aggregate over
+  `sales-summary`, not a dedicated lines endpoint.
+- **Original text (for history):** filter `GET /orders` (or a sales-lines read) by
+  `is_exceptional_discount`, and/or aggregate exceptional-line count and discount value by period;
+  the flag was on `order_items`, not filterable, not aggregated; `price_approvals` covered only the
+  *below-min* lines that went through approval, not the full exceptional set, and had no date
+  filter. Recommended F18-needed.
 
 ### `GAP-RETURN-AGGREGATE`
 - **Required:** returns aggregated by disposition, by period, by product; returned value (qty ×
@@ -386,11 +407,11 @@ data is invented" rule; a dedicated left-join view would be needed to see the ze
   `approvalRate = approved / (approved + rejected)` rounded 4dp (`null` when nothing decided;
   cancelled + pending excluded from the denominator). Resolves `metrics.md` `APPR-RATE` /
   `APPR-DISCOUNT-VALUE` (both **B** → **A**). Never `PriceApprovalsRepository`.
-- **Still open (separate gap):** the *full* exceptional-discount picture — every
+- **Separate gap:** the *full* exceptional-discount picture — every
   `order_items.is_exceptional_discount = true` line, not only the subset for which a
-  `price_approvals` request was actually *filed* — remains `GAP-EXCEPTIONAL-FILTER` (discount
-  leakage across all below-min sales, including lines confirmed without a filed request). F18-05
-  covers the **approval-workflow** analytics, not that broader set.
+  `price_approvals` request was actually *filed* — is `GAP-EXCEPTIONAL-FILTER`, now **PARTIALLY
+  RESOLVED (F18-06)** via the `exceptional` filter on `GET /reports/sales-summary`. F18-05 covers
+  the **approval-workflow** analytics; F18-06 covers the below-min *sales* set (approved or not).
 
 ---
 

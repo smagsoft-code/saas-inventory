@@ -28,7 +28,7 @@ exists but no endpoint filters on it. "Absent" = not modelled.
 | **disposition** | return items | **Absent** on the operational `GET /sales-returns` list. **Groupable** (not filterable) via `GET /reports/returns-summary?groupBy=disposition` (F18-04). | The report groups; it does not add a `disposition` query param to the operational list. |
 | **date / period** | orders (`createdFrom`/`createdTo`), movements (`occurredFrom`/`occurredTo`, F18-03), sales report (`from`/`to`, F18-02), returns report (`from`/`to`, F18-04), approvals report (`from`/`to`, F18-05) | **Orders, movements, and the sales / returns / approvals *reports*.** The operational `GET /sales-returns` and `GET /price-approvals` lists themselves, transfers, imports, customers, users, price history still have **no date filter**. | The report filters are half-open `[from, to)` (F18-01's new-endpoint convention) — deliberately *not* orders' inclusive-both-bounds `createdFrom`/`createdTo`. Returns report buckets by `sales_returns.created_at` (when *requested* — `GAP-RETURN-RESOLVED-AT`); approvals report buckets by `price_approvals.requested_at` (a request-cohort — `resolved_at` exists but is `NULL` for `pending` rows, so it cannot anchor a period that must surface open requests). |
 | **free-text search (`q`)** | customers (`displayName` / `taxId` / `email` / `phone`) | **Customers only.** No search on products, orders, movements, transfers, users. | api.md: "search is a distinct documented parameter … decided per-endpoint". |
-| **is_exceptional_discount** | order lines | **Absent** — flag on `order_items`, no filter, no aggregate. |
+| **is_exceptional_discount** | order lines | `GET /reports/sales-summary?exceptional=all\|only\|exclude` (F18-06). Order grain (`EXISTS` on `order_items`) for `day`/`week`/`month`/`customer`; line grain for `groupBy=product`. Source of truth is the frozen `order_items.is_exceptional_discount`, never a `price_approvals` join. The operational `GET /orders` list still has no such filter. |
 | **is_demo** | tenants (SuperAdmin) | Client-side over the unpaginated array. |
 
 ### Sorting
@@ -44,8 +44,10 @@ same reason" as filtering — **none is implemented**. Any sortable-column UI in
 paginated row set. Grouping/aggregation is a FASE 18 read-side concern, built as its own dedicated
 endpoint per domain: `GET /reports/sales-summary` (F18-02, `groupBy: day|week|month|product|
 customer`), `GET /reports/inventory-summary` (F18-03, `groupBy: warehouse|category`), and
-`GET /reports/returns-summary` (F18-04, `groupBy: day|week|month|product|customer|disposition`).
-Grouping by role, or any other still-open dimension, remains unbuilt.
+`GET /reports/returns-summary` (F18-04, `groupBy: day|week|month|product|customer|disposition`),
+and `GET /reports/approvals-summary` (F18-05, `groupBy: day|week|month|status`). `sales-summary`
+additionally takes an `exceptional=all|only|exclude` line-quality filter (F18-06). Grouping by
+role, or any other still-open dimension, remains unbuilt.
 
 ---
 

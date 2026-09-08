@@ -2,7 +2,14 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { SALES_SUMMARY_GROUP_BY, SALES_SUMMARY_GROUP_BY_LABELS, type SalesSummaryGroupBy } from '../../../lib/types/reports';
+import {
+  SALES_SUMMARY_EXCEPTIONAL,
+  SALES_SUMMARY_EXCEPTIONAL_LABELS,
+  SALES_SUMMARY_GROUP_BY,
+  SALES_SUMMARY_GROUP_BY_LABELS,
+  type SalesSummaryExceptional,
+  type SalesSummaryGroupBy,
+} from '../../../lib/types/reports';
 import { Field } from '../../../components/ui/field';
 import { Input, Select } from '../../../components/ui/input';
 
@@ -10,6 +17,7 @@ export interface SalesReportFilterValues {
   from: string;
   to: string;
   groupBy: SalesSummaryGroupBy;
+  exceptional: SalesSummaryExceptional;
 }
 
 /**
@@ -24,6 +32,7 @@ export function SalesReportFilters({ initial }: { initial: SalesReportFilterValu
   const [from, setFrom] = useState(initial.from.slice(0, 10));
   const [to, setTo] = useState(initial.to.slice(0, 10));
   const [groupBy, setGroupBy] = useState<SalesSummaryGroupBy>(initial.groupBy);
+  const [exceptional, setExceptional] = useState<SalesSummaryExceptional>(initial.exceptional);
 
   /** The picked "to" calendar date must map to the *start of the next* UTC day — [from, to) is
    * exclusive at `to`, so including the whole day the user picked means the boundary sits just
@@ -35,19 +44,27 @@ export function SalesReportFilters({ initial }: { initial: SalesReportFilterValu
     return d.toISOString();
   }
 
-  function apply(next: { from?: string; to?: string; groupBy?: SalesSummaryGroupBy }): void {
+  function apply(next: {
+    from?: string;
+    to?: string;
+    groupBy?: SalesSummaryGroupBy;
+    exceptional?: SalesSummaryExceptional;
+  }): void {
     const params = new URLSearchParams();
     const nextFrom = next.from ?? from;
     const nextTo = next.to ?? to;
     const nextGroupBy = next.groupBy ?? groupBy;
+    const nextExceptional = next.exceptional ?? exceptional;
     if (nextFrom) params.set('reportFrom', `${nextFrom}T00:00:00.000Z`);
     if (nextTo) params.set('reportTo', nextDayStart(nextTo));
     params.set('reportGroupBy', nextGroupBy);
+    // `all` is the default — keep it out of the URL so a plain /sales visit stays clean.
+    if (nextExceptional !== 'all') params.set('reportExceptional', nextExceptional);
     router.push(`/sales?${params.toString()}#report`);
   }
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
       <Field label="From" hint="Tenant-local day start">
         <Input
           type="date"
@@ -84,6 +101,23 @@ export function SalesReportFilters({ initial }: { initial: SalesReportFilterValu
           {SALES_SUMMARY_GROUP_BY.map((g) => (
             <option key={g} value={g}>
               {SALES_SUMMARY_GROUP_BY_LABELS[g]}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Field label="Exceptional discount" hint="Below-floor sale lines">
+        <Select
+          value={exceptional}
+          onChange={(e) => {
+            const next = e.target.value as SalesSummaryExceptional;
+            setExceptional(next);
+            apply({ exceptional: next });
+          }}
+        >
+          {SALES_SUMMARY_EXCEPTIONAL.map((x) => (
+            <option key={x} value={x}>
+              {SALES_SUMMARY_EXCEPTIONAL_LABELS[x]}
             </option>
           ))}
         </Select>

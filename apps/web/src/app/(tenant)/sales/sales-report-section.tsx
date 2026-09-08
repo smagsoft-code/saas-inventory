@@ -129,8 +129,12 @@ export function SalesReportSection({ summary, currency }: { summary: SalesSummar
   if (summary.buckets.length === 0) {
     return (
       <EmptyState
-        title="No sales in this period"
-        description="Try a wider date range, or a different status."
+        title={summary.exceptional === 'only' ? 'No exceptional-discount sales in this period' : 'No sales in this period'}
+        description={
+          summary.exceptional === 'only'
+            ? 'Try a wider date range, a different status, or set the exceptional-discount filter back to "All sales".'
+            : 'Try a wider date range, or a different status.'
+        }
       />
     );
   }
