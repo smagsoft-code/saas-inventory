@@ -16,6 +16,8 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-INV-AGGREGATE`](#gap-inv-aggregate) | Inventory aggregation + name enrichment | ~~F17-needed (partial) / F18~~ **PARTIALLY RESOLVED (F18-03)** — Σ available/reserved + out-of-stock count by warehouse/category built; name enrichment on the *raw* balances/movements lists stays open |
 | [`GAP-MOVEMENTS-DATE-FILTER`](#gap-movements-date-filter) | Date range + sort on movements | ~~F17-needed~~ **PARTIALLY RESOLVED (F18-03)** — `occurredFrom`/`occurredTo` built; `sort` and `referenceType`/`referenceId` filters still open |
 | [`GAP-MOV-AGGREGATE`](#gap-mov-aggregate) | Movement count / signed quantity aggregated by period or type | ~~F18-needed~~ **RESOLVED (F18-07)** — `GET /reports/movements-summary` (`inventory.view`), `groupBy=day\|week\|month\|type`, `[from,to)` on `occurred_at`, `movementType`/`locationId`/`productVariantId` filters |
+| [`GAP-TRANSFER-AGGREGATE`](#gap-transfer-aggregate) | Transfer status rollup + in-transit stock aggregated across transfers | ~~F18-needed~~ **RESOLVED (F18-08)** — `GET /reports/transfers-summary` (`inventory.view`), `groupBy=status\|destination\|variant`, live snapshot (no period); `TRF-OPEN-COUNT`/`TRF-INTRANSIT-COUNT`/`TRF-INTRANSIT-QTY` + `KPI-INV-INTRANSIT` all **B → A** |
+| [`GAP-TRANSFER-CYCLE-TIME`](#gap-transfer-cycle-time) | Transfer cycle-time aggregation (avg / distribution) | F18-needed (with a definition) |
 | [`GAP-MULTI-STATUS`](#gap-multi-status) | Multi-status filter on lists | F17-needed |
 | [`GAP-ORDERS-LOCATION-FILTER`](#gap-orders-location-filter) | `locationId` filter on orders | F18-needed |
 | [`GAP-ORDER-CONFIRMED-AT`](#gap-order-confirmed-at) | `confirmed_at` timestamp on orders | F18-needed |
@@ -113,10 +115,11 @@ groupBy: warehouse|category }` → `{ generatedAt, groupBy, totals, buckets[] }`
 report does not inherit the raw-list id-only gap. Integrated into `/inventory` as its own report
 section, F18-03.
 
-**Still missing:** `Σ committed`, in-transit aggregate (`TRF-INTRANSIT-QTY`), valuation
-(`GAP-COST`), low-stock (`GAP-REORDER`), and — separately — **name enrichment on the raw
-`GET /inventory/balances` / `GET /inventory/movements` list responses themselves** stays open
-(that is `GAP-NAME-ENRICHMENT`'s job, not this endpoint's).
+**Still missing:** `Σ committed`, valuation (`GAP-COST`), low-stock (`GAP-REORDER`), and —
+separately — **name enrichment on the raw `GET /inventory/balances` / `GET /inventory/movements`
+list responses themselves** stays open (that is `GAP-NAME-ENRICHMENT`'s job, not this endpoint's).
+The **in-transit aggregate** (`TRF-INTRANSIT-QTY`) is now `GAP-TRANSFER-AGGREGATE`, **RESOLVED —
+F18-08** (`GET /reports/transfers-summary?groupBy=destination|variant`).
 
 - **Original text (for history):** aggregated inventory reads were needed — `Σ available/reserved/
   committed` by tenant/warehouse/category, count of zero/out-of-stock SKUs, in-transit per variant/
@@ -178,6 +181,54 @@ monetary field, no `currency`. Resolves `metrics.md` `MOV-QTY-BY-TYPE` / `MOV-RE
 - **Missing:** every list DTO takes a single `@IsIn` status.
 - **Impact:** dashboard queue tiles fan out into multiple requests; state drops from A to B.
 - **Recommended phase:** **F17-needed** — trivial DTO change.
+- **F18-08 note:** the *transfer* multi-status count case is separately resolved — `GET
+  /reports/transfers-summary?groupBy=status` returns every status bucket in one call (`TRF-OPEN-COUNT`
+  / `TRF-INTRANSIT-COUNT` → **A**). This gap stays **open** for the array-`status` *filter* on the
+  operational **list** endpoints (`GET /sales-returns`, `GET /imports`, `GET /orders`, and
+  `GET /inventory/transfers` itself when you want the rows, not a count).
+
+### `GAP-TRANSFER-AGGREGATE`
+- **RESOLVED — F18-08 ("Transfer analytics").** `GET /reports/transfers-summary` (`inventory.view`,
+  **tenant-wide** — same posture as `GET /inventory/transfers` / `GET /reports/inventory-summary` /
+  `GET /reports/movements-summary`, none location-scoped) — a dedicated read-side over
+  `inventory_transfers` / `inventory_transfer_items` (never the transactional
+  `InventoryTransfersRepository`/`InventoryTransferItemsRepository` — modules.md's read-side rule).
+  `groupBy=status|destination|variant` (default `status`); **no `from`/`to`** — a live snapshot of
+  current open-transfer state (like `inventory-summary`, `GAP-SNAPSHOTS` stays open).
+  - `status` — `COUNT(*)` over `inventory_transfers` **alone** (no join, exact), one bucket per real
+    status. Resolves `TRF-COUNT-STATUS` (all statuses in one call), `TRF-OPEN-COUNT`,
+    `TRF-INTRANSIT-COUNT` (**B → A**).
+  - `destination` / `variant` — `Σ (quantity_dispatched − quantity_received)` over
+    `inventory_transfer_items` of transfers whose status is `dispatched`/`partially_received`,
+    joined 1:1 to their parent header (for the status filter + `destination_location_id`) and to
+    `locations` / `product_variants`+`products` for names. `COUNT(DISTINCT transfer id)` for the
+    per-destination open count — never inflated by the item join (a 3-line transfer counts once).
+    Resolves `TRF-INTRANSIT-QTY` / `KPI-INV-INTRANSIT` / `REP-INV-INTRANSIT` (**B → A**).
+  - `totals` (`groupBy`-independent): `inTransitQuantity` (tenant-wide Σ), `openTransferCount`
+    (count of `dispatched` + `partially_received` transfers).
+  - **No monetary field** — a transfer has no value.
+- **Not the source:** `inventory_movements`' `TRANSFER_OUT`/`TRANSFER_IN` rows — those are the ledger
+  side-effects of the transitions, not the transfer's own state; `REP-INV-MOV-SUMMARY` (F18-07)
+  aggregates the movement rows, this report aggregates the transfers.
+- **Was:** the requirement had **no `GAP-` id** before F18-08 — it lived only in `metrics.md`'s
+  `TRF-*` rows, `kpis.md`'s `KPI-INV-INTRANSIT`, `reports.md`'s `REP-INV-INTRANSIT` ("a cross-transfer
+  aggregate query is a FASE 18 read-side item") and `GAP-INV-AGGREGATE`'s "in-transit aggregate
+  (`TRF-INTRANSIT-QTY`)" line. F18-08 registers it here.
+- **Still open (separate):** transfer **cycle time** — `GAP-TRANSFER-CYCLE-TIME` below.
+
+### `GAP-TRANSFER-CYCLE-TIME`
+- **Required:** an aggregation of how long transfers take — `received_at − created_at` and the
+  per-stage deltas (`approved_at − created_at`, `dispatched_at − approved_at`, `received_at −
+  dispatched_at`) — averaged / distributed over a period.
+- **Why:** `TRF-CYCLE-TIME`, operational efficiency reporting ("our transfers take N days").
+- **Missing:** **not the data** — every timestamp is on `inventory_transfers`. What is missing is a
+  **definition**: (1) the aggregation function (mean? median? p90? a histogram?), (2) the
+  period-anchor timestamp (does a transfer belong to the period it was *created* in, *dispatched*
+  in, or *received* in?), (3) whether only `received` transfers count or in-flight ones too.
+  F18-08 deliberately did **not** invent any of these (its "no invented metric / timestamp" rule).
+- **Recommended phase:** **F18-needed**, but only **after** the definition is pinned (an ADR or a
+  metrics.md addition) — it is a genuinely new metric, not a gap-fill. The `[from, to)` +
+  `date_trunc` machinery from the other FASE 18 reports would apply once the anchor is chosen.
 
 ### `GAP-ORDERS-LOCATION-FILTER`
 - **Required:** `locationId` query param on `GET /orders`.

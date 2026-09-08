@@ -106,8 +106,8 @@ ledger → COGS and inventory valuation cannot be computed contractually (see
 
 | Table | Key fields | States | Exposed by API |
 | --- | --- | --- | --- |
-| `inventory_transfers` | `source_location_id`, `destination_location_id`, `status`, `requested_by`, `approved_by`, `dispatched_by`, `notes`, `created_at`, `approved_at`, `dispatched_at`, `received_at`, `cancelled_at` | `draft` · `approved` · `preparing` · `dispatched` · `partially_received` · `received` · `cancelled` | `GET /inventory/transfers` (`inventory.view`, filter `status` + `sourceLocationId` + `destinationLocationId`, paginated), `GET /:id`, plus command routes `POST /` , `/approve`, `/prepare`, `/dispatch`, `/receive`, `/cancel`. Response = **IDs only** (location IDs, user IDs — no names). |
-| `inventory_transfer_items` | `transfer_id`, `product_variant_id`, `quantity_requested`, `quantity_dispatched`, `quantity_received` | — | In transfer detail. `quantityInTransit` = `dispatched − received` **per item, within one transfer** — there is **no** aggregate "in-transit for variant X at location Y across all open transfers". |
+| `inventory_transfers` | `source_location_id`, `destination_location_id`, `status`, `requested_by`, `approved_by`, `dispatched_by`, `notes`, `created_at`, `approved_at`, `dispatched_at`, `received_at`, `cancelled_at` | `draft` · `approved` · `preparing` · `dispatched` · `partially_received` · `received` · `cancelled` | `GET /inventory/transfers` (`inventory.view`, filter `status` + `sourceLocationId` + `destinationLocationId`, paginated), `GET /:id`, plus command routes `POST /` , `/approve`, `/prepare`, `/dispatch`, `/receive`, `/cancel`. Response = **IDs only** (location IDs, user IDs — no names). **Aggregated:** `GET /reports/transfers-summary` (F18-08) — status rollup (`COUNT(*)` by status) + in-transit stock (`Σ dispatched − received` over `dispatched`/`partially_received`) by destination / variant, names resolved. |
+| `inventory_transfer_items` | `transfer_id`, `product_variant_id`, `quantity_requested`, `quantity_dispatched`, `quantity_received` | — | In transfer detail (`quantityInTransit` = `dispatched − received` per item). **Aggregated** across open transfers by destination / variant via `GET /reports/transfers-summary` (F18-08). |
 | `inventory_transfer_receipts` / `inventory_transfer_receipt_items` | receiving events, `incident_type` (`shortage`/`damage`/`excess`), `incident_notes` | — | Not exposed as a standalone list; only implied by the transfer's received quantities. |
 
 ---
@@ -177,7 +177,8 @@ returns it today** (→ state B or C per item in [metrics.md](metrics.md)):
 - Stock on hand per product/variant/warehouse/location **with names** (join `inventory_balances`
   × `product_variants` × `products` × `locations` × `warehouses`).
 - Total available / reserved / committed across a tenant, or per warehouse.
-- In-transit quantity per variant/location aggregated across **all** open transfers.
+- ~~In-transit quantity per variant/location aggregated across **all** open transfers.~~
+  **Built — F18-08** (`GET /reports/transfers-summary?groupBy=destination|variant`).
 - Inventory value (blocked — no historical cost; see [data-gaps.md](data-gaps.md#gap-cost)).
 - Movements of a period, by type, by location, by product (blocked filters: no date range on
   `GET /inventory/movements`).

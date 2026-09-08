@@ -47,9 +47,12 @@ customer`), `GET /reports/inventory-summary` (F18-03, `groupBy: warehouse|catego
 `GET /reports/returns-summary` (F18-04, `groupBy: day|week|month|product|customer|disposition`),
 `GET /reports/approvals-summary` (F18-05, `groupBy: day|week|month|status`), and
 `GET /reports/movements-summary` (F18-07, `groupBy: day|week|month|type` over `inventory_movements`,
-`[from,to)` on `occurred_at`, filters `movementType`/`locationId`/`productVariantId`).
-`sales-summary` additionally takes an `exceptional=all|only|exclude` line-quality filter (F18-06).
-Grouping by role/actor, or any other still-open dimension, remains unbuilt.
+`[from,to)` on `occurred_at`, filters `movementType`/`locationId`/`productVariantId`), and
+`GET /reports/transfers-summary` (F18-08, `groupBy: status|destination|variant` over
+`inventory_transfers`/`inventory_transfer_items` — a **live snapshot, no `from`/`to`**, like
+`inventory-summary`). `sales-summary` additionally takes an `exceptional=all|only|exclude`
+line-quality filter (F18-06). Grouping by role/actor, transfer cycle time
+(`GAP-TRANSFER-CYCLE-TIME`), or any other still-open dimension, remains unbuilt.
 
 ---
 
@@ -161,7 +164,8 @@ Identity → active Membership → active Tenant → active User → (if locatio
 | Products / categories / attributes / QR | tenant | none | `products.view` / `categories.view` / `catalog.*` |
 | Inventory balances / movements / adjustments | tenant | **writes only** — `LocationAuthorizationService.assertAccess` gates `inventory.adjust` and every transfer state transition that targets a specific location; `GET /inventory/balances` and `GET /inventory/movements` are **not** location-scoped — a location-restricted user with read access sees every location's rows, same as an unrestricted user (verified against the real code, F18-03 — corrects this row's previous "yes" for reads) | `inventory.view` / `inventory.adjust` |
 | Inventory summary (`GET /reports/inventory-summary`, F18-03) | tenant | **no** — reuses the exact, real, current read scope of `GET /inventory/balances` above (tenant-wide); ADR-0024's guard is a write-action check, never a read filter, so this report does not invent a location-scoping policy the existing reads themselves don't have | `inventory.view` |
-| Transfers | tenant | **yes** — source/destination location authorization | `inventory.view` / `inventory.transfers.*` |
+| Transfers | tenant | **writes only** — `LocationAuthorizationService` gates transfer `prepare`/`dispatch` (source) and `receive` (destination); `GET /inventory/transfers` is **not** location-scoped for reads (same posture as balances/movements, verified against real code — F18-08) | `inventory.view` / `inventory.transfers.*` |
+| Transfers summary (`GET /reports/transfers-summary`, F18-08) | tenant | **no** — reuses the exact, real, current read scope of `GET /inventory/transfers` above (tenant-wide); ADR-0024's guard is a write-action check, never a read filter | `inventory.view` |
 | Customers | tenant | none | `sales.customers.view` |
 | Orders / order lines | tenant | **`orders.location_id` exists but the list endpoint does not scope by it** — deferred by F18-01 (see below), `GAP-ORDERS-LOCATION` still open | `sales.orders.view` |
 | Price approvals | tenant | none — `price_approvals` has no location column | `pricing.discount.request` OR `pricing.discount.approve` (list/read, F17-09) / `pricing.discount.approve` (act) |

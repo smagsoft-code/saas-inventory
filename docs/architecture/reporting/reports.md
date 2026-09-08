@@ -18,8 +18,9 @@
 | `REP-INV-ADJUSTMENTS` | Adjustments | Inventory | `GET /inventory/movements?movementType=ADJUSTMENT_*` (list) / `GET /reports/movements-summary?groupBy=type` (F18-07) | **A** (filtered + dated list) / **A** (grouped count + signed net, F18-07) |
 | `REP-INV-SUMMARY` | Inventory summary (available/reserved/out-of-stock by warehouse or category) | Inventory | `GET /reports/inventory-summary` | **A** | FASE 18-03 |
 | `REP-INV-MOV-SUMMARY` | Movements summary (count + signed quantity by period or type) | Inventory | `GET /reports/movements-summary` | **A** | F18-07 |
-| `REP-INV-TRANSFERS` | Transfers | Inventory | `GET /inventory/transfers` | **A** (list) / **B** (names, cycle time) | F17 |
-| `REP-INV-INTRANSIT` | In-transit stock | Inventory | — | **B** | FASE 18 |
+| `REP-INV-TRANSFERS` | Transfers (operational list) | Inventory | `GET /inventory/transfers` | **A** (list) / **B** (route names, cycle time) | F17 |
+| `REP-INV-TRANSFERS-SUMMARY` | Transfer analytics (status rollup + in-transit by destination/variant) | Inventory | `GET /reports/transfers-summary` | **A** | F18-08 |
+| `REP-INV-INTRANSIT` | In-transit stock | Inventory | `GET /reports/transfers-summary?groupBy=destination\|variant` | **A** | F18-08 |
 | `REP-INV-VALUATION` | Inventory valuation | Inventory | — | **C** | Blocked ([data-gaps.md](data-gaps.md#gap-cost)) |
 | `REP-CAT-PRODUCTS` | Product catalogue | Catalog | `GET /products` (+ per-product `/variants`) | **A** (list) / **B** (flat variant+price+stock) | F17 |
 | `REP-CAT-VARIANTS` | Variants (flat, all products) | Catalog | — | **B** | FASE 18 |
@@ -170,15 +171,71 @@ server-side aggregation over `inventory_movements`, no client-side fold.
   none. **Totals:** count per status (separate calls). **Pagination:** offset. **Export:** none.
 - **Drill-down:** → transfer detail (items, receipts, incidents).
 - **Related screen:** `TransfersDesktop/Tablet/Mobile`.
-- **State: A** for the list with the 3 filters; **B** for source/destination **names**, cycle-time
-  aggregates, and a human transfer code.
+- **State: A** for the list with the 3 filters; **B** for source/destination **names** and a human
+  transfer code. Status counts and in-transit aggregates are now `REP-INV-TRANSFERS-SUMMARY`
+  (**A**, F18-08); cycle-time aggregation stays **B** (`GAP-TRANSFER-CYCLE-TIME`).
+
+### `REP-INV-TRANSFERS-SUMMARY` — Transfer analytics
+
+**RESOLVED — F18-08 ("Transfer analytics").** `GET /reports/transfers-summary` (`inventory.view`,
+tenant-wide — same posture as `GET /inventory/transfers` / `REP-INV-SUMMARY` / `REP-INV-MOV-SUMMARY`,
+none location-scoped) — real server-side aggregation over `inventory_transfers` /
+`inventory_transfer_items`, never the transactional `InventoryTransfersRepository` /
+`InventoryTransferItemsRepository`.
+
+- **Objective:** "how many transfers are in each state" and "how much stock is currently in transit,
+  and where is it arriving / what is it" — without paging every transfer.
+  Resolves `metrics.md` `TRF-OPEN-COUNT` / `TRF-INTRANSIT-COUNT` / `TRF-INTRANSIT-QTY` and `kpis.md`
+  `KPI-INV-INTRANSIT` / `KPI-OPS-TRANSFERS-OPEN` / `KPI-OPS-TRANSFERS-TO-RECEIVE` (all **B → A**).
+- **Query params:** `groupBy` (`status` | `destination` | `variant`, default `status`). **No
+  `from`/`to`** — a live snapshot of current open-transfer state, not a period query
+  (`inventory_transfers` carries stage timestamps but no history to bucket "open-ness" by;
+  `GAP-SNAPSHOTS` stays open). `generatedAt` is the query-time server clock.
+- **Response:** `{ generatedAt, groupBy, totals: { inTransitQuantity, openTransferCount }, buckets[] }`.
+  `totals` is `groupBy`-independent: `inTransitQuantity` = tenant-wide `Σ (quantity_dispatched −
+  quantity_received)` over items of `dispatched`/`partially_received` transfers; `openTransferCount`
+  = count of those transfers.
+- **Bucket shape per `groupBy`:**
+  - `status`: `{ key: <inventory_transfers.status>, transferCount }` — `COUNT(*)` over
+    `inventory_transfers` **alone**, one bucket per status present, exact (no item join, no fan-out).
+  - `destination`: `{ key: destinationLocationId, destinationName, inTransitQuantity, openTransferCount }`
+    — items of open transfers joined 1:1 to their parent header for `destination_location_id` and to
+    `locations` for the name; `SUM(dispatched − received)` at item grain, `COUNT(DISTINCT transfer id)`
+    for the open count (a 3-line transfer counts once).
+  - `variant`: `{ key: variantId, sku, productName, inTransitQuantity }` — same item-grain sum,
+    grouped by `product_variant_id`, joined to `product_variants`/`products` for sku/name.
+- **No monetary field** — a transfer has no price/cost/value (`NO COSTING`, same as the other
+  inventory reports).
+- **Filters:** none beyond `groupBy` — the in-transit set is intrinsically
+  `status IN ('dispatched','partially_received')`; the `status` rollup covers all seven.
+  **Sort:** buckets are name/status-ordered. **Grouping:** the `groupBy` axes above. **Totals:**
+  the `totals` object. **Pagination:** none (bucket sets are small). **Export:** none.
+- **Drill-down:** → the transfer list filtered by status (`GET /inventory/transfers?status=`), →
+  transfer detail.
+- **Related screen:** a "Transfer report" section on `/inventory/transfers` above the unchanged
+  transfer list.
+- **Not built (F18-08):** transfer **cycle time** (`TRF-CYCLE-TIME` — `received_at − created_at` is a
+  per-row value, but the aggregation grain and the period-anchor timestamp are undefined in every
+  doc; → [`GAP-TRANSFER-CYCLE-TIME`](data-gaps.md#gap-transfer-cycle-time)) and receiving
+  **incidents** (`TRF-INCIDENTS` — `inventory_transfer_receipt_items` is exposed by no endpoint and
+  has no defined analytic metric). `inventory_movements`' `TRANSFER_OUT`/`TRANSFER_IN` rows are
+  deliberately **not** the source — those are the ledger side-effects of the dispatch/receive
+  transitions, not the transfer's own state (`REP-INV-MOV-SUMMARY`, F18-07, aggregates those; this
+  report is about transfers, not movements).
+- **State: A.**
 
 ### `REP-INV-INTRANSIT` — In-transit stock
 
+**RESOLVED — F18-08.** Now a `groupBy` of `REP-INV-TRANSFERS-SUMMARY` above:
+`GET /reports/transfers-summary?groupBy=destination` (units arriving per destination location) or
+`?groupBy=variant` (units in transit per SKU). `totals.inTransitQuantity` on any response is the
+tenant-wide figure.
+
 - **Objective:** units currently between locations, by destination / variant.
-- **Source:** open `inventory_transfers` + `inventory_transfer_items` (`dispatched − received`).
-- **Endpoint:** none (per-transfer `quantityInTransit` only).
-- **State: B** — a cross-transfer aggregate query is a FASE 18 read-side item.
+- **Source:** `inventory_transfer_items` of `dispatched`/`partially_received` `inventory_transfers`
+  (`quantity_dispatched − quantity_received`).
+- **State: A** — real server-side `SUM` in PostgreSQL. Was **B** ("a cross-transfer aggregate query
+  is a FASE 18 read-side item").
 
 ### `REP-INV-SUMMARY` — Inventory summary (available/reserved/out-of-stock)
 

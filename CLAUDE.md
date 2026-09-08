@@ -1009,3 +1009,61 @@ type-checks and statically generates every route, then fails only at the pre-exi
 browser automation tool was available in this environment**, so real-browser visual validation was
 not performed — substituted by the real-HTTP pg-verify integration coverage plus jsdom
 component-render tests; **not** claimed as a browser check. **FASE 18-07 CLOSED, not pushed.**
+
+**F18-08** ("Transfer analytics" — the conceptual F18-04 slot; execution numbering has been
+offset from the conceptual roadmap since F18-03, see `docs/architecture/reporting/reports.md` for
+the reconciliation) adds the **TRANSFERS read-side** — `GET /reports/transfers-summary`
+(`apps/api/src/reports/transfers/`, `inventory.view`, **tenant-wide**). Resolves the transfer
+aggregation items every reporting doc left open: `metrics.md` `TRF-OPEN-COUNT` /
+`TRF-INTRANSIT-COUNT` / `TRF-INTRANSIT-QTY` and `kpis.md` `KPI-INV-INTRANSIT` /
+`KPI-OPS-TRANSFERS-OPEN` / `KPI-OPS-TRANSFERS-TO-RECEIVE`, all previously **B** ("5 separate calls,
+or one aggregate" / "no cross-transfer aggregate") — now **A**. Aggregates `inventory_transfers` /
+`inventory_transfer_items` (never the transactional `InventoryTransfersRepository` /
+`InventoryTransferItemsRepository` — modules.md's read-side rule, same as every `reports/<domain>/`).
+`groupBy=status|destination|variant` (default `status`); **no `from`/`to`** — a live snapshot of
+current open-transfer state (like `inventory-summary`, F18-03; `inventory_transfers` carries stage
+timestamps but no history to bucket "open-ness" by — `GAP-SNAPSHOTS` stays open), `generatedAt` is
+the query-time clock. Two grains, never mixed: `status` = `COUNT(*)` over `inventory_transfers`
+**alone** (one bucket per real status, exact, zero fan-out); `destination`/`variant` =
+`Σ (quantity_dispatched − quantity_received)` over `inventory_transfer_items` of transfers whose
+status is `dispatched`/`partially_received` (the fixed "in transit" set, ADR-0020), joined **1:1**
+to the parent header for the status filter + `destination_location_id` and to
+`locations`/`product_variants`+`products` for names — `COUNT(DISTINCT transfer id)` for the
+per-destination open count, so a 3-line transfer counts once, never once per line. The DB `CHECK`
+`quantity_received <= quantity_dispatched <= quantity_requested` guarantees `dispatched − received
+>= 0` (never a negative "in transit"). `groupBy`-independent `totals: { inTransitQuantity,
+openTransferCount }` — the KPI row on every grouping. **No monetary field** (a transfer has no
+value; same `NO COSTING` posture as `inventory-summary`/`movements-summary`). Deliberately **not**
+sourced from `inventory_movements` `TRANSFER_OUT`/`TRANSFER_IN` rows — those are the ledger
+side-effects of the dispatch/receive transitions, not the transfer's own state (`movements-summary`,
+F18-07, aggregates the movement rows; this report aggregates the transfers), and the reporting docs
+are explicit that in-transit stock "is derived from open transfers, not a stored balance bucket".
+**Deliberately not built** (each `BLOCKED BY DEFINITION`, documented as a gap, not implemented
+speculatively): transfer **cycle time** (`TRF-CYCLE-TIME` — `received_at − created_at` is a per-row
+value, but the aggregation function *and* the period-anchor timestamp are undefined in every doc;
+new `GAP-TRANSFER-CYCLE-TIME`, needs an ADR/metrics definition first) and receiving **incidents**
+(`TRF-INCIDENTS` — `inventory_transfer_receipt_items` is exposed by no endpoint and has no defined
+analytic metric). **No schema change, no migration, no new index** (`inventory_transfers_tenant_status_created_idx`
++ `inventory_transfer_items_tenant_transfer_idx` cover it), **no new permission code** (`inventory.view`
+reused per F18-01), **no new ADR**, **no change to the FASE 8 transfer lifecycle / stock ledger**.
+Frontend: a "Transfer report" section on `/inventory/transfers` (`TransfersReportSection` /
+`TransfersReportFilters`, mirroring `InventoryReportSection` — `#report`-anchored `reportGroupBy`
+param independent of the operational list's `status`/`sourceLocationId`/`destinationLocationId`
+chips, a local `TransfersReportError` that never redirects on a 403) above the unchanged transfer
+list. New gaps: `GAP-TRANSFER-AGGREGATE` (**RESOLVED**), `GAP-TRANSFER-CYCLE-TIME` (open).
+`GAP-INV-AGGREGATE`'s "in-transit aggregate (`TRF-INTRANSIT-QTY`)" remainder is now resolved;
+`GAP-MULTI-STATUS` stays open (the transfer *count-by-status* case is covered, but the array-status
+*filter* on the operational list endpoints — returns/imports/orders — is not). Real-PostgreSQL:
+`tools/pg-verify` — `test/reports/transfers-summary.integration.test.ts` (RBAC incl. a
+Vendedor-is-403 + Bodega-is-200 case, tenant isolation, invalid-`groupBy` 400, the `status` rollup
+with delta assertions, in-transit by destination/variant with grain-safety — a multi-line transfer
+counted once — a fully-received transfer excluded, `totals` groupBy-independence, empty tenant →
+`buckets: []` + zeroed totals); the harness process then hit the same Windows-only `EBUSY` (`rmdir`
+on `.verify-pgdata`) during its own post-test cleanup that F18-04/05/06/07 documented — not a
+functional failure, `tools/pg-verify` untouched. API unit 545 → 554
+(`transfers-report.service.spec.ts` +9); web unit 417 → 428 (`transfers-report-section.test.tsx`
++8, `transfers-report-filters.test.tsx` +3). Lint and typecheck pass on both apps (API source +
+API tests + web); API build passes. **No browser automation tool was available in this
+environment**, so real-browser visual validation was not performed — substituted by the real-HTTP
+pg-verify integration coverage plus jsdom component-render tests; **not** claimed as a browser
+check. **FASE 18-08 CLOSED, not pushed.**

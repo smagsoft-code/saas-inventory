@@ -117,8 +117,14 @@ it keeps its original inclusive-both-bounds semantics, unchanged by F18-01.
 `[occurredFrom, occurredTo)` semantics as the FASE 18 convention, but on `occurred_at` (not
 `created_at`) and under its own field names — deliberately not `from`/`to`, since this is an F17
 operational list filter on an existing endpoint, not a new FASE 18 report. `GET
-/reports/inventory-summary` (F18-03) has no date filter at all — it is a live snapshot of current
-`inventory_balances` state, not a period query.
+/reports/inventory-summary` (F18-03) and `GET /reports/transfers-summary` (F18-08) have no date
+filter at all — each is a live snapshot of current state (`inventory_balances` /
+`inventory_transfers` respectively), not a period query. `GET /reports/transfers-summary`
+(`inventory.view`, tenant-wide) aggregates `inventory_transfers`/`inventory_transfer_items`:
+`groupBy=status` (a `COUNT(*)` rollup over the header table alone) or `groupBy=destination|variant`
+(units in transit — `Σ (quantity_dispatched − quantity_received)` over items of
+`dispatched`/`partially_received` transfers, name-resolved), plus a `groupBy`-independent
+`totals: { inTransitQuantity, openTransferCount }`.
 
 `GET /reports/sales-summary` (F18-02), `GET /reports/returns-summary` (F18-04),
 `GET /reports/approvals-summary` (F18-05) and `GET /reports/movements-summary` (F18-07) each follow

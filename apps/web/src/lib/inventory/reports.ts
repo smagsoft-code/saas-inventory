@@ -4,6 +4,8 @@ import type {
   InventorySummaryGroupBy,
   MovementsSummary,
   MovementsSummaryGroupBy,
+  TransfersSummary,
+  TransfersSummaryGroupBy,
 } from '../types/inventory-reports';
 
 /**
@@ -59,4 +61,19 @@ export async function getMovementsSummary(query: MovementsSummaryQuery): Promise
     params['productVariantId'] = query.productVariantId;
   }
   return serverApiFetch<MovementsSummary>('/api/v1/reports/movements-summary', { query: params });
+}
+
+/**
+ * `GET /api/v1/reports/transfers-summary` (F18-08, `inventory.view`). Tenant-wide (matches
+ * `GET /inventory/transfers`'s real scope). **No `from`/`to`** — a live snapshot of current
+ * open-transfer state, not a period query. `groupBy` = `status` (default) | `destination` | `variant`.
+ */
+export async function getTransfersSummary(
+  query: { groupBy?: TransfersSummaryGroupBy } = {},
+): Promise<TransfersSummary> {
+  const params: Record<string, string> = {};
+  if (query.groupBy) {
+    params['groupBy'] = query.groupBy;
+  }
+  return serverApiFetch<TransfersSummary>('/api/v1/reports/transfers-summary', { query: params });
 }

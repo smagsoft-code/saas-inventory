@@ -70,7 +70,7 @@ Legend: **A/B/C** = support state of that specific piece (see [README](README.md
 | --- | --- | --- |
 | Primary | `GET /inventory/balances`: `quantityPhysical/Reserved/Committed/Available`, `productVariantId`, `locationId` | A (numbers) |
 | **Producto / SKU / Almacén / Ubicación columns** | names | **B** — `GET /inventory/balances` returns **IDs only**, no joins |
-| **"En tránsito" column** | `TRF-INTRANSIT-QTY` per variant/location | **B** — no cross-transfer aggregate endpoint |
+| **"En tránsito" column** | `TRF-INTRANSIT-QTY` per variant/location | **A** (F18-08) — `GET /reports/transfers-summary?groupBy=variant` aggregates it across transfers; the per-*balance-row* column on the raw list still needs `GAP-NAME-ENRICHMENT` |
 | **"Estado" (En stock / Stock bajo / Agotado) badge** | derived | **B** ("agotado" = available 0, needs the row) / **C** ("stock bajo" — no threshold) |
 | Tabs (Todo / Stock bajo / Agotado / En tránsito) | — | **Stock bajo tab = C**; Agotado / En tránsito = **B** |
 | KPIs | `KPI-INV-ONHAND` (B), `KPI-INV-OOS-SKUS` (B) | B |
@@ -88,11 +88,11 @@ Legend: **A/B/C** = support state of that specific piece (see [README](README.md
 | **Ruta (origen → destino) as names** | — | **B** — location IDs only, no join |
 | **"Ítems" count** | length of `items[]` in the detail | A (detail) / B (on the list — list row shape unconfirmed to include items) |
 | Contextual row action | next transition per state (draft→Aprobar, approved→Preparar, preparing→Despachar, dispatched/partially_received→Recibir) | A — maps 1:1 to command routes |
-| KPIs | `KPI-OPS-TRANSFERS-OPEN` (B), `KPI-OPS-TRANSFERS-TO-RECEIVE` (B), `TRF-COUNT-STATUS` (A per status) | A/B |
-| Report | `REP-INV-TRANSFERS`; drill → transfer detail (items, receipts, `incident_type`) | A / B |
-| Filters | status, sourceLocationId, destinationLocationId (**exist**) | A |
-| Sort / grouping | none exposed | C |
-| Scope / permission | tenant, location-aware; `inventory.view` (see), `inventory.transfers.*` (act) | — |
+| KPIs | `KPI-OPS-TRANSFERS-OPEN` / `KPI-OPS-TRANSFERS-TO-RECEIVE` / `KPI-INV-INTRANSIT` — `GET /reports/transfers-summary` (F18-08), integrated as a "Transfer report" section on `/inventory/transfers` | **A** (F18-08) |
+| Report | `REP-INV-TRANSFERS` (operational list) + `REP-INV-TRANSFERS-SUMMARY` (status rollup + in-transit by destination/variant, F18-08); drill → transfer detail (items, receipts, `incident_type`) | A |
+| Filters | list: status, sourceLocationId, destinationLocationId (**exist**); report: `groupBy` (`status`/`destination`/`variant`), no date range — live snapshot | A |
+| Sort / grouping | list: none exposed (C); report: `groupBy` axes above (A) | A/C |
+| Scope / permission | tenant (reads not location-scoped); `inventory.view` (see + report), `inventory.transfers.*` (act) | — |
 
 ## Nueva venta / Carrito — `NewSaleDesktop`, `NewSaleTablet`, `NewSaleMobile`
 

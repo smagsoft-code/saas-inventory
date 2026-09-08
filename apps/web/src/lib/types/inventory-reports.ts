@@ -86,3 +86,69 @@ export interface MovementsSummary {
   groupBy: MovementsSummaryGroupBy;
   buckets: MovementsSummaryBucket[];
 }
+
+/**
+ * F18-08 ("Transfer analytics") — mirrors `GET /api/v1/reports/transfers-summary`'s real response
+ * shape (`apps/api/src/reports/transfers/dto/transfers-summary-response.dto.ts`). A live snapshot of
+ * current open-transfer state — **no `from`/`to`** (like `inventory-summary`, unlike `movements-summary`);
+ * `generatedAt` is an honest "as of now" marker. No monetary field (a transfer has no value).
+ *
+ * - `status` bucket — one per real `inventory_transfers.status` present, `{ key, transferCount }`
+ *   (resolves `TRF-OPEN-COUNT` / `TRF-INTRANSIT-COUNT` — "5 calls or one aggregate").
+ * - `destination` / `variant` bucket — in-transit stock (`Σ (dispatched − received)` over
+ *   `dispatched`/`partially_received` transfers), name-resolved server-side (`TRF-INTRANSIT-QTY` /
+ *   `KPI-INV-INTRANSIT` / `REP-INV-INTRANSIT`).
+ *
+ * Not covered by this endpoint: transfer cycle time (`GAP-TRANSFER-CYCLE-TIME` — no defined
+ * aggregation grain / period anchor) and receiving incidents (`inventory_transfer_receipt_items` is
+ * exposed by no endpoint).
+ */
+export const TRANSFERS_SUMMARY_GROUP_BY = ['status', 'destination', 'variant'] as const;
+export type TransfersSummaryGroupBy = (typeof TRANSFERS_SUMMARY_GROUP_BY)[number];
+
+export const TRANSFERS_SUMMARY_GROUP_BY_LABELS: Record<TransfersSummaryGroupBy, string> = {
+  status: 'Status',
+  destination: 'Destination',
+  variant: 'Product',
+};
+
+export interface TransfersStatusBucket {
+  key: string;
+  transferCount: number;
+}
+
+export interface TransfersDestinationBucket {
+  key: string;
+  destinationName: string;
+  inTransitQuantity: number;
+  openTransferCount: number;
+}
+
+export interface TransfersVariantBucket {
+  key: string;
+  sku: string;
+  productName: string;
+  inTransitQuantity: number;
+}
+
+export type TransfersSummaryBucket = TransfersStatusBucket | TransfersDestinationBucket | TransfersVariantBucket;
+
+export interface TransfersSummaryTotals {
+  inTransitQuantity: number;
+  openTransferCount: number;
+}
+
+export interface TransfersSummary {
+  generatedAt: string;
+  groupBy: TransfersSummaryGroupBy;
+  totals: TransfersSummaryTotals;
+  buckets: TransfersSummaryBucket[];
+}
+
+export function isTransferStatusBucket(b: TransfersSummaryBucket): b is TransfersStatusBucket {
+  return 'transferCount' in b;
+}
+
+export function isTransferVariantBucket(b: TransfersSummaryBucket): b is TransfersVariantBucket {
+  return 'sku' in b;
+}

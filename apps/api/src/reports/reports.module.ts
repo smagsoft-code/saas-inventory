@@ -15,6 +15,9 @@ import { ReturnsReportService } from './returns/returns-report.service';
 import { SalesReportController } from './sales/sales-report.controller';
 import { SalesReportRepository } from './sales/sales-report.repository';
 import { SalesReportService } from './sales/sales-report.service';
+import { TransfersReportController } from './transfers/transfers-report.controller';
+import { TransfersReportRepository } from './transfers/transfers-report.repository';
+import { TransfersReportService } from './transfers/transfers-report.service';
 
 /**
  * REPORTS — modules.md#reports: "read-side aggregation across CORE/CATALOG/INVENTORY/SALES ...
@@ -25,7 +28,11 @@ import { SalesReportService } from './sales/sales-report.service';
  * APPROVALS read-side (`approvals/`) — `GET /reports/approvals-summary` over `price_approvals`
  * alone, never `PriceApprovalsRepository`. F18-07 adds the MOVEMENTS read-side (`movements/`) —
  * `GET /reports/movements-summary` over `inventory_movements` alone (no join), never
- * `InventoryMovementsRepository`. `TenantSettingsRepository`
+ * `InventoryMovementsRepository`. F18-08 adds the TRANSFERS read-side (`transfers/`) —
+ * `GET /reports/transfers-summary`, a live snapshot over `inventory_transfers` /
+ * `inventory_transfer_items` (never the transactional `InventoryTransfers*`/`InventoryTransferItems*`
+ * repositories) — status rollup + in-transit stock by destination/variant; no `from`/`to` (like
+ * `inventory-summary`). `TenantSettingsRepository`
  * is reused directly as a provider (same convention `AuthModule`/`AdministrationModule` already use
  * for cross-cutting repositories) rather than importing `AdministrationModule` — no module-level
  * dependency edge either way; the inventory report does not need it (no timezone-bucketed period in
@@ -38,6 +45,7 @@ import { SalesReportService } from './sales/sales-report.service';
     ReturnsReportController,
     ApprovalsReportController,
     MovementsReportController,
+    TransfersReportController,
   ],
   providers: [
     SalesReportService,
@@ -50,6 +58,8 @@ import { SalesReportService } from './sales/sales-report.service';
     ApprovalsReportRepository,
     MovementsReportService,
     MovementsReportRepository,
+    TransfersReportService,
+    TransfersReportRepository,
     TenantSettingsRepository,
   ],
 })

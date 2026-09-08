@@ -34,8 +34,8 @@ endpoint). F17's Home is the attention list + quick actions below.
 | --- | --- | --- | --- | --- |
 | Pending price approvals | `KPI-OPS-APPROVALS-PENDING` | **A** | *(none on the GET)* | → `REP-SALES-APPROVALS?status=pending` |
 | Returns to process | `KPI-OPS-RETURNS-PENDING` | **B** (2 calls) | `sales.returns.view` | → `REP-RET-LIST?status=requested` |
-| Transfers awaiting receipt | `KPI-OPS-TRANSFERS-TO-RECEIVE` | **B** (2 calls) | `inventory.view` | → `REP-INV-TRANSFERS?status=dispatched` |
-| Open transfers | `KPI-OPS-TRANSFERS-OPEN` | **B** | `inventory.view` | → `REP-INV-TRANSFERS` |
+| Transfers awaiting receipt | `KPI-OPS-TRANSFERS-TO-RECEIVE` | **A** (F18-08 — `GET /reports/transfers-summary` `totals.openTransferCount`) | `inventory.view` | → `REP-INV-TRANSFERS?status=dispatched` |
+| Open transfers | `KPI-OPS-TRANSFERS-OPEN` | **A** (F18-08 — `?groupBy=status`, sum the open buckets) | `inventory.view` | → `REP-INV-TRANSFERS` |
 | Imports needing attention | `KPI-OPS-IMPORTS-ATTENTION` | **A** (2 calls) | `import.execute` | → `REP-IMP-JOBS?status=failed` |
 | Imports running | `KPI-OPS-IMPORTS-RUNNING` | **B** | `import.execute` | → `REP-IMP-JOBS` |
 | Orders today | `KPI-SALES-ORDERS` (status=confirmed, today) | **A** | `sales.orders.view` | → `REP-SALES-ORDERS?createdFrom=today` |

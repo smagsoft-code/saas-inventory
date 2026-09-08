@@ -14,12 +14,12 @@
 | 4 | Home · Orders today | `KPI-SALES-ORDERS` | `REP-SALES-ORDERS` | `SalesHistoryDesktop` | Order → `REP-SALES-ORDER-DETAIL` | **A** | `sales.orders.view` |
 | 5 | Home · Order status mix (period) | `KPI-SALES-CONFIRM-RATE` | `REP-SALES-ORDERS` | `SalesHistoryDesktop` | Order list filtered by status | **A** | `sales.orders.view` |
 | 6 | Home · Returns to process | `KPI-OPS-RETURNS-PENDING` | `REP-RET-LIST` | `ReturnsDesktop` | Return → `REP-RET-DETAIL` → order | **B** | `sales.returns.view` |
-| 7 | Home · Transfers awaiting receipt | `KPI-OPS-TRANSFERS-TO-RECEIVE` | `REP-INV-TRANSFERS` | `TransfersDesktop/Tablet/Mobile` | Transfer detail (items, receipts) | **B** | `inventory.view` (see) / `inventory.transfers.receive` (act) |
-| 8 | Home · Open transfers | `KPI-OPS-TRANSFERS-OPEN` | `REP-INV-TRANSFERS` | `TransfersDesktop` | Transfer detail | **B** | `inventory.view` |
+| 7 | Home · Transfers awaiting receipt | `KPI-OPS-TRANSFERS-TO-RECEIVE` | `REP-INV-TRANSFERS-SUMMARY` | `TransfersDesktop/Tablet/Mobile` | Transfer detail (items, receipts) | **A** (F18-08) | `inventory.view` (see) / `inventory.transfers.receive` (act) |
+| 8 | Home · Open transfers | `KPI-OPS-TRANSFERS-OPEN` | `REP-INV-TRANSFERS-SUMMARY` | `TransfersDesktop` | Transfer detail | **A** (F18-08) | `inventory.view` |
 | 9 | Home · Draft products | `CAT-DRAFT-PRODUCTS` | `REP-CAT-PRODUCTS` | `ProductsDesktop/Tablet/Mobile` | Product → `ProductForm` | **A** | `products.view` |
 | 10 | Home · Out-of-stock SKUs | `KPI-INV-OOS-SKUS` | `REP-INV-STOCK` | `InventoryDesktop/Tablet/Mobile` | Balance → `REP-INV-KARDEX` | **B** | `inventory.view` |
 | 11 | Inventory · Stock on hand | `KPI-INV-ONHAND` | `REP-INV-STOCK` | `InventoryDesktop/Tablet/Mobile` | Row → kardex / adjust drawer | **B** | `inventory.view` |
-| 12 | Inventory · Units in transit | `KPI-INV-INTRANSIT` | `REP-INV-INTRANSIT` | `InventoryDesktop` (column) / `TransfersDesktop` | Transfer detail | **B** | `inventory.view` |
+| 12 | Inventory · Units in transit | `KPI-INV-INTRANSIT` | `REP-INV-INTRANSIT` / `REP-INV-TRANSFERS-SUMMARY` | `InventoryDesktop` (column) / `TransfersDesktop` | Transfer detail | **A** (F18-08) | `inventory.view` |
 | 13 | Inventory · Movement history | `KPI-INV-MOVEMENTS` | `REP-INV-MOVEMENTS` / `REP-INV-KARDEX` / `REP-INV-MOV-SUMMARY` | `InventoryDesktop` (Movimientos) | Reference → source doc | **A** (list + F18-07 aggregate) | `inventory.view` |
 | 14 | Inventory · Adjustments audit | — | `REP-INV-ADJUSTMENTS` / `REP-INV-MOV-SUMMARY?groupBy=type` | `InventoryDesktop` | Movement detail | **A** (list + F18-07 aggregate) | `inventory.view` |
 | 15 | Catalog · Product catalogue | `CAT-PRODUCT-COUNT` | `REP-CAT-PRODUCTS` | `ProductsDesktop/Tablet/Mobile` | Product → variants → stock | **A** | `products.view` |
@@ -59,5 +59,6 @@
 | Serial/lot traceability | `GAP-SERIAL-LOT-READ` | after the deferred serial/lot sale design |
 | Per-tenant platform metrics | `GAP-PLATFORM-AGGREGATE` | FASE 18+ (audited cross-tenant read path) |
 | Movements by period / kardex date range | `GAP-MOVEMENTS-DATE-FILTER` | FASE 17 (small filter add) or FASE 18 |
-| Multi-status count filters (open transfers, pending returns, running imports) | `GAP-MULTI-STATUS` | FASE 17 (cheap `status` array) or FASE 18 |
+| Multi-status count filters (pending returns, running imports) | `GAP-MULTI-STATUS` | FASE 17 (cheap `status` array) or FASE 18 — the *transfer* status rollup is resolved by `GAP-TRANSFER-AGGREGATE` (F18-08) |
+| Transfer cycle-time aggregation | `GAP-TRANSFER-CYCLE-TIME` | FASE 18 — needs a metric definition (aggregation fn + period anchor), not just a query |
 | New customers by period | `GAP-CUSTOMER-DATE-FILTER` | FASE 18 |

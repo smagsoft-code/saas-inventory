@@ -21,7 +21,7 @@ FASE 18 snapshot/rollup exists.
 | ID | Name | Business question | Metric(s) | Formula | Period | Comparison | Filters | Scope | Permission | State |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `KPI-INV-ONHAND` | Stock on hand | *How much stock do I have right now?* | `INV-AVAILABLE`, `INV-PHYSICAL` | `Σ quantity_available` (and `Σ physical`) over the balance rows in scope | point-in-time | **C** (no history) | warehouse, location, category, variant | tenant / location | `inventory.view` | **B** — rows exist, no server-side Σ, no warehouse filter, no name join |
-| `KPI-INV-INTRANSIT` | Units in transit | *How much stock is moving between locations?* | `TRF-INTRANSIT-QTY` | `Σ (dispatched − received)` over items of transfers in `dispatched`/`partially_received` | point-in-time | **C** | destination, variant | tenant / location | `inventory.view` | **B** — only per-transfer today; no cross-transfer aggregate |
+| `KPI-INV-INTRANSIT` | Units in transit | *How much stock is moving between locations?* | `TRF-INTRANSIT-QTY` | `Σ (dispatched − received)` over items of transfers in `dispatched`/`partially_received` | point-in-time | **C** (no history) | destination, variant | tenant | `inventory.view` | **A** — F18-08, `GET /reports/transfers-summary` (`totals.inTransitQuantity`; `groupBy=destination\|variant` for the breakdown); real server-side `SUM(dispatched − received)` over `inventory_transfer_items`. Was **B** |
 | `KPI-INV-OOS-SKUS` | Out-of-stock SKUs | *How many products can I not sell?* | `INV-OUT-OF-STOCK-SKUS` | `count(variants where Σ available = 0)` | point-in-time | **C** | category, warehouse | tenant / location | `inventory.view` | **B** — needs grouped read + zero-row handling |
 | `KPI-INV-LOW-STOCK` | Low-stock alerts | *What do I need to reorder?* | — | *(would need a reorder threshold)* | — | — | — | — | `inventory.view` | **C** — **no reorder-point / min / par-level field exists**. Cannot be defined without inventing a threshold. → [data-gaps.md](data-gaps.md#gap-reorder) |
 | `KPI-INV-MOVEMENTS` | Movements in the period | *How much inventory activity happened?* | `MOV-COUNT`, `MOV-QTY-BY-TYPE` | `count` / `Σ quantity` by type, in range | day / week / month / custom | **C** | type, location, variant | tenant | `inventory.view` | **A** — F18-07, `GET /reports/movements-summary` (`groupBy=day\|week\|month\|type`, `[from,to)` on `occurred_at`, `movementType`/`locationId`/`productVariantId` filters); real server-side `COUNT` + signed `SUM(quantity)`. The date-range half was F18-03. Was **B** |
@@ -47,8 +47,8 @@ FASE 18 snapshot/rollup exists.
 | `KPI-OPS-APPROVALS-PENDING` | Pending price approvals | *What is waiting for my approval?* | `APPR-PENDING-COUNT` | `count(price_approvals where status='pending')` | point-in-time | n/a | orderId | tenant | *(GET has no permission declared — see [metrics.md](metrics.md#5-sales--price-approvals))* | **A** — dedicated partial index; `meta.total` |
 | `KPI-OPS-APPROVALS-AGE` | Oldest pending approval | *How stale is the queue?* | `APPR-AGE` | `max(now − requested_at)` over pending | point-in-time | n/a | — | tenant | *(as above)* | **B** — per-row `requested_at` available; no server aggregate |
 | `KPI-OPS-RETURNS-PENDING` | Returns to process | *What returns need handling?* | `RET-PENDING-COUNT` | `count(sales_returns where status IN ('requested','inspecting'))` | point-in-time | n/a | — | tenant | `sales.returns.view` | **B** — two calls (`requested`, `inspecting`); or one aggregate |
-| `KPI-OPS-TRANSFERS-OPEN` | Open transfers | *What transfers are in flight?* | `TRF-OPEN-COUNT` | `count(transfers where status NOT IN ('received','cancelled'))` | point-in-time | n/a | source, destination | tenant / location | `inventory.view` | **B** — filter takes one status; "open" = 5 calls or an aggregate |
-| `KPI-OPS-TRANSFERS-TO-RECEIVE` | Transfers awaiting receipt | *What is arriving at my location?* | `TRF-INTRANSIT-COUNT` | `count(transfers where status IN ('dispatched','partially_received'))` | point-in-time | n/a | destination | tenant / location | `inventory.transfers.receive` (to act) / `inventory.view` (to see) | **B** — two calls |
+| `KPI-OPS-TRANSFERS-OPEN` | Open transfers | *What transfers are in flight?* | `TRF-OPEN-COUNT` | `count(transfers where status NOT IN ('received','cancelled'))` | point-in-time | n/a | — | tenant | `inventory.view` | **A** — F18-08, `GET /reports/transfers-summary?groupBy=status` (sum the non-`received`/`cancelled` buckets). Was **B** |
+| `KPI-OPS-TRANSFERS-TO-RECEIVE` | Transfers awaiting receipt | *What is arriving at my location?* | `TRF-INTRANSIT-COUNT` | `count(transfers where status IN ('dispatched','partially_received'))` | point-in-time | n/a | — | tenant | `inventory.transfers.receive` (to act) / `inventory.view` (to see) | **A** — F18-08, `GET /reports/transfers-summary` `totals.openTransferCount`. Was **B** (two calls). The report is tenant-wide, not per-destination-location-scoped; `groupBy=destination` gives the per-arrival-point breakdown |
 | `KPI-OPS-IMPORTS-ATTENTION` | Imports needing attention | *Did any import fail?* | `IMP-JOBS-STATUS` | `count` where `status IN ('completed_with_errors','failed')` | point-in-time | n/a | — | tenant | `import.execute` | **A** — two `meta.total` calls |
 | `KPI-OPS-IMPORTS-RUNNING` | Imports in progress | *Is anything still processing?* | `IMP-JOBS-PENDING` | `count` where `status IN ('validating','importing', …)` | point-in-time | n/a | — | tenant | `import.execute` | **B** — multi-status |
 
@@ -90,6 +90,13 @@ Compute correctly against the real backend **now**, with no new endpoint:
 - `KPI-SALES-REVENUE` — Σ total, tenant-timezone-aware day/week/month/customer grouping.
 - `KPI-SALES-AVG-TICKET` — total ÷ orderCount per bucket.
 - `KPI-SALES-TOP-PRODUCTS` — Σ line_total by variant, server-ranked descending.
+
+**Added by F18-08** (`GET /reports/transfers-summary`, live snapshot — no period):
+
+- `KPI-INV-INTRANSIT` — Σ (dispatched − received) over open transfers, tenant-wide, with a
+  by-destination / by-variant breakdown.
+- `KPI-OPS-TRANSFERS-OPEN` / `KPI-OPS-TRANSFERS-TO-RECEIVE` — one call for the whole status rollup
+  (was 2-5 calls).
 
 Everything else is **B** (needs a FASE 18 aggregate / a filter / a join) or **C** (needs a schema
 or contract change first — see [data-gaps.md](data-gaps.md)).

@@ -71,3 +71,27 @@ backend + DB + ADRs (audited)  ───────────┘             
 REPORTS bounded context ("read-side aggregation across CORE/CATALOG/INVENTORY/SALES … read-optimized
 queries … must not reuse the transactional write-path repositories"). 017-A does not change the
 roadmap; it fills in what FASE 18 (and the operational slice of FASE 17) will be built against.
+
+## FASE 18 — conceptual plan vs execution (reconciliation)
+
+FASE 18 was planned as ten conceptual blocks. Execution proceeded per **the definition and data
+actually available** for each block, so the commit numbering drifted from the conceptual numbering.
+The conceptual sequence is kept here as the reference; the commit history is the record of what was
+actually built. **Git history is never rewritten to match** — this table is the reconciliation.
+
+| Conceptual | Block | Built as | Commit | Endpoint |
+| --- | --- | --- | --- | --- |
+| F18-01 | Reporting foundations | F18-01 | `c79d93a` | (`ReportDateRangeQueryDto`, timezone, permission rule) |
+| F18-02 | Inventory dashboard / aggregate | F18-02 | `d9a6516` | `GET /reports/sales-summary` |
+| F18-03 | Movement analytics | F18-03 | `66df550` | `GET /reports/inventory-summary` + `GET /inventory/movements` date filter |
+| **F18-04** | **Transfer analytics** | **F18-08** | *(this phase)* | **`GET /reports/transfers-summary`** |
+| F18-05 | Sales analytics | F18-02 (+ F18-06) | `d9a6516` / `e75538a` | `GET /reports/sales-summary` (+ `exceptional` filter) |
+| F18-06 | Customer analytics | F18-02 | `d9a6516` | `GET /reports/sales-summary?groupBy=customer` |
+| F18-07 | Approvals analytics | F18-05 | `d6812af` | `GET /reports/approvals-summary` |
+| F18-08 | Returns analytics | F18-04 | `38ca0b5` | `GET /reports/returns-summary` |
+| F18-09 | Imports analytics | *not yet built* | — | — |
+| F18-10 | Super-Admin platform metrics | *not yet built* | — | — |
+
+Movement analytics also has a dedicated aggregate (`GET /reports/movements-summary`, F18-07,
+commit `e640405`) beyond the F18-03 date filter. The conceptual "F18-04 Transfer analytics" slot is
+what this phase (commit *feat(reporting): implement transfer analytics*) delivers.

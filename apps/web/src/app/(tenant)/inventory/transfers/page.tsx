@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
+import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
 import { listTransfers } from '../../../../lib/inventory/transfers';
+import { getTransfersSummary } from '../../../../lib/inventory/reports';
 import { buildLocationIndex, shortId } from '../../../../lib/inventory/location-index';
 import {
   TRANSFER_STATUSES,
@@ -10,6 +12,13 @@ import {
   type Transfer,
   type TransferStatus,
 } from '../../../../lib/types/inventory';
+import {
+  TRANSFERS_SUMMARY_GROUP_BY,
+  type TransfersSummary,
+  type TransfersSummaryGroupBy,
+} from '../../../../lib/types/inventory-reports';
+import { TransfersReportFilters } from './transfers-report-filters';
+import { TransfersReportError, TransfersReportSection } from './transfers-report-section';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { ButtonLink } from '../../../../components/ui/button';
@@ -27,6 +36,12 @@ function parseStatus(value: string | undefined): TransferStatus | undefined {
   return (TRANSFER_STATUSES as readonly string[]).includes(value ?? '') ? (value as TransferStatus) : undefined;
 }
 
+function pickReportGroupBy(value: string | undefined): TransfersSummaryGroupBy {
+  return (TRANSFERS_SUMMARY_GROUP_BY as readonly string[]).includes(value ?? '')
+    ? (value as TransfersSummaryGroupBy)
+    : 'status';
+}
+
 /**
  * Transfers list (`S-INV-TRANSFERS`) — `GET /api/v1/inventory/transfers` (`inventory.view`), offset
  * paginated. Real filters only: a single `status` (`GAP-MULTI-STATUS`), `sourceLocationId`,
@@ -37,7 +52,13 @@ function parseStatus(value: string | undefined): TransferStatus | undefined {
 export default async function TransfersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; status?: string; sourceLocationId?: string; destinationLocationId?: string }>;
+  searchParams: Promise<{
+    page?: string;
+    status?: string;
+    sourceLocationId?: string;
+    destinationLocationId?: string;
+    reportGroupBy?: string;
+  }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
   const checker = createPermissionChecker(session?.permissions ?? []);
@@ -56,6 +77,21 @@ export default async function TransfersPage({
   const status = parseStatus(sp.status);
   const sourceLocationId = sp.sourceLocationId || undefined;
   const destinationLocationId = sp.destinationLocationId || undefined;
+
+  // F18-08 transfer analytics — a separate section, its own `reportGroupBy` param, independent of
+  // the operational list's status/location chips below. Live snapshot: no date range.
+  const reportGroupBy = pickReportGroupBy(sp.reportGroupBy);
+  let transfersSummary: TransfersSummary | undefined;
+  let summaryError: { status: number; message: string; correlationId: string | undefined } | undefined;
+  try {
+    transfersSummary = await getTransfersSummary({ groupBy: reportGroupBy });
+  } catch (error) {
+    summaryError = {
+      status: isApiError(error) ? error.status : 0,
+      message: httpErrorMessage(error),
+      correlationId: isApiError(error) ? error.correlationId : undefined,
+    };
+  }
 
   const [result, index] = await Promise.all([
     listTransfers({
@@ -82,6 +118,9 @@ export default async function TransfersPage({
     if (nextStatus) params.set('status', nextStatus);
     if (nextSource) params.set('sourceLocationId', nextSource);
     if (nextDest) params.set('destinationLocationId', nextDest);
+    // Carry the report section's own param forward — filtering / paginating the list must not
+    // silently reset the report back to its default grouping (mirrors /inventory, F18-03).
+    if (sp.reportGroupBy) params.set('reportGroupBy', sp.reportGroupBy);
     if (next.page && next.page > 1) params.set('page', String(next.page));
     return `/inventory/transfers${params.toString() ? `?${params}` : ''}`;
   }
@@ -100,6 +139,28 @@ export default async function TransfersPage({
         description="Move stock between locations: request, approve, prepare, dispatch and receive."
         actions={canRequest ? <ButtonLink href="/inventory/transfers/new">New transfer</ButtonLink> : undefined}
       />
+
+      <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
+        <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
+          Transfer report
+        </h2>
+        <TransfersReportFilters initial={{ groupBy: reportGroupBy }} />
+        {transfersSummary ? (
+          <TransfersReportSection summary={transfersSummary} />
+        ) : (
+          summaryError && (
+            <TransfersReportError
+              status={summaryError.status}
+              message={summaryError.message}
+              correlationId={summaryError.correlationId}
+            />
+          )
+        )}
+      </section>
+
+      <hr className="border-slate-200" />
+
+      <h2 className="text-sm font-semibold text-slate-900">Transfer list</h2>
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">

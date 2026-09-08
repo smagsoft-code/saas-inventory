@@ -346,6 +346,19 @@ not needed yet at current scale.
   `KPI-INV-MOVEMENTS` / `MOV-QTY-BY-TYPE` / `MOV-RECEIPTS-PERIOD` / `MOV-ADJUSTMENTS-PERIOD` (Σ) —
   all **B → A** — and registers the new `GAP-MOV-AGGREGATE`. Never `InventoryMovementsRepository`.
   See [reporting/reports.md#rep-inv-mov-summary--movements-summary](../reporting/reports.md#rep-inv-mov-summary--movements-summary).
+- **`transfers/` (F18-08 — "Transfer analytics"):** `GET /reports/transfers-summary`
+  (`inventory.view`, tenant-wide) — `groupBy=status|destination|variant`, a **live snapshot** (no
+  `from`/`to`, like `inventory-summary`). `status` = `COUNT(*)` over `inventory_transfers` alone
+  (exact, no fan-out); `destination`/`variant` = `Σ (quantity_dispatched − quantity_received)` over
+  `inventory_transfer_items` of `dispatched`/`partially_received` transfers, joined 1:1 to the
+  parent header for the status filter + destination and to `locations`/`product_variants`+`products`
+  for names, `COUNT(DISTINCT transfer id)` for the per-destination open count. `groupBy`-independent
+  `totals: { inTransitQuantity, openTransferCount }`. Deliberately **not** sourced from
+  `inventory_movements` `TRANSFER_OUT`/`TRANSFER_IN` (those are the ledger side-effects, not the
+  transfer's state). Resolves `TRF-OPEN-COUNT`/`TRF-INTRANSIT-COUNT`/`TRF-INTRANSIT-QTY` +
+  `KPI-INV-INTRANSIT` (**B → A**), registers `GAP-TRANSFER-AGGREGATE` + the still-open
+  `GAP-TRANSFER-CYCLE-TIME`. Never `InventoryTransfersRepository`/`InventoryTransferItemsRepository`.
+  See [reporting/reports.md#rep-inv-transfers-summary--transfer-analytics](../reporting/reports.md#rep-inv-transfers-summary--transfer-analytics).
 
 The APPROVALS report reuses `pricing.discount.approve` rather than a `*.view` code (there is none
 for `price_approvals`) — it is the exact permission `metrics.md`'s `APPR-RATE` /
