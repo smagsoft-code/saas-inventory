@@ -51,12 +51,22 @@ Every failure path returns the same [error envelope](#errors); no route bypasses
 except explicitly public routes (health check, login, the QR public resolver).
 
 **SuperAdmin routes** (FASE 11, `@PlatformOnly()` — `apps/api/src/administration/platform-tenants/`,
-`apps/api/src/auth/platform-auth.controller.ts`) take a third path through the Tenant Guard,
-distinct from both the ordinary flow above and `@Public()`: they require a verified
-`platform_admins` principal (a structurally separate token — see
-[ADR-0032](../decisions/0032-platform-admin-authentication.md)) but never resolve a tenant context
-or reach the Permission Guard's tenant-RBAC check — there is no tenant permission catalog entry for
-these routes, by design ([multi-tenancy.md#superadmin-vs-tenant](multi-tenancy.md#superadmin-vs-tenant)).
+`apps/api/src/administration/platform-summary/` (F18-10), `apps/api/src/auth/platform-auth.controller.ts`)
+take a third path through the Tenant Guard, distinct from both the ordinary flow above and
+`@Public()`: they require a verified `platform_admins` principal (a structurally separate token —
+see [ADR-0032](../decisions/0032-platform-admin-authentication.md)) but never resolve a tenant
+context or reach the Permission Guard's tenant-RBAC check — there is no tenant permission catalog
+entry for these routes, by design ([multi-tenancy.md#superadmin-vs-tenant](multi-tenancy.md#superadmin-vs-tenant)).
+
+`GET /platform/summary` (F18-10 — "Super-Admin Platform Metrics", the last FASE 18 block) is a
+read-only aggregate over the platform-scoped `tenants` table **alone**: `{ generatedAt, totalCount,
+byStatus: { active, suspended, archived }, demoCount, period }`. `from`/`to` are optional but
+**both-or-neither** (400 on a half period) — a half-open `[from, to)` window on `tenants.created_at`
+for `period.newInPeriod` (`null` when the pair is absent). **No timezone / `groupBy`** — a platform
+metric spans every tenant, so there is no single tenant timezone (F18-01's timezone semantics are
+tenant-scoped); `from`/`to` are UTC instants supplied by the caller. Numeric aggregates only — never
+an individual tenant's fields, never any tenant-scoped data (that is `GAP-PLATFORM-AGGREGATE`,
+blocked), never a billing figure (`GAP-SA-BILLING` — no billing model exists).
 
 ## Errors
 

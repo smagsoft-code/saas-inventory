@@ -106,22 +106,30 @@ any tile needing it is C.
 
 | Tile | Metric | State | Source |
 | --- | --- | --- | --- |
-| Total companies | `KPI-PLAT-TENANTS` | **A** | `GET /platform/tenants` (array length) |
-| Active / suspended / archived | `KPI-PLAT-TENANTS-STATUS` | **A** | group the array by `status` |
-| Demo tenants | `PLAT-DEMO-COUNT` | **A** | `is_demo` on the array |
-| New companies this month | `KPI-PLAT-TENANTS-NEW` | **B** | `created_at` on the array, client-side (no filter) |
-| **Users / activity per tenant** | `KPI-PLAT-ACTIVITY` | **C** | *(not drawn — no cross-tenant aggregate; would violate isolation if done naively)* |
-| **MRR / plan / churn** | `KPI-PLAT-BILLING` | **C** | *(not drawn — no billing model)* |
+| Total companies | `KPI-PLAT-TENANTS` | **A** | `GET /platform/summary` `totalCount` (F18-10) |
+| Active / suspended / archived | `KPI-PLAT-TENANTS-STATUS` | **A** | `GET /platform/summary` `byStatus` (F18-10) |
+| Demo tenants | `PLAT-DEMO-COUNT` | **A** | `GET /platform/summary` `demoCount` (F18-10) |
+| New companies this month | `KPI-PLAT-TENANTS-NEW` | **A** (F18-10) | `GET /platform/summary?from&to` `period.newInPeriod` — server-side `COUNT(*)` on `[from, to)` over `created_at` (UTC — no tenant timezone at platform scope). Was **B** |
+| **Users / activity per tenant** | `KPI-PLAT-ACTIVITY` | **C** | *(not drawn — `GAP-PLATFORM-AGGREGATE`: a cross-tenant aggregate over tenant-scoped tables needs an ADR + a dedicated audited read path)* |
+| **MRR / plan / churn** | `KPI-PLAT-BILLING` | **C** | *(not drawn — `GAP-SA-BILLING`: no billing/plan/subscription model exists)* |
 
 ### Actions
 
 List companies · open a company · **suspend** · **activate** (all already exist and audited).
 
-### FASE 18+ note
+### Built — F18-10
 
-Real platform metrics (per-tenant user counts, activity, health, billing) require an **explicit,
-audited, SuperAdmin-scoped cross-tenant aggregate path** (multi-tenancy.md#administrative--cross-tenant-queries)
-and, for billing, a subscription/plan model that does not exist. Not in F17, not in 017-A.
+`GET /platform/summary` (`@PlatformOnly()`) delivers the four `tenants`-only tiles above,
+server-side, from one call — a KPI-tile row on the `(superadmin)/platform` home. It touches **only
+the `tenants` table**: numeric counts, never an individual tenant's fields, never tenant-scoped
+data.
+
+### Still deferred (needs an ADR + new architecture)
+
+Real per-tenant metrics (user counts, activity, health, storage) require an **explicit, audited,
+SuperAdmin-scoped cross-tenant aggregate path** over tenant-scoped tables
+(multi-tenancy.md#administrative--cross-tenant-queries) — `GAP-PLATFORM-AGGREGATE`. Billing (MRR /
+plans / churn) requires a subscription/plan model that does not exist — `GAP-SA-BILLING`.
 
 ---
 
@@ -132,4 +140,4 @@ and, for billing, a subscription/plan model that does not exist. Not in F17, not
 | Operational Home | Partially — attention queues yes, money/trend no | multi-status count filters (B→A), `KPI-INV-OOS-SKUS` read, `NOTIF-ORDER-STATUS` read |
 | Executive | No | FASE 18 sales-summary read-side + snapshot job |
 | Analytical | No | FASE 18 read-side + historical snapshots + costing method |
-| SuperAdmin | Yes (minimal) | none for the minimal set; cross-tenant aggregate + billing model for more |
+| SuperAdmin | Yes (minimal) — **built, F18-10** (`GET /platform/summary`, `tenants`-only) | cross-tenant aggregate (`GAP-PLATFORM-AGGREGATE`) + billing model (`GAP-SA-BILLING`) for more |

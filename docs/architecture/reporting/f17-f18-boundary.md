@@ -70,7 +70,7 @@ aggregate endpoint.
 | **Audit / activity reporting** | who-changed-what dashboards | `GAP-AUDIT-READ` |
 | **Serial / lot traceability** | unit history, expiry dashboards | `GAP-SERIAL-LOT-READ` |
 | **Price history** | price-change timeline per variant | `GAP-PRICE-HISTORY-READ` |
-| **Platform analytics** | per-tenant usage, activity, health, billing | `GAP-PLATFORM-AGGREGATE`, billing model |
+| **Platform analytics** | company count / status / demo / new-in-period — **built, F18-10** (`GET /platform/summary`, `@PlatformOnly()`, `tenants` table only, KPI-tile row on `(superadmin)/platform`); per-tenant usage / activity / health / billing still blocked | `GAP-PLATFORM-AGGREGATE` (tenant-data part), `GAP-SA-BILLING` (no billing model) |
 
 ### F18 architectural constraints (from modules.md / roadmap)
 

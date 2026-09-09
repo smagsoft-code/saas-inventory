@@ -4,13 +4,29 @@ import { PageContainer } from '../../../components/ui/page-container';
 import { PageHeader } from '../../../components/ui/page-header';
 import { Card, CardBody } from '../../../components/ui/card';
 import { getPlatformSession } from '../../../lib/auth/platform-session';
+import { httpErrorMessage } from '../../../lib/api/errors';
+import { getPlatformSummary } from '../../../lib/platform/summary';
+import type { PlatformSummary } from '../../../lib/types/platform-summary';
+import { PlatformSummaryError, PlatformSummarySection } from './platform-summary-section';
 
 export const metadata = { title: 'Platform · SaaS Inventory' };
 
+/** First instant of the current UTC month, and now — the `[from, to)` window for the "new
+ * companies" count. Computed in **UTC**: a platform metric spans every tenant, so there is no
+ * single tenant timezone to anchor "this month" to (F18-01's timezone semantics are tenant-scoped).
+ * The tile label says "(UTC)" so the boundary is honest. */
+function currentUtcMonthWindow(now = new Date()): { from: string; to: string; label: string } {
+  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const label = `since ${from.toLocaleDateString('en-CA', { timeZone: 'UTC' })} (UTC)`;
+  return { from: from.toISOString(), to: now.toISOString(), label };
+}
+
 /**
- * Platform-admin home. The only platform capability that exists is company lifecycle management
- * (`S-SA-TENANTS` / `S-SA-TENANT-DETAIL`, F17-13) — a platform dashboard with real metrics is
- * `GAP-PLATFORM-AGGREGATE` (future), so this page is a plain entry point, not an analytics screen.
+ * Platform-admin home. F18-10 adds the "minimal, supported" platform metrics row (dashboards.md
+ * §4) — company count / status / demo / new-this-month, every tile a `COUNT(*)` over the `tenants`
+ * table alone (`GET /platform/summary`, `@PlatformOnly()`). Real per-tenant usage / activity /
+ * billing is still `GAP-PLATFORM-AGGREGATE` / `GAP-SA-BILLING` (each needs an ADR + new
+ * architecture).
  *
  * A platform admin is not a tenant user — nothing here reads tenant-scoped data
  * (multi-tenancy.md#superadmin-vs-tenant).
@@ -21,12 +37,28 @@ export default async function PlatformHomePage(): Promise<React.JSX.Element> {
     redirect('/platform/login');
   }
 
+  const window = currentUtcMonthWindow();
+  let summary: PlatformSummary | undefined;
+  let summaryError: string | undefined;
+  try {
+    summary = await getPlatformSummary({ from: window.from, to: window.to });
+  } catch (error) {
+    summaryError = httpErrorMessage(error);
+  }
+
   return (
     <PageContainer>
       <PageHeader
         title="Platform administration"
         description={`Signed in as ${admin.fullName}.`}
       />
+
+      {summary ? (
+        <PlatformSummarySection summary={summary} newWindowLabel={window.label} />
+      ) : (
+        summaryError && <PlatformSummaryError message={summaryError} />
+      )}
+
       <Card>
         <CardBody className="flex flex-col gap-2">
           <p className="text-sm font-medium text-slate-900">Companies</p>
@@ -44,7 +76,7 @@ export default async function PlatformHomePage(): Promise<React.JSX.Element> {
         </CardBody>
       </Card>
       <p className="text-xs text-slate-400">
-        Platform metrics, company provisioning and platform-admin management are not available yet.
+        Per-tenant usage, activity and billing metrics are not available yet.
       </p>
     </PageContainer>
   );

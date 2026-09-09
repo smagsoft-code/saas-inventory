@@ -382,6 +382,11 @@ permission family exists — every other report reuses the `*.view` permission o
 reports on (F18-01, ratified in
 [reporting/filters-periods-and-scope.md#4-permission-catalogue-41-codes](../reporting/filters-periods-and-scope.md#4-permission-catalogue-41-codes)).
 
+The **platform-metrics** slice of FASE 18 (F18-10) does **not** live under `reports/` — REPORTS is
+the tenant-scoped read-side. `GET /platform/summary` is a SuperAdmin capability in the platform
+namespace, in `apps/api/src/administration/platform-summary/` alongside `platform-tenants/` — see
+the ADMINISTRATION section below.
+
 ## ADMINISTRATION
 
 **Responsibility:** tenant-level configuration (business hours, notification preferences, branding
@@ -407,10 +412,25 @@ suspend`, `POST /platform/tenants/:tenantId/activate`, `POST/GET /platform/auth/
 and [multi-tenancy.md#superadmin-vs-tenant](multi-tenancy.md#superadmin-vs-tenant) for why this is
 structurally separate from CORE's tenant self-administration (Prompt 05-A) rather than an extension
 of it. `TenantsPlatformRepository` (CORE/AUTH's existing repository) is reused as-is for the
-tenant-status mutation — no second `tenants`-table repository was introduced. Platform-level
-metrics/global configuration/"plans" — named as illustrative SuperAdmin capabilities in
-multi-tenancy.md but with no concrete architectural definition anywhere — are deliberately not
-built; see this phase's final report for the full scope-boundary rationale.
+tenant-status mutation — no second `tenants`-table repository was introduced.
+
+**F18-10** ("Super-Admin Platform Metrics", the last FASE 18 block) added the one platform-metrics
+capability grounded in existing data: `GET /platform/summary`
+(`apps/api/src/administration/platform-summary/`, `@PlatformOnly()` — ADR-0032 line 101-103 names
+this exact mechanism for "platform metrics"). A **dedicated read-side aggregate** (its own
+`PlatformSummaryRepository`, never `TenantsPlatformRepository`) over the platform-scoped `tenants`
+table **alone**, on the `app_platform` connection: `totalCount`, `byStatus` (`COUNT(*) FILTER` per
+status), `demoCount`, and an optional half-open `[from, to)` `newInPeriod` count on `created_at`
+(both `from`/`to` required together; UTC — no tenant timezone at platform scope; no `groupBy`).
+**Numeric aggregates only** — never an individual tenant's fields, never any tenant-scoped table
+(`users`/`orders`/…), never a billing figure. `metrics.md` `PLAT-TENANT-CREATED` /
+`KPI-PLAT-TENANTS-NEW` moved **B → A**. Deliberately **not** built (each blocked, its own gap):
+per-tenant usage/activity aggregation over tenant-scoped tables (`GAP-PLATFORM-AGGREGATE` — needs an
+ADR + a dedicated audited cross-tenant read path), platform billing (`GAP-SA-BILLING` — no billing/
+plan/subscription model exists), a platform audit view (`GAP-SA-AUDIT`). Common SaaS indicators
+(MRR/ARR/churn/DAU/LTV/uptime/health) have no documented definition and were not implemented (the
+"NO INVENTAR ANALYTICS" rule). See
+[reporting/reports.md#rep-plat-summary--platform-metrics-superadmin](../reporting/reports.md#rep-plat-summary--platform-metrics-superadmin).
 
 ## DEMO
 

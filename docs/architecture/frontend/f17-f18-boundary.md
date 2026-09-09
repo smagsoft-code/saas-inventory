@@ -66,7 +66,8 @@
 | Tenant settings (timezone, business hours) + company info | ✅ | | |
 | Branding / notification preferences | | | ❌ branding "later"; notif routing lives in n8n |
 | Super-Admin: company list + detail + suspend/activate | ✅ | | |
-| Super-Admin: platform dashboard / metrics | | | ❌ `GAP-PLATFORM-AGGREGATE` (future) |
+| Super-Admin: platform metrics (company count / status / demo / new-in-period) | | ✅ built F18-10 (`GET /platform/summary`, `tenants` only — KPI-tile row on `(superadmin)/platform`) | |
+| Super-Admin: per-tenant usage / activity / health / billing dashboard | | | ❌ `GAP-PLATFORM-AGGREGATE` (tenant-data part) + `GAP-SA-BILLING` (future, each needs an ADR) |
 | Super-Admin: create tenant / manage admins | | | ❌ `GAP-SA-CREATE-TENANT`, `GAP-SA-ADMIN-CRUD` (future) |
 | Executive / analytical dashboards | | ✅ | 017-A `dashboards.md` |
 | Global search, notifications bell | | | ❌ no endpoint (PROTOTYPE ONLY) |

@@ -1140,3 +1140,70 @@ at the pre-existing Windows `EPERM` symlink step during *Collecting build traces
 FASE 12). **No browser automation tool was available in this environment**, so real-browser visual
 validation was not performed — substituted by the real-HTTP pg-verify integration coverage plus
 jsdom component-render tests; **not** claimed as a browser check. **FASE 18-09 CLOSED, not pushed.**
+
+**F18-10** ("Super-Admin Platform Metrics" — the last conceptual FASE 18 block) added the one
+platform-metrics capability grounded in existing data: **`GET /platform/summary`**
+(`apps/api/src/administration/platform-summary/`, `@PlatformOnly()` — **never `@RequirePermissions`**;
+ADR-0032 line 101-103 names this exact mechanism for "platform metrics", and there is no tenant
+permission catalog entry for a platform route by design, so a tenant Administrador role can never
+be configured into platform access). A **dedicated read-side aggregate** (`PlatformSummaryRepository`,
+never `TenantsPlatformRepository` — that is the lifecycle/write-path repo) over the platform-scoped
+**`tenants` table ALONE**, on the `app_platform` connection (the only role granted `SELECT ON tenants`;
+`tenants` has no `tenant_id`, no RLS — access is by GRANT alone, "exactly the tables the SuperAdmin
+context is allowed to touch directly", multi-tenancy.md). Response: `{ generatedAt, totalCount,
+byStatus: { active, suspended, archived }, demoCount, period: { from, to, newInPeriod } | null }` —
+one `COUNT(*)` with `FILTER` clauses (+ one more `COUNT(*)` for the optional period). `from`/`to`
+are **optional but both-or-neither** (400 on a half period or `from >= to`) — a half-open `[from, to)`
+window on `tenants.created_at` for `newInPeriod` (`PLAT-TENANT-CREATED` / `KPI-PLAT-TENANTS-NEW`, the
+metric's verbatim formula). **No timezone, no `date_trunc`, no `groupBy`** — a platform metric spans
+every tenant, so there is no single tenant timezone (F18-01's timezone semantics are tenant-scoped);
+the period count is a raw `[from, to)` comparison on the `timestamptz`, `from`/`to` supplied as UTC
+instants by the caller. **Data minimisation:** numeric aggregates only — never an individual
+tenant's id / name / slug (that is `GET /platform/tenants`), never any tenant-scoped table
+(`users`/`orders`/`inventory_*`/`audit_log` — `app_platform` has `BYPASSRLS` + `SELECT` grants on
+them, but this repository touches **only `tenants`**), never a billing figure. `active + suspended
++ archived === totalCount`. No `currency`, no `timezone`. Scope decision **B — PARCIALMENTE
+IMPLEMENTABLE**: metrics 1-4 (`PLAT-TENANT-COUNT` / `PLAT-TENANT-BY-STATUS` / `PLAT-DEMO-COUNT` all
+**A** — moved server-side from "fold the unpaginated array client-side"; `PLAT-TENANT-CREATED` /
+`KPI-PLAT-TENANTS-NEW` **B → A**) built; **deliberately not built** (each blocked, its own gap, no
+speculative architecture): `KPI-PLAT-ACTIVITY` / `PLAT-USERS-PER-TENANT` (cross-tenant aggregate
+over tenant-scoped tables — `GAP-PLATFORM-AGGREGATE`, needs an ADR + a dedicated **audited** read
+path; "building it naively would breach the isolation model", f17-super-admin.md §3),
+`KPI-PLAT-BILLING` / `PLAT-BILLING` (`GAP-SA-BILLING` — no billing/plan/subscription table exists
+anywhere in the schema; a bounded context of its own), a platform audit view (`GAP-SA-AUDIT`).
+Common SaaS indicators (MRR/ARR/churn/DAU/MAU/LTV/uptime/health/adoption/conversion) have **no
+documented definition** and were **not** implemented — the "NO INVENTAR ANALYTICS" rule; they are
+class **D** (not a metric of this system). **No schema change, no migration, no new index**
+(`tenants` is one row per company — a `COUNT(*)` over the whole table is trivial), **no new
+permission code** (`@PlatformOnly()` reused), **no new ADR**, **no `SECURITY DEFINER`**, **no RLS
+bypass beyond what `app_platform` already does for `tenants`**, **no change to the FASE 11 platform
+auth / tenant-lifecycle code**. Frontend: a KPI-tile row on the `(superadmin)/platform` home
+(`PlatformSummarySection` — 4 tiles: Companies / Active (+ suspended·archived hint) / Demo / New;
+the "new" window is the current UTC calendar month, labelled "(UTC)" so the boundary is honest;
+`PlatformSummaryError` never blanks the page), replacing the "Platform metrics ... not available
+yet" copy with "Per-tenant usage, activity and billing metrics are not available yet". New/updated
+gaps: `GAP-PLATFORM-AGGREGATE` **partially resolved** (company counts done; tenant-data part still
+needs an ADR), `GAP-SA-BILLING` registered in `reporting/data-gaps.md` (was only in
+`frontend/f17-super-admin.md`). Real-PostgreSQL: `tools/pg-verify` — **`Test Files 40 passed (40)`,
+`Tests 503 passed (503)`, `0 failed`, `0 skipped`, `[PASS] "test:integration" exited 0`, `All
+checks PASSED`** (up from 39/495 at F18-09's close — `test/administration/platform-summary.integration.test.ts`
+= +8 tests, +1 file: 401 anon / 403 tenant session — even a full-access Administrador — and a
+`?tenantId=` param that cannot widen scope / 200 platform admin with numeric-only response asserted
+to contain no `slug`/`name`/`users`/`currency`; both-or-neither `from`/`to` + `from>=to` + invalid
+date → 400; N-tenant cardinality — `totalCount` rises by exactly N, `byStatus` always sums to
+`totalCount`, single-table so no fan-out; suspend moves a tenant active→suspended with `totalCount`
+unchanged; `[from,to)` on `created_at` via a direct backdating `UPDATE` on the disposable pg-verify
+DB only; a window with no tenant → `newInPeriod: 0`, never an error). The harness process then hit
+the same Windows-only `EBUSY` handle-leak (`.verify-pgdata`) during its own post-summary shutdown
+that F18-04..09 documented — the `embedded-postgres@18.4.0-beta.17` teardown artifact, **not a
+functional failure** (`All checks PASSED` + `test:integration` exited 0 both printed first);
+controlled manual cleanup applied and verified (orphan `postgres.exe` + pg-verify node tree killed,
+port 55432 freed, `.verify-pgdata` removed, dev servers 14280/24544 untouched, no persistent DB
+touched). API unit 564 → 571 (`platform-summary.service.spec.ts` +7); web unit 438 → 442
+(`platform-summary-section.test.tsx` +4). Lint and typecheck pass on both apps (API source + API
+tests + web); API build passes; `pnpm --filter @saas-inventory/web build` compiles/type-checks/
+statically generates every route, then fails only at the pre-existing Windows `EPERM` symlink step
+(documented since FASE 12). **No browser automation tool was available in this environment**, so
+real-browser visual validation was not performed — substituted by real-HTTP pg-verify integration
+coverage plus jsdom component-render tests; **not** claimed as a browser check. **FASE 18-10
+CLOSED, not pushed. FASE 18 (Reporting) = 10/10 conceptual blocks COMPLETE.**

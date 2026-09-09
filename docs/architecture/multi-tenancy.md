@@ -159,8 +159,12 @@ See [ADR-0004](../decisions/0004-tenant-isolation-strategy.md) for the formal re
 decision. **Implemented FASE 11** — see [ADR-0032](../decisions/0032-platform-admin-authentication.md)
 for the concrete mechanism (`auth/platform-auth.controller.ts`, `common/decorators/platform-only.
 decorator.ts`) and [modules.md#administration](modules.md#administration) for the tenant-lifecycle
-capability (list/suspend/activate a company) this phase actually built. Platform-level metrics and
-global configuration/plans remain unbuilt — no concrete architectural definition exists for them yet.
+capability (list/suspend/activate a company) this phase actually built. **F18-10** added the one
+grounded platform-metrics capability: `GET /platform/summary` (`@PlatformOnly()`) — company count /
+status / demo / new-in-period, a read-only aggregate over the **`tenants` table alone**, never
+tenant-scoped data. Cross-tenant metrics over tenant-scoped tables (users/activity/usage per
+tenant) and global configuration/plans/billing remain unbuilt — no concrete architectural
+definition exists for them yet (`GAP-PLATFORM-AGGREGATE` / `GAP-SA-BILLING`, each needs its own ADR).
 
 ## Administrative / cross-tenant queries
 

@@ -89,11 +89,13 @@ actually built. **Git history is never rewritten to match** — this table is th
 | F18-06 | Customer analytics | F18-02 | `d9a6516` | `GET /reports/sales-summary?groupBy=customer` |
 | F18-07 | Approvals analytics | F18-05 | `d6812af` | `GET /reports/approvals-summary` |
 | F18-08 | Returns analytics | F18-04 | `38ca0b5` | `GET /reports/returns-summary` |
-| **F18-09** | **Imports analytics** | **F18-09** | *(this phase)* | **`GET /reports/imports-summary`** |
-| F18-10 | Super-Admin platform metrics | *not yet built* | — | — |
+| F18-09 | Imports analytics | F18-09 | `297a3b1` | `GET /reports/imports-summary` |
+| **F18-10** | **Super-Admin platform metrics** | **F18-10** | *(this phase)* | **`GET /platform/summary`** |
 
 Movement analytics also has a dedicated aggregate (`GET /reports/movements-summary`, F18-07,
 commit `e640405`) beyond the F18-03 date filter. "F18-04 Transfer analytics" landed as commit
-`b02825e` (execution F18-08). The conceptual "F18-09 Imports analytics" slot is what this phase
-(commit *feat(reporting): implement imports analytics*) delivers — the execution and conceptual
-numbers happen to coincide here.
+`b02825e` (execution F18-08). **F18-10 closes FASE 18** — `GET /platform/summary` (`@PlatformOnly()`,
+`tenants` table only) delivers the company-count metrics; per-tenant cross-tenant analytics
+(`GAP-PLATFORM-AGGREGATE`) and platform billing (`GAP-SA-BILLING`) each require their own ADR and
+were deliberately not built (F18-10's "NO INVENTAR ANALYTICS" rule). **FASE 18 reporting =
+COMPLETE** (10/10 conceptual blocks landed; execution numbering reconciled above).

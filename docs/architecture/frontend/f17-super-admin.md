@@ -52,6 +52,7 @@ keep working):
 | **View one company** | `GET /platform/tenants/:tenantId` | `PlatformTenantResponseDto` | `:tenantId` is a real path param here — the one place in the API where that is correct (the caller has no tenant of its own). |
 | **Suspend a company** | `POST /platform/tenants/:tenantId/suspend` (`@PlatformOnly`, audited) | updated tenant | Live-enforced: 011-A makes `TenantGuard` reject a suspended tenant on every request (access token not revoked — reactivation is instant). |
 | **Activate a company** | `POST /platform/tenants/:tenantId/activate` | updated tenant | |
+| **Platform metrics** (F18-10) | `GET /platform/summary` (`@PlatformOnly`) | `{ generatedAt, totalCount, byStatus: {active,suspended,archived}, demoCount, period }` — **numeric counts over the `tenants` table alone**, never an individual tenant's fields, never tenant-scoped data | `from`/`to` optional but both-or-neither — a half-open `[from,to)` window on `created_at` (UTC; no tenant timezone at platform scope). A KPI-tile row on `(superadmin)/platform`. |
 
 ### Super-Admin screens (F17)
 
@@ -74,15 +75,16 @@ backend design decision first.
 | `GAP-SA-CREATE-TENANT` | Provision a company from the platform side | The only way to create a tenant is the tenant's own `POST /auth/register` (self-service). No `POST /platform/tenants`. | future (platform-ops phase) — needs an ADR: who becomes the first admin, invite flow, etc. |
 | `GAP-SA-TENANT-ADMINS` | See / manage the administrators (or all users) of a company | No cross-tenant read. A Platform Admin **must not** read tenant-scoped data (`users`, `identities`, `tenant_memberships`) — `app_platform` has BYPASSRLS but the endpoints do not exist and building them naively would breach the isolation model. multi-tenancy.md requires an **explicit, audited, SuperAdmin-scoped aggregate path**. | future — needs an ADR + a dedicated read path |
 | `GAP-SA-ADMIN-CRUD` | List / create / disable other Platform Admins | `platform_admins` has no CRUD endpoint — only the seed script. | future — needs an ADR (bootstrap vs UI, MFA, etc.) |
-| `GAP-PLATFORM-AGGREGATE` | A platform dashboard with real metrics (companies growth, users per tenant, activity, storage) | No cross-tenant aggregate endpoint; no snapshots; no billing/plan model. multi-tenancy.md#administrative--cross-tenant-queries requires a dedicated aggregate path. | FASE 18+ / platform-ops |
+| `GAP-PLATFORM-AGGREGATE` | A platform dashboard with per-tenant metrics (users per tenant, activity, storage, last-activity) | **Company counts are done — F18-10** (`GET /platform/summary`, `tenants` table only). What is still missing: any aggregate over a **tenant-scoped** table (`users`, `orders`, …) across tenants — `app_platform` has the grants but "the endpoints do not exist and building them naively would breach the isolation model"; multi-tenancy.md#administrative--cross-tenant-queries requires a dedicated **audited** aggregate path, designed as such. No ADR yet. | future / platform-ops (own ADR) |
 | `GAP-SA-BILLING` | Plans, subscriptions, MRR, invoicing | No billing model anywhere in the schema. | future — a bounded context of its own, ADR first |
 | `GAP-SA-AUDIT` | Platform action audit view (who suspended what, when) | `audit_log` records platform actions (`actor_type='platform_admin'`, `tenant_id IS NULL`) but has **no read endpoint**. | future (with `GAP-AUDIT-READ`) |
 | `GAP-SA-IMPERSONATION` | "Log in as this tenant for support" | Not modelled; would be a significant security decision. | future — ADR required; not assumed |
 
 ## 4. Access-to-tenant-data limits (must hold in F17 and forever)
 
-- A Platform Admin sees **only the `tenants` table fields** listed in §2. Never a tenant's
-  products, inventory, orders, customers, users, or configuration.
+- A Platform Admin sees **only the `tenants` table fields** listed in §2, or **numeric aggregates
+  of that table** (`GET /platform/summary`, F18-10 — counts only, never a row's fields). Never a
+  tenant's products, inventory, orders, customers, users, or configuration.
 - `@PlatformOnly()` routes never resolve a tenant context and never reach tenant RBAC — there is
   no tenant permission that grants platform access, by design (a Tenant Admin role can never be
   configured into it).

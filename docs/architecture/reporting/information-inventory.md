@@ -44,7 +44,7 @@
 | --- | --- | --- | --- |
 | `identities` | `email` (unique, case-insensitive), `password_hash`, `full_name`, `last_login_at`, `deleted_at` | `active` · `pending_credential` · `disabled` | **No.** Never returned; `app_tenant` has no grant. `identityId` appears as a claim in `GET /auth/me`. |
 | `tenant_memberships` | `identity_id`, `tenant_id`, `user_id`, `status` | `active` · `disabled` | **No** direct endpoint. `POST /auth/login` returns `availableTenants:[{tenantId,name}]` for a multi-membership identity (post-credential only). |
-| `tenants` | `name`, `slug`, `status`, `is_demo`, `created_at` | `active` · `suspended` · `archived` | Tenant: `GET /tenant` → `{id,name,slug,status,isDemo,createdAt}`. Platform: `GET /platform/tenants` (all, **not paginated**), `GET /platform/tenants/:id`. |
+| `tenants` | `name`, `slug`, `status`, `is_demo`, `created_at` | `active` · `suspended` · `archived` | Tenant: `GET /tenant` → `{id,name,slug,status,isDemo,createdAt}`. Platform: `GET /platform/tenants` (all, **not paginated**), `GET /platform/tenants/:id`. **Aggregated (F18-10):** `GET /platform/summary` (`@PlatformOnly()`) — `COUNT(*)` / `COUNT(*) FILTER` over `tenants` **alone**: `totalCount`, `byStatus`, `demoCount`, and an optional `[from,to)` `newInPeriod` count on `created_at`. Numeric aggregates only — no individual tenant fields, no tenant-scoped data. |
 | `platform_admins` | `email`, `full_name`, `status` | `active` · `disabled` | **No** list endpoint. Only `POST /platform/auth/login`. |
 | `auth_refresh_tokens` / `platform_admin_refresh_tokens` | `token_hash`, `expires_at`, `revoked_at`, `user_agent`, `ip_address`, `rotated_from_id` | — | **No.** No "active sessions" endpoint. |
 

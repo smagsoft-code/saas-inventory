@@ -32,6 +32,7 @@
 | 21 | Admin · Users & roles | `USR-COUNT-STATUS` | `REP-ADMIN-USERS` | `/users`, `/users/[id]` (built, FASE 16) | User → roles / locations | **A** | `core.users.read` |
 | 22 | Admin · Location access | — | `REP-ADMIN-LOCATION-ACCESS` | `/users/[id]` | — | **A** (per user) | `core.users.locations.manage` |
 | 23 | Platform · Companies | `KPI-PLAT-TENANTS` / `-STATUS` | `REP-PLAT-TENANTS` | *(SuperAdmin area — no artboard)* | Company → suspend/activate | **A** | `@PlatformOnly()` |
+| 23b | Platform · Metrics (count / status / demo / new-in-period) | `KPI-PLAT-TENANTS` / `-STATUS` / `-NEW` | `REP-PLAT-SUMMARY` | `(superadmin)/platform` (KPI-tile row, F18-10) | Company list | **A** (F18-10) | `@PlatformOnly()` |
 
 ## Deferred (FASE 18) matrix — validated need, not buildable in F17
 
@@ -58,7 +59,8 @@
 | Audit trail report | `GAP-AUDIT-READ` | FASE 19/20 (read endpoint + permission) |
 | Sales by location | `GAP-ORDERS-LOCATION-FILTER` | FASE 18 (add `locationId` filter + aggregate) |
 | Serial/lot traceability | `GAP-SERIAL-LOT-READ` | after the deferred serial/lot sale design |
-| Per-tenant platform metrics | `GAP-PLATFORM-AGGREGATE` | FASE 18+ (audited cross-tenant read path) |
+| Per-tenant platform metrics (over tenant-scoped tables) | `GAP-PLATFORM-AGGREGATE` | future — company counts are done (F18-10); the tenant-data part needs an ADR + a dedicated audited read path |
+| Platform billing / MRR / plans | `GAP-SA-BILLING` | future — no billing model exists; a bounded context of its own, ADR first |
 | Movements by period / kardex date range | `GAP-MOVEMENTS-DATE-FILTER` | FASE 17 (small filter add) or FASE 18 |
 | Multi-status count filters (pending returns, running imports) | `GAP-MULTI-STATUS` | FASE 17 (cheap `status` array) or FASE 18 — the *transfer* status rollup is resolved by `GAP-TRANSFER-AGGREGATE` (F18-08); the *completed* import outcome mix by `GAP-IMPORT-ROWS-PERIOD` (F18-09) |
 | Transfer cycle-time aggregation | `GAP-TRANSFER-CYCLE-TIME` | FASE 18 — needs a metric definition (aggregation fn + period anchor), not just a query |

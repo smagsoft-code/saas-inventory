@@ -38,7 +38,8 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | [`GAP-NAME-ENRICHMENT`](#gap-name-enrichment) | Name resolution in list responses | F17-needed |
 | [`GAP-SEARCH`](#gap-search) | Free-text search on products / orders | F17-needed |
 | [`GAP-SORT`](#gap-sort) | `sort` param on list endpoints | F17-needed |
-| [`GAP-PLATFORM-AGGREGATE`](#gap-platform-aggregate) | Cross-tenant platform metrics | future |
+| [`GAP-PLATFORM-AGGREGATE`](#gap-platform-aggregate) | Cross-tenant platform metrics (over **tenant-scoped** tables) | future — company counts now server-side (F18-10), the tenant-data part still needs an ADR |
+| [`GAP-SA-BILLING`](#gap-sa-billing) | Platform billing / plans / subscriptions / MRR | future — a bounded context of its own, ADR first |
 | [`GAP-EXPORT`](#gap-export) | Export infrastructure | F18-needed |
 | [`GAP-APPROVALS-PERMISSION`](#gap-approvals-permission) | `GET /price-approvals` has no permission | ~~F17-needed (defect)~~ **RESOLVED (F17-09)** |
 | [`GAP-APPR-AGGREGATE`](#gap-appr-aggregate) | Approval-workflow rate / discount-value aggregation | ~~F18-needed~~ **RESOLVED (F18-05)** |
@@ -489,13 +490,31 @@ change, no migration, no new permission.
 - **Recommended phase:** **F17-needed** — additive, per endpoint.
 
 ### `GAP-PLATFORM-AGGREGATE`
-- **Required:** an explicit, audited, SuperAdmin-scoped cross-tenant aggregate read path
-  (users-per-tenant, activity, storage, last-activity) — never the tenant repository with the
-  filter off.
+- **Required:** an explicit, audited, SuperAdmin-scoped cross-tenant aggregate read path over
+  **tenant-scoped** tables (users-per-tenant, activity, storage, last-activity) — never the tenant
+  repository with the filter off.
 - **Why:** a real SuperAdmin platform dashboard beyond company counts.
-- **Missing:** no such endpoint; multi-tenancy.md explicitly requires it be a dedicated aggregate
-  path, and it does not exist.
-- **Recommended phase:** **future** — FASE 18+ / a platform-operations phase, with its own ADR.
+- **Partially resolved — F18-10:** the **company-counts** part (which was never this gap — this gap
+  is "beyond company counts") is now `GET /platform/summary` (`@PlatformOnly()`) —
+  `PLAT-TENANT-COUNT` / `PLAT-TENANT-BY-STATUS` / `PLAT-DEMO-COUNT` / `PLAT-TENANT-CREATED`, all
+  server-side over the `tenants` table **alone**. `KPI-PLAT-TENANTS-NEW` moved **B → A**.
+- **Still missing:** anything that reads a **tenant-scoped** table (`users`, `orders`,
+  `inventory_*`, `audit_log`, …) across tenants. `app_platform` has `BYPASSRLS` + `SELECT` grants
+  on those tables (migrations 0002+), but `f17-super-admin.md` §3 is explicit: "the endpoints do
+  not exist and building them naively would breach the isolation model" — multi-tenancy.md requires
+  a **dedicated, audited aggregate path**, designed as such, not the lifecycle repository with the
+  scope widened. That design decision has no ADR yet.
+- **Recommended phase:** **future** — a platform-operations phase, with its own ADR (what is
+  aggregated, how it is audited, what is anonymised, retention).
+
+### `GAP-SA-BILLING`
+- **Required:** a billing / plan / subscription model (and then MRR / ARR / churn / invoicing over
+  it).
+- **Why:** `PLAT-BILLING` / `KPI-PLAT-BILLING`, any platform revenue figure.
+- **Missing:** **no billing, plan, or subscription table exists anywhere in the schema.** There is
+  nothing to aggregate. F18-10 did not model one — it is a bounded context of its own.
+- **Recommended phase:** **future** — needs its own ADR and bounded context before any reporting on
+  it is possible.
 
 ### `GAP-EXPORT`
 - **Required:** an export mechanism for lists/reports (CSV/XLSX), reusing the existing

@@ -50,6 +50,7 @@
 | `REP-ADMIN-LOCATION-ACCESS` | User → location access | Core | `GET /users/:id/locations` | **A** (per user) / **B** (matrix) | F17 |
 | `REP-ADMIN-AUDIT` | Audit trail | Core | — | **C** | No `audit_log` read endpoint |
 | `REP-PLAT-TENANTS` | Companies (SuperAdmin) | Platform | `GET /platform/tenants` | **A** | F17 (platform area) |
+| `REP-PLAT-SUMMARY` | Platform metrics (company count / status / demo / new-in-period) | Platform | `GET /platform/summary` | **A** | F18-10 |
 
 ---
 
@@ -548,7 +549,41 @@ tenant-wide — `import_jobs` has no location dimension) — real server-side ag
 - **Columns:** id, name, slug, status, isDemo, createdAt.
 - **Filters/sort/grouping:** none server-side — all client-side over the array.
 - **Actions:** suspend / activate (`POST /platform/tenants/:id/suspend|activate`).
-- **State: A** (for exactly these six fields). Any per-tenant usage/user-count column is **C**.
+- **State: A** (for exactly these six fields). Aggregate counts are now `REP-PLAT-SUMMARY` (F18-10);
+  any per-tenant usage/user-count column is still **C** (`GAP-PLATFORM-AGGREGATE`).
+
+### `REP-PLAT-SUMMARY` — Platform metrics (SuperAdmin)
+
+**RESOLVED — F18-10 ("Super-Admin Platform Metrics"), the last FASE 18 block.**
+`GET /platform/summary` (`@PlatformOnly()` — never `@RequirePermissions`; ADR-0032 line 101-103
+names this exact mechanism for "platform metrics") — a dedicated read-side aggregate over the
+platform-scoped `tenants` table **alone**, on the `app_platform` connection (never
+`TenantsPlatformRepository` — that is the lifecycle/write-path repository).
+
+- **Objective:** the "minimal, supported" SuperAdmin dashboard (`dashboards.md` §4) — company
+  count, status breakdown, demo count, and new-companies-in-a-period — without folding the
+  (unpaginated) `GET /platform/tenants` array client-side.
+- **Query params:** `from`, `to` — **optional, but both-or-neither** (400 on a half period, or
+  `from >= to`). When both are given they bound `PLAT-TENANT-CREATED` / `KPI-PLAT-TENANTS-NEW` as a
+  half-open `[from, to)` window on `tenants.created_at`. **No `groupBy`, no timezone** — a platform
+  metric spans every tenant, so there is no single tenant timezone (F18-01's timezone semantics are
+  tenant-scoped); the period count is a raw `[from, to)` comparison on the `timestamptz`, `from`/`to`
+  supplied as UTC instants by the caller.
+- **Response:** `{ generatedAt, totalCount, byStatus: { active, suspended, archived }, demoCount,
+  period: { from, to, newInPeriod } | null }`. **Numeric aggregates only** — never an individual
+  tenant's id / name / slug (that is `REP-PLAT-TENANTS`), never any tenant-scoped data
+  (`GAP-PLATFORM-AGGREGATE`), never any billing figure (`GAP-SA-BILLING`). No `currency`, no
+  `timezone`. `active + suspended + archived === totalCount`.
+- **Aggregation:** one `COUNT(*)` with `FILTER` clauses over `tenants` (+ one more `COUNT(*)` for
+  the optional period). `tenants` is operationally tiny (one row per company) — no index beyond the
+  existing PK, none added.
+- **Not built:** `KPI-PLAT-ACTIVITY` / `PLAT-USERS-PER-TENANT` (cross-tenant aggregate over
+  tenant-scoped tables — `GAP-PLATFORM-AGGREGATE`, needs an ADR + a dedicated audited read path),
+  `KPI-PLAT-BILLING` (`GAP-SA-BILLING` — no billing/plan/subscription model exists), a platform
+  audit view (`GAP-SA-AUDIT`). Common SaaS indicators (MRR/ARR/churn/DAU/LTV/uptime/health) have no
+  documented definition and were **not** implemented.
+- **Related screen:** a KPI-tile row on the `(superadmin)/platform` home (F18-10).
+- **State: A** (for the four `tenants`-only metrics).
 
 ---
 

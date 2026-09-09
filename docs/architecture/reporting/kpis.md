@@ -65,11 +65,11 @@ FASE 18 snapshot/rollup exists.
 
 | ID | Name | Business question | Metric(s) | Formula | Period | Comparison | Filters | Scope | Permission | State |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `KPI-PLAT-TENANTS` | Total companies | *How many companies use the platform?* | `PLAT-TENANT-COUNT` | `count(tenants)` | point-in-time | n/a | — | platform | `@PlatformOnly()` | **A** |
-| `KPI-PLAT-TENANTS-STATUS` | Companies by status | *How many are active / suspended / archived?* | `PLAT-TENANT-BY-STATUS` | group by `status` | point-in-time | n/a | — | platform | `@PlatformOnly()` | **A** — group the unpaginated array client-side |
-| `KPI-PLAT-TENANTS-NEW` | New companies in the period | *Is the platform growing?* | `PLAT-TENANT-CREATED` | `count(tenants where created_at in range)` | period | **B** | date range | platform | `@PlatformOnly()` | **B** — no filter; group the array by `created_at` client-side |
-| `KPI-PLAT-ACTIVITY` | Per-tenant usage / activity / health | *Which tenants are active or at risk?* | `PLAT-USERS-PER-TENANT` | any tenant-scoped aggregate | period | — | tenant | platform | — | **C** — SuperAdmin must not read tenant-scoped data; no cross-tenant aggregate endpoint exists (multi-tenancy.md#superadmin-vs-tenant / #administrative--cross-tenant-queries) |
-| `KPI-PLAT-BILLING` | Revenue / plan / churn | *Platform business health* | `PLAT-BILLING` | — | — | — | platform | — | **C** — no billing/plan/subscription model in the schema |
+| `KPI-PLAT-TENANTS` | Total companies | *How many companies use the platform?* | `PLAT-TENANT-COUNT` | `count(tenants)` | point-in-time | n/a | — | platform | `@PlatformOnly()` | **A** — `GET /platform/summary` `totalCount` (F18-10) |
+| `KPI-PLAT-TENANTS-STATUS` | Companies by status | *How many are active / suspended / archived?* | `PLAT-TENANT-BY-STATUS` | `count` per `status` | point-in-time | n/a | — | platform | `@PlatformOnly()` | **A** — `GET /platform/summary` `byStatus` (F18-10, server-side `COUNT(*) FILTER`) |
+| `KPI-PLAT-TENANTS-NEW` | New companies in the period | *Is the platform growing?* | `PLAT-TENANT-CREATED` | `count(tenants where created_at in range)` | period | **C** (no snapshot history) | date range | platform | `@PlatformOnly()` | **A** — F18-10, `GET /platform/summary?from&to` `period.newInPeriod` — server-side `COUNT(*)` on the half-open `[from, to)` window over `created_at` (UTC; no tenant timezone at platform scope). Was **B** |
+| `KPI-PLAT-ACTIVITY` | Per-tenant usage / activity / health | *Which tenants are active or at risk?* | `PLAT-USERS-PER-TENANT` | any tenant-scoped aggregate | period | — | tenant | platform | — | **C** — SuperAdmin must not read tenant-scoped data; F18-10's `GET /platform/summary` touches **only `tenants`**; a cross-tenant aggregate over tenant tables needs an ADR + a dedicated audited read path (multi-tenancy.md#administrative--cross-tenant-queries) → `GAP-PLATFORM-AGGREGATE` |
+| `KPI-PLAT-BILLING` | Revenue / plan / churn | *Platform business health* | `PLAT-BILLING` | — | — | — | platform | — | **C** — no billing/plan/subscription model in the schema → `GAP-SA-BILLING` |
 
 ---
 
@@ -83,7 +83,11 @@ Compute correctly against the real backend **now**, with no new endpoint:
 - `KPI-OPS-APPROVALS-PENDING` — pending price-approval count.
 - `KPI-OPS-IMPORTS-ATTENTION` — failed / completed-with-errors import count.
 - `KPI-USR-ACTIVE` — active user count.
-- `KPI-PLAT-TENANTS`, `KPI-PLAT-TENANTS-STATUS` — company counts (SuperAdmin).
+- `KPI-PLAT-TENANTS`, `KPI-PLAT-TENANTS-STATUS` — company counts (SuperAdmin) — now `GET /platform/summary` (F18-10), server-side.
+
+**Added by F18-10** (`GET /platform/summary`, `@PlatformOnly()`, `tenants` table only):
+
+- `KPI-PLAT-TENANTS-NEW` — server-side `COUNT(*)` over the half-open `[from, to)` creation window (was **B**).
 
 **Added by F18-02** (`GET /reports/sales-summary`, real server-side aggregation):
 
