@@ -195,19 +195,27 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   in Next.js standalone output-tracing (unchanged environmental issue, not introduced here).
   *(done)*
 
-## Future phases
-
 - **FASE 17 — Frontend Main Modules** — frontend implementation of the principal application
   modules using the established API contracts: administration, catalog, warehouses/locations,
   inventory, QR, import, customers, sales/orders and related operational workflows. Includes (noted
   during PROMPT 015-A) a **notification status** indicator on the sales history / order detail view
-  (`sent` / `pending` / `not sent`, derived from the order's `event_outbox` state) and an
-  authorized-admin **"retry notification"** action that re-enqueues / re-delivers the existing
-  `event_outbox` row — never recreating the sale, its inventory movements, or the domain event.
+  (`sent` / `pending` / `not sent`, derived from the order's `event_outbox` state). The
+  authorized-admin **"retry notification"** action is deferred: no backend re-enqueue/re-deliver
+  endpoint exists yet (`GAP-NOTIF-RETRY-BACKEND`), so the order-detail card shows status only.
+  Delivered as F17-01…F17-14, **43/43 screens**; frontend-only, no backend/DB/migration change;
+  see the per-sub-phase reports. *(done)*
 
-- **FASE 18 — Dashboards & Reports** — REPORTS bounded context, dashboards, operational reports,
-  inventory reports, sales reports and cross-domain read-side queries. Reporting must remain
-  separated from transactional write-path repositories.
+- **FASE 18 — Dashboards & Reports** — REPORTS bounded context, operational read-side queries and
+  the home dashboard. Nine read-side modules (`GET /reports/sales-summary`,
+  `/inventory-summary`, `/movements-summary`, `/transfers-summary`, `/returns-summary`,
+  `/approvals-summary`, `/imports-summary`, plus `/platform/summary`), each with its own
+  repository/service/controller, half-open `[from,to)` date semantics, and no dependency on the
+  transactional write-path repositories. Surfaced in the frontend as report sections embedded in
+  the existing `/approvals`, `/imports`, `/inventory` pages and the `/` home KPIs — there is no
+  standalone `/reports` route. Commits `c79d93a`…`1a50133`; migration `0030` (movements
+  `occurred_at` index) is the only schema change. *(done)*
+
+## Future phases
 
 - **FASE 19 — Security Hardening & Testing** — application-wide security review, threat-model
   validation, RLS verification, tenant-isolation testing, RBAC/authorization review, IDOR and
@@ -323,7 +331,26 @@ primitives, and route-level loading/error/not-found boundaries — with the exis
 pages moved onto it and no functional-scope change. No backend, database, migration, n8n or
 worker change; pg-verify unchanged at 339/27/0.
 
-FASE 17 (Frontend Main Modules) is the next phase to be started.
+FASE 17 is closed: **43/43 frontend screens** delivered across F17-01…F17-14 against the existing
+API contracts (frontend-only, no backend/DB/migration change). FASE 18 is closed: nine read-side
+report modules (`/reports/*` + `/platform/summary`) plus the home dashboard, migration `0030` the
+only schema change, commits `c79d93a`…`1a50133` (HEAD).
+
+**Fase 5 QA campaign** (5A–5S) is a functional-QA pass over the completed system — not a
+development phase, and not a source of functional commits. Run against `develop` HEAD `1a50133`
+with an ephemeral local Postgres and a persistent QA tenant (`qa-tenant`). 5L–5R covered returns,
+exceptional pricing, import, administration, reports, platform lifecycle and the notification
+path; **5R/5R-A** validated `event_outbox → Event Processor → n8n → Telegram` end to end
+(2-layer idempotency, retry, dead-letter, replay); **5S** added a second tenant (`qa-tenant-2`)
+for real cross-tenant/IDOR + RLS isolation testing (all cross-tenant access `404`, RLS denies),
+the public QR resolver, a frontend page-load regression, and the remaining 5R checks
+(retryable→dead-letter, suspended-tenant delivery). Open items are tracked as `GAP-F19-*`
+(ParseUUID / additional RLS-IDOR), `GAP-NOTIF-RETRY-BACKEND`, `DEFECT-TZ-DEFAULT-UNSETTABLE`, a
+UI/UX backlog, and two n8n-workflow corrections applied operator-side. The authoritative status is
+each phase's final report.
+
+**FASE 19 (Security Hardening & Testing) is the next phase to be started** (optionally preceded by
+a UI/UX specification pass — `UI-UX-SPEC-001` — for the non-blocking frontend findings 5S deferred).
 
 No future phase has been started merely by defining its database schema or architecture. FASE 14
 gave `event_outbox` (migrated since Prompt 03) its first application code — transactional publishing
@@ -333,6 +360,7 @@ envelope to one generic n8n webhook over authenticated HTTPS — no schema chang
 new Postgres grant. The backend still stores **no** Telegram token and makes no direct Telegram
 call — n8n owns the Telegram credential and all routing/composition (ADR-0012). With
 `N8N_EVENTS_ENABLED=false` the handler is not registered and nothing is claimed, exactly as in
-FASE 14. Selling serialized / lot-tracked variants remains a pending explicit design (no approved
+FASE 14 — this is the state the Fase 5 QA campaign leaves the local environment in. Selling
+serialized / lot-tracked variants remains a pending explicit design (no approved
 `order_items` ↔ `product_serials`/`product_lots` model, no serial/lot column on
 `inventory_movements`) — it is not assigned to any phase yet.
