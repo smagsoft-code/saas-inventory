@@ -6,8 +6,12 @@ import type { AuthPrincipal } from '../../common/context/request-context';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { BulkCreateQrCodesResponseDto } from './dto/bulk-create-qr-codes-response.dto';
+import { BulkCreateQrCodesDto } from './dto/bulk-create-qr-codes.dto';
 import { CreateQrCodeDto } from './dto/create-qr-code.dto';
+import { ListPendingVariantsQueryDto } from './dto/list-pending-variants-query.dto';
 import { ListQrCodesQueryDto } from './dto/list-qr-codes-query.dto';
+import { PendingVariantResponseDto } from './dto/pending-variant-response.dto';
 import { QrCodeResponseDto } from './dto/qr-code-response.dto';
 import { QrResolveIdentityResponseDto } from './dto/qr-resolve-identity-response.dto';
 import { UpdateQrCodeDto } from './dto/update-qr-code.dto';
@@ -18,10 +22,12 @@ import { QrCodesService } from './qr-codes.service';
  * qr_codes de producto o ubicacion", the only QR permission this architecture defines, covering both
  * mutation and management-read) plus the authenticated resolve-identity lookup. Every route runs the
  * full guard chain (JwtAuthGuard -> TenantGuard -> CsrfGuard -> PermissionsGuard) — `tenantId` always
- * comes from CurrentTenant, never from client input. `resolve/:code` is declared before `:id` so
- * NestJS never has to disambiguate them (they match a different number of path segments regardless
- * of order), and deliberately carries no `@RequirePermissions()` — see qr-codes.service.ts's
- * `resolveIdentity` doc comment for why.
+ * comes from CurrentTenant, never from client input. `resolve/:code` and `pending-variants` are both
+ * declared before `:id` — `pending-variants` in particular MUST come first, since (unlike
+ * `resolve/:code`) it has the exact same one-segment shape `:id` matches; declared after it, Nest
+ * would route `GET /qr-codes/pending-variants` into `getById` with `id="pending-variants"` instead.
+ * Bulk generation reuses the one permission this module already has — no new `qr.bulk`-style
+ * permission (§25: it is an operation inside the same existing QR management surface).
  */
 @ApiTags('qr-codes')
 @Controller('qr-codes')
@@ -32,6 +38,16 @@ export class QrCodesController {
   @ApiOkResponse({ type: QrResolveIdentityResponseDto })
   async resolve(@CurrentTenant() tenantId: string, @Param('code') code: string): Promise<QrResolveIdentityResponseDto> {
     return this.qrCodesService.resolveIdentity(tenantId, code);
+  }
+
+  @Get('pending-variants')
+  @RequirePermissions('catalog.qr.manage')
+  @ApiOkResponse({ type: PendingVariantResponseDto, isArray: true })
+  async listPendingVariants(
+    @CurrentTenant() tenantId: string,
+    @Query() query: ListPendingVariantsQueryDto,
+  ): Promise<PaginatedResult<PendingVariantResponseDto>> {
+    return this.qrCodesService.listPendingVariants(tenantId, query);
   }
 
   @Get()
@@ -58,6 +74,21 @@ export class QrCodesController {
     @Req() request: FastifyRequest,
   ): Promise<QrCodeResponseDto> {
     return this.qrCodesService.create(tenantId, principal.userId, dto, {
+      correlationId: request.correlationId,
+      ipAddress: request.ip,
+    });
+  }
+
+  @Post('bulk')
+  @RequirePermissions('catalog.qr.manage')
+  @ApiCreatedResponse({ type: BulkCreateQrCodesResponseDto })
+  async createBulk(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Body() dto: BulkCreateQrCodesDto,
+    @Req() request: FastifyRequest,
+  ): Promise<BulkCreateQrCodesResponseDto> {
+    return this.qrCodesService.createBulk(tenantId, principal.userId, dto, {
       correlationId: request.correlationId,
       ipAddress: request.ip,
     });

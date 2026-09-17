@@ -169,6 +169,11 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('qr: generation, resolution
     return JSON.parse(response.body) as { id: string; code: string };
   }
 
+  async function revokeQrCode(admin: Session, id: string): Promise<void> {
+    const response = await inject({ method: 'PATCH', url: `/api/v1/qr-codes/${id}`, headers: writeHeaders(admin), payload: { status: 'revoked' } });
+    expect(response.statusCode).toBe(200);
+  }
+
   describe('product QR: generation, management, authenticated resolution', () => {
     it('create/list/get round-trip, and revoking it flips status to revoked', async () => {
       const admin = await registerTenant('QR Product Alpha Co', 'admin@qr-product-alpha.example');
@@ -305,14 +310,194 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('qr: generation, resolution
       expect(ownResolve.statusCode).toBe(200);
     });
 
-    it('generating two QR codes for the same target never produces a duplicate `code` (DB-constraint-backed uniqueness)', async () => {
+    it('regenerating a QR after revoking the first one for the same target never produces a duplicate `code` (DB-constraint-backed uniqueness)', async () => {
       const admin = await registerTenant('QR Product Eta Co', 'admin@qr-product-eta.example');
       const { variantId } = await createProductVariant(admin, 'QR-PROD-ETA-1');
 
       const first = await createQrCode(admin, 'product_variant', variantId);
+      await revokeQrCode(admin, first.id);
       const second = await createQrCode(admin, 'product_variant', variantId);
       expect(first.code).not.toBe(second.code);
       expect(first.id).not.toBe(second.id);
+    });
+
+    it('rejects generating a second QR while the target still has an active one (409), and allows it again once revoked', async () => {
+      const admin = await registerTenant('QR Product Theta Co', 'admin@qr-product-theta.example');
+      const { variantId } = await createProductVariant(admin, 'QR-PROD-THETA-1');
+
+      const first = await createQrCode(admin, 'product_variant', variantId);
+
+      const conflict = await inject({
+        method: 'POST',
+        url: '/api/v1/qr-codes',
+        headers: writeHeaders(admin),
+        payload: { targetType: 'product_variant', targetId: variantId },
+      });
+      expect(conflict.statusCode).toBe(409);
+
+      await revokeQrCode(admin, first.id);
+
+      const second = await createQrCode(admin, 'product_variant', variantId);
+      expect(second.id).not.toBe(first.id);
+    });
+  });
+
+  describe('bulk generation: GET /qr-codes/pending-variants + POST /qr-codes/bulk (§26/§27)', () => {
+    async function listPending(admin: Session, q?: string): Promise<{ productId: string; variantId: string; sku: string }[]> {
+      const response = await inject({
+        method: 'GET',
+        url: `/api/v1/qr-codes/pending-variants${q ? `?q=${encodeURIComponent(q)}` : ''}`,
+        headers: readHeaders(admin),
+      });
+      expect(response.statusCode).toBe(200);
+      return (JSON.parse(response.body) as { data: { productId: string; variantId: string; sku: string }[] }).data;
+    }
+
+    async function bulkCreate(
+      admin: Session,
+      variantIds: string[],
+    ): Promise<{ results: { variantId: string; status: string; reason?: string; qrCode?: { id: string; code: string } }[]; summary: { created: number; skipped: number; errors: number } }> {
+      const response = await inject({ method: 'POST', url: '/api/v1/qr-codes/bulk', headers: writeHeaders(admin), payload: { variantIds } });
+      return { statusCode: response.statusCode, ...JSON.parse(response.body) } as never;
+    }
+
+    it('lists only variants without an active QR, and a search matches product name or SKU', async () => {
+      const admin = await registerTenant('QR Bulk Alpha Co', 'admin@qr-bulk-alpha.example');
+      const { variantId: v1 } = await createProductVariant(admin, 'QR-BULK-ALPHA-1');
+      const { variantId: v2 } = await createProductVariant(admin, 'QR-BULK-ALPHA-2');
+      await createQrCode(admin, 'product_variant', v1); // v1 already has an active QR
+
+      const pending = await listPending(admin);
+      const pendingIds = pending.map((r) => r.variantId);
+      expect(pendingIds).not.toContain(v1);
+      expect(pendingIds).toContain(v2);
+
+      const searched = await listPending(admin, 'QR-BULK-ALPHA-2');
+      expect(searched.map((r) => r.variantId)).toEqual([v2]);
+    });
+
+    it('generates a QR for each requested variant in one call, and each gets a distinct code', async () => {
+      const admin = await registerTenant('QR Bulk Beta Co', 'admin@qr-bulk-beta.example');
+      const { variantId: v1 } = await createProductVariant(admin, 'QR-BULK-BETA-1');
+      const { variantId: v2 } = await createProductVariant(admin, 'QR-BULK-BETA-2');
+
+      const result = await bulkCreate(admin, [v1, v2]);
+      expect(result.summary).toEqual({ created: 2, skipped: 0, errors: 0 });
+      const codes = result.results.map((r) => r.qrCode?.code);
+      expect(codes[0]).toBeTruthy();
+      expect(codes[1]).toBeTruthy();
+      expect(codes[0]).not.toBe(codes[1]);
+
+      // Both are gone from the pending list now that they each have an active QR.
+      const pending = await listPending(admin);
+      expect(pending.map((r) => r.variantId)).not.toEqual(expect.arrayContaining([v1, v2]));
+    });
+
+    it('rejects duplicate ids within a single request (400) rather than silently deduping', async () => {
+      const admin = await registerTenant('QR Bulk Gamma Co', 'admin@qr-bulk-gamma.example');
+      const { variantId } = await createProductVariant(admin, 'QR-BULK-GAMMA-1');
+
+      const response = await inject({
+        method: 'POST',
+        url: '/api/v1/qr-codes/bulk',
+        headers: writeHeaders(admin),
+        payload: { variantIds: [variantId, variantId] },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('skips (never fails the whole batch on) a variant that already has an active QR — idempotent re-submission', async () => {
+      const admin = await registerTenant('QR Bulk Delta Co', 'admin@qr-bulk-delta.example');
+      const { variantId: v1 } = await createProductVariant(admin, 'QR-BULK-DELTA-1');
+      const { variantId: v2 } = await createProductVariant(admin, 'QR-BULK-DELTA-2');
+      await createQrCode(admin, 'product_variant', v1); // simulates "generated concurrently by another user"
+
+      const result = await bulkCreate(admin, [v1, v2]);
+      expect(result.summary).toEqual({ created: 1, skipped: 1, errors: 0 });
+      const v1Result = result.results.find((r) => r.variantId === v1)!;
+      const v2Result = result.results.find((r) => r.variantId === v2)!;
+      expect(v1Result.status).toBe('skipped');
+      expect(v2Result.status).toBe('created');
+
+      // Still exactly one active QR for v1 — the bulk call never created a second one.
+      const listResponse = await inject({
+        method: 'GET',
+        url: `/api/v1/qr-codes?targetType=product_variant&targetId=${v1}`,
+        headers: readHeaders(admin),
+      });
+      const rows = (JSON.parse(listResponse.body) as { data: { status: string }[] }).data;
+      expect(rows.filter((r) => r.status === 'active')).toHaveLength(1);
+    });
+
+    it('reports a nonexistent id as an error without aborting the rest of the batch, and a cross-tenant id is rejected identically (IDOR)', async () => {
+      const admin = await registerTenant('QR Bulk Epsilon Co', 'admin@qr-bulk-epsilon.example');
+      const { variantId: ownVariant } = await createProductVariant(admin, 'QR-BULK-EPSILON-1');
+      const otherAdmin = await registerTenant('QR Bulk Zeta Co', 'admin@qr-bulk-zeta.example');
+      const { variantId: foreignVariant } = await createProductVariant(otherAdmin, 'QR-BULK-EPSILON-FOREIGN-1');
+
+      const result = await bulkCreate(admin, [ownVariant, foreignVariant, '11111111-1111-7111-8111-111111111111']);
+      expect(result.summary).toEqual({ created: 1, skipped: 0, errors: 2 });
+      expect(result.results.find((r) => r.variantId === ownVariant)!.status).toBe('created');
+      expect(result.results.find((r) => r.variantId === foreignVariant)!.status).toBe('error');
+      expect(result.results.find((r) => r.variantId === '11111111-1111-7111-8111-111111111111')!.status).toBe('error');
+
+      // The other tenant's variant is completely untouched — still pending in its OWN tenant.
+      const otherPending = await listPending(otherAdmin);
+      expect(otherPending.map((r) => r.variantId)).toContain(foreignVariant);
+    });
+
+    it('401 anonymous, 403 without catalog.qr.manage, on both pending-variants and bulk', async () => {
+      const admin = await registerTenant('QR Bulk Eta Co', 'admin@qr-bulk-eta.example');
+      const vendedor = await createAndLoginAs(admin, 'vendedor@qr-bulk-eta.example', 'Vendedor');
+      const { variantId } = await createProductVariant(admin, 'QR-BULK-ETA-1');
+
+      const anonList = await inject({ method: 'GET', url: '/api/v1/qr-codes/pending-variants' });
+      expect(anonList.statusCode).toBe(401);
+      const anonBulk = await inject({ method: 'POST', url: '/api/v1/qr-codes/bulk', payload: { variantIds: [variantId] } });
+      expect(anonBulk.statusCode).toBe(401);
+
+      const vendedorList = await inject({ method: 'GET', url: '/api/v1/qr-codes/pending-variants', headers: readHeaders(vendedor) });
+      expect(vendedorList.statusCode).toBe(403);
+      const vendedorBulk = await inject({
+        method: 'POST',
+        url: '/api/v1/qr-codes/bulk',
+        headers: writeHeaders(vendedor),
+        payload: { variantIds: [variantId] },
+      });
+      expect(vendedorBulk.statusCode).toBe(403);
+    });
+
+    it('a revoked QR makes the variant pending again, and bulk-generating it again produces exactly one active QR (no duplicate left vigente)', async () => {
+      const admin = await registerTenant('QR Bulk Theta Co', 'admin@qr-bulk-theta.example');
+      const { variantId } = await createProductVariant(admin, 'QR-BULK-THETA-1');
+
+      const first = await createQrCode(admin, 'product_variant', variantId);
+      expect((await listPending(admin)).map((r) => r.variantId)).not.toContain(variantId);
+
+      await revokeQrCode(admin, first.id);
+      expect((await listPending(admin)).map((r) => r.variantId)).toContain(variantId);
+
+      const result = await bulkCreate(admin, [variantId]);
+      expect(result.summary).toEqual({ created: 1, skipped: 0, errors: 0 });
+      const second = result.results[0]!.qrCode!;
+      expect(second.id).not.toBe(first.id);
+      expect(second.code).not.toBe(first.code);
+
+      expect((await listPending(admin)).map((r) => r.variantId)).not.toContain(variantId);
+      const listResponse = await inject({
+        method: 'GET',
+        url: `/api/v1/qr-codes?targetType=product_variant&targetId=${variantId}`,
+        headers: readHeaders(admin),
+      });
+      const rows = (JSON.parse(listResponse.body) as { data: { status: string }[] }).data;
+      expect(rows.filter((r) => r.status === 'active')).toHaveLength(1);
+    });
+
+    it('rejects more than 100 ids in one request (400)', async () => {
+      const admin = await registerTenant('QR Bulk Iota Co', 'admin@qr-bulk-iota.example');
+      const tooMany = Array.from({ length: 101 }, (_, i) => `11111111-1111-7111-8111-${String(i).padStart(12, '0')}`);
+      const response = await inject({ method: 'POST', url: '/api/v1/qr-codes/bulk', headers: writeHeaders(admin), payload: { variantIds: tooMany } });
+      expect(response.statusCode).toBe(400);
     });
   });
 

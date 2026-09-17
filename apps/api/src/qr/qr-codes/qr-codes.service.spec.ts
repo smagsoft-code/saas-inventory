@@ -30,8 +30,10 @@ function buildService() {
     create: vi.fn(),
     findById: vi.fn(),
     findByCode: vi.fn(),
+    findActiveByTarget: vi.fn(),
     listByTenant: vi.fn(),
     updateStatus: vi.fn(),
+    findPendingProductVariants: vi.fn(),
   };
   const qrTargetsRepository = { findProductVariant: vi.fn(), findLocation: vi.fn() };
   const auditLogService = { record: vi.fn() };
@@ -57,6 +59,29 @@ describe('QrCodesService', () => {
       await expect(
         service.create(TENANT_ID, ACTOR_ID, { targetType: 'location', targetId: 'foreign-location' }, META),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('rejects generating a QR when the target already has one active', async () => {
+      const { service, qrTargetsRepository, qrCodesRepository } = buildService();
+      qrTargetsRepository.findProductVariant.mockResolvedValue(EXISTING_VARIANT);
+      qrCodesRepository.findActiveByTarget.mockResolvedValue(EXISTING_QR);
+
+      await expect(
+        service.create(TENANT_ID, ACTOR_ID, { targetType: 'product_variant', targetId: 'variant-1' }, META),
+      ).rejects.toThrow(ConflictException);
+      expect(qrCodesRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('allows generating a QR when the target only has a revoked one', async () => {
+      const { service, qrTargetsRepository, qrCodesRepository } = buildService();
+      qrTargetsRepository.findProductVariant.mockResolvedValue(EXISTING_VARIANT);
+      // findActiveByTarget only ever returns a row whose status is 'active' — a revoked-only
+      // target resolves to undefined here, exactly like one that never had a QR at all.
+      qrCodesRepository.findActiveByTarget.mockResolvedValue(undefined);
+      qrCodesRepository.create.mockResolvedValue(EXISTING_QR);
+
+      const result = await service.create(TENANT_ID, ACTOR_ID, { targetType: 'product_variant', targetId: 'variant-1' }, META);
+      expect(result.id).toBe('qr-1');
     });
 
     it('creates a QR code for a valid product variant target and audits it', async () => {
@@ -112,6 +137,80 @@ describe('QrCodesService', () => {
         service.create(TENANT_ID, ACTOR_ID, { targetType: 'product_variant', targetId: 'variant-1' }, META),
       ).rejects.toThrow('connection reset');
       expect(qrCodesRepository.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('createBulk (bulk generation)', () => {
+    it('generates a QR for each variant that has none, reusing create() unchanged', async () => {
+      const { service, qrTargetsRepository, qrCodesRepository, auditLogService } = buildService();
+      qrTargetsRepository.findProductVariant.mockResolvedValue(EXISTING_VARIANT);
+      qrCodesRepository.create
+        .mockResolvedValueOnce({ ...EXISTING_QR, id: 'qr-a', targetId: 'variant-1' })
+        .mockResolvedValueOnce({ ...EXISTING_QR, id: 'qr-b', targetId: 'variant-2' });
+
+      const result = await service.createBulk(TENANT_ID, ACTOR_ID, { variantIds: ['variant-1', 'variant-2'] }, META);
+
+      expect(result.summary).toEqual({ created: 2, skipped: 0, errors: 0 });
+      expect(result.results).toEqual([
+        { variantId: 'variant-1', status: 'created', qrCode: expect.objectContaining({ id: 'qr-a' }) },
+        { variantId: 'variant-2', status: 'created', qrCode: expect.objectContaining({ id: 'qr-b' }) },
+      ]);
+      expect(auditLogService.record).toHaveBeenCalledTimes(2);
+    });
+
+    it('skips (never errors on) a variant that already has an active QR — idempotent re-submission', async () => {
+      const { service, qrTargetsRepository, qrCodesRepository } = buildService();
+      qrTargetsRepository.findProductVariant.mockResolvedValue(EXISTING_VARIANT);
+      qrCodesRepository.findActiveByTarget.mockResolvedValue(EXISTING_QR);
+
+      const result = await service.createBulk(TENANT_ID, ACTOR_ID, { variantIds: ['variant-1'] }, META);
+
+      expect(result.results).toEqual([{ variantId: 'variant-1', status: 'skipped', reason: expect.stringContaining('already has an active QR') }]);
+      expect(result.summary).toEqual({ created: 0, skipped: 1, errors: 0 });
+      expect(qrCodesRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('reports a nonexistent/foreign-tenant variant as an error, never leaking which case it was, and continues the batch', async () => {
+      const { service, qrTargetsRepository, qrCodesRepository } = buildService();
+      qrTargetsRepository.findProductVariant
+        .mockResolvedValueOnce(undefined) // variant-missing: not found / foreign tenant
+        .mockResolvedValueOnce(EXISTING_VARIANT); // variant-1: real
+      qrCodesRepository.create.mockResolvedValueOnce({ ...EXISTING_QR, id: 'qr-ok' });
+
+      const result = await service.createBulk(TENANT_ID, ACTOR_ID, { variantIds: ['variant-missing', 'variant-1'] }, META);
+
+      expect(result.summary).toEqual({ created: 1, skipped: 0, errors: 1 });
+      expect(result.results[0]).toEqual({ variantId: 'variant-missing', status: 'error', reason: 'Product variant not found.' });
+      expect(result.results[1]).toEqual(expect.objectContaining({ variantId: 'variant-1', status: 'created' }));
+    });
+
+    it('never lets one failing variant abort the rest of the batch', async () => {
+      const { service, qrTargetsRepository, qrCodesRepository } = buildService();
+      qrTargetsRepository.findProductVariant.mockResolvedValue(EXISTING_VARIANT);
+      qrCodesRepository.create
+        .mockRejectedValueOnce(new Error('connection reset'))
+        .mockResolvedValueOnce({ ...EXISTING_QR, id: 'qr-second' });
+
+      const result = await service.createBulk(TENANT_ID, ACTOR_ID, { variantIds: ['variant-1', 'variant-2'] }, META);
+
+      expect(result.summary).toEqual({ created: 1, skipped: 0, errors: 1 });
+      expect(result.results[0]).toEqual({ variantId: 'variant-1', status: 'error', reason: 'connection reset' });
+      expect(result.results[1]).toEqual(expect.objectContaining({ variantId: 'variant-2', status: 'created' }));
+    });
+  });
+
+  describe('listPendingVariants (bulk-generation candidates)', () => {
+    it('maps repository rows to the response shape and paginates', async () => {
+      const { service, qrCodesRepository } = buildService();
+      qrCodesRepository.findPendingProductVariants.mockResolvedValue({
+        rows: [{ productId: 'p1', productName: 'Fridge', variantId: 'v1', sku: 'FRIDGE-A', totalCount: '1' }],
+        total: 1,
+      });
+
+      const result = await service.listPendingVariants(TENANT_ID, { page: 1, pageSize: 100 });
+
+      expect(result.data).toEqual([{ productId: 'p1', productName: 'Fridge', variantId: 'v1', sku: 'FRIDGE-A' }]);
+      expect(result.meta).toEqual({ page: 1, pageSize: 100, total: 1, totalPages: 1 });
     });
   });
 

@@ -14,16 +14,19 @@
  * `targetId` comes back as a raw id (`GAP-NAME-ENRICHMENT` — "target name = B"): a location id is
  * resolved via the bounded `GET /locations` fetch, a variant id has no tenant-wide list
  * (`GAP-VARIANT-LIST`) so it shows a short id. The DTO carries `code` (the opaque token printed on
- * the physical label) but **no image** — the printable URL is `/q/:code`; the UI shows the token +
- * that URL, it does not render a QR bitmap (no new dependency).
+ * the physical label) but **no image** — the printable URL is `/q/:code`; this `/qr` list still
+ * shows the token as text only. OUI-007 adds an actual QR bitmap (the `qrcode` package,
+ * `components/qr-code-image.tsx`) on the "Nuevo producto" create flow specifically, generated
+ * client-side from `{apiPublicUrl}/q/:code` — never a second copy of the image stored anywhere.
  */
 
 export const QR_TARGET_TYPES = ['product_variant', 'location'] as const;
 export type QrTargetType = (typeof QR_TARGET_TYPES)[number];
 
+// GL-1: "location" (tabla `locations`) se etiqueta "Almacén" en español (OUI-001).
 export const QR_TARGET_TYPE_LABELS: Record<QrTargetType, string> = {
-  product_variant: 'Product variant',
-  location: 'Location',
+  product_variant: 'Variante de producto',
+  location: 'Almacén',
 };
 
 export const QR_STATUSES = ['active', 'revoked'] as const;
@@ -64,4 +67,32 @@ export interface CreateQrCodeInput {
  * resolve time). */
 export function isQrExpired(qr: Pick<QrCode, 'expiresAt'>, now: Date = new Date()): boolean {
   return qr.expiresAt !== undefined && new Date(qr.expiresAt).getTime() <= now.getTime();
+}
+
+/** Generación masiva — `GET /qr-codes/pending-variants` item (`PendingVariantResponseDto`). A
+ * `product_variants` row with no active QR yet — the candidate list `/qr/bulk` selects from. */
+export interface PendingQrVariant {
+  productId: string;
+  productName: string;
+  variantId: string;
+  sku: string;
+}
+
+/** `POST /qr-codes/bulk` body — `BulkCreateQrCodesDto`. */
+export interface BulkCreateQrCodesInput {
+  variantIds: string[];
+}
+
+/** One `variantIds` entry's outcome — `BulkCreateQrCodeResultDto`. */
+export interface BulkCreateQrCodeResult {
+  variantId: string;
+  status: 'created' | 'skipped' | 'error';
+  qrCode?: QrCode;
+  reason?: string;
+}
+
+/** `POST /qr-codes/bulk` response — `BulkCreateQrCodesResponseDto`. */
+export interface BulkCreateQrCodesResult {
+  results: BulkCreateQrCodeResult[];
+  summary: { created: number; skipped: number; errors: number };
 }

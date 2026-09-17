@@ -1,6 +1,6 @@
 import { serverApiFetch } from '../api/server';
 import type { Paginated } from '../types/pagination';
-import type { QrCode, QrTargetType } from '../types/qr';
+import type { PendingQrVariant, QrCode, QrTargetType } from '../types/qr';
 
 /**
  * Server-side reads for QR codes (`GET /api/v1/qr-codes*`, permission `catalog.qr.manage`).
@@ -33,4 +33,19 @@ export async function listQrCodes(query: ListQrCodesQuery = {}): Promise<Paginat
 
 export async function getQrCode(id: string): Promise<QrCode> {
   return serverApiFetch<QrCode>(`/api/v1/qr-codes/${id}`);
+}
+
+/** Bulk-generation candidates — `GET /qr-codes/pending-variants`, bounded to one page of up to
+ * 100 (same cap `BulkCreateQrCodesDto.variantIds` accepts, so a "select all" from this list is
+ * always submittable in one `POST /qr-codes/bulk` call — see that DTO's own comment). */
+export interface ListPendingQrVariantsQuery {
+  q?: string;
+}
+
+export async function listPendingQrVariants(query: ListPendingQrVariantsQuery = {}): Promise<Paginated<PendingQrVariant>> {
+  const params: Record<string, string | number> = { pageSize: 100 };
+  if (query.q) {
+    params['q'] = query.q;
+  }
+  return serverApiFetch<Paginated<PendingQrVariant>>('/api/v1/qr-codes/pending-variants', { query: params });
 }

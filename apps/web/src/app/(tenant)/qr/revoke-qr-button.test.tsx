@@ -17,10 +17,10 @@ describe('RevokeQrButton', () => {
     mockedFetch.mockResolvedValueOnce(undefined);
     render(<RevokeQrButton id="q1" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /^revoke$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^revocar$/i }));
     expect(mockedFetch).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: /confirm revoke/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar revocación/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/qr-codes/q1', {
       method: 'PATCH',
@@ -32,9 +32,9 @@ describe('RevokeQrButton', () => {
   it('shows a safe message on 403 and does not refresh', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'no', undefined));
     render(<RevokeQrButton id="q1" />);
-    fireEvent.click(screen.getByRole('button', { name: /^revoke$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm revoke/i }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/not authorized/i);
+    fireEvent.click(screen.getByRole('button', { name: /^revocar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar revocación/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no tienes autorización/i);
     expect(refreshMock).not.toHaveBeenCalled();
   });
 });

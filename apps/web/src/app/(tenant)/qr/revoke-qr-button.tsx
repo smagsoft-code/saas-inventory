@@ -30,7 +30,7 @@ export function RevokeQrButton({ id }: { id: string }): React.JSX.Element {
     } catch (err) {
       setError(
         isApiError(err) && err.status === 403
-          ? 'You are not authorized to revoke this code.'
+          ? 'No tienes autorización para revocar este código.'
           : httpErrorMessage(err),
       );
     } finally {
@@ -41,7 +41,7 @@ export function RevokeQrButton({ id }: { id: string }): React.JSX.Element {
   if (!confirming) {
     return (
       <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
-        Revoke
+        Revocar
       </Button>
     );
   }
@@ -50,10 +50,10 @@ export function RevokeQrButton({ id }: { id: string }): React.JSX.Element {
     <div className="flex flex-col items-start gap-1">
       <div className="flex items-center gap-2">
         <Button variant="danger" size="sm" loading={busy} disabled={busy} onClick={() => void revoke()}>
-          Confirm revoke
+          Confirmar revocación
         </Button>
         <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(false)}>
-          Keep
+          Mantener
         </Button>
       </div>
       {error && (

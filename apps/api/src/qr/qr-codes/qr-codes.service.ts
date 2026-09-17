@@ -7,8 +7,12 @@ import { generateQrCode } from '../code-generator';
 import type { AuditMeta } from '../qr-audit-meta';
 import { QrCodesRepository, type QrCodeRow } from '../repositories/qr-codes.repository';
 import { QrTargetsRepository } from '../repositories/qr-targets.repository';
+import type { BulkCreateQrCodeResultDto, BulkCreateQrCodesResponseDto } from './dto/bulk-create-qr-codes-response.dto';
+import type { BulkCreateQrCodesDto } from './dto/bulk-create-qr-codes.dto';
 import type { CreateQrCodeDto } from './dto/create-qr-code.dto';
+import type { ListPendingVariantsQueryDto } from './dto/list-pending-variants-query.dto';
 import type { ListQrCodesQueryDto } from './dto/list-qr-codes-query.dto';
+import type { PendingVariantResponseDto } from './dto/pending-variant-response.dto';
 import type { QrCodeResponseDto } from './dto/qr-code-response.dto';
 import type { QrResolveIdentityResponseDto } from './dto/qr-resolve-identity-response.dto';
 import type { UpdateQrCodeDto } from './dto/update-qr-code.dto';
@@ -65,6 +69,15 @@ export class QrCodesService {
     return withTenantTransaction(tenantId, async (tx) => {
       await this.assertTargetExists(tx, tenantId, dto.targetType, dto.targetId);
 
+      // Only one active QR per target at a time — generating a second one while the first is
+      // still active would leave two different printed labels both resolving to the same thing,
+      // with no way to tell which is the "real" one. Revoke the existing code first
+      // (`PATCH /qr-codes/:id`) to regenerate.
+      const existingActive = await this.qrCodesRepository.findActiveByTarget(tx, tenantId, dto.targetType, dto.targetId);
+      if (existingActive) {
+        throw new ConflictException('This target already has an active QR code. Revoke it before generating a new one.');
+      }
+
       const row = await this.insertWithRetry(tx, {
         tenantId,
         targetType: dto.targetType,
@@ -83,6 +96,45 @@ export class QrCodesService {
 
       return toQrCodeResponse(row);
     });
+  }
+
+  /**
+   * Bulk-generation: generates a QR for every listed `product_variant` id, reusing `create()`
+   * unchanged for each one — same transaction, same target-existence check, same "already has an
+   * active QR" conflict check, same collision-retry, same audit write. Never a second parallel
+   * business-rule path (§11/§28). Sequential (not `Promise.all`), deliberately: a batch of up to
+   * 100 (`BulkCreateQrCodesDto`'s own cap) opening 100 concurrent transactions at once would be a
+   * needless spike against the connection pool for an admin action that isn't latency-sensitive;
+   * one bad/slow row also never starves the others out of a shared transaction. Every outcome is
+   * kept — created, skipped (target already had an active QR — idempotent, matches `create()`'s own
+   * 409), or error (anything else, id-for-id, never a single failure aborting the whole batch).
+   */
+  async createBulk(tenantId: string, actorId: string, dto: BulkCreateQrCodesDto, meta: AuditMeta): Promise<BulkCreateQrCodesResponseDto> {
+    const results: BulkCreateQrCodeResultDto[] = [];
+    for (const variantId of dto.variantIds) {
+      try {
+        const qrCode = await this.create(tenantId, actorId, { targetType: 'product_variant', targetId: variantId }, meta);
+        results.push({ variantId, status: 'created', qrCode });
+      } catch (error) {
+        if (error instanceof ConflictException) {
+          results.push({ variantId, status: 'skipped', reason: 'This variant already has an active QR code.' });
+        } else if (error instanceof NotFoundException) {
+          // Covers both "no such variant" and "belongs to another tenant" — findProductVariant
+          // (tenant-scoped) resolves both identically, so this never leaks cross-tenant existence.
+          results.push({ variantId, status: 'error', reason: 'Product variant not found.' });
+        } else {
+          results.push({ variantId, status: 'error', reason: error instanceof Error ? error.message : 'Unknown error.' });
+        }
+      }
+    }
+    return {
+      results,
+      summary: {
+        created: results.filter((r) => r.status === 'created').length,
+        skipped: results.filter((r) => r.status === 'skipped').length,
+        errors: results.filter((r) => r.status === 'error').length,
+      },
+    };
   }
 
   async getById(tenantId: string, id: string): Promise<QrCodeResponseDto> {
@@ -105,6 +157,28 @@ export class QrCodesService {
       });
       return {
         data: rows.map(toQrCodeResponse),
+        meta: {
+          page: query.page,
+          pageSize: query.pageSize,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
+        },
+      };
+    });
+  }
+
+  /** Bulk-generation candidates — `GET /qr-codes/pending-variants`. See
+   * `QrCodesRepository.findPendingProductVariants` for the "no active QR" definition (identical to
+   * `findActiveByTarget`'s, just as an anti-join over the whole tenant instead of one target). */
+  async listPendingVariants(tenantId: string, query: ListPendingVariantsQueryDto): Promise<PaginatedResult<PendingVariantResponseDto>> {
+    return withTenantTransaction(tenantId, async (tx) => {
+      const { rows, total } = await this.qrCodesRepository.findPendingProductVariants(tx, tenantId, {
+        q: query.q,
+        page: query.page,
+        pageSize: query.pageSize,
+      });
+      return {
+        data: rows.map((row) => ({ productId: row.productId, productName: row.productName, variantId: row.variantId, sku: row.sku })),
         meta: {
           page: query.page,
           pageSize: query.pageSize,
