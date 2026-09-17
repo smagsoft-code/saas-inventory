@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, eq } from 'drizzle-orm';
+import { and, count, eq, sql } from 'drizzle-orm';
 import { inventoryBalances } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -74,5 +74,16 @@ export class InventoryBalancesRepository {
       .offset((params.page - 1) * params.pageSize);
 
     return { rows, total: totalRow?.total ?? 0 };
+  }
+
+  /** Sum of `quantity_physical` across every location for one variant — a DB-side aggregate, not a
+   * fetch-all-then-sum, so it stays correct regardless of how many locations the variant has a
+   * balance row at (unlike every paginated list here, this one is never bounded to a page size). */
+  async sumPhysicalStockByVariant(tx: TenantTransaction, tenantId: string, productVariantId: string): Promise<number> {
+    const [row] = await tx
+      .select({ total: sql<string>`coalesce(sum(${inventoryBalances.quantityPhysical}), 0)` })
+      .from(inventoryBalances)
+      .where(and(eq(inventoryBalances.tenantId, tenantId), eq(inventoryBalances.productVariantId, productVariantId)));
+    return Number(row?.total ?? 0);
   }
 }

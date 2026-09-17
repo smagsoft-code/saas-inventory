@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { generateId } from '@saas-inventory/shared';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { AuditLogService } from '../../common/audit/audit-log.service';
@@ -15,6 +15,7 @@ import type { UpdateProductDto } from './dto/update-product.dto';
 import type { UpdateVariantDto } from './dto/update-variant.dto';
 import type { VariantFieldsDto } from './dto/variant-fields.dto';
 import type { VariantResponseDto } from './dto/variant-response.dto';
+import { VARIANT_STOCK_PORT, type VariantStockPort } from './variant-stock.port';
 
 interface UniqueViolation {
   code: string;
@@ -63,6 +64,7 @@ export class ProductsService {
     private readonly categoriesRepository: CategoriesRepository,
     private readonly attributeValidationService: AttributeValidationService,
     private readonly auditLogService: AuditLogService,
+    @Inject(VARIANT_STOCK_PORT) private readonly variantStock: VariantStockPort,
   ) {}
 
   async list(
@@ -344,6 +346,18 @@ export class ProductsService {
 
       if (dto.attributes !== undefined) {
         await this.attributeValidationService.validate(tx, tenantId, product.categoryId, 'variant', dto.attributes);
+      }
+
+      // A variant can't be "discontinued" (deactivated) while it still has physical units in a
+      // warehouse — re-checked here regardless of what the frontend already validated, since this
+      // is the one place every caller of this endpoint (including a direct API call) goes through.
+      if (dto.status === 'discontinued' && before.status !== 'discontinued') {
+        const totalPhysicalStock = await this.variantStock.totalPhysicalStock(tx, tenantId, variantId);
+        if (totalPhysicalStock > 0) {
+          throw new ConflictException(
+            `Cannot deactivate: this variant still has ${totalPhysicalStock} unit(s) of physical stock. Reduce stock to 0 first.`,
+          );
+        }
       }
 
       const priceChanged = dto.maxPrice !== undefined || dto.basePrice !== undefined || dto.minPrice !== undefined;

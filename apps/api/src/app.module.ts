@@ -9,6 +9,7 @@ import { EventProcessorModule } from './event-processor/event-processor.module';
 import { HealthModule } from './health/health.module';
 import { ImportModule } from './import/import.module';
 import { InventoryModule } from './inventory/inventory.module';
+import { VariantStockBridgeModule } from './inventory/variant-stock-bridge.module';
 import { QrModule } from './qr/qr.module';
 import { ReportsModule } from './reports/reports.module';
 import { SalesModule } from './sales/sales.module';
@@ -22,6 +23,7 @@ import { SalesModule } from './sales/sales.module';
     CoreModule,
     CatalogModule,
     InventoryModule,
+    VariantStockBridgeModule,
     QrModule,
     ImportModule,
     AdministrationModule,

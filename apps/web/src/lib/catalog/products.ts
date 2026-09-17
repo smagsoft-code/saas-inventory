@@ -1,6 +1,6 @@
 import { serverApiFetch } from '../api/server';
 import type { Paginated } from '../types/pagination';
-import type { Product, Variant } from '../types/products';
+import type { Product, ProductImage, Variant } from '../types/products';
 
 /**
  * Server-side reads for products + variants (`GET /api/v1/products*`, permission `products.view`).
@@ -42,4 +42,9 @@ export async function listProductVariants(productId: string): Promise<Variant[]>
 
 export async function getProductVariant(productId: string, variantId: string): Promise<Variant> {
   return serverApiFetch<Variant>(`/api/v1/products/${productId}/variants/${variantId}`);
+}
+
+/** `GET /products/:id/images` — a plain array, not paginated (a product has few images). OUI-008. */
+export async function listProductImages(productId: string): Promise<ProductImage[]> {
+  return serverApiFetch<ProductImage[]>(`/api/v1/products/${productId}/images`);
 }

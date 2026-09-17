@@ -18,7 +18,7 @@ import { NoAccess } from '../../../../components/ui/no-access';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
 import { ProductForm } from '../product-form';
 
-export const metadata = { title: 'Product · SaaS Inventory' };
+export const metadata = { title: 'Producto · SaaS Inventory' };
 
 function formatPrice(value: number | undefined): string {
   return typeof value === 'number' ? value.toFixed(2) : '—';
@@ -35,8 +35,8 @@ export default async function ProductDetailPage({
   if (!checker.can('products.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Product" />
-        <NoAccess message="You need the products permission to view this page." />
+        <PageHeader title="Producto" />
+        <NoAccess message="Necesitas el permiso de productos para ver esta página." />
       </PageContainer>
     );
   }
@@ -71,7 +71,7 @@ export default async function ProductDetailPage({
     <PageContainer>
       <PageHeader
         title={product.name}
-        description={category ? category.name : product.categoryId ? 'Category' : 'No category'}
+        description={category ? category.name : product.categoryId ? 'Categoría' : 'Sin categoría'}
         actions={
           <Badge tone={statusTone(product.status)}>
             {PRODUCT_STATUS_LABELS[product.status as ProductStatus] ?? product.status}
@@ -81,7 +81,7 @@ export default async function ProductDetailPage({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Details</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Detalles</h2>
           {canManage && canViewCategories ? (
             <ProductForm
               mode="edit"
@@ -92,21 +92,21 @@ export default async function ProductDetailPage({
             />
           ) : (
             <dl className="grid max-w-md grid-cols-[10rem_1fr] gap-y-2 text-sm">
-              <dt className="text-slate-500">Name</dt>
+              <dt className="text-slate-500">Nombre</dt>
               <dd className="text-slate-900">{product.name}</dd>
               {product.description && (
                 <>
-                  <dt className="text-slate-500">Description</dt>
+                  <dt className="text-slate-500">Descripción</dt>
                   <dd className="text-slate-900">{product.description}</dd>
                 </>
               )}
-              <dt className="text-slate-500">Warranty</dt>
+              <dt className="text-slate-500">Garantía</dt>
               <dd className="text-slate-900">
-                {typeof product.warrantyMonths === 'number' ? `${product.warrantyMonths} months` : '—'}
+                {typeof product.warrantyMonths === 'number' ? `${product.warrantyMonths} meses` : '—'}
               </dd>
               {productAttrEntries.length > 0 && (
                 <>
-                  <dt className="text-slate-500">Attributes</dt>
+                  <dt className="text-slate-500">Atributos</dt>
                   <dd className="text-slate-900">
                     <ul className="flex flex-col gap-0.5">
                       {productAttrEntries.map(([key, value]) => (
@@ -121,11 +121,11 @@ export default async function ProductDetailPage({
               )}
               {(product.brandId || product.supplierId) && (
                 <>
-                  <dt className="text-slate-500">Brand / supplier</dt>
+                  <dt className="text-slate-500">Marca / proveedor</dt>
                   <dd className="text-slate-500">
                     {/* GAP-BRAND-SUPPLIER-LIST: no endpoint to resolve these ids to names. */}
-                    {product.brandId ? `brand ${product.brandId}` : '—'}
-                    {product.supplierId ? ` · supplier ${product.supplierId}` : ''}
+                    {product.brandId ? `marca ${product.brandId}` : '—'}
+                    {product.supplierId ? ` · proveedor ${product.supplierId}` : ''}
                   </dd>
                 </>
               )}
@@ -137,27 +137,27 @@ export default async function ProductDetailPage({
       <Card>
         <CardBody className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-900">Variants</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Variantes</h2>
             {canManage && (
               <ButtonLink href={`/products/${product.id}/variants/new`} size="sm">
-                Add variant
+                Agregar variante
               </ButtonLink>
             )}
           </div>
           {variants.length === 0 ? (
-            <p className="text-sm text-slate-500">This product has no variants.</p>
+            <p className="text-sm text-slate-500">Este producto no tiene variantes.</p>
           ) : (
             <Table>
               <THead>
                 <TR>
-                  <TH>SKU</TH>
-                  <TH>Unit</TH>
+                  <TH>Código</TH>
+                  <TH>Unidad</TH>
                   <TH>Base</TH>
-                  <TH>Max</TH>
-                  <TH>Min</TH>
-                  <TH>Status</TH>
+                  <TH>Máx.</TH>
+                  <TH>Mín.</TH>
+                  <TH>Estado</TH>
                   <TH className="w-0">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">Acciones</span>
                   </TH>
                 </TR>
               </THead>
@@ -166,8 +166,8 @@ export default async function ProductDetailPage({
                   <TR key={variant.id}>
                     <TD className="font-medium">
                       {variant.sku}
-                      {variant.isSerialized && <Badge tone="neutral" className="ml-2">serial</Badge>}
-                      {variant.isLotTracked && <Badge tone="neutral" className="ml-2">lot</Badge>}
+                      {variant.isSerialized && <Badge tone="neutral" className="ml-2">serie</Badge>}
+                      {variant.isLotTracked && <Badge tone="neutral" className="ml-2">lote</Badge>}
                     </TD>
                     <TD className="text-slate-500">{variant.unit}</TD>
                     <TD className="text-slate-500">{formatPrice(variant.basePrice)}</TD>
@@ -183,7 +183,7 @@ export default async function ProductDetailPage({
                         href={`/products/${product.id}/variants/${variant.id}`}
                         className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                       >
-                        {canManage ? 'Edit' : 'View'}
+                        {canManage ? 'Editar' : 'Ver'}
                       </Link>
                     </TD>
                   </TR>

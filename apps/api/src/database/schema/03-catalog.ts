@@ -288,13 +288,18 @@ export const productVariants = pgTable('product_variants', {
   }),
 ]).enableRLS();
 
-/** No deleted_at — removed by deleting the row (database.md#catalog-products-variants-attributes). */
+/** No deleted_at — removed by deleting the row (database.md#catalog-products-variants-attributes).
+ * `mimeType` (OUI-006 — first real wiring of this table, `ObjectStorageService`'s own header
+ * comment: "schema-ready but never wired to a real client") is what lets `GET
+ * /products/:id/images/:imageId` set an honest `Content-Type` when it streams `storageKey` back —
+ * never inferred from the object key's extension. */
 export const productImages = pgTable('product_images', {
   id: id(),
   tenantId: tenantId(),
   productId: uuid('product_id').notNull(),
   productVariantId: uuid('product_variant_id'),
   storageKey: text('storage_key').notNull(),
+  mimeType: text('mime_type').notNull(),
   position: integer('position').notNull().default(0),
   createdAt: createdAt(),
 }, (t) => [
@@ -309,6 +314,11 @@ export const productImages = pgTable('product_images', {
     foreignColumns: [productVariants.tenantId, productVariants.id],
   }).onDelete('restrict'),
   unique('product_images_tenant_id_id_key').on(t.tenantId, t.id),
+  index('product_images_tenant_product_idx').on(t.tenantId, t.productId),
+  check(
+    'product_images_mime_type_check',
+    sql`${t.mimeType} IN ('image/jpeg', 'image/png', 'image/webp')`,
+  ),
   tenantIsolationPolicy('product_images'),
 ]).enableRLS();
 

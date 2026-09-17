@@ -4,14 +4,16 @@ import { createPermissionChecker } from '../../../../../../lib/auth/permissions'
 import { isApiError } from '../../../../../../lib/api/errors';
 import { serverApiFetch } from '../../../../../../lib/api/server';
 import { getProduct } from '../../../../../../lib/catalog/products';
+import { getCategory } from '../../../../../../lib/catalog/categories';
 import { listAttributeDefinitions } from '../../../../../../lib/catalog/attributes';
 import { loadCategoryAttributeFieldSets } from '../../../../../../lib/catalog/product-attributes';
+import { apiPublicUrl } from '../../../../../../lib/api/public-url';
 import { PageContainer } from '../../../../../../components/ui/page-container';
 import { PageHeader } from '../../../../../../components/ui/page-header';
 import { NoAccess } from '../../../../../../components/ui/no-access';
 import { VariantForm } from '../../variant-form';
 
-export const metadata = { title: 'New variant · SaaS Inventory' };
+export const metadata = { title: 'Nueva variante · SaaS Inventory' };
 
 export default async function NewVariantPage({
   params,
@@ -24,8 +26,8 @@ export default async function NewVariantPage({
   if (!checker.can('products.manage')) {
     return (
       <PageContainer>
-        <PageHeader title="New variant" />
-        <NoAccess message="You need the manage-products permission to add variants." />
+        <PageHeader title="Nueva variante" />
+        <NoAccess message="Necesitas el permiso de gestión de productos para agregar variantes." />
       </PageContainer>
     );
   }
@@ -40,14 +42,17 @@ export default async function NewVariantPage({
     throw error;
   }
 
-  const definitions = checker.can('categories.view') ? await listAttributeDefinitions() : [];
-  const fieldSets = checker.can('categories.view')
+  const canViewCategories = checker.can('categories.view');
+  const definitions = canViewCategories ? await listAttributeDefinitions() : [];
+  const fieldSets = canViewCategories
     ? await loadCategoryAttributeFieldSets((path) => serverApiFetch(path), product.categoryId, definitions)
     : { product: [], variant: [], options: {} };
+  const category =
+    product.categoryId && canViewCategories ? await getCategory(product.categoryId).catch(() => null) : null;
 
   return (
     <PageContainer>
-      <PageHeader title="New variant" description={`Add a variant to ${product.name}.`} />
+      <PageHeader title="Nueva variante" description={`Agrega una variante a ${product.name}.`} />
       <VariantForm
         mode="create"
         productId={id}
@@ -55,6 +60,10 @@ export default async function NewVariantPage({
         optionsByDefinitionId={fieldSets.options}
         canViewFloor={checker.can('pricing.floor.view')}
         canViewCost={checker.can('pricing.cost.view')}
+        totalPhysicalStock={null}
+        {...(product.categoryId ? { categoryId: product.categoryId } : {})}
+        {...(category ? { categoryName: category.name } : {})}
+        apiPublicUrl={apiPublicUrl()}
       />
     </PageContainer>
   );

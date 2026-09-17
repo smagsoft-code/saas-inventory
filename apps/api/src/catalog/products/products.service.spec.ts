@@ -48,13 +48,15 @@ function buildService() {
   const categoriesRepository = { findById: vi.fn() };
   const attributeValidationService = { validate: vi.fn().mockResolvedValue(undefined) };
   const auditLogService = { record: vi.fn() };
+  const variantStock = { totalPhysicalStock: vi.fn().mockResolvedValue(0) };
   const service = new ProductsService(
     productsRepository as never,
     categoriesRepository as never,
     attributeValidationService as never,
     auditLogService as never,
+    variantStock as never,
   );
-  return { service, productsRepository, categoriesRepository, attributeValidationService, auditLogService };
+  return { service, productsRepository, categoriesRepository, attributeValidationService, auditLogService, variantStock };
 }
 
 describe('ProductsService', () => {
@@ -203,6 +205,71 @@ describe('ProductsService', () => {
 
       expect(result.minPrice).toBe(60);
       expect(result.cost).toBe(40);
+    });
+  });
+
+  describe('updateVariant — deactivation stock guard (GAP: API must reject discontinued while physical stock > 0)', () => {
+    const EXISTING_VARIANT = {
+      id: 'variant-1',
+      tenantId: TENANT_ID,
+      productId: PRODUCT_ID,
+      sku: 'SKU-1',
+      barcode: null,
+      unit: 'unit',
+      maxPrice: '100',
+      basePrice: '80',
+      minPrice: '60',
+      cost: '40',
+      status: 'active',
+      isSerialized: false,
+      isLotTracked: false,
+      attributes: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it('rejects discontinuing a variant that still has physical stock, without writing anything', async () => {
+      const { service, productsRepository, variantStock } = buildService();
+      productsRepository.findById.mockResolvedValue(EXISTING_PRODUCT);
+      productsRepository.findVariantById.mockResolvedValue(EXISTING_VARIANT);
+      variantStock.totalPhysicalStock.mockResolvedValue(12);
+
+      await expect(
+        service.updateVariant(TENANT_ID, ACTOR_ID, [], PRODUCT_ID, 'variant-1', { status: 'discontinued' }, META),
+      ).rejects.toThrow(ConflictException);
+      expect(productsRepository.updateVariant).not.toHaveBeenCalled();
+    });
+
+    it('allows discontinuing once physical stock is exactly 0', async () => {
+      const { service, productsRepository, variantStock } = buildService();
+      productsRepository.findById.mockResolvedValue(EXISTING_PRODUCT);
+      productsRepository.findVariantById.mockResolvedValue(EXISTING_VARIANT);
+      productsRepository.updateVariant.mockResolvedValue({ ...EXISTING_VARIANT, status: 'discontinued' });
+      variantStock.totalPhysicalStock.mockResolvedValue(0);
+
+      const result = await service.updateVariant(TENANT_ID, ACTOR_ID, [], PRODUCT_ID, 'variant-1', { status: 'discontinued' }, META);
+      expect(result.status).toBe('discontinued');
+    });
+
+    it('never checks stock for a status transition other than into discontinued', async () => {
+      const { service, productsRepository, variantStock } = buildService();
+      productsRepository.findById.mockResolvedValue(EXISTING_PRODUCT);
+      productsRepository.findVariantById.mockResolvedValue(EXISTING_VARIANT);
+      productsRepository.updateVariant.mockResolvedValue({ ...EXISTING_VARIANT, unit: 'box' });
+
+      await service.updateVariant(TENANT_ID, ACTOR_ID, [], PRODUCT_ID, 'variant-1', { unit: 'box' }, META);
+      expect(variantStock.totalPhysicalStock).not.toHaveBeenCalled();
+    });
+
+    it('never re-checks stock when the variant is already discontinued and stays that way', async () => {
+      const { service, productsRepository, variantStock } = buildService();
+      const alreadyDiscontinued = { ...EXISTING_VARIANT, status: 'discontinued' };
+      productsRepository.findById.mockResolvedValue(EXISTING_PRODUCT);
+      productsRepository.findVariantById.mockResolvedValue(alreadyDiscontinued);
+      productsRepository.updateVariant.mockResolvedValue(alreadyDiscontinued);
+
+      await service.updateVariant(TENANT_ID, ACTOR_ID, [], PRODUCT_ID, 'variant-1', { status: 'discontinued' }, META);
+      expect(variantStock.totalPhysicalStock).not.toHaveBeenCalled();
     });
   });
 });

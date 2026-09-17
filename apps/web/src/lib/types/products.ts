@@ -20,9 +20,9 @@ export const PRODUCT_STATUSES = ['draft', 'active', 'discontinued'] as const;
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
 
 export const PRODUCT_STATUS_LABELS: Record<ProductStatus, string> = {
-  draft: 'Draft',
-  active: 'Active',
-  discontinued: 'Discontinued',
+  draft: 'Borrador',
+  active: 'Activo',
+  discontinued: 'Descontinuado',
 };
 
 /** `GET /products` list item / `GET /products/:id` — `ProductResponseDto`. No SKU on the product
@@ -71,9 +71,11 @@ export interface UpdateProductInput {
 export const VARIANT_STATUSES = ['active', 'discontinued'] as const;
 export type VariantStatus = (typeof VARIANT_STATUSES)[number];
 
+/** "Desactivado" reuses the existing `discontinued` value as-is (`product_variants_status_check`)
+ * — there is no separate "deactivated" status in the database, and none was added for this. */
 export const VARIANT_STATUS_LABELS: Record<VariantStatus, string> = {
-  active: 'Active',
-  discontinued: 'Discontinued',
+  active: 'Activo',
+  discontinued: 'Desactivado',
 };
 
 /** `GET /products/:id/variants` item / `:variantId` — `VariantResponseDto`. `minPrice` is present
@@ -95,6 +97,22 @@ export interface Variant {
   attributes: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+}
+
+// --- images (OUI-006/OUI-008) -----------------------------------------------------------------
+
+/** `GET/POST /products/:id/images` item — `ProductImageResponseDto`. Product-scoped (not
+ * variant-scoped) even though the schema allows an optional `productVariantId` — every uploader in
+ * this app (the "Nuevo producto" flow, the variant edit page) attaches images to the product as a
+ * whole, never to one specific variant. `url` is a same-origin path
+ * (`/api/v1/products/:productId/images/:imageId`), never a fabricated one. */
+export interface ProductImage {
+  id: string;
+  productId: string;
+  productVariantId?: string;
+  position: number;
+  createdAt: string;
+  url: string;
 }
 
 /** `POST /products/:id/variants` body — `VariantFieldsDto` (also embedded as `defaultVariant` on
