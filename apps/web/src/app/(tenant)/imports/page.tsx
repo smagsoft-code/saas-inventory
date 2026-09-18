@@ -24,10 +24,10 @@ import { EmptyState } from '../../../components/ui/empty-state';
 import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
-import { ImportsReportFilters, type ImportsReportFilterValues } from './imports-report-filters';
+import { ImportsFilters, type ImportsFilterValues } from './imports-filters';
 import { ImportsReportError, ImportsReportSection } from './imports-report-section';
 
-export const metadata = { title: 'Imports · SaaS Inventory' };
+export const metadata = { title: 'Importaciones · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -67,8 +67,8 @@ export default async function ImportsPage({
   if (!checker.can('import.execute')) {
     return (
       <PageContainer>
-        <PageHeader title="Imports" />
-        <NoAccess message="You need the import permission to view this page." />
+        <PageHeader title="Importaciones" />
+        <NoAccess message="Necesitas el permiso de importación para ver esta página." />
       </PageContainer>
     );
   }
@@ -86,7 +86,7 @@ export default async function ImportsPage({
   const reportTo = sp.reportTo || now.toISOString();
   const reportGroupBy = pickReportGroupBy(sp.reportGroupBy);
   const reportStatus = pickReportStatus(sp.reportStatus);
-  const reportFilters: ImportsReportFilterValues = { from: reportFrom, to: reportTo, groupBy: reportGroupBy, status: reportStatus };
+  const filterValues: ImportsFilterValues = { from: reportFrom, to: reportTo, groupBy: reportGroupBy, status: status ?? reportStatus };
 
   let summary: ImportsSummary | undefined;
   let summaryError: { status: number; message: string; correlationId: string | undefined } | undefined;
@@ -121,24 +121,18 @@ export default async function ImportsPage({
     return `/imports${params.toString() ? `?${params}` : ''}`;
   }
 
-  const chip = (active: boolean) =>
-    active
-      ? 'rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-medium text-white'
-      : 'rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50';
-
   return (
     <PageContainer>
       <PageHeader
-        title="Imports"
-        description="Bulk-onboard catalog and starting stock from an Excel file — upload, map columns, validate, review, then commit."
-        actions={<ButtonLink href="/imports/new">New import</ButtonLink>}
+        title="Importaciones"
+        description="Carga masiva de catálogo e inventario inicial desde un archivo Excel — sube, mapea columnas, valida, revisa y luego confirma."
+        actions={<ButtonLink href="/imports/new">Nueva importación</ButtonLink>}
       />
 
       <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
         <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
-          Imports report
+          Reporte de importaciones
         </h2>
-        <ImportsReportFilters initial={reportFilters} />
         {summary ? (
           <ImportsReportSection summary={summary} />
         ) : (
@@ -150,52 +144,40 @@ export default async function ImportsPage({
 
       <hr className="border-slate-200" />
 
-      <h2 className="text-sm font-semibold text-slate-900">Import history</h2>
+      <h2 className="text-sm font-semibold text-slate-900">Historial de importaciones</h2>
 
       <div className="flex flex-wrap items-center gap-2">
-        <Link href={buildHref({ status: null })} aria-current={!status ? 'true' : undefined} className={chip(!status)}>
-          All statuses
-        </Link>
-        {IMPORT_JOB_STATUSES.map((s) => (
-          <Link
-            key={s}
-            href={buildHref({ status: s })}
-            aria-current={status === s ? 'true' : undefined}
-            className={chip(status === s)}
-          >
-            {IMPORT_JOB_STATUS_LABELS[s]}
-          </Link>
-        ))}
+        <ImportsFilters initial={filterValues} />
         <Link href="/imports/templates" className="ml-auto text-sm font-medium text-slate-500 hover:underline">
-          Mapping templates
+          Plantillas de mapeo
         </Link>
       </div>
 
       {result.data.length === 0 ? (
         <EmptyState
-          title={status ? 'No imports match this status' : 'No imports yet'}
+          title={status ? 'Ninguna importación coincide con este estado' : 'Aún no hay importaciones'}
           description={
             status
-              ? 'Try a different status.'
-              : 'Download the template, fill it in, then start an import to onboard products and stock.'
+              ? 'Prueba con otro estado.'
+              : 'Descarga la plantilla, complétala y luego inicia una importación para dar de alta productos e inventario.'
           }
-          {...(!status ? { action: <ButtonLink href="/imports/new">New import</ButtonLink> } : {})}
+          {...(!status ? { action: <ButtonLink href="/imports/new">Nueva importación</ButtonLink> } : {})}
         />
       ) : (
         <>
           <Table>
             <THead>
               <TR>
-                <TH>File</TH>
-                <TH>Status</TH>
-                <TH className="text-right">Rows</TH>
-                <TH className="text-right">Valid</TH>
-                <TH className="text-right">Warnings</TH>
-                <TH className="text-right">Invalid</TH>
-                <TH className="text-right">Imported</TH>
-                <TH>Created</TH>
+                <TH>Archivo</TH>
+                <TH>Estado</TH>
+                <TH className="text-right">Filas</TH>
+                <TH className="text-right">Válidas</TH>
+                <TH className="text-right">Advertencias</TH>
+                <TH className="text-right">Inválidas</TH>
+                <TH className="text-right">Importadas</TH>
+                <TH>Creado</TH>
                 <TH className="w-0">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">Acciones</span>
                 </TH>
               </TR>
             </THead>
@@ -221,7 +203,7 @@ export default async function ImportsPage({
                       href={`/imports/${job.id}`}
                       className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                     >
-                      View
+                      Ver
                     </Link>
                   </TD>
                 </TR>

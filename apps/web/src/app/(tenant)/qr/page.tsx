@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { getSession } from '../../../lib/auth/session';
 import { createPermissionChecker } from '../../../lib/auth/permissions';
 import { listQrCodes } from '../../../lib/catalog/qr-codes';
@@ -186,37 +185,6 @@ export default async function QrCodesPage({
         description="Códigos imprimibles que resuelven a una variante de producto o a un almacén."
         actions={<ButtonLink href="/qr/new">Generar código QR</ButtonLink>}
       />
-
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href={buildHref({ targetType: undefined })}
-          aria-current={!targetType ? 'true' : undefined}
-          className={
-            !targetType
-              ? 'rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-medium text-white'
-              : 'rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50'
-          }
-        >
-          Todos los destinos
-        </Link>
-        {QR_TARGET_TYPES.map((type) => {
-          const active = targetType === type;
-          return (
-            <Link
-              key={type}
-              href={buildHref({ targetType: type })}
-              aria-current={active ? 'true' : undefined}
-              className={
-                active
-                  ? 'rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-medium text-white'
-                  : 'rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50'
-              }
-            >
-              {QR_TARGET_TYPE_LABELS[type]}
-            </Link>
-          );
-        })}
-      </div>
 
       <QrFilters
         initial={{ q, categoryId, status: qrStatus as QrStatus | undefined }}
