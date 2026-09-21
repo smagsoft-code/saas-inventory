@@ -60,8 +60,8 @@
 | Import — rows-imported rollup over a period | | ✅ | aggregation |
 | Users list + create/edit + status | ✅ | | `GAP-USER-FILTERS` |
 | Location-access editor (per user) | ✅ built F17-14 | | |
-| Roles view (read-only) | ✅ built F17-14 | | `GAP-ROLE-CRUD` (management = future) |
-| Role/permission CRUD | | | ❌ future (no endpoint) |
+| Roles view (read-only) | ✅ built F17-14 | | superseded — see next row |
+| Role/permission CRUD | ✅ built ROLES/PERMISSIONS block | | `GAP-ROLE-CRUD` CLOSED — ADR-0034 self-escalation guard |
 | Audit trail viewer | | | ❌ future `GAP-AUDIT-READ` |
 | Tenant settings (timezone, business hours) + company info | ✅ | | |
 | Branding / notification preferences | | | ❌ branding "later"; notif routing lives in n8n |

@@ -211,6 +211,10 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
       const f = await seed();
       const a = await c.createAndLoginAs(f.admin, `insA-${uniq()}@ex.com`, 'Supervisor');
       const b = await c.createAndLoginAs(f.admin, `insB-${uniq()}@ex.com`, 'Supervisor');
+      // ADR-0035: Supervisor is not the founding Administrador, so inspecting a return's
+      // disposition locations now needs an explicit assignment.
+      await c.setUserLocations(f.admin, a.user.id, [f.sellLocationId, f.quarantineLocationId]);
+      await c.setUserLocations(f.admin, b.user.id, [f.sellLocationId, f.quarantineLocationId]);
       for (let run = 0; run < 6; run += 1) {
         const { returnId, itemIds } = await requestedReturn(f, 1, 2);
         const [ra, rb] = await Promise.all([
@@ -234,6 +238,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
     it('R14: inspect || cancel on a requested return — exactly one transition leaves `requested`; never partial inspection; no inventory', async () => {
       const f = await seed();
       const inspector = await c.createAndLoginAs(f.admin, `r14i-${uniq()}@ex.com`, 'Supervisor');
+      // ADR-0035: needs an explicit assignment now (see R13 above).
+      await c.setUserLocations(f.admin, inspector.user.id, [f.sellLocationId, f.quarantineLocationId]);
       for (let run = 0; run < 6; run += 1) {
         const { returnId, itemIds } = await requestedReturn(f, 1, 2);
         const [ins, can] = await Promise.all([
@@ -415,6 +421,10 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
       await c.receiveStock(admin, variantId, locationId, 500);
       const customerId = await c.createCustomer(admin, c.fullCustomer(`pa-${uniq()}`));
       const seller = await c.createAndLoginAs(admin, `sell-${uniq()}@ex.com`, 'Vendedor');
+      // ADR-0035: seller checks out and confirms (both location-scoped) and is not the founding
+      // Administrador, so it needs an explicit assignment. approverA/approverB never touch
+      // LocationAuthorizationService (PriceApprovalsService is location-agnostic), so they don't.
+      await c.setUserLocations(admin, seller.user.id, [locationId]);
       const approverA = await c.createAndLoginAs(admin, `apA-${uniq()}@ex.com`, 'Supervisor');
       const approverB = await c.createAndLoginAs(admin, `apB-${uniq()}@ex.com`, 'Supervisor');
       return { admin, tenantId, locationId, variantId, customerId, seller, approverA, approverB };

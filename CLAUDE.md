@@ -1207,3 +1207,41 @@ statically generates every route, then fails only at the pre-existing Windows `E
 real-browser visual validation was not performed — substituted by real-HTTP pg-verify integration
 coverage plus jsdom component-render tests; **not** claimed as a browser check. **FASE 18-10
 CLOSED, not pushed. FASE 18 (Reporting) = 10/10 conceptual blocks COMPLETE.**
+
+The ROLES/PERMISSIONS block closed `GAP-ROLE-CRUD` — `roles`/`role_permissions` (tenant-owned,
+schema-ready since migration `0002`) finally get application code beyond `GET /roles`: `POST /roles`,
+`PATCH /roles/:id` (name/description), `PUT /roles/:id/permissions` (replaces the set), `DELETE
+/roles/:id` (soft-delete, `409` while 1+ users still hold the role), and `GET /permissions` (the
+platform-wide catalog, for the role editor's "group by module" picker). One new permission code,
+`core.roles.manage` (migration `0032`, `module.action` pattern, same gap-filling precedent as
+0014-0027), given to Administrador only in `DEFAULT_ROLE_TEMPLATES` — `core.roles.read`/
+`core.roles.assign` unchanged. `is_system_default` still grants no protection (unchanged from
+database.md#rbac-roles-permissions) — a predefined role is editable/deletable exactly like a
+custom one. New authorization rule, not covered by ADR-0031's existing self-escalation block:
+[ADR-0034](docs/decisions/0034-role-permission-self-escalation-prevention.md) — a caller can never
+replace the permission set of a role currently assigned to themselves (`403`,
+`ROLE_SELF_PERMISSION_ESCALATION`, checked live against `user_roles`), independent of holding
+`core.roles.manage`; renaming/describing their own role is still allowed, since it cannot grant
+anything. `HttpExceptionFilter` gained a narrow `extractCode` extension point so an exception
+thrown as `new ForbiddenException({ code, message })` surfaces that specific code instead of the
+generic per-status one — every existing plain-string `ForbiddenException` elsewhere is unaffected.
+Same block also closed a real, narrow gap under `WAREHOUSE OPERATION SCOPE`:
+`TransfersService.create` (`POST /inventory/transfers`, requesting a transfer) did not call
+`LocationAuthorizationService.assertAccess` on `sourceLocationId` — only `prepare`/`dispatch`/
+`receive` did — so a location-restricted user could originate (though never actually prepare or
+dispatch) a transfer sourced outside their scope; fixed with the same existing ADR-0024 mechanism,
+no new permission/migration/ADR (same "controlled correction" precedent as 011-A/012-A/013-A).
+SALES (cart/order creation) was already fully location-scoped before this gap-closure. Frontend:
+`/roles` gained a "Crear rol" action and per-row Editar/Eliminar (`core.roles.manage`); `/roles/new`
+and `/roles/[id]` (name/description form + a permission picker grouped by the catalog's 7 `module`
+values, disabled with an explanation on the caller's own role per ADR-0034); `/users/[id]` gained
+explanatory copy contrasting role (capabilities) vs. almacén asignado (operational scope) — no
+backend change to the user/location-assignment flow, which was already correct. Verified: API
+unit 607 passed, web unit 573 passed, lint/typecheck pass on both apps; new integration tests
+(`test/core/roles-crud.integration.test.ts` — create/rename/delete, ADR-0034 self-block on own vs.
+other roles, unknown-permission-code 400, delete-in-use 409, ADR-0031 regression check; plus a new
+case in `test/inventory/inventory-transfers.integration.test.ts` for the transfer-create location
+check) were written but **not executed against real PostgreSQL this pass** — `tools/pg-verify`'s
+fixed port 55432 was already held by an unrelated, longer-running local dev-server
+(`scratchpad/.dev-pgdata`) this session deliberately did not stop, per the user's explicit choice;
+pg-verify still needs to be run once to confirm these tests pass for real. Not pushed.

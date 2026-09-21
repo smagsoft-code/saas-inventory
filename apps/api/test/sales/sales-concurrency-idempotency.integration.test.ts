@@ -81,6 +81,10 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: concurrency + idemp
       // two separate open carts is not allowed for one user, so use two vendors.
       const vendorA = await c.createAndLoginAs(f.admin, 'a@race-stock.example', 'Vendedor');
       const vendorB = await c.createAndLoginAs(f.admin, 'b@race-stock.example', 'Vendedor');
+      // ADR-0035: neither is the founding Administrador, so checkout (location-scoped) needs an
+      // explicit assignment for each now.
+      await c.setUserLocations(f.admin, vendorA.user.id, [f.locationId]);
+      await c.setUserLocations(f.admin, vendorB.user.id, [f.locationId]);
       // both vendors need the customer/location — same tenant, they can read them.
       const cartA = await openCart(f, vendorA, 1);
       const cartB = await openCart(f, vendorB, 1);

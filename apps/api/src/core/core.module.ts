@@ -7,6 +7,8 @@ import { TenantsPlatformRepository } from '../auth/repositories/tenants-platform
 import { UsersRepository } from '../auth/repositories/users.repository';
 import { IdentityProvisioningService } from '../auth/services/identity-provisioning.service';
 import { AuditLogService } from '../common/audit/audit-log.service';
+import { PermissionsController } from './permissions/permissions.controller';
+import { PermissionsService } from './permissions/permissions.service';
 import { RolesController } from './roles/roles.controller';
 import { RolesService } from './roles/roles.service';
 import { TenantController } from './tenant/tenant.controller';
@@ -24,11 +26,12 @@ import { UsersService } from './users/users.service';
  * the same class, not a second competing implementation.
  */
 @Module({
-  controllers: [TenantController, UsersController, RolesController],
+  controllers: [TenantController, UsersController, RolesController, PermissionsController],
   providers: [
     TenantService,
     UsersService,
     RolesService,
+    PermissionsService,
     PasswordService,
     AuditLogService,
     UsersRepository,

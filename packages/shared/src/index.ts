@@ -144,6 +144,7 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'core.users.update',
       'core.roles.read',
       'core.roles.assign',
+      'core.roles.manage',
       'products.view',
       'products.manage',
       'categories.view',

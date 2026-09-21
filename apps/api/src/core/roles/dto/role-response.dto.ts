@@ -1,9 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/** Read-only in this phase (§17/§23/§27 of Prompt 05-A) — role/permission CRUD (creating a
- * custom role, toggling a role's permission checklist) is a larger, separable feature deliberately
- * left out of scope; see the final report's "Pendientes" section. This is only what user
- * administration needs: which roles exist in this tenant, to assign one to a user. */
+/** Shared response shape for every roles endpoint — `GET /roles`, `GET /roles/:id`,
+ * `POST /roles`, `PATCH /roles/:id`, `PUT /roles/:id/permissions` (ROLES/PERMISSIONS block,
+ * closing `GAP-ROLE-CRUD`). */
 export class RoleResponseDto {
   @ApiProperty({ type: String })
   id!: string;
@@ -19,4 +18,11 @@ export class RoleResponseDto {
 
   @ApiProperty({ type: [String] })
   permissionCodes!: string[];
+
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'Whether this role is currently assigned to the caller. ADR-0034: PUT /roles/:id/permissions rejects any call where this is true, regardless of core.roles.manage.',
+  })
+  isAssignedToCaller!: boolean;
 }

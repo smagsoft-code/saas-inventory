@@ -31,4 +31,14 @@ export interface Role {
   description?: string;
   isSystemDefault: boolean;
   permissionCodes: string[];
+  /** ADR-0034: true when this role is currently assigned to the caller — `PUT
+   * /roles/:id/permissions` always rejects (403 `ROLE_SELF_PERMISSION_ESCALATION`) when this is
+   * true, regardless of holding `core.roles.manage`. */
+  isAssignedToCaller: boolean;
+}
+
+export interface PermissionCatalogItem {
+  code: string;
+  module: string;
+  description: string;
 }

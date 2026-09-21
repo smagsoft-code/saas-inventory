@@ -129,7 +129,8 @@ export function makeClient(app: NestFastifyApplication) {
     return (JSON.parse(response.body) as { id: string }).id;
   }
 
-  /** Restrict a user to exactly the given locations (ADR-0024: zero rows = unrestricted). */
+  /** Restrict a user to exactly the given locations (ADR-0035: zero rows denies, except the
+   * tenant's founding, system-default Administrador role). */
   async function setUserLocations(admin: Session, userId: string, locationIds: string[]): Promise<void> {
     const response = await inject({
       method: 'PUT',

@@ -221,20 +221,25 @@ Legend for support: **A** fully supported · **B** additive backend change recom
   bounded `buildLocationIndex()` (`GAP-NAME-ENRICHMENT`). Body is exactly `SetUserLocationsDto` —
   never `tenantId`/`userId`. Does not touch `LocationAuthorizationService` or any inventory op.
 
-### `S-ROLES-LIST` — Roles & permissions (read-only)
-- **Persona:** TA · **Route:** `/roles` (or a tab of `/users`) · **Permission:** `core.roles.read`.
-- **Endpoint:** `GET /api/v1/roles` → roles with their `permissionCodes[]`.
-- **Columns:** role name, description, isSystemDefault, permission count / list.
-- **Actions:** **none** — role/permission CRUD does **not exist** (fixed `DEFAULT_ROLE_TEMPLATES`,
-  editable only via direct DB). Display only.
-- **Gaps:** [`GAP-ROLE-CRUD`](f17-gaps.md#gap-role-crud) — the design/nav mention "Roles/Permisos"
-  as manageable; the backend has no endpoint. F17 = **read-only view**; management is **future**.
-- **F17** (read-only).
-- **BUILT — F17-14 (2026-09)** at `/roles`. `page.tsx` (server, `listRoles()` = `GET /roles`,
-  plain array) + `roles-table.tsx` (pure). Columns: name, description, type (system default / custom),
-  permission codes (compact sorted chips + count). **No** create/edit/delete control anywhere
-  (`GAP-ROLE-CRUD` stays **FUTURE**). No client filter/search (the array is small; endpoint has no
-  params). Nav item "Roles" (`core.roles.read`, icon `shield`).
+### `S-ROLES-LIST` / `S-ROLES-NEW` / `S-ROLES-EDIT` — Roles & permissions
+- **Persona:** TA · **Route:** `/roles`, `/roles/new`, `/roles/[id]` · **Permission:** `core.roles.read`
+  (view), `core.roles.manage` (create/edit/delete/permissions).
+- **Endpoints:** `GET/POST /roles`, `GET/PATCH/DELETE /roles/:id`, `PUT /roles/:id/permissions`,
+  `GET /permissions` (catalog).
+- **Columns:** role name, description, isSystemDefault, permission count / list, Editar/Eliminar
+  (when `core.roles.manage`).
+- **Actions (ROLES/PERMISSIONS block — closes `GAP-ROLE-CRUD`):** Crear rol, editar nombre/
+  descripción, reemplazar el set de permisos (selector agrupado por módulo), eliminar (409 si el
+  rol tiene usuarios asignados). `is_system_default` no otorga protección extra — mismo
+  comportamiento que un rol personalizado, solo distinto visualmente.
+- **Gaps:** `GAP-ROLE-CRUD` **CLOSED**. New rule: [ADR-0034](../../decisions/0034-role-permission-self-escalation-prevention.md)
+  — un caller nunca puede reemplazar el conjunto de permisos del rol que él mismo tiene asignado
+  (`403 ROLE_SELF_PERMISSION_ESCALATION`), aunque tenga `core.roles.manage`; sí puede renombrarlo.
+- **BUILT — F17-14 (2026-09)** read-only view at `/roles`. **Extended — ROLES/PERMISSIONS block**:
+  `/roles/new` (`role-create-form.tsx`), `/roles/[id]` (`role-edit-form.tsx` +
+  `role-permissions-editor.tsx`, disabled with an explanation when `role.isAssignedToCaller`),
+  shared `permission-picker.tsx` (grouped by the catalog's 7 `module` values). Nav item "Roles"
+  unchanged (`core.roles.read`, icon `shield`).
 
 ---
 

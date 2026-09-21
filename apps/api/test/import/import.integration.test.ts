@@ -118,6 +118,20 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('import: staged Excel onboa
     return loginAs(email, 'a-very-long-password');
   }
 
+  /** ADR-0035: the founding, system-default Administrador is always unrestricted by
+   * `LocationAuthorizationService`, so a test demonstrating that location scope actually applies
+   * needs a NON-Administrador actor. None of the DEFAULT_ROLE_TEMPLATES roles hold
+   * `import.execute`/`import.inventory` besides Administrador, so this creates a custom role
+   * (ROLES/PERMISSIONS block, `POST /roles`) with exactly the permissions needed. */
+  async function createAndLoginWithCustomRole(admin: Session, email: string, roleName: string, permissionCodes: string[]): Promise<Session> {
+    const roleResponse = await inject({ method: 'POST', url: '/api/v1/roles', headers: writeHeaders(admin), payload: { name: roleName, permissionCodes } });
+    expect(roleResponse.statusCode).toBe(201);
+    const roleId = (JSON.parse(roleResponse.body) as { id: string }).id;
+    const createResponse = await inject({ method: 'POST', url: '/api/v1/users', headers: writeHeaders(admin), payload: { email, fullName: `${roleName} User`, password: 'a-very-long-password', roleId } });
+    expect(createResponse.statusCode).toBe(201);
+    return loginAs(email, 'a-very-long-password');
+  }
+
   async function createWarehouse(admin: Session, name: string, code: string): Promise<string> {
     const response = await inject({ method: 'POST', url: '/api/v1/warehouses', headers: writeHeaders(admin), payload: { name, code } });
     expect(response.statusCode).toBe(201);
@@ -279,30 +293,33 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('import: staged Excel onboa
       const locationA = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
       await createLocation(admin, warehouseId, 'Zone B', `ZB-${Date.now()}`);
 
-      // Location-scoped authorization (ADR-0024) applies to any user, including the tenant's own
-      // Administrador — restrict the admin itself to locationA only, then try to import stock into
-      // locationB. import_jobs.created_by is the account performing the request, so this exercises
-      // the exact check ImportValidationService runs.
-      const restrict = await inject({ method: 'PUT', url: `/api/v1/users/${admin.user.id}/locations`, headers: writeHeaders(admin), payload: { locationIds: [locationA] } });
+      // ADR-0035: the founding, system-default Administrador is always unrestricted by
+      // LocationAuthorizationService, so demonstrating that this check actually applies needs a
+      // non-Administrador actor — a custom role (ROLES/PERMISSIONS block) with exactly
+      // import.execute/import.inventory, restricted to locationA only, then tries to import stock
+      // into locationB. import_jobs.created_by is the account performing the request, so this
+      // exercises the exact check ImportValidationService runs.
+      const importer = await createAndLoginWithCustomRole(admin, 'importer@import-epsilon.example', 'Importador', ['import.execute', 'import.inventory']);
+      const restrict = await inject({ method: 'PUT', url: `/api/v1/users/${importer.user.id}/locations`, headers: writeHeaders(admin), payload: { locationIds: [locationA] } });
       expect(restrict.statusCode).toBe(200);
 
       const buffer = await buildXlsx(['SKU', 'Nombre', 'Precio Max', 'Precio Base', 'Precio Min', 'Cantidad', 'Ubicacion'], [[`SKU-${Date.now()}`, 'Widget', 100, 90, 80, 5, 'Zone B']]);
-      const job = await uploadJob(admin, { columnMapping: STANDARD_MAPPING }, buffer);
+      const job = await uploadJob(importer, { columnMapping: STANDARD_MAPPING }, buffer);
       const jobId = (JSON.parse(job.body) as { id: string }).id;
-      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(importer) });
       const validatedBody = JSON.parse(validated.body) as { validRows: number; invalidRows: number };
       expect(validatedBody.invalidRows).toBe(1);
       expect(validatedBody.validRows).toBe(0);
 
-      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows?status=invalid`, headers: readHeaders(admin) });
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows?status=invalid`, headers: readHeaders(importer) });
       const rowErrors = (JSON.parse(rows.body) as { data: { errors: { code: string }[] }[] }).data[0]!.errors;
       expect(rowErrors.map((e) => e.code)).toContain('LOCATION_NOT_AUTHORIZED');
 
       // Control: the same row targeting the authorized location (A) validates cleanly.
       const bufferA = await buildXlsx(['SKU', 'Nombre', 'Precio Max', 'Precio Base', 'Precio Min', 'Cantidad', 'Ubicacion'], [[`SKU-${Date.now()}-A`, 'Widget', 100, 90, 80, 5, 'Zone A']]);
-      const jobA = await uploadJob(admin, { columnMapping: STANDARD_MAPPING }, bufferA);
+      const jobA = await uploadJob(importer, { columnMapping: STANDARD_MAPPING }, bufferA);
       const jobAId = (JSON.parse(jobA.body) as { id: string }).id;
-      const validatedA = await inject({ method: 'POST', url: `/api/v1/imports/${jobAId}/validate`, headers: writeHeaders(admin) });
+      const validatedA = await inject({ method: 'POST', url: `/api/v1/imports/${jobAId}/validate`, headers: writeHeaders(importer) });
       expect(JSON.parse(validatedA.body)).toEqual(expect.objectContaining({ validRows: 1, invalidRows: 0 }));
     });
   });
@@ -623,23 +640,25 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('import: staged Excel onboa
       await createCategory(admin, 'Televisores', `televisores-${Date.now()}`);
       const sku = `TV-${Date.now()}`;
 
-      // Restrict the importing admin to locationA only (ADR-0024 applies to any user, admins
-      // included — see the existing §18 test in this file).
-      const restrict = await inject({ method: 'PUT', url: `/api/v1/users/${admin.user.id}/locations`, headers: writeHeaders(admin), payload: { locationIds: [locationA] } });
+      // ADR-0035: the founding Administrador is always unrestricted, so this needs a
+      // non-Administrador actor (custom role via the ROLES/PERMISSIONS block) restricted to
+      // locationA only to actually exercise the check (see the §18 test above in this file).
+      const importer = await createAndLoginWithCustomRole(admin, 'importer@serial-eta.example', 'Importador', ['import.execute', 'import.inventory']);
+      const restrict = await inject({ method: 'PUT', url: `/api/v1/users/${importer.user.id}/locations`, headers: writeHeaders(admin), payload: { locationIds: [locationA] } });
       expect(restrict.statusCode).toBe(200);
 
       const buffer = await buildXlsx(SERIAL_HEADERS, [
         [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone A', 'SN0001'],
         [sku, 'TV Samsung', 'Televisores', 500, 450, 400, 1, 'Zone B', 'SN0002'],
       ]);
-      const job = await uploadJob(admin, { columnMapping: SERIAL_MAPPING }, buffer);
+      const job = await uploadJob(importer, { columnMapping: SERIAL_MAPPING }, buffer);
       const jobId = (JSON.parse(job.body) as { id: string }).id;
 
-      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(admin) });
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${jobId}/validate`, headers: writeHeaders(importer) });
       const validatedBody = JSON.parse(validated.body) as { validRows: number; invalidRows: number };
       expect(validatedBody).toEqual(expect.objectContaining({ validRows: 1, invalidRows: 1 }));
 
-      const invalidRows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows?status=invalid`, headers: readHeaders(admin) });
+      const invalidRows = await inject({ method: 'GET', url: `/api/v1/imports/${jobId}/rows?status=invalid`, headers: readHeaders(importer) });
       const errors = (JSON.parse(invalidRows.body) as { data: { errors: { code: string }[] }[] }).data.flatMap((r) => r.errors.map((e) => e.code));
       expect(errors).toContain('LOCATION_NOT_AUTHORIZED');
     });

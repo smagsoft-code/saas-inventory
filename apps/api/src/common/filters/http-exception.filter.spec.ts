@@ -64,4 +64,13 @@ describe('HttpExceptionFilter', () => {
     filter.catch(new ForbiddenException('Missing required permission.'), host);
     expect(send).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403, code: 'FORBIDDEN' }));
   });
+
+  it('ADR-0034: a ForbiddenException thrown with an object body ({code, message}) surfaces that specific code instead of the generic FORBIDDEN', () => {
+    const filter = new HttpExceptionFilter();
+    const { host, send } = hostFor();
+    filter.catch(new ForbiddenException({ code: 'ROLE_SELF_PERMISSION_ESCALATION', message: 'nope' }), host);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({ statusCode: 403, code: 'ROLE_SELF_PERMISSION_ESCALATION', message: 'nope' }),
+    );
+  });
 });

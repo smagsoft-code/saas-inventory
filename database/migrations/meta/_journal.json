@@ -225,6 +225,13 @@
       "when": 1789529434979,
       "tag": "0031_dapper_overlord",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1790006292917,
+      "tag": "0032_core_roles_manage_permission",
+      "breakpoints": true
     }
   ]
 }

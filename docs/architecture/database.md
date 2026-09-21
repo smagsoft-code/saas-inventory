@@ -914,6 +914,23 @@ go to Administrador / Supervisor / Vendedor; Bodega additionally receives `inven
 (physical return processing at its assigned locations, alongside its existing
 `inventory.transfers.*` / `inventory.adjust`) plus `sales.returns.view`.
 
+**The ROLES/PERMISSIONS block** (custom role CRUD, migration `0032`) adds one code, closing
+`GAP-ROLE-CRUD` — same `module.action` pattern, no ADR needed for the row itself. `core.roles.read`
+(list/view, migration 0014) and `core.roles.assign` (assign a role to a user, migration 0014,
+[ADR-0031](../decisions/0031-role-assignment-escalation-prevention.md)) are unchanged.
+
+| Code | Capacidad | Alcance | Riesgo | Observación |
+| --- | --- | --- | --- | --- |
+| `core.roles.manage` | Crear roles, editar nombre/descripción, reemplazar el conjunto de permisos de un rol, y eliminarlo | Configuración / Sensible | Alto | Un solo código, sin fragmentar por acción (mismo precedente que `core.roles.assign`) — el bloqueo de auto-escalación al editar los permisos del propio rol es [ADR-0034](../decisions/0034-role-permission-self-escalation-prevention.md), no una segunda permission code |
+
+Default role templates: `core.roles.manage` goes to Administrador only, same convention as
+`core.users.locations.manage`. `is_system_default` grants no protection against `core.roles.manage`
+— a predefined role (Administrador/Supervisor/Vendedor/Bodega) can be renamed, have its permissions
+replaced, or be deleted exactly like a custom one, unchanged from what this section already stated
+above ("a label, not a protection mechanism") — the only backend-enforced restrictions are
+ADR-0034's self-permission-edit block and a delete-in-use guard (`409` while 1+ users still hold the
+role), neither of which inspects that flag.
+
 **No mobile-specific permission codes exist, or are needed.** Per
 [mobile.md#backend-as-the-sole-authority](mobile.md#backend-as-the-sole-authority), Flutter calls the
 identical permission-gated `/api/v1` endpoints web does — the same code above governs both clients.
@@ -1581,6 +1598,18 @@ bug than cross-tenant leakage, and is reviewable via `audit_log` after the fact 
 
 No `deleted_at` — this is a join table, hard-deleted on unassignment, same pattern as `user_roles`/
 `role_permissions` (see [§Soft delete policy](#soft-delete-policy)).
+
+**WAREHOUSE OPERATION SCOPE gap-closure (ROLES/PERMISSIONS block).** `POST /inventory/transfers`
+(`TransfersService.create`, `inventory.transfers.request`) now also calls
+`LocationAuthorizationService.assertAccess` against `sourceLocationId`, matching what
+`prepare`/`dispatch` already checked. Before this, *requesting* a transfer was reachable from any
+location regardless of the caller's `user_location_assignments` — only the later physical stages
+(prepare/dispatch on the source, receive on the destination) were guarded, so a location-restricted
+user could originate (though never actually prepare or dispatch) a transfer sourced from a location
+outside their scope. Sales was already fully guarded before this gap-closure:
+`CartsService.assertLocationSellable` (cart creation/location-change) and `OrdersService` (checkout,
+cancel) both already call this same `assertAccess` against the cart/order's `locationId` — a vendor
+could never create a cart, let alone an order, at a location outside their assigned scope.
 
 ---
 

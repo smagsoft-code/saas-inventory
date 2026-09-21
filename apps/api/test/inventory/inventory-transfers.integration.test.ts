@@ -401,6 +401,33 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
       });
       expect(receiveForbidden.statusCode).toBe(403);
     });
+
+    it('WAREHOUSE OPERATION SCOPE gap-closure: requesting (creating) a transfer also requires authorization on the source location, not just prepare/dispatch/receive', async () => {
+      const { admin, sourceLocationId, destinationLocationId, productVariantId } = await seedTenant('Transfer Theta Prime Co', 'admin@transfer-theta-prime.example', 100);
+      const bodega = await createAndLoginAs(admin, 'bodega@transfer-theta-prime.example', 'Bodega');
+      // Restrict Bodega to a location that is NEITHER this transfer's source nor destination.
+      const unrelatedWarehouse = await createWarehouse(admin, 'Unrelated WH Prime', `UWHP-${Date.now()}`);
+      const unrelatedLocation = await createLocation(admin, unrelatedWarehouse, 'Unrelated Prime', `UNRP-${Date.now()}`);
+      await inject({ method: 'PUT', url: `/api/v1/users/${bodega.user.id}/locations`, headers: writeHeaders(admin), payload: { locationIds: [unrelatedLocation] } });
+
+      const createForbidden = await inject({
+        method: 'POST',
+        url: '/api/v1/inventory/transfers',
+        headers: writeHeaders(bodega),
+        payload: { sourceLocationId, destinationLocationId, items: [{ productVariantId, quantityRequested: 5 }] },
+      });
+      expect(createForbidden.statusCode).toBe(403);
+
+      // Requesting FROM their own assigned location still works — the check is on sourceLocationId
+      // specifically, not a blanket "Bodega can never create transfers."
+      const createAllowed = await inject({
+        method: 'POST',
+        url: '/api/v1/inventory/transfers',
+        headers: writeHeaders(bodega),
+        payload: { sourceLocationId: unrelatedLocation, destinationLocationId, items: [{ productVariantId, quantityRequested: 5 }] },
+      });
+      expect(createAllowed.statusCode).toBe(201);
+    });
   });
 
   describe('security: mass assignment, RBAC, cross-tenant (§15, §23, §37)', () => {
@@ -431,6 +458,15 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
       expect(createForbidden.statusCode).toBe(403);
 
       const bodega = await createAndLoginAs(admin, 'bodega@transfer-kappa.example', 'Bodega');
+      // ADR-0035: Bodega is not the founding Administrador, so it also needs an explicit
+      // sourceLocationId assignment now — this test is about the inventory.transfers.request
+      // permission gate, not location scope (that has its own describe block below).
+      await inject({
+        method: 'PUT',
+        url: `/api/v1/users/${bodega.user.id}/locations`,
+        headers: writeHeaders(admin),
+        payload: { locationIds: [sourceLocationId] },
+      });
       const createAllowed = await inject({
         method: 'POST',
         url: '/api/v1/inventory/transfers',

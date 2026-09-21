@@ -2,13 +2,16 @@ import { serverApiFetch } from '../api/server';
 import type { Role } from '../types/core';
 
 /**
- * Server-side read of the tenant's role catalogue (`GET /api/v1/roles`, permission
- * `core.roles.read`). A plain array — no pagination, no search, no sort in the contract.
- *
- * Roles are the fixed `DEFAULT_ROLE_TEMPLATES` set (ADR-0009 / database.md), editable only via
- * direct DB access — there is **no** create/edit/delete endpoint (`GAP-ROLE-CRUD`, future). This
- * helper backs the read-only `S-ROLES-LIST` screen and the role selector on the user forms.
+ * Server-side reads of the tenant's role catalogue (ROLES/PERMISSIONS block — closes
+ * `GAP-ROLE-CRUD`). `GET /api/v1/roles` is a plain array — no pagination, no search, no sort in
+ * the contract. Mutations (create/rename/delete/replace-permissions) happen client-side via
+ * `apiFetch` directly in the form components, same convention as `create-user-form.tsx` — there is
+ * no mutation wrapper here.
  */
 export async function listRoles(): Promise<Role[]> {
   return serverApiFetch<Role[]>('/api/v1/roles');
+}
+
+export async function getRole(id: string): Promise<Role> {
+  return serverApiFetch<Role>(`/api/v1/roles/${id}`);
 }

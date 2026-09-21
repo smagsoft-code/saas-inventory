@@ -98,6 +98,13 @@ export class TransfersService {
       if (!destination) {
         throw new NotFoundException('Destination location not found.');
       }
+
+      // ADR-0024: requesting a transfer is itself an operation against the source location's
+      // inventory (it is what `prepare` later reserves stock against) — a user restricted to a
+      // subset of the tenant's locations must not be able to *originate* a transfer from a
+      // location outside their scope, even though only prepare/dispatch/receive checked this
+      // before (ROLES/PERMISSIONS block, WAREHOUSE OPERATION SCOPE gap-closure).
+      await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, dto.sourceLocationId);
       for (const item of dto.items) {
         const exists = await this.productVariantsLookup.exists(tx, tenantId, item.productVariantId);
         if (!exists) {

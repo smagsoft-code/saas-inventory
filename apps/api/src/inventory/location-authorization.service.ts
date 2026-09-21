@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
-import { userLocationAssignments } from '../database/schema';
+import { roles, userLocationAssignments, userRoles } from '../database/schema';
 import type { TenantTransaction } from '../database/tenant-context';
 
 /**
@@ -18,24 +18,51 @@ import type { TenantTransaction } from '../database/tenant-context';
  * by every FASE 8 write path that touches a specific physical location (adjustments, transfer
  * prepare/dispatch/receive).
  *
- * Default semantics per database.md#location-scoped-authorization: a user with zero
- * `user_location_assignments` rows is unrestricted (any location in the tenant); one or more rows
- * restricts them to exactly those locations.
+ * **ADR-0035** (supersedes ADR-0024's original default): a `user_location_assignments` row is now
+ * required — zero rows denies, it does not mean unrestricted — with one narrow, explicit exception:
+ * a caller currently holding the tenant's founding, system-default "Administrador" role
+ * (`roles.name = 'Administrador' AND roles.is_system_default = true`) is always allowed, regardless
+ * of assignment rows. That exception exists solely to avoid a bootstrap deadlock — a freshly
+ * registered tenant has zero warehouses/locations, so its founding admin could never receive the
+ * first stock if they also needed a pre-existing assignment. See ADR-0035 for the full rationale,
+ * including the deliberately accepted fragility (renaming that role away from the literal string
+ * "Administrador" loses the exception for whoever holds it).
  */
 @Injectable()
 export class LocationAuthorizationService {
   async assertAccess(tx: TenantTransaction, tenantId: string, userId: string, locationId: string): Promise<void> {
+    if (await this.isFoundingAdministrador(tx, tenantId, userId)) {
+      return;
+    }
+
     const rows = await tx
       .select({ locationId: userLocationAssignments.locationId })
       .from(userLocationAssignments)
       .where(and(eq(userLocationAssignments.tenantId, tenantId), eq(userLocationAssignments.userId, userId)));
 
-    if (rows.length === 0) {
-      return;
-    }
     const allowed = rows.some((row) => row.locationId === locationId);
     if (!allowed) {
       throw new ForbiddenException('You are not authorized to operate on this location.');
     }
+  }
+
+  /** ADR-0035's bootstrap exception — checked live against `user_roles`/`roles` on every call,
+   * never cached. Keyed to the fixed role name `tenant-provisioning.service.ts`'s `ADMIN_ROLE_NAME`
+   * constant already uses for "the role a fresh tenant's founding user gets", combined with
+   * `is_system_default` so a tenant-created custom role named "Administrador" never qualifies. */
+  private async isFoundingAdministrador(tx: TenantTransaction, tenantId: string, userId: string): Promise<boolean> {
+    const rows = await tx
+      .select({ roleId: userRoles.roleId })
+      .from(userRoles)
+      .innerJoin(roles, and(eq(roles.id, userRoles.roleId), eq(roles.tenantId, tenantId)))
+      .where(
+        and(
+          eq(userRoles.tenantId, tenantId),
+          eq(userRoles.userId, userId),
+          eq(roles.name, 'Administrador'),
+          eq(roles.isSystemDefault, true),
+        ),
+      );
+    return rows.length > 0;
   }
 }

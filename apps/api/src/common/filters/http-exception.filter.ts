@@ -36,13 +36,27 @@ export class HttpExceptionFilter implements ExceptionFilter {
 function resolve(exception: unknown): { statusCode: number; code: string; message: string } {
   if (exception instanceof HttpException) {
     const status = exception.getStatus();
-    return { statusCode: status, code: codeForStatus(status), message: extractMessage(exception) };
+    return { statusCode: status, code: extractCode(exception) ?? codeForStatus(status), message: extractMessage(exception) };
   }
   return {
     statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     code: 'INTERNAL_ERROR',
     message: 'An unexpected error occurred.',
   };
+}
+
+/** Most exceptions rely on the generic per-status `code` from `codeForStatus` below. A caller that
+ * needs a specific, greppable machine code for one particular business rule (distinct from every
+ * other 403/409 in the system) can throw e.g. `new ForbiddenException({ code: 'SOME_CODE', message:
+ * '...' })` — the object body form `HttpException` already accepts — and it wins over the generic
+ * default. Never required; most `ForbiddenException('...')` calls in this codebase pass a plain
+ * string and get the generic `FORBIDDEN` code unchanged. */
+function extractCode(exception: HttpException): string | undefined {
+  const body = exception.getResponse();
+  if (body && typeof body === 'object' && 'code' in body && typeof (body as { code: unknown }).code === 'string') {
+    return (body as { code: string }).code;
+  }
+  return undefined;
 }
 
 function extractMessage(exception: HttpException): string {

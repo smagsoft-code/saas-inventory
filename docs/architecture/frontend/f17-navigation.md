@@ -66,7 +66,8 @@ Notes:
   (`GAP-NOTIF-RETRY-BACKEND`).
 - **`Atributos`** could instead live as a tab inside `/categories` — layout decision for F17, not
   a contract question.
-- **`Roles`** could be a tab of `/users`. It is read-only regardless (`GAP-ROLE-CRUD`).
+- **`Roles`** could be a tab of `/users`. Full CRUD now (ROLES/PERMISSIONS block, `GAP-ROLE-CRUD`
+  closed) — kept as its own top-level nav item, unchanged, rather than folded into `/users`.
 - Location-access management is **not** a top-level nav item — it is a section of `S-USER-DETAIL`
   (`/users/[id]`), built F17-14 (`GET/PUT /users/:userId/locations`, `core.users.locations.manage`).
 - **No** nav item for: brands, suppliers, serials, lots, price history, audit, reports/dashboards,

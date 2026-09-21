@@ -35,7 +35,7 @@
 | 13 | [`GAP-INV-AGGREGATE`](#gap-inv-aggregate) | F18 (+ small F17 slice) | Inventory list totals/tabs, Home |
 | 14 | [`GAP-REORDER`](#gap-reorder) | future (ADR) | Inventory "low stock" tab/tile |
 | 15 | [`GAP-INV-LOCATION-SCOPE`](#gap-inv-location-scope) | decision → F17-additive | Inventory list, Movements |
-| 16 | [`GAP-ROLE-CRUD`](#gap-role-crud) | future | Roles screen |
+| 16 | [`GAP-ROLE-CRUD`](#gap-role-crud) | CLOSED (ROLES/PERMISSIONS block) | Roles screen |
 | 17 | [`GAP-USER-FILTERS`](#gap-user-filters) | F17-additive | Users list |
 | 18 | [`GAP-CUSTOMER-HISTORY`](#gap-customer-history) | F18 | Customer detail |
 | 19 | [`GAP-PRICE-HISTORY-READ`](#gap-price-history-read) | F18-additive | Product detail |
@@ -492,7 +492,7 @@ Prepare/Dispatch/Receive whenever status + permission allow, and shows the backe
 ("not authorized to operate on this transfer's location") in place — the frontend never reads or
 simulates `user_location_assignments`.
 
-### `GAP-ROLE-CRUD`
+### `GAP-ROLE-CRUD` — CLOSED (ROLES/PERMISSIONS block)
 No endpoint to create/edit roles or toggle role permissions — the catalogue is fixed
 (`DEFAULT_ROLE_TEMPLATES`), editable only via direct DB. The nav/design imply "Roles / Permisos"
 as manageable. **future:** custom-role CRUD + per-role permission toggling (database.md anticipates
@@ -501,6 +501,21 @@ it). **F17 = read-only Roles view.**
 **F17-14 (2026-09) — the read-only view is built; CRUD stays FUTURE, unchanged.** `S-ROLES-LIST`
 (`/roles`, `GET /roles`, `core.roles.read`) ships with **no** create/edit/delete control (asserted
 by test). Managing roles/permissions from the UI is still a backend dependency (no endpoint).
+
+**ROLES/PERMISSIONS block — CLOSED.** New endpoints `POST /roles`, `PATCH /roles/:id`,
+`PUT /roles/:id/permissions`, `DELETE /roles/:id`, `GET /permissions` — one new flat permission
+`core.roles.manage` (migration `0032`). `S-ROLES-LIST` gained a "Crear rol" action and per-row
+Editar/Eliminar (`/roles/new`, `/roles/[id]`) — both gated by `core.roles.manage`; `core.roles.read`
+alone still gets the pre-existing read-only view. `is_system_default` grants no extra backend
+protection (unchanged from database.md's "a label, not a protection mechanism") — a predefined role
+is editable/deletable exactly like a custom one, only visually distinguished. New rule, not covered
+by this doc's earlier assumptions: [ADR-0034](../../decisions/0034-role-permission-self-escalation-prevention.md)
+blocks a caller from replacing the permission set of a role currently assigned to themselves
+(`403 ROLE_SELF_PERMISSION_ESCALATION`), independent of holding `core.roles.manage` — renaming/
+describing their own role is still allowed. Same block also closed
+`WAREHOUSE OPERATION SCOPE` — `POST /inventory/transfers` (request/create) now also checks
+`LocationAuthorizationService` on `sourceLocationId`, matching prepare/dispatch/receive (previously
+only those three checked it).
 
 ### `GAP-QR-PRINT`
 `GET /q/:code` (the public resolver) is the URL that goes on a printed QR label, but it is **not**
@@ -654,7 +669,7 @@ Observed in F17-03; **no code change made** (F17-03 does not touch the backend).
 | A4 | Brand/supplier fields in the product form | add read endpoints vs omit | **Decided in F17-05: omit** (option b) — no `GET /brands`/`GET /suppliers` exists; the form has no brand/supplier selector. Re-add when the endpoints land (`GAP-BRAND-SUPPLIER-LIST`) |
 | A5 | Approvals permission gate | `.approve` / `.request` / new `.view` | **Decided in F17-09:** `@RequireAnyPermission('pricing.discount.request', 'pricing.discount.approve')` — no new permission code; matches the service's existing OR check and the two real personas (`GAP-APPROVALS-PERMISSION`) |
 | A6 | Notification-status contract shape | read-only projection + requeue endpoint | **F17-10:** read-only projection built (`GET /orders/:id/notifications`, no migration); requeue deferred as `GAP-NOTIF-RETRY-BACKEND` (needs a migration + permission + ADR) |
-| A7 | Roles screen scope | read-only vs "coming soon" placeholder | Read-only view of the fixed catalogue (`GAP-ROLE-CRUD`) |
+| A7 | Roles screen scope | read-only vs "coming soon" placeholder | F17: read-only view of the fixed catalogue. **Superseded** by the ROLES/PERMISSIONS block: full CRUD + permission picker + ADR-0034 self-escalation guard (`GAP-ROLE-CRUD` closed) |
 | A8 | Date-filter boundary semantics | inclusive vs half-open | **Decided in F18-01:** half-open `[from, to)` for new FASE 18 endpoints, documented in `api.md`; `GET /orders` keeps its pre-existing inclusive-both-bounds semantics unchanged (`GAP-DATE-SEMANTICS`) |
 | A9 | Home revenue tile | client-side sum (small tenants) vs defer to F18 | Defer to F18; F17 Home shows counts/queues only |
 | A10 | Suspended-tenant UX | per-screen 403 vs shell-level state | Shell-level state (`GAP-SUSPENDED-TENANT-UX`) |

@@ -18,6 +18,7 @@ export const PERMISSION_CODES = [
   'core.users.locations.manage',
   'core.roles.read',
   'core.roles.assign',
+  'core.roles.manage',
   'administration.settings.view',
   'administration.settings.manage',
   // catalog

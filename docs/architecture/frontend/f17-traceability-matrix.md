@@ -28,7 +28,7 @@
 | `S-USERS-LIST` | `GET /users` | `ListUsersQueryDto {page,pageSize,status?}` | `PaginatedResult<UserResponseDto>` | `core.users.read` | `users`,`user_roles` | 0031, 0033 | 017-DESIGN `/users` | A |
 | `S-USER-NEW` | `POST /users` · `GET /roles` | `CreateUserDto {email,fullName,password,roleId}` | `UserResponseDto` | `core.users.create` | `users`,`identities`,`tenant_memberships`,`roles` | 0031, 0033 | — | A |
 | `S-USER-DETAIL/EDIT` | `GET/PATCH /users/:id` · `GET/PUT /users/:userId/locations` | `UpdateUserDto`, `SetUserLocationsDto {locationIds[]}` | `UserResponseDto`, `UserLocationResponseDto[]` | `core.users.read`/`.update`/`.locations.manage` | `users`,`user_roles`,`user_location_assignments` | 0024, 0031 | — | A; profile/roles built FASE 16, **location-access editor built F17-14** (`location-access.tsx`, unrestricted vs restrict-to-selected — ADR-0024 zero rows = unrestricted; body = `SetUserLocationsDto` only) |
-| `S-ROLES-LIST` | `GET /roles` | — | `RoleResponseDto[]` `{id,name,description?,isSystemDefault,permissionCodes[]}` (plain array, no params) | `core.roles.read` | `roles`,`role_permissions` | 0009 | — | A (read-only); **built F17-14** at `/roles` (`roles-table.tsx`, no CRUD control); CRUD = `GAP-ROLE-CRUD` (future) |
+| `S-ROLES-LIST` | `GET /roles` | — | `RoleResponseDto[]` `{id,name,description?,isSystemDefault,permissionCodes[],isAssignedToCaller}` (plain array, no params) | `core.roles.read` | `roles`,`role_permissions` | 0009, 0034 | — | A; **built F17-14** at `/roles`, **CRUD added by the ROLES/PERMISSIONS block** (`/roles/new`, `/roles/[id]`, `POST/PATCH/DELETE /roles`, `PUT /roles/:id/permissions`, `core.roles.manage`) — `GAP-ROLE-CRUD` CLOSED |
 
 ## Catalog
 
@@ -101,6 +101,5 @@
 | Brands/Suppliers CRUD | no endpoint | ADR-0019, `GAP-BRAND-SUPPLIER-LIST` |
 | Serial/lot browser, price-history, audit viewer | no read endpoint | `GAP-*` / deferred design |
 | Notifications bell, global search | no endpoint | PROTOTYPE ONLY |
-| Role/permission CRUD | no endpoint | `GAP-ROLE-CRUD` |
 | Platform dashboard, admin CRUD, tenant creation | no endpoint / isolation | `GAP-SA-*`, `GAP-PLATFORM-AGGREGATE` |
 | Dark mode, in-session tenant switch | deferred / not a feature | 017-DESIGN §24 / 016-C |

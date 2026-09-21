@@ -322,8 +322,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: warehouses/loca
     });
   });
 
-  describe('user location assignments (§16, ADR-0024)', () => {
-    it('replace/list round-trip, and an empty set means unrestricted (zero rows)', async () => {
+  describe('user location assignments (§16, ADR-0024, ADR-0035)', () => {
+    it('replace/list round-trip, including clearing back down to an empty set', async () => {
       const admin = await registerTenant('Inventory Nu Co', 'admin@inventory-nu.example');
       const warehouseId = await createWarehouse(admin, 'Bodega Nu', 'BN');
       const location = await inject({ method: 'POST', url: '/api/v1/locations', headers: writeHeaders(admin), payload: { warehouseId, name: 'Zona A', code: 'ZONA-A' } });

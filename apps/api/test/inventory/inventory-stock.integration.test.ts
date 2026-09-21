@@ -239,13 +239,18 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: balances/moveme
       const bodega = await createAndLoginAs(admin, 'bodega@stock-epsilon.example', 'Bodega');
       const viewAllowed = await inject({ method: 'GET', url: '/api/v1/inventory/balances', headers: readHeaders(bodega) });
       expect(viewAllowed.statusCode).toBe(200);
+
+      // ADR-0035: Bodega is not the founding Administrador, so it also needs an explicit location
+      // assignment — this test is about the inventory.adjust permission gate, not location scope
+      // (that has its own describe block below).
+      await inject({ method: 'PUT', url: `/api/v1/users/${bodega.user.id}/locations`, headers: writeHeaders(admin), payload: { locationIds: [locationId] } });
       const adjustAllowed = await adjust(bodega, { productVariantId, locationId, movementType: 'RECEIPT', quantity: 1, reason: 'X' });
       expect(adjustAllowed.statusCode).toBe(201);
     });
   });
 
-  describe('location-scoped authorization (§14, ADR-0024)', () => {
-    it('a user restricted to a different location is rejected (403); an unrestricted user (zero assignments) is allowed', async () => {
+  describe('location-scoped authorization (§14, ADR-0024, ADR-0035)', () => {
+    it('a user restricted to a different location is rejected (403); assigning the right one allows it', async () => {
       const { admin, warehouseId, productVariantId } = await seedTenant('Stock Zeta Co', 'admin@stock-zeta.example');
       const locationA = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
       const locationB = await createLocation(admin, warehouseId, 'Zone B', `ZB-${Date.now()}`);
@@ -265,11 +270,25 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: balances/moveme
 
       const forbiddenAtB = await adjust(bodega, { productVariantId, locationId: locationB, movementType: 'RECEIPT', quantity: 5, reason: 'Count' });
       expect(forbiddenAtB.statusCode).toBe(403);
+    });
 
-      // A second Bodega user with zero location-assignment rows is unrestricted.
-      const unrestrictedBodega = await createAndLoginAs(admin, 'bodega2@stock-zeta.example', 'Bodega');
-      const allowedAtBUnrestricted = await adjust(unrestrictedBodega, { productVariantId, locationId: locationB, movementType: 'RECEIPT', quantity: 5, reason: 'Count' });
-      expect(allowedAtBUnrestricted.statusCode).toBe(201);
+    it('ADR-0035: a non-Administrador user with zero location-assignment rows is DENIED everywhere, not unrestricted', async () => {
+      const { admin, warehouseId, productVariantId } = await seedTenant('Stock Zeta Prime Co', 'admin@stock-zeta-prime.example');
+      const locationB = await createLocation(admin, warehouseId, 'Zone B Prime', `ZBP-${Date.now()}`);
+      const unassignedBodega = await createAndLoginAs(admin, 'bodega2@stock-zeta-prime.example', 'Bodega');
+
+      const forbidden = await adjust(unassignedBodega, { productVariantId, locationId: locationB, movementType: 'RECEIPT', quantity: 5, reason: 'Count' });
+      expect(forbidden.statusCode).toBe(403);
+    });
+
+    it('ADR-0035: the tenant’s founding, system-default Administrador is always unrestricted, even with zero assignment rows', async () => {
+      const { admin, warehouseId, productVariantId } = await seedTenant('Stock Zeta Second Co', 'admin@stock-zeta-second.example');
+      const anotherLocation = await createLocation(admin, warehouseId, 'Zone C', `ZC-${Date.now()}`);
+
+      // `admin` here is the tenant's founding registrant — holds the system-default Administrador
+      // role and has never been given a user_location_assignments row.
+      const allowed = await adjust(admin, { productVariantId, locationId: anotherLocation, movementType: 'RECEIPT', quantity: 5, reason: 'Bootstrap' });
+      expect(allowed.statusCode).toBe(201);
     });
   });
 

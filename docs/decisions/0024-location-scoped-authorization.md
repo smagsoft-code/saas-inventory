@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted
+Accepted. **The default-semantics paragraph below ("a user with zero rows is unrestricted") is
+superseded by [ADR-0035](0035-location-scope-deny-by-default.md)** — zero rows now denies, except
+for the tenant's founding, system-default "Administrador" role. Everything else on this page (the
+mechanism, the two-independent-checks model, the schema) is unchanged and still authoritative.
 
 ## Context
 
@@ -16,11 +19,13 @@ able to receive shipments at Almacén Sur.
 ## Decision
 
 `user_location_assignments` (`user_id`, `location_id`, composite tenant-aware FKs to both) — a plain
-join table, not a new permission dimension inside the existing RBAC tables. **Default semantics: a
-user with zero rows is unrestricted (all tenant locations); a user with one or more rows is restricted
-to exactly those.** This is an explicit, documented convention (opt-in restriction, not opt-in access)
-rather than an implicit one, so Prompt 03's guard implementation and Prompt 07/08's provisioning flows
-don't have to infer it. Authorization for a location-sensitive action is the conjunction of two
+join table, not a new permission dimension inside the existing RBAC tables. **Default semantics
+(original, ROLES/ALCANCE-era; superseded by [ADR-0035](0035-location-scope-deny-by-default.md) — kept
+here verbatim for history): a user with zero rows is unrestricted (all tenant locations); a user with
+one or more rows is restricted to exactly those.** This is an explicit, documented convention (opt-in
+restriction, not opt-in access) rather than an implicit one, so Prompt 03's guard implementation and
+Prompt 07/08's provisioning flows don't have to infer it. Authorization for a location-sensitive action
+is the conjunction of two
 independent checks — the RBAC permission, and (if the user has any location-assignment rows) location
 membership — neither substituting for the other. Full schema:
 [database.md#location-scoped-authorization](../architecture/database.md#location-scoped-authorization).
