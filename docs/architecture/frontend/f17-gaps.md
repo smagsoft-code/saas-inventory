@@ -44,8 +44,9 @@
 | 22 | [`GAP-IMPORT-PROGRESS`](#gap-import-progress) | decision — **OPEN**, degraded honestly (F17-11) | Import detail |
 | 22b | [`GAP-IMPORT-FILE-HEADERS`](#gap-import-file-headers) | F17-additive — **OPEN** (F17-11) | Import upload / mapping |
 | 23 | [`GAP-SUSPENDED-TENANT-UX`](#gap-suspended-tenant-ux) | decision | App shell |
-| 24 | [`GAP-SA-CREATE-TENANT`](#gap-sa-create-tenant) | future | Super-Admin |
-| 25 | [`GAP-SA-TENANT-ADMINS`](#gap-sa-tenant-admins) | future | Super-Admin |
+| 24 | [`GAP-SA-CREATE-TENANT`](#gap-sa-create-tenant) | ~~future~~ **RESOLVED (ADR-0036)** | Super-Admin |
+| 25 | [`GAP-SA-TENANT-ADMINS`](#gap-sa-tenant-admins) | ~~future~~ **PARTIALLY RESOLVED (ADR-0036)** — curated, audited read only, inside a live support session | Super-Admin |
+| 25b | [`GAP-SUPPORT-READ-SCOPE`](#gap-support-read-scope) | resolved for reads (ADR-0036 correction); write side stays future | Super-Admin support panel + ordinary Tenant screens |
 | 26 | [`GAP-SA-ADMIN-CRUD`](#gap-sa-admin-crud) | future | Super-Admin |
 | 27 | [`GAP-AUDIT-READ`](#gap-audit-read) | future | (no F17 screen) |
 | 28 | [`GAP-PLATFORM-AGGREGATE`](../reporting/data-gaps.md#gap-platform-aggregate) | future | Super-Admin dashboard |
@@ -606,6 +607,16 @@ platform `PATCH`/`DELETE` for a tenant (`TenantsPlatformRepository.updateName` i
 tenant's own `PATCH /tenant`), so `S-SA-TENANT-DETAIL` offers view + suspend/activate only — no
 edit, no delete. Still `future`.
 
+**RESOLVED — [ADR-0036](../../decisions/0036-tenant-onboarding-and-support.md) (2026-09).**
+`POST /platform/tenants` creates the tenant + a founding admin, without the SuperAdmin ever
+collecting a password — the admin's email resolves against the global `identities` table
+(ADR-0033) and either reuses an already-`active` identity (no invitation, logs in with their
+existing credential) or gets a one-time invitation link (`identities.status = 'pending_credential'`)
+to set their own password at `/accept-invitation/:token`. Built at `/platform/tenants/new`
+(`S-SA-TENANT-NEW`), plus an "Administrador del Tenant" panel on `S-SA-TENANT-DETAIL` showing
+invitation status with resend/revoke. There is still **no** edit/delete for the tenant row itself —
+that part of this gap is unchanged.
+
 ### `GAP-SA-TENANT-ADMINS`
 No endpoint lets a Platform Admin list/manage a company's administrators or users. A Platform
 Admin **must not** read tenant-scoped data (multi-tenancy.md) — this needs an explicit, audited,
@@ -613,6 +624,31 @@ SuperAdmin-scoped aggregate path that does not exist. **future.**
 
 **F17-13 (2026-09) — OPEN, unchanged.** `S-SA-TENANT-DETAIL` shows only the 6 `tenants`-row fields;
 it reads no tenant-scoped data and has no "users of this company" section. Still `future`.
+
+**PARTIALLY RESOLVED — [ADR-0036](../../decisions/0036-tenant-onboarding-and-support.md) (2026-09).**
+Not resolved as an always-available list — resolved as a **curated, session-gated** read: while a
+platform admin holds a live `platform_support_sessions` row (`SUPPORT_READ` or `SUPPORT_WRITE`) for
+one specific tenant, `GET /platform/tenants/:tenantId/support/users` returns that tenant's users
+(name/email/status/role names, never `passwordHash`). Outside a live session the endpoint is `403`
+— there is still no unconditional "browse any company's admins" capability, by design (see
+`GAP-SUPPORT-READ-SCOPE` for what the curated surface does and does not cover). `S-SA-TENANT-DETAIL`
+itself still shows no tenant user data — only the invitation lifecycle (`GAP-SA-CREATE-TENANT`).
+
+### `GAP-SUPPORT-READ-SCOPE`
+**RESOLVED for reads (post-launch correction to [ADR-0036](../../decisions/0036-tenant-onboarding-and-support.md)).**
+An active support session (`SUPPORT_READ` or `SUPPORT_WRITE`) now resolves tenant context on the
+ordinary Tenant API's `GET` routes generally, via `TenantGuard` — the same guard every real tenant
+request already passes through, not a new bypass — so a Platform Admin can view Dashboard,
+Productos, Variantes, Inventario, Almacenes, Movimientos, Transferencias, Ventas, Pedidos, Clientes,
+Importaciones, Usuarios, Reportes, Códigos QR, Configuración, and any other existing tenant route
+exactly as an internal user would, for visualization purposes. `SUPPORT_WRITE`'s actual mutation
+surface is unchanged and still curated: `PATCH .../support/warehouses/:id/status` remains the one
+write action (column-level `GRANT UPDATE (status) ON warehouses TO app_platform`, migration 0033);
+`PermissionsGuard` rejects every non-`GET` request from a support principal outright, regardless of
+session mode, so this extension adds zero write reach anywhere. A future resource that needs its own
+**write** support action is still its own deliberate, one-at-a-time decision (what to expose, which
+column-level grant) — that half of the original gap is unchanged. See ADR-0036's "`SUPPORT_READ`
+extension" section for the guard-level detail.
 
 ### `GAP-SA-ADMIN-CRUD`
 `platform_admins` has no CRUD endpoint — only the `seed:platform-admin` script. Managing other
