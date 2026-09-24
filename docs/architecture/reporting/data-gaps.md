@@ -10,7 +10,7 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
 | ID | Short name | Class |
 | --- | --- | --- |
 | [`GAP-REORDER`](#gap-reorder) | Reorder point / low-stock threshold | F18-needed |
-| [`GAP-COST`](#gap-cost) | Inventory cost / valuation / COGS | future |
+| [`GAP-COST`](#gap-cost) | Inventory cost / valuation / COGS | ~~future~~ **RESOLVED (Kardex block, ADR-0037)** — weighted-average costing engine + `GET /reports/kardex`; `GAP-ORDER-MARGIN` sub-note still open |
 | [`GAP-SNAPSHOTS`](#gap-snapshots) | Historical snapshots for trend KPIs | F18-needed |
 | [`GAP-SALES-AGGREGATE`](#gap-sales-aggregate) | Sales aggregation endpoint | ~~F18-needed~~ **RESOLVED (F18-02)** — `location` grouping still open |
 | [`GAP-INV-AGGREGATE`](#gap-inv-aggregate) | Inventory aggregation + name enrichment | ~~F17-needed (partial) / F18~~ **PARTIALLY RESOLVED (F18-03)** — Σ available/reserved + out-of-stock count by warehouse/category built; name enrichment on the *raw* balances/movements lists stays open |
@@ -61,21 +61,22 @@ Anchors are stable (linked from the other files): `#gap-<id>`.
   gap-fill). F17 shows "out of stock" (available = 0, state B) instead.
 
 ### `GAP-COST`
-- **Required:** cost-at-the-moment-of-movement on `inventory_movements` (or a costing engine:
+**RESOLVED** — the Inventario/Kardex block (ADR-0037) added a nullable `unit_cost` column on
+`inventory_movements`, populated on every inbound movement type that carries a real cost fact
+(mandatory on `RECEIPT`, optional-with-default on `ADJUSTMENT_IN`, copied from `order_items.unit_cost_snapshot`
+on `RETURN`, from the import row on `INITIAL_STOCK`, carried across a transfer via `TRANSFER_OUT`/`TRANSFER_IN`).
+A pure weighted-average fold (`apps/api/src/inventory/kardex/kardex-costing.ts`) derives Costo K / Stock S
+at read time — never stored — powering `GET /reports/kardex` (Costo U/Costo K/Stock S, gated on
+`pricing.cost.view`). See ADR-0037 for the full design and its accepted limitations (legacy
+pre-migration stock falls back to the variant's current cost, flagged `estimated`).
+- **Original ask:** cost-at-the-moment-of-movement on `inventory_movements` (or a costing engine:
   FIFO / weighted-average / standard), to compute inventory value and COGS.
 - **Why:** `KPI-INV-VALUE`, `REP-INV-VALUATION`, gross-margin reporting, any "worth" figure.
 - **Domain:** Inventory / Sales.
-- **Missing:** `inventory_movements` has **no cost/value column**. `product_variants.cost` is
-  current, nullable, mutable — not an as-of cost. No costing method is defined anywhere.
-  `order_items.unit_cost_snapshot` **does** exist (per-order margin is possible — see
-  `GAP-ORDER-MARGIN` note below) but inventory-side valuation is not.
-- **Impact:** no inventory valuation, no COGS, no margin-by-product from the ledger.
-- **Recommended phase:** **future** — needs an explicit ADR (costing method is a significant
-  accounting decision) before any phase.
-- **Sub-note `GAP-ORDER-MARGIN`:** `order_items.unit_cost_snapshot` is captured at sale time but
-  **not exposed** by `OrderItemResponseDto`. Exposing it (gated by `pricing.cost.view`) would make
-  per-order and by-product **sales margin** computable without the inventory costing engine.
-  Small, additive. **F18-needed.**
+- **Sub-note `GAP-ORDER-MARGIN` is still open** (unchanged by this resolution): `order_items.unit_cost_snapshot`
+  is captured at sale time but **not exposed** by `OrderItemResponseDto`. Exposing it (gated by
+  `pricing.cost.view`) would make per-order and by-product **sales margin** computable without
+  the inventory costing engine. Small, additive. **F18-needed.**
 
 ### `GAP-SNAPSHOTS`
 - **Required:** periodic snapshots / rollups of point-in-time state (stock levels, queue depths,

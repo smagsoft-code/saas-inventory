@@ -62,6 +62,8 @@ function buildService() {
   const stockLedgerService = { applyMovement: vi.fn() };
   const idempotencyKeysRepository = { find: vi.fn(), create: vi.fn() };
   const auditLogService = { record: vi.fn() };
+  const movingAverageCostService = { getCurrentAverageCost: vi.fn().mockResolvedValue({ stock: 0, averageCost: 0, estimated: false }) };
+  const movementsRepository = { findOneByReference: vi.fn().mockResolvedValue(undefined) };
 
   const service = new TransfersService(
     transfersRepository as never,
@@ -73,6 +75,8 @@ function buildService() {
     stockLedgerService as never,
     idempotencyKeysRepository as never,
     auditLogService as never,
+    movingAverageCostService as never,
+    movementsRepository as never,
   );
 
   itemsRepository.listByTransfer.mockResolvedValue([]);
@@ -88,6 +92,8 @@ function buildService() {
     stockLedgerService,
     idempotencyKeysRepository,
     auditLogService,
+    movingAverageCostService,
+    movementsRepository,
   };
 }
 

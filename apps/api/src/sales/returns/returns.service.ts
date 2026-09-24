@@ -387,6 +387,13 @@ export class ReturnsService {
       for (const item of items) {
         // Re-check location authorization at the moment the physical effect happens (§21, §37).
         await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, item.dispositionLocationId!);
+        // A RETURN's unit cost is the cost the original SALE actually removed at (order_items'
+        // frozen unit_cost_snapshot), for symmetry with the outflow it reverses — not a freshly
+        // computed average, which may have drifted since the sale. Falls back to leaving unitCost
+        // unset (the Kardex then estimates from the variant's current cost, flagged as such) only
+        // for a legacy order line that predates unit_cost_snapshot being populated.
+        const orderItem = await this.orderItemsRepository.findById(tx, tenantId, item.orderItemId);
+        const unitCost = orderItem?.unitCostSnapshot !== null && orderItem?.unitCostSnapshot !== undefined ? Number(orderItem.unitCostSnapshot) : undefined;
         try {
           await this.stockLedgerService.applyMovement(tx, {
             tenantId,
@@ -399,6 +406,7 @@ export class ReturnsService {
             referenceId: item.id,
             actorType: 'user',
             actorId,
+            ...(unitCost !== undefined ? { unitCost } : {}),
             // Deterministic ledger key — a RETURN movement for a given return line can only ever
             // happen once (§23 / test R10). The idempotency_keys short-circuit above and the
             // `inspecting` -> `resolved` transition already guarantee this; the key is the DB-level

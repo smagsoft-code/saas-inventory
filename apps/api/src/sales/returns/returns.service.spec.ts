@@ -12,7 +12,7 @@ const META = { correlationId: undefined, ipAddress: undefined };
 const KEY = 'idem-1';
 
 const CONFIRMED_ORDER = { id: 'order-1', tenantId: TENANT, status: 'confirmed', locationId: 'loc-1' };
-const ORDER_ITEM = { id: 'oi-1', tenantId: TENANT, orderId: 'order-1', productVariantId: 'v-1', quantity: '5', skuSnapshot: 'SKU-1' };
+const ORDER_ITEM = { id: 'oi-1', tenantId: TENANT, orderId: 'order-1', productVariantId: 'v-1', quantity: '5', skuSnapshot: 'SKU-1', unitCostSnapshot: '4' };
 const RECEIVING_LOCATION = { id: 'loc-recv', tenantId: TENANT, status: 'active', isSellable: true };
 const SELLABLE_LOCATION = { id: 'loc-sell', tenantId: TENANT, status: 'active', isSellable: true };
 const NON_SELLABLE_LOCATION = { id: 'loc-quar', tenantId: TENANT, status: 'active', isSellable: false };
@@ -60,7 +60,7 @@ function build() {
     recordInspection: vi.fn(),
   };
   const ordersRepository = { lockById: vi.fn().mockResolvedValue(CONFIRMED_ORDER) };
-  const orderItemsRepository = { listByOrder: vi.fn().mockResolvedValue([ORDER_ITEM]) };
+  const orderItemsRepository = { listByOrder: vi.fn().mockResolvedValue([ORDER_ITEM]), findById: vi.fn().mockResolvedValue(ORDER_ITEM) };
   const locationsRepository = { findById: vi.fn().mockResolvedValue(RECEIVING_LOCATION) };
   const locationAuthorizationService = { assertAccess: vi.fn() };
   const stockLedgerService = { applyMovement: vi.fn().mockResolvedValue({}) };

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, exists, ilike, isNull, or } from 'drizzle-orm';
 import { brands, productPriceHistory, products, productVariants, suppliers } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -82,7 +82,7 @@ export class ProductsRepository {
   async listByTenant(
     tx: TenantTransaction,
     tenantId: string,
-    params: { page: number; pageSize: number; status?: string | undefined; categoryId?: string | undefined },
+    params: { page: number; pageSize: number; status?: string | undefined; categoryId?: string | undefined; q?: string | undefined },
   ): Promise<{ rows: ProductRow[]; total: number }> {
     const conditions = [eq(products.tenantId, tenantId), isNull(products.deletedAt)];
     if (params.status) {
@@ -90,6 +90,23 @@ export class ProductsRepository {
     }
     if (params.categoryId) {
       conditions.push(eq(products.categoryId, params.categoryId));
+    }
+    if (params.q) {
+      const pattern = `%${params.q}%`;
+      // Matches the product's own name, or any of its variants' SKU/barcode — the Kardex product
+      // search (UI-UX-SPEC-001 §2) needs to find "the thing with this code" as readily as "the thing
+      // with this name", and there is no separate global SKU-search endpoint to reuse instead.
+      conditions.push(
+        or(
+          ilike(products.name, pattern),
+          exists(
+            tx
+              .select({ one: productVariants.id })
+              .from(productVariants)
+              .where(and(eq(productVariants.tenantId, products.tenantId), eq(productVariants.productId, products.id), or(ilike(productVariants.sku, pattern), ilike(productVariants.barcode, pattern)))),
+          ),
+        )!,
+      );
     }
     const where = and(...conditions);
 

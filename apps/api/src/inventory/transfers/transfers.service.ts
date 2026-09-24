@@ -5,8 +5,10 @@ import type { PaginatedResult } from '@saas-inventory/types';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import type { AuditMeta } from '../inventory-audit-meta';
+import { MovingAverageCostService } from '../kardex/moving-average-cost.service';
 import { LocationAuthorizationService } from '../location-authorization.service';
 import { IdempotencyKeysRepository } from '../repositories/idempotency-keys.repository';
+import { InventoryMovementsRepository } from '../repositories/inventory-movements.repository';
 import type { InventoryTransferItemRow } from '../repositories/inventory-transfer-items.repository';
 import { InventoryTransferItemsRepository } from '../repositories/inventory-transfer-items.repository';
 import { InventoryTransferReceiptsRepository } from '../repositories/inventory-transfer-receipts.repository';
@@ -51,6 +53,8 @@ export class TransfersService {
     private readonly stockLedgerService: StockLedgerService,
     private readonly idempotencyKeysRepository: IdempotencyKeysRepository,
     private readonly auditLogService: AuditLogService,
+    private readonly movingAverageCostService: MovingAverageCostService,
+    private readonly movementsRepository: InventoryMovementsRepository,
   ) {}
 
   async list(tenantId: string, query: ListTransfersQueryDto): Promise<PaginatedResult<TransferResponseDto>> {
@@ -239,6 +243,17 @@ export class TransfersService {
 
         if (quantityDispatched > 0) {
           try {
+            // TRANSFER_OUT stores the moving average cost at source right before dispatch — not to
+            // change this location's own Kardex maths (an outflow never does, see
+            // kardex-costing.ts) but purely as the carrier value the paired TRANSFER_IN copies at
+            // receive(), since the destination has no way to derive "what this batch cost" from its
+            // own ledger history.
+            const { averageCost } = await this.movingAverageCostService.getCurrentAverageCost(
+              tx,
+              tenantId,
+              item.productVariantId,
+              transfer.sourceLocationId,
+            );
             await this.stockLedgerService.applyMovement(tx, {
               tenantId,
               productVariantId: item.productVariantId,
@@ -249,6 +264,7 @@ export class TransfersService {
               referenceId: id,
               actorType: 'user',
               actorId,
+              unitCost: averageCost,
               // Deterministic, per-item key — database.md#inventory-transfers-and-in-transit-stock's
               // 'transfer-dispatch:' || transfer_id key, extended with the item id since a
               // multi-item transfer writes one TRANSFER_OUT per item and idempotency_key is unique
@@ -353,6 +369,17 @@ export class TransfersService {
         const item = itemsById.get(line.transferItemId)!;
         updatedReceivedByItem.set(line.transferItemId, Number(item.quantityReceived) + line.quantityReceived);
 
+        // TRANSFER_IN carries forward the exact unit cost its paired TRANSFER_OUT recorded at
+        // dispatch — the cost of these specific units is a fact fixed when they left the source,
+        // not something the destination's own (unrelated) ledger history could derive.
+        const dispatchMovement = await this.movementsRepository.findOneByReference(tx, tenantId, {
+          referenceType: 'transfer',
+          referenceId: id,
+          productVariantId: item.productVariantId,
+          movementType: 'TRANSFER_OUT',
+        });
+        const unitCost = dispatchMovement?.unitCost !== null && dispatchMovement?.unitCost !== undefined ? Number(dispatchMovement.unitCost) : undefined;
+
         await this.stockLedgerService.applyMovement(tx, {
           tenantId,
           productVariantId: item.productVariantId,
@@ -363,6 +390,7 @@ export class TransfersService {
           referenceId: receipt.id,
           actorType: 'user',
           actorId,
+          ...(unitCost !== undefined ? { unitCost } : {}),
           correlationId: meta.correlationId,
         });
       }

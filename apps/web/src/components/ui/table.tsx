@@ -1,4 +1,4 @@
-import type { ReactNode, TdHTMLAttributes, ThHTMLAttributes } from 'react';
+import type { HTMLAttributes, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from 'react';
 import { cn } from '../../lib/cn';
 
 /**
@@ -18,18 +18,20 @@ export function THead({ children }: { children: ReactNode }): React.JSX.Element 
   return <thead className="bg-slate-50 text-left">{children}</thead>;
 }
 
-export function TBody({ children }: { children: ReactNode }): React.JSX.Element {
-  return <tbody className="divide-y divide-slate-100">{children}</tbody>;
+export function TBody({ children, className }: { children: ReactNode; className?: string }): React.JSX.Element {
+  return <tbody className={cn('divide-y divide-slate-100', className)}>{children}</tbody>;
 }
 
 export function TR({
   children,
   className,
-}: {
-  children: ReactNode;
-  className?: string;
-}): React.JSX.Element {
-  return <tr className={cn('hover:bg-slate-50/60', className)}>{children}</tr>;
+  ...rest
+}: HTMLAttributes<HTMLTableRowElement> & { children: ReactNode }): React.JSX.Element {
+  return (
+    <tr className={cn('hover:bg-slate-50/60', className)} {...rest}>
+      {children}
+    </tr>
+  );
 }
 
 export function TH({

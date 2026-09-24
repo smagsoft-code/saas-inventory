@@ -72,6 +72,7 @@ export interface StockMovementRow {
   correlationId: string | null;
   occurredAt: Date;
   createdAt: Date;
+  unitCost: string | null;
 }
 
 /** A stock operation is not legal given the current balance — insufficient available stock, or the
@@ -94,6 +95,9 @@ export interface ApplyMovementParams {
   idempotencyKey?: string | undefined;
   correlationId?: string | undefined;
   occurredAt?: Date | undefined;
+  /** Unit cost of an inbound movement — see kardex-costing.ts for who populates this and why
+   * outbound movement types never do. Ignored (left NULL) if omitted. */
+  unitCost?: number | undefined;
 }
 
 /**
@@ -185,6 +189,7 @@ export class StockLedgerService {
         actorId: params.actorId ?? null,
         idempotencyKey: params.idempotencyKey ?? null,
         correlationId: params.correlationId ?? null,
+        unitCost: params.unitCost !== undefined ? String(params.unitCost) : null,
         ...(params.occurredAt ? { occurredAt: params.occurredAt } : {}),
       })
       .returning();

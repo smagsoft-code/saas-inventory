@@ -77,6 +77,7 @@ export class ProductsService {
         pageSize: query.pageSize,
         status: query.status,
         categoryId: query.categoryId,
+        q: query.q,
       });
       return {
         data: rows.map(toProductResponse),

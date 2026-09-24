@@ -141,6 +141,13 @@ export const inventoryMovements = pgTable('inventory_movements', {
   /** Polymorphic soft reference — not FK-constrained, documented exception. */
   referenceId: uuid('reference_id'),
   reason: text('reason'),
+  /** Unit cost of an inbound movement (RECEIPT/ADJUSTMENT_IN/RETURN/INITIAL_STOCK/TRANSFER_OUT —
+   * the last one only as the carrier value copied onto its paired TRANSFER_IN). Never populated
+   * for SALE/ADJUSTMENT_OUT: an outflow's cost is the moving average immediately before it,
+   * derived at read time from prior rows, not stored — see kardex-costing.ts. NULL on legacy rows
+   * predating this column; the Kardex falls back to the variant's current cost for those, flagged
+   * as estimated. */
+  unitCost: numeric('unit_cost'),
   actorType: text('actor_type').notNull(),
   actorId: uuid('actor_id'),
   idempotencyKey: text('idempotency_key'),
@@ -167,6 +174,7 @@ export const inventoryMovements = pgTable('inventory_movements', {
     sql`${t.movementType} IN ('RECEIPT', 'SALE', 'RETURN', 'ADJUSTMENT_IN', 'ADJUSTMENT_OUT', 'TRANSFER_OUT', 'TRANSFER_IN', 'RESERVATION', 'RESERVATION_RELEASE', 'COMMITMENT', 'COMMITMENT_RELEASE', 'INITIAL_STOCK')`,
   ),
   check('inventory_movements_quantity_check', sql`${t.quantity} <> 0`),
+  check('inventory_movements_unit_cost_check', sql`${t.unitCost} IS NULL OR ${t.unitCost} >= 0`),
   check('inventory_movements_actor_type_check', sql`${t.actorType} IN ('user', 'system', 'platform_admin')`),
   index('inventory_movements_tenant_variant_location_created_idx').on(t.tenantId, t.productVariantId, t.locationId, t.createdAt),
   index('inventory_movements_tenant_reference_idx').on(t.tenantId, t.referenceType, t.referenceId).where(sql`${t.referenceId} IS NOT NULL`),

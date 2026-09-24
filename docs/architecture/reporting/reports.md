@@ -13,7 +13,7 @@
 | ID | Report | Domain | Existing endpoint | State | Home |
 | --- | --- | --- | --- | --- | --- |
 | `REP-INV-STOCK` | Existencias (stock on hand) | Inventory | `GET /inventory/balances` (raw) | **B** | F17 operational list (raw); the grouped/enriched view is now `GET /reports/inventory-summary` (FASE 18-03) |
-| `REP-INV-KARDEX` | Stock card / kardex | Inventory | `GET /inventory/movements` (date range added, F18-03) | **B** | Still needs an explicit sort guarantee + name enrichment |
+| `REP-INV-KARDEX` | Stock card / kardex | Inventory | `GET /reports/kardex` + `/export` (Kardex block, ADR-0037) | **A** | Weighted-average cost, chronological order, labels, export all built; reference→route drill-down still text-only |
 | `REP-INV-MOVEMENTS` | Movement history | Inventory | `GET /inventory/movements` (list) / `GET /reports/movements-summary` (grouped, F18-07) | **A** (list + date range) / **A** (grouped by day/week/month/type, F18-07) — by-actor still **B** (`GAP-NAME-ENRICHMENT`) |
 | `REP-INV-ADJUSTMENTS` | Adjustments | Inventory | `GET /inventory/movements?movementType=ADJUSTMENT_*` (list) / `GET /reports/movements-summary?groupBy=type` (F18-07) | **A** (filtered + dated list) / **A** (grouped count + signed net, F18-07) |
 | `REP-INV-SUMMARY` | Inventory summary (available/reserved/out-of-stock by warehouse or category) | Inventory | `GET /reports/inventory-summary` | **A** | FASE 18-03 |
@@ -87,24 +87,30 @@ Export · Drill-down · Related operational screen · State**.
 ### `REP-INV-KARDEX` — Stock card / kardex
 
 - **Objective:** chronological ledger of every movement for one variant at one location, with
-  running balance.
-- **Domain:** Inventory · **Permission:** `inventory.view` · **Scope:** tenant / location.
-- **Source:** `inventory_movements` (append-only; `balance_after` snapshot is stored per row).
-- **Endpoint:** `GET /inventory/movements` (partial).
-- **Query params (today):** `page`, `pageSize`, `productVariantId`, `locationId`, `movementType`,
-  `occurredFrom`/`occurredTo` (F18-03 — half-open `[occurredFrom, occurredTo)` on `occurred_at`,
-  never `created_at`; `occurredFrom` requires `occurredFrom < occurredTo` when both are given).
-- **Columns:** Fecha (`occurred_at`), Tipo, Cantidad (signed), Saldo después (`balance_after`),
-  Motivo, Referencia (`reference_type`/`reference_id`), Actor.
-- **Filters (desired):** date range — **resolved, F18-03**; reference type still missing.
-  **Sort:** chronological — **no explicit sort param** (repo default,
-  `created_at DESC`). **Grouping:** none. **Totals:** period net movement.
-- **Export:** none. **Drill-down:** reference → the order/transfer/adjustment that caused it
-  (needs `reference_type` → route mapping).
-- **Related screen:** Inventory (row → detail).
-- **State: B.** The ledger fully supports a kardex; the date-range filter is now real (F18-03), but
-  the endpoint still lacks an explicit chronological sort guarantee, name enrichment, and reference
-  resolution.
+  running balance, running weighted-average cost, and stock value.
+- **Domain:** Inventory · **Permission:** `inventory.view` (cost fields additionally gated on
+  `pricing.cost.view`, ADR-0028) · **Scope:** tenant / location (variant+location required — cost is
+  only well-defined per pair, ADR-0037).
+- **Source:** `inventory_movements` (append-only; `balance_after` and, on inbound rows, `unit_cost`
+  are stored per row — ADR-0037).
+- **Endpoint:** `GET /reports/kardex` (dedicated, replacing the earlier plan to extend
+  `GET /inventory/movements`). Export: `GET /reports/kardex/export?format=xlsx|pdf`.
+- **Query params:** `productVariantId`, `locationId` (both required), `from`/`to` (optional,
+  half-open `[from, to)` on `occurred_at`; omitted = full history).
+- **Columns:** Fecha del movimiento, Movimiento (human label, resolved via `referenceType`/
+  `referenceId`), Entrada, Costo U, Salida, Costo K (running weighted average), Stock U
+  (`balanceAfter`), Stock S (Stock U × Costo K). Plus an opening balance (folded from everything
+  before `from`) and a "Stock por sucursal" side table (current balance at every location the
+  variant has one).
+- **Filters:** date range — real. **Sort:** always chronological (`occurred_at`, `created_at`, `id`
+  tiebreak) — no alternate sort, by design (a kardex is inherently time-ordered).
+  **Grouping:** none — explicitly removed from the UI per UI-UX-SPEC-001 §4 (a kardex is never
+  grouped). **Totals:** opening/closing balance, average cost, stock value.
+- **Row cap:** 2000 rows per query (`truncated: true` beyond that — narrow the date range).
+- **Related screen:** Inventory (search/​"Ver todos" → Kardex → Stock por sucursal).
+- **State: A.** Weighted-average costing (ADR-0037), explicit chronological ordering, human-readable
+  movement labels, and Excel/PDF export are all built. Reference→route drill-down (e.g. clicking
+  through to the order/transfer) is not built — the label is descriptive text, not yet a link.
 
 ### `REP-INV-MOVEMENTS` — Movement history
 

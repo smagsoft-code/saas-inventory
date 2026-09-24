@@ -30,15 +30,21 @@ const EXISTING_MOVEMENT = {
   correlationId: null,
   occurredAt: new Date('2026-01-01T00:00:00Z'),
   createdAt: new Date('2026-01-01T00:00:00Z'),
+  unitCost: null,
 };
 
 function buildService() {
-  const movementsRepository = { listByTenant: vi.fn() };
+  const movementsRepository = {
+    listByTenant: vi.fn(),
+    resolveOrderNumbers: vi.fn().mockResolvedValue(new Map()),
+    resolveReceiptTransferIds: vi.fn().mockResolvedValue(new Map()),
+  };
   const productVariantsLookup = { exists: vi.fn() };
   const locationsRepository = { findById: vi.fn() };
   const locationAuthorizationService = { assertAccess: vi.fn() };
   const stockLedgerService = { applyMovement: vi.fn() };
   const auditLogService = { record: vi.fn() };
+  const movingAverageCostService = { getCurrentAverageCost: vi.fn().mockResolvedValue({ stock: 0, averageCost: 0, estimated: false }) };
   const service = new MovementsService(
     movementsRepository as never,
     productVariantsLookup as never,
@@ -46,11 +52,23 @@ function buildService() {
     locationAuthorizationService as never,
     stockLedgerService as never,
     auditLogService as never,
+    movingAverageCostService as never,
   );
-  return { service, movementsRepository, productVariantsLookup, locationsRepository, locationAuthorizationService, stockLedgerService, auditLogService };
+  return {
+    service,
+    movementsRepository,
+    productVariantsLookup,
+    locationsRepository,
+    locationAuthorizationService,
+    stockLedgerService,
+    auditLogService,
+    movingAverageCostService,
+  };
 }
 
-const VALID_DTO = { productVariantId: VARIANT_ID, locationId: LOCATION_ID, movementType: 'RECEIPT' as const, quantity: 10, reason: 'Restock' };
+const CAN_VIEW_COST = true;
+
+const VALID_DTO = { productVariantId: VARIANT_ID, locationId: LOCATION_ID, movementType: 'RECEIPT' as const, quantity: 10, reason: 'Restock', unitCost: 5 };
 
 describe('MovementsService', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -59,14 +77,14 @@ describe('MovementsService', () => {
     it('throws NotFoundException when the product variant does not exist in this tenant', async () => {
       const { service, productVariantsLookup } = buildService();
       productVariantsLookup.exists.mockResolvedValue(false);
-      await expect(service.createAdjustment(TENANT_ID, ACTOR_ID, VALID_DTO, META)).rejects.toThrow(NotFoundException);
+      await expect(service.createAdjustment(TENANT_ID, ACTOR_ID, VALID_DTO, META, CAN_VIEW_COST)).rejects.toThrow(NotFoundException);
     });
 
     it('throws NotFoundException when the location does not exist in this tenant', async () => {
       const { service, productVariantsLookup, locationsRepository } = buildService();
       productVariantsLookup.exists.mockResolvedValue(true);
       locationsRepository.findById.mockResolvedValue(undefined);
-      await expect(service.createAdjustment(TENANT_ID, ACTOR_ID, VALID_DTO, META)).rejects.toThrow(NotFoundException);
+      await expect(service.createAdjustment(TENANT_ID, ACTOR_ID, VALID_DTO, META, CAN_VIEW_COST)).rejects.toThrow(NotFoundException);
     });
 
     it('propagates ForbiddenException from location authorization before touching the ledger (ADR-0024)', async () => {
@@ -75,7 +93,7 @@ describe('MovementsService', () => {
       locationsRepository.findById.mockResolvedValue({ id: LOCATION_ID });
       locationAuthorizationService.assertAccess.mockRejectedValue(new ForbiddenException());
 
-      await expect(service.createAdjustment(TENANT_ID, ACTOR_ID, VALID_DTO, META)).rejects.toThrow(ForbiddenException);
+      await expect(service.createAdjustment(TENANT_ID, ACTOR_ID, VALID_DTO, META, CAN_VIEW_COST)).rejects.toThrow(ForbiddenException);
       expect(stockLedgerService.applyMovement).not.toHaveBeenCalled();
     });
 
@@ -87,7 +105,7 @@ describe('MovementsService', () => {
       stockLedgerService.applyMovement.mockRejectedValue(new InsufficientStockError('Resulting quantity would be negative.'));
 
       await expect(
-        service.createAdjustment(TENANT_ID, ACTOR_ID, { ...VALID_DTO, movementType: 'ADJUSTMENT_OUT', quantity: 999 }, META),
+        service.createAdjustment(TENANT_ID, ACTOR_ID, { ...VALID_DTO, movementType: 'ADJUSTMENT_OUT', quantity: 999 }, META, CAN_VIEW_COST),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -98,7 +116,7 @@ describe('MovementsService', () => {
       locationAuthorizationService.assertAccess.mockResolvedValue(undefined);
       stockLedgerService.applyMovement.mockResolvedValue({ movement: EXISTING_MOVEMENT, balance: { id: 'balance-1' } });
 
-      const result = await service.createAdjustment(TENANT_ID, ACTOR_ID, VALID_DTO, META);
+      const result = await service.createAdjustment(TENANT_ID, ACTOR_ID, VALID_DTO, META, CAN_VIEW_COST);
 
       expect(stockLedgerService.applyMovement).toHaveBeenCalledWith(
         expect.anything(),
@@ -115,37 +133,109 @@ describe('MovementsService', () => {
       const { service, movementsRepository } = buildService();
       movementsRepository.listByTenant.mockResolvedValue({ rows: [EXISTING_MOVEMENT], total: 1 });
 
-      const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 });
+      const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
+    });
+
+    describe('referenceLabel', () => {
+      it('labels a SALE with its resolved order number', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({
+          rows: [{ ...EXISTING_MOVEMENT, movementType: 'SALE', referenceType: 'order', referenceId: 'order-1', reason: null }],
+          total: 1,
+        });
+        movementsRepository.resolveOrderNumbers.mockResolvedValue(new Map([['order-1', 'ORD-000123']]));
+
+        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(movementsRepository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['order-1']);
+        expect(result.data[0]!.referenceLabel).toBe('Venta #ORD-000123');
+      });
+
+      it('omits referenceLabel for a SALE whose order number could not be resolved', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({
+          rows: [{ ...EXISTING_MOVEMENT, movementType: 'SALE', referenceType: 'order', referenceId: 'order-1', reason: null }],
+          total: 1,
+        });
+
+        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(result.data[0]!.referenceLabel).toBeUndefined();
+      });
+
+      it('labels a TRANSFER_OUT with its own short id, no lookup needed', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({
+          rows: [{ ...EXISTING_MOVEMENT, movementType: 'TRANSFER_OUT', referenceType: 'transfer', referenceId: 'transfer-12345678', reason: null }],
+          total: 1,
+        });
+
+        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(movementsRepository.resolveReceiptTransferIds).toHaveBeenCalledWith(expect.anything(), TENANT_ID, []);
+        expect(result.data[0]!.referenceLabel).toBe('Transferencia #transfer');
+      });
+
+      it('labels a TRANSFER_IN with its paired transfer id, resolved via the receipt', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({
+          rows: [{ ...EXISTING_MOVEMENT, movementType: 'TRANSFER_IN', referenceType: 'transfer_receipt', referenceId: 'receipt-1', reason: null }],
+          total: 1,
+        });
+        movementsRepository.resolveReceiptTransferIds.mockResolvedValue(new Map([['receipt-1', 'transfer-87654321']]));
+
+        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(movementsRepository.resolveReceiptTransferIds).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['receipt-1']);
+        expect(result.data[0]!.referenceLabel).toBe('Transferencia #transfer');
+      });
+
+      it('leaves referenceLabel undefined for RECEIPT/ADJUSTMENT/etc. — those already show a plain reason', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({ rows: [EXISTING_MOVEMENT], total: 1 });
+
+        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(result.data[0]!.referenceLabel).toBeUndefined();
+      });
     });
 
     describe('occurredFrom/occurredTo (F18-03, GAP-MOVEMENTS-DATE-FILTER)', () => {
       it('rejects when occurredFrom is not strictly before occurredTo', async () => {
         const { service } = buildService();
         await expect(
-          service.list(TENANT_ID, {
-            page: 1,
-            pageSize: 20,
-            occurredFrom: '2026-09-02T00:00:00.000Z',
-            occurredTo: '2026-09-02T00:00:00.000Z',
-          }),
+          service.list(
+            TENANT_ID,
+            {
+              page: 1,
+              pageSize: 20,
+              occurredFrom: '2026-09-02T00:00:00.000Z',
+              occurredTo: '2026-09-02T00:00:00.000Z',
+            },
+            CAN_VIEW_COST,
+          ),
         ).rejects.toThrow(BadRequestException);
         await expect(
-          service.list(TENANT_ID, {
-            page: 1,
-            pageSize: 20,
-            occurredFrom: '2026-09-03T00:00:00.000Z',
-            occurredTo: '2026-09-02T00:00:00.000Z',
-          }),
+          service.list(
+            TENANT_ID,
+            {
+              page: 1,
+              pageSize: 20,
+              occurredFrom: '2026-09-03T00:00:00.000Z',
+              occurredTo: '2026-09-02T00:00:00.000Z',
+            },
+            CAN_VIEW_COST,
+          ),
         ).rejects.toThrow(BadRequestException);
       });
 
       it('applies only occurredGte when occurredTo is omitted', async () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
-        await service.list(TENANT_ID, { page: 1, pageSize: 20, occurredFrom: '2026-09-01T00:00:00.000Z' });
+        await service.list(TENANT_ID, { page: 1, pageSize: 20, occurredFrom: '2026-09-01T00:00:00.000Z' }, CAN_VIEW_COST);
         expect(movementsRepository.listByTenant).toHaveBeenCalledWith(
           expect.anything(),
           TENANT_ID,
@@ -158,7 +248,7 @@ describe('MovementsService', () => {
       it('applies only occurredLt when occurredFrom is omitted', async () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
-        await service.list(TENANT_ID, { page: 1, pageSize: 20, occurredTo: '2026-09-02T00:00:00.000Z' });
+        await service.list(TENANT_ID, { page: 1, pageSize: 20, occurredTo: '2026-09-02T00:00:00.000Z' }, CAN_VIEW_COST);
         expect(movementsRepository.listByTenant).toHaveBeenCalledWith(
           expect.anything(),
           TENANT_ID,
@@ -171,12 +261,16 @@ describe('MovementsService', () => {
       it('applies both bounds when both are given', async () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
-        await service.list(TENANT_ID, {
-          page: 1,
-          pageSize: 20,
-          occurredFrom: '2026-09-01T00:00:00.000Z',
-          occurredTo: '2026-09-02T00:00:00.000Z',
-        });
+        await service.list(
+          TENANT_ID,
+          {
+            page: 1,
+            pageSize: 20,
+            occurredFrom: '2026-09-01T00:00:00.000Z',
+            occurredTo: '2026-09-02T00:00:00.000Z',
+          },
+          CAN_VIEW_COST,
+        );
         expect(movementsRepository.listByTenant).toHaveBeenCalledWith(
           expect.anything(),
           TENANT_ID,
@@ -190,7 +284,7 @@ describe('MovementsService', () => {
       it('passes no occurred bounds at all when neither is given (no regression)', async () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
-        await service.list(TENANT_ID, { page: 1, pageSize: 20 });
+        await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
         const call = movementsRepository.listByTenant.mock.calls[0]![2] as Record<string, unknown>;
         expect(call).not.toHaveProperty('occurredGte');
         expect(call).not.toHaveProperty('occurredLt');

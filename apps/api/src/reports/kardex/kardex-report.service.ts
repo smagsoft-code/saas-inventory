@@ -1,0 +1,180 @@
+import { BadRequestException, Injectable } from '@nestjs/common';
+import { withTenantTransaction } from '../../database/tenant-context';
+import { foldKardexLedger, isPhysicalMovementType, ZERO_BALANCE, type KardexBalanceState, type KardexSourceMovement } from '../../inventory/kardex/kardex-costing';
+import type { KardexQueryDto } from './dto/kardex-query.dto';
+import type { KardexBalanceDto, KardexResponseDto, KardexRowDto } from './dto/kardex-response.dto';
+import { KardexReportRepository, type KardexMovementRow } from './kardex-report.repository';
+
+/** Hard cap on rows returned within the visible [from, to) range — the opening balance still folds
+ * every prior movement regardless (correctness there is non-negotiable, see kardex-costing.ts), but
+ * the rows a human actually scrolls through are capped, per UI-UX-SPEC-001 §22's explicit request
+ * for a limit rather than "a solution that only works with little data". A caller that hits this
+ * should narrow the date range, exactly as `truncated: true` on the response tells them to. */
+const MAX_ROWS = 2000;
+
+function toSourceMovement(row: KardexMovementRow): KardexSourceMovement {
+  return {
+    id: row.id,
+    occurredAt: row.occurredAt,
+    movementType: row.movementType,
+    quantity: Number(row.quantity),
+    unitCost: row.unitCost !== null ? Number(row.unitCost) : null,
+  };
+}
+
+function toBalanceDto(state: KardexBalanceState, canViewCost: boolean): KardexBalanceDto {
+  return {
+    stockUnits: state.stock,
+    ...(canViewCost
+      ? {
+          averageCost: state.averageCost,
+          stockValue: state.stock * state.averageCost,
+          estimated: state.estimated,
+        }
+      : {}),
+  };
+}
+
+function labelFor(
+  row: KardexMovementRow,
+  orderNumbersBySaleReference: Map<string, string>,
+  orderNumbersByReturnItem: Map<string, string>,
+  transferIdsByReceipt: Map<string, string>,
+): string {
+  const shortId = (id: string) => id.slice(0, 8);
+  switch (row.movementType) {
+    case 'SALE': {
+      const orderNumber = row.referenceId ? orderNumbersBySaleReference.get(row.referenceId) : undefined;
+      return orderNumber ? `Venta #${orderNumber}` : 'Venta';
+    }
+    case 'RETURN': {
+      const orderNumber = row.referenceId ? orderNumbersByReturnItem.get(row.referenceId) : undefined;
+      return orderNumber ? `Devolución de venta #${orderNumber}` : 'Devolución de venta';
+    }
+    case 'TRANSFER_OUT':
+      return row.referenceId ? `Transferencia #${shortId(row.referenceId)} (salida)` : 'Transferencia (salida)';
+    case 'TRANSFER_IN': {
+      const transferId = row.referenceId ? transferIdsByReceipt.get(row.referenceId) : undefined;
+      return transferId ? `Transferencia #${shortId(transferId)} (entrada)` : 'Transferencia (entrada)';
+    }
+    case 'RECEIPT':
+      return row.reason ? `Ingreso de stock: ${row.reason}` : 'Ingreso de stock';
+    case 'ADJUSTMENT_IN':
+      return row.reason ? `Ajuste (entrada): ${row.reason}` : 'Ajuste (entrada)';
+    case 'ADJUSTMENT_OUT':
+      return row.reason ? `Ajuste (salida): ${row.reason}` : 'Ajuste (salida)';
+    case 'INITIAL_STOCK':
+      return row.reason ? `Stock inicial: ${row.reason}` : 'Stock inicial';
+    default:
+      return row.movementType;
+  }
+}
+
+/**
+ * `GET /reports/kardex` (UI-UX-SPEC-001) — a chronological ledger for one (variant, location) with
+ * running Costo K / Stock U / Stock S, seeded with an opening balance folded from everything before
+ * `from` so a mid-history date filter never starts a variant's stock at a false zero (§5).
+ */
+@Injectable()
+export class KardexReportService {
+  constructor(private readonly repository: KardexReportRepository) {}
+
+  /** Product/SKU/location display strings for the export's header — a separate small lookup so the
+   * main JSON response (the frontend already has this context from its own product search and
+   * location picker) doesn't carry redundant display fields. */
+  async getExportContext(tenantId: string, productVariantId: string, locationId: string): Promise<{ productName: string; sku: string; locationLabel: string }> {
+    return withTenantTransaction(tenantId, async (tx) => {
+      const [variantInfo, locationBalances] = await Promise.all([
+        this.repository.getVariantDisplayInfo(tx, tenantId, productVariantId),
+        this.repository.listLocationBalances(tx, tenantId, productVariantId),
+      ]);
+      const location = locationBalances.find((row) => row.locationId === locationId);
+      return {
+        productName: variantInfo?.productName ?? 'Producto',
+        sku: variantInfo?.sku ?? '',
+        locationLabel: location ? `${location.warehouseName} — ${location.locationName}` : locationId,
+      };
+    });
+  }
+
+  async getKardex(tenantId: string, query: KardexQueryDto, canViewCost: boolean): Promise<KardexResponseDto> {
+    if (query.from && query.to && new Date(query.from).getTime() >= new Date(query.to).getTime()) {
+      throw new BadRequestException('`from` must be strictly before `to`.');
+    }
+
+    return withTenantTransaction(tenantId, async (tx) => {
+      const from = query.from ? new Date(query.from) : undefined;
+      const to = query.to ? new Date(query.to) : undefined;
+
+      const [priorMovements, rangeMovementsPlusOne, fallbackCost, stockByLocation, variantInfo] = await Promise.all([
+        from
+          ? this.repository.listMovements(tx, tenantId, { productVariantId: query.productVariantId, locationId: query.locationId, occurredLt: from })
+          : Promise.resolve([]),
+        this.repository.listMovements(tx, tenantId, {
+          productVariantId: query.productVariantId,
+          locationId: query.locationId,
+          ...(from ? { occurredGte: from } : {}),
+          ...(to ? { occurredLt: to } : {}),
+          limit: MAX_ROWS + 1,
+        }),
+        this.repository.getVariantCost(tx, tenantId, query.productVariantId),
+        this.repository.listLocationBalances(tx, tenantId, query.productVariantId),
+        this.repository.getVariantDisplayInfo(tx, tenantId, query.productVariantId),
+      ]);
+
+      const truncated = rangeMovementsPlusOne.length > MAX_ROWS;
+      const rangeMovements = truncated ? rangeMovementsPlusOne.slice(0, MAX_ROWS) : rangeMovementsPlusOne;
+
+      const opening = from ? foldKardexLedger(priorMovements.map(toSourceMovement), ZERO_BALANCE, fallbackCost).closing : ZERO_BALANCE;
+
+      const { rows: foldedRows, closing } = foldKardexLedger(rangeMovements.map(toSourceMovement), opening, fallbackCost);
+
+      const physicalRows = rangeMovements.filter((row) => isPhysicalMovementType(row.movementType));
+      const saleReferenceIds = physicalRows.filter((row) => row.movementType === 'SALE' && row.referenceId).map((row) => row.referenceId!);
+      const returnItemIds = physicalRows.filter((row) => row.movementType === 'RETURN' && row.referenceId).map((row) => row.referenceId!);
+      const receiptIds = physicalRows.filter((row) => row.movementType === 'TRANSFER_IN' && row.referenceId).map((row) => row.referenceId!);
+
+      const [orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt] = await Promise.all([
+        this.repository.resolveOrderNumbers(tx, tenantId, saleReferenceIds),
+        this.repository.resolveReturnOrderNumbers(tx, tenantId, returnItemIds),
+        this.repository.resolveReceiptTransferIds(tx, tenantId, receiptIds),
+      ]);
+
+      const movementsById = new Map(physicalRows.map((row) => [row.id, row]));
+      const rows: KardexRowDto[] = foldedRows.map((row) => {
+        const source = movementsById.get(row.movementId)!;
+        return {
+          movementId: row.movementId,
+          occurredAt: row.occurredAt.toISOString(),
+          movementType: row.movementType,
+          label: labelFor(source, orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt),
+          entrada: row.entrada,
+          salida: row.salida,
+          ...(canViewCost
+            ? { unitCost: row.unitCost, unitCostEstimated: row.unitCostEstimated, averageCostAfter: row.averageCostAfter, stockValueAfter: row.stockValueAfter }
+            : {}),
+          stockAfter: row.stockAfter,
+        };
+      });
+
+      return {
+        productVariantId: query.productVariantId,
+        locationId: query.locationId,
+        productId: variantInfo?.productId ?? '',
+        productName: variantInfo?.productName ?? 'Producto',
+        sku: variantInfo?.sku ?? '',
+        opening: toBalanceDto(opening, canViewCost),
+        rows,
+        closing: toBalanceDto(closing, canViewCost),
+        truncated,
+        stockByLocation: stockByLocation.map((location) => ({
+          locationId: location.locationId,
+          locationName: location.locationName,
+          warehouseName: location.warehouseName,
+          stockPhysical: Number(location.quantityPhysical),
+          ...(location.quantityAvailable !== null ? { stockAvailable: Number(location.quantityAvailable) } : {}),
+        })),
+      };
+    });
+  }
+}

@@ -67,6 +67,7 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0031](0031-role-assignment-escalation-prevention.md) | Role-Assignment Authorization and Self-Escalation Prevention | Accepted |
 | [0032](0032-platform-admin-authentication.md) | Platform-Admin (SuperAdmin) Authentication | Accepted |
 | [0033](0033-global-identity-tenant-memberships.md) | Global Identity + Tenant Memberships (database layer) | Accepted |
+| [0037](0037-inventory-moving-average-cost.md) | Inventory Costing — Weighted-Average, Computed Never Stored | Accepted |
 
 ADRs 0001–0015 were produced in Prompt 01 (architecture phase) alongside
 [docs/architecture/](../architecture/) and [docs/security/threat-model.md](../security/threat-model.md).
@@ -101,3 +102,7 @@ unbuilt — see [modules.md#administration](../architecture/modules.md#administr
 produced in 016-B (database layer for global identity + tenant memberships), following the
 016-AUDIT/016-A audit and architectural-design pass over FASE 16's `tenantSlug`-based login — see
 [database.md#global-identity-and-tenant-memberships](../architecture/database.md#global-identity-and-tenant-memberships).
+ADR-0037 was produced for the
+Inventario/Kardex block, resolving `GAP-COST`
+([data-gaps.md](../architecture/reporting/data-gaps.md)) — a weighted-average costing engine
+(`apps/api/src/inventory/kardex/kardex-costing.ts`) feeding the new `GET /reports/kardex` endpoint.

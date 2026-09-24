@@ -232,6 +232,13 @@
       "when": 1790006292917,
       "tag": "0032_core_roles_manage_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1790125661832,
+      "tag": "0034_inventory_movements_unit_cost",
+      "breakpoints": true
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, gte, lt } from 'drizzle-orm';
-import { inventoryMovements } from '../../database/schema';
+import { and, asc, count, desc, eq, gte, inArray, lt } from 'drizzle-orm';
+import { inventoryMovements, inventoryTransferReceipts, orders } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
 export interface InventoryMovementRow {
@@ -20,6 +20,7 @@ export interface InventoryMovementRow {
   correlationId: string | null;
   occurredAt: Date;
   createdAt: Date;
+  unitCost: string | null;
 }
 
 /**
@@ -81,5 +82,83 @@ export class InventoryMovementsRepository {
       .offset((params.page - 1) * params.pageSize);
 
     return { rows, total: totalRow?.total ?? 0 };
+  }
+
+  /** A single movement matched by its polymorphic reference — used to look up the TRANSFER_OUT that
+   * paired a TRANSFER_IN, so the receiving movement can carry forward the exact cost that left the
+   * source rather than recomputing a (potentially now-different) average at the destination. */
+  async findOneByReference(
+    tx: TenantTransaction,
+    tenantId: string,
+    params: { referenceType: string; referenceId: string; productVariantId: string; movementType: string },
+  ): Promise<InventoryMovementRow | undefined> {
+    const [row] = await tx
+      .select()
+      .from(inventoryMovements)
+      .where(
+        and(
+          eq(inventoryMovements.tenantId, tenantId),
+          eq(inventoryMovements.referenceType, params.referenceType),
+          eq(inventoryMovements.referenceId, params.referenceId),
+          eq(inventoryMovements.productVariantId, params.productVariantId),
+          eq(inventoryMovements.movementType, params.movementType),
+        ),
+      )
+      .orderBy(desc(inventoryMovements.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  /**
+   * Every movement for one (variant, location) pair, in strict chronological order — the sole
+   * shape kardex-costing.ts's fold ever consumes, whether called from the write side (the current
+   * moving-average cost, before inserting a new movement) or the read side (a date-ranged Kardex,
+   * with `occurredBefore` used to fold the opening balance). Includes non-physical movement types
+   * (RESERVATION/COMMITMENT/…) uncfiltered — the fold itself skips those, so filtering here would
+   * only save a little payload at the cost of a second, easily-to-drift movement-type list.
+   */
+  async listForCosting(
+    tx: TenantTransaction,
+    tenantId: string,
+    params: { productVariantId: string; locationId: string; occurredBefore?: Date | undefined },
+  ): Promise<InventoryMovementRow[]> {
+    const conditions = [
+      eq(inventoryMovements.tenantId, tenantId),
+      eq(inventoryMovements.productVariantId, params.productVariantId),
+      eq(inventoryMovements.locationId, params.locationId),
+    ];
+    if (params.occurredBefore) {
+      conditions.push(lt(inventoryMovements.occurredAt, params.occurredBefore));
+    }
+    return tx
+      .select()
+      .from(inventoryMovements)
+      .where(and(...conditions))
+      .orderBy(asc(inventoryMovements.occurredAt), asc(inventoryMovements.createdAt), asc(inventoryMovements.id));
+  }
+
+  /** referenceType='order' (SALE) → order_number, e.g. "ORD-000123" — same lookup
+   * `reports/kardex/kardex-report.repository.ts` already does for the Kardex ledger's own label,
+   * duplicated here rather than shared across the transactional/reporting boundary (that module's
+   * own convention: reporting never reaches into this repository, so this repository doesn't reach
+   * into it either). */
+  async resolveOrderNumbers(tx: TenantTransaction, tenantId: string, orderIds: string[]): Promise<Map<string, string>> {
+    if (orderIds.length === 0) return new Map();
+    const rows = await tx
+      .select({ id: orders.id, orderNumber: orders.orderNumber })
+      .from(orders)
+      .where(and(eq(orders.tenantId, tenantId), inArray(orders.id, orderIds)));
+    return new Map(rows.map((row) => [row.id, row.orderNumber]));
+  }
+
+  /** referenceType='transfer_receipt' (TRANSFER_IN) → the parent transfer id, so a TRANSFER_IN can
+   * be labeled with the same transfer identifier as its paired TRANSFER_OUT. */
+  async resolveReceiptTransferIds(tx: TenantTransaction, tenantId: string, receiptIds: string[]): Promise<Map<string, string>> {
+    if (receiptIds.length === 0) return new Map();
+    const rows = await tx
+      .select({ receiptId: inventoryTransferReceipts.id, transferId: inventoryTransferReceipts.transferId })
+      .from(inventoryTransferReceipts)
+      .where(and(eq(inventoryTransferReceipts.tenantId, tenantId), inArray(inventoryTransferReceipts.id, receiptIds)));
+    return new Map(rows.map((row) => [row.receiptId, row.transferId]));
   }
 }

@@ -9,9 +9,16 @@ import { ImportsReportService } from './imports/imports-report.service';
 import { InventoryReportController } from './inventory/inventory-report.controller';
 import { InventoryReportRepository } from './inventory/inventory-report.repository';
 import { InventoryReportService } from './inventory/inventory-report.service';
+import { KardexExportService } from './kardex/kardex-export.service';
+import { KardexReportController } from './kardex/kardex-report.controller';
+import { KardexReportRepository } from './kardex/kardex-report.repository';
+import { KardexReportService } from './kardex/kardex-report.service';
 import { MovementsReportController } from './movements/movements-report.controller';
 import { MovementsReportRepository } from './movements/movements-report.repository';
 import { MovementsReportService } from './movements/movements-report.service';
+import { ProductsReportController } from './products/products-report.controller';
+import { ProductsReportRepository } from './products/products-report.repository';
+import { ProductsReportService } from './products/products-report.service';
 import { ReturnsReportController } from './returns/returns-report.controller';
 import { ReturnsReportRepository } from './returns/returns-report.repository';
 import { ReturnsReportService } from './returns/returns-report.service';
@@ -37,7 +44,13 @@ import { TransfersReportService } from './transfers/transfers-report.service';
  * repositories) — status rollup + in-transit stock by destination/variant; no `from`/`to` (like
  * `inventory-summary`). F18-09 adds the IMPORTS read-side (`imports/`) —
  * `GET /reports/imports-summary` over `import_jobs` alone (no join), never `ImportJobsRepository` —
- * job-count + row-total aggregation by period (`completed_at`) or by status. `TenantSettingsRepository`
+ * job-count + row-total aggregation by period (`completed_at`) or by status. OUI-004 adds the
+ * PRODUCTS read-side (`products/`) — `GET /reports/product-catalog`, the operational product list
+ * (variant-grain: SKU/prices/status live on `product_variants`, not `products`) joined to a live
+ * `inventory_balances` stock rollup — the one place this cross-domain (CATALOG + INVENTORY) join is
+ * architecturally allowed to live (`modules.md`'s `Catalog -> Core`-only edge), the exact same
+ * reasoning `inventory/` already established for its own product/category name enrichment. Not a
+ * KPI dashboard — `apps/web`'s `/products` page is its only consumer. `TenantSettingsRepository`
  * is reused directly as a provider (same convention `AuthModule`/`AdministrationModule` already use
  * for cross-cutting repositories) rather than importing `AdministrationModule` — no module-level
  * dependency edge either way; the inventory report does not need it (no timezone-bucketed period in
@@ -52,12 +65,17 @@ import { TransfersReportService } from './transfers/transfers-report.service';
     MovementsReportController,
     TransfersReportController,
     ImportsReportController,
+    ProductsReportController,
+    KardexReportController,
   ],
   providers: [
     SalesReportService,
     SalesReportRepository,
     InventoryReportService,
     InventoryReportRepository,
+    KardexReportService,
+    KardexReportRepository,
+    KardexExportService,
     ReturnsReportService,
     ReturnsReportRepository,
     ApprovalsReportService,
@@ -68,6 +86,8 @@ import { TransfersReportService } from './transfers/transfers-report.service';
     TransfersReportRepository,
     ImportsReportService,
     ImportsReportRepository,
+    ProductsReportService,
+    ProductsReportRepository,
     TenantSettingsRepository,
   ],
 })

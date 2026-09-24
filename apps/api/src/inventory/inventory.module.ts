@@ -3,6 +3,8 @@ import { UsersRepository } from '../auth/repositories/users.repository';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { BalancesController } from './balances/balances.controller';
 import { BalancesService } from './balances/balances.service';
+import { MovingAverageCostService } from './kardex/moving-average-cost.service';
+import { VariantCostLookupRepository } from './kardex/variant-cost-lookup.repository';
 import { LocationAssignmentsController } from './location-assignments/location-assignments.controller';
 import { LocationAssignmentsService } from './location-assignments/location-assignments.service';
 import { LocationAuthorizationService } from './location-authorization.service';
@@ -67,6 +69,8 @@ import { WarehousesService } from './warehouses/warehouses.service';
     IdempotencyKeysRepository,
     ProductVariantsLookupRepository,
     UsersRepository,
+    MovingAverageCostService,
+    VariantCostLookupRepository,
   ],
   exports: [
     StockLedgerService,

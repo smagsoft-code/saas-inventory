@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsIn, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Length } from 'class-validator';
+import { IsDateString, IsIn, IsNumber, IsOptional, IsPositive, IsString, IsUUID, Length, Min, ValidateIf } from 'class-validator';
 
 const ADJUSTMENT_MOVEMENT_TYPES = ['RECEIPT', 'ADJUSTMENT_IN', 'ADJUSTMENT_OUT'] as const;
 
@@ -42,4 +42,15 @@ export class CreateAdjustmentDto {
   @IsOptional()
   @IsDateString()
   occurredAt?: string;
+
+  /** Mandatory for RECEIPT ("Agregar stock" — UI-UX-SPEC-001 §12: a supplier/production inbound
+   * always has a known unit cost, so it is never allowed to default silently). Optional for
+   * ADJUSTMENT_IN — when omitted there, the service defaults it to the variant's current moving
+   * average cost (a found-inventory correction is assumed not to change the average). Ignored for
+   * ADJUSTMENT_OUT — an outflow never carries a cost of its own, see kardex-costing.ts. */
+  @ApiPropertyOptional({ type: Number, description: 'Unit cost of the inbound quantity. Required when movementType is RECEIPT.' })
+  @ValidateIf((dto: CreateAdjustmentDto) => dto.movementType === 'RECEIPT' || dto.unitCost !== undefined)
+  @IsNumber()
+  @Min(0)
+  unitCost?: number;
 }

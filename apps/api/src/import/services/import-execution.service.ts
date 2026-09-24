@@ -297,6 +297,10 @@ export class ImportExecutionService {
 
     const quantity = asNumber(mapped['quantity']);
     if (quantity !== undefined && quantity > 0 && locationId) {
+      // The row's own `cost` column (already written onto product_variants.cost above, for the
+      // new-SKU path) is this digitized starting stock's real unit cost — not a computed average,
+      // since there is no prior history to average against.
+      const unitCost = asNumber(mapped['cost']);
       await this.stockLedgerService.applyMovement(tx, {
         tenantId,
         productVariantId: variantId,
@@ -308,6 +312,7 @@ export class ImportExecutionService {
         referenceId: job.id,
         actorType: 'user',
         actorId,
+        ...(unitCost !== undefined ? { unitCost } : {}),
       });
     }
 
@@ -411,6 +416,10 @@ export class ImportExecutionService {
     // §16's core safety rule, enforced here, not just documented.
     const quantity = asNumber(mapped['quantity']);
     if (job.duplicateHandlingMode === 'update_catalog_and_inventory' && quantity !== undefined && quantity > 0 && locationId) {
+      // `cost` (above) is this row's own declared cost, already written onto product_variants.cost
+      // when provided — the same value doubles as this inbound movement's unit cost. When the row
+      // doesn't declare one, leave unitCost unset: the Kardex fold then falls back to the variant's
+      // (now possibly stale) current cost, flagged as estimated, rather than fabricating a number.
       await this.stockLedgerService.applyMovement(tx, {
         tenantId,
         productVariantId: variantId,
@@ -422,6 +431,7 @@ export class ImportExecutionService {
         referenceId: job.id,
         actorType: 'user',
         actorId,
+        ...(cost !== undefined ? { unitCost: cost } : {}),
       });
     }
 

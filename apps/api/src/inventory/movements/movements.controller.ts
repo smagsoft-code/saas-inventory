@@ -3,6 +3,7 @@ import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyRequest } from 'fastify';
 import type { AuthPrincipal } from '../../common/context/request-context';
+import { CurrentPermissions } from '../../common/decorators/current-permissions.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
@@ -25,8 +26,16 @@ export class MovementsController {
   @Get('movements')
   @RequirePermissions('inventory.view')
   @ApiOkResponse({ type: MovementResponseDto, isArray: true })
-  async list(@CurrentTenant() tenantId: string, @Query() query: ListMovementsQueryDto): Promise<PaginatedResult<MovementResponseDto>> {
-    return this.movementsService.list(tenantId, query);
+  async list(
+    @CurrentTenant() tenantId: string,
+    @Query() query: ListMovementsQueryDto,
+    @CurrentPermissions() permissions: string[],
+  ): Promise<PaginatedResult<MovementResponseDto>> {
+    // unitCost is field-gated on pricing.cost.view (ADR-0028's precedent), same as
+    // reports/inventory's totalCostValue — a caller with only inventory.view still gets every
+    // other field.
+    const canViewCost = permissions.includes('pricing.cost.view');
+    return this.movementsService.list(tenantId, query, canViewCost);
   }
 
   @Post('adjustments')
@@ -37,10 +46,15 @@ export class MovementsController {
     @CurrentUser() principal: AuthPrincipal,
     @Body() dto: CreateAdjustmentDto,
     @Req() request: FastifyRequest,
+    @CurrentPermissions() permissions: string[],
   ): Promise<MovementResponseDto> {
-    return this.movementsService.createAdjustment(tenantId, principal.userId, dto, {
-      correlationId: request.correlationId,
-      ipAddress: request.ip,
-    });
+    const canViewCost = permissions.includes('pricing.cost.view');
+    return this.movementsService.createAdjustment(
+      tenantId,
+      principal.userId,
+      dto,
+      { correlationId: request.correlationId, ipAddress: request.ip },
+      canViewCost,
+    );
   }
 }

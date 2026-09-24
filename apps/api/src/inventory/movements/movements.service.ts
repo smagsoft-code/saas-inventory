@@ -9,11 +9,35 @@ import { LocationsRepository } from '../repositories/locations.repository';
 import type { InventoryMovementRow } from '../repositories/inventory-movements.repository';
 import { InventoryMovementsRepository } from '../repositories/inventory-movements.repository';
 import { InsufficientStockError, StockLedgerService } from '../stock-ledger.service';
+import { MovingAverageCostService } from '../kardex/moving-average-cost.service';
 import type { CreateAdjustmentDto } from './dto/create-adjustment.dto';
 import type { ListMovementsQueryDto } from './dto/list-movements-query.dto';
 import type { MovementResponseDto } from './dto/movement-response.dto';
 
-function toResponse(movement: InventoryMovementRow): MovementResponseDto {
+const shortId = (id: string) => id.slice(0, 8);
+
+/** SALE → the order's number; TRANSFER_OUT/TRANSFER_IN → the transfer's own id (there is no human
+ * transfer number in the schema yet — `GAP-TRANSFER-CODE` — so this uses the same short-id
+ * convention `reports/kardex` already established for the exact same gap). Every other movement
+ * type already has a plain `reason` and needs no resolved label. */
+function referenceLabelFor(movement: InventoryMovementRow, orderNumbersBySaleReference: Map<string, string>, transferIdsByReceipt: Map<string, string>): string | undefined {
+  switch (movement.movementType) {
+    case 'SALE': {
+      const orderNumber = movement.referenceId ? orderNumbersBySaleReference.get(movement.referenceId) : undefined;
+      return orderNumber ? `Venta #${orderNumber}` : undefined;
+    }
+    case 'TRANSFER_OUT':
+      return movement.referenceId ? `Transferencia #${shortId(movement.referenceId)}` : undefined;
+    case 'TRANSFER_IN': {
+      const transferId = movement.referenceId ? transferIdsByReceipt.get(movement.referenceId) : undefined;
+      return transferId ? `Transferencia #${shortId(transferId)}` : undefined;
+    }
+    default:
+      return undefined;
+  }
+}
+
+function toResponse(movement: InventoryMovementRow, canViewCost: boolean, referenceLabel?: string): MovementResponseDto {
   return {
     id: movement.id,
     productVariantId: movement.productVariantId,
@@ -21,9 +45,11 @@ function toResponse(movement: InventoryMovementRow): MovementResponseDto {
     movementType: movement.movementType,
     quantity: Number(movement.quantity),
     balanceAfter: Number(movement.balanceAfter),
+    ...(canViewCost && movement.unitCost !== null ? { unitCost: Number(movement.unitCost) } : {}),
     ...(movement.referenceType ? { referenceType: movement.referenceType } : {}),
     ...(movement.referenceId ? { referenceId: movement.referenceId } : {}),
     ...(movement.reason ? { reason: movement.reason } : {}),
+    ...(referenceLabel ? { referenceLabel } : {}),
     actorType: movement.actorType,
     ...(movement.actorId ? { actorId: movement.actorId } : {}),
     occurredAt: movement.occurredAt.toISOString(),
@@ -46,9 +72,10 @@ export class MovementsService {
     private readonly locationAuthorizationService: LocationAuthorizationService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly auditLogService: AuditLogService,
+    private readonly movingAverageCostService: MovingAverageCostService,
   ) {}
 
-  async list(tenantId: string, query: ListMovementsQueryDto): Promise<PaginatedResult<MovementResponseDto>> {
+  async list(tenantId: string, query: ListMovementsQueryDto, canViewCost: boolean): Promise<PaginatedResult<MovementResponseDto>> {
     // [occurredFrom, occurredTo) — half-open, same convention as every FASE 18 reporting endpoint
     // (F18-03, GAP-MOVEMENTS-DATE-FILTER). `occurredFrom >= occurredTo` is a caller mistake no date
     // format check catches on its own, so it is rejected here rather than silently returning empty.
@@ -66,8 +93,18 @@ export class MovementsService {
         ...(query.occurredFrom ? { occurredGte: new Date(query.occurredFrom) } : {}),
         ...(query.occurredTo ? { occurredLt: new Date(query.occurredTo) } : {}),
       });
+
+      // Batched, page-sized (never per-row) — the same N+1-avoidance `reports/kardex` uses for its
+      // own label resolution.
+      const saleReferenceIds = rows.filter((row) => row.movementType === 'SALE' && row.referenceId).map((row) => row.referenceId!);
+      const receiptIds = rows.filter((row) => row.movementType === 'TRANSFER_IN' && row.referenceId).map((row) => row.referenceId!);
+      const [orderNumbersBySaleReference, transferIdsByReceipt] = await Promise.all([
+        this.movementsRepository.resolveOrderNumbers(tx, tenantId, saleReferenceIds),
+        this.movementsRepository.resolveReceiptTransferIds(tx, tenantId, receiptIds),
+      ]);
+
       return {
-        data: rows.map(toResponse),
+        data: rows.map((row) => toResponse(row, canViewCost, referenceLabelFor(row, orderNumbersBySaleReference, transferIdsByReceipt))),
         meta: {
           page: query.page,
           pageSize: query.pageSize,
@@ -78,7 +115,13 @@ export class MovementsService {
     });
   }
 
-  async createAdjustment(tenantId: string, actorId: string, dto: CreateAdjustmentDto, meta: AuditMeta): Promise<MovementResponseDto> {
+  async createAdjustment(
+    tenantId: string,
+    actorId: string,
+    dto: CreateAdjustmentDto,
+    meta: AuditMeta,
+    canViewCost: boolean,
+  ): Promise<MovementResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const variantExists = await this.productVariantsLookup.exists(tx, tenantId, dto.productVariantId);
       if (!variantExists) {
@@ -90,6 +133,23 @@ export class MovementsService {
       }
 
       await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, dto.locationId);
+
+      // RECEIPT ("Agregar stock") always carries an explicit, mandatory unit cost (DTO validation).
+      // ADJUSTMENT_IN defaults to the current moving average when the caller doesn't supply one —
+      // a found-inventory correction is assumed not to move the average. ADJUSTMENT_OUT never
+      // carries a cost: an outflow's Costo U is always the average vigente before it, derived at
+      // read time by the Kardex, never stored (kardex-costing.ts).
+      let unitCost: number | undefined;
+      if (dto.movementType === 'RECEIPT') {
+        unitCost = dto.unitCost;
+      } else if (dto.movementType === 'ADJUSTMENT_IN') {
+        if (dto.unitCost !== undefined) {
+          unitCost = dto.unitCost;
+        } else {
+          const current = await this.movingAverageCostService.getCurrentAverageCost(tx, tenantId, dto.productVariantId, dto.locationId);
+          unitCost = current.averageCost;
+        }
+      }
 
       let result;
       try {
@@ -104,6 +164,7 @@ export class MovementsService {
           actorType: 'user',
           actorId,
           correlationId: meta.correlationId,
+          ...(unitCost !== undefined ? { unitCost } : {}),
           ...(dto.occurredAt ? { occurredAt: new Date(dto.occurredAt) } : {}),
         });
       } catch (error) {
@@ -125,11 +186,12 @@ export class MovementsService {
           quantity: dto.quantity,
           reason: dto.reason,
           balanceAfter: result.movement.balanceAfter,
+          ...(unitCost !== undefined ? { unitCost } : {}),
         },
         meta,
       });
 
-      return toResponse(result.movement);
+      return toResponse(result.movement, canViewCost);
     });
   }
 

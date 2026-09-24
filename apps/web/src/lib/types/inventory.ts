@@ -183,9 +183,15 @@ export interface InventoryMovement {
   movementType: string;
   quantity: number;
   balanceAfter: number;
+  /** Only present on inbound movement types, and only when the caller has `pricing.cost.view`
+   * (omitted entirely otherwise — never null/masked, ADR-0028's precedent). */
+  unitCost?: number;
   referenceType?: string;
   referenceId?: string;
   reason?: string;
+  /** Resolved server-side for SALE ("Venta #ORD-000123") and TRANSFER_OUT/TRANSFER_IN
+   * ("Transferencia #xxxxxxxx") only — every other movement type already has a plain `reason`. */
+  referenceLabel?: string;
   actorType: string;
   actorId?: string;
   occurredAt: string;
@@ -201,6 +207,10 @@ export interface CreateAdjustmentInput {
   quantity: number;
   reason: string;
   occurredAt?: string;
+  /** Required when `movementType` is `RECEIPT` ("Agregar stock" — UI-UX-SPEC-001 §12); optional for
+   * `ADJUSTMENT_IN` (defaults server-side to the current moving average cost); ignored for
+   * `ADJUSTMENT_OUT`. */
+  unitCost?: number;
 }
 
 // --- transfers (F17-07) ----------------------------------------------------------------------
