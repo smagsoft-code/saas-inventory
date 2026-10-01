@@ -12,7 +12,7 @@ import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
 
-export const metadata = { title: 'Warehouses · SaaS Inventory' };
+export const metadata = { title: 'Sucursales · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
 type StatusFilter = 'active' | 'inactive' | undefined;
@@ -46,8 +46,8 @@ export default async function WarehousesPage({
   if (!checker.can('warehouses.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Warehouses" />
-        <NoAccess message="You need the warehouses permission to view this page." />
+        <PageHeader title="Sucursales" />
+        <NoAccess message="Necesitas el permiso de sucursales para ver esta página." />
       </PageContainer>
     );
   }
@@ -72,17 +72,17 @@ export default async function WarehousesPage({
   }
 
   const filters: { label: string; value: StatusFilter }[] = [
-    { label: 'All', value: undefined },
-    { label: 'Active', value: 'active' },
-    { label: 'Inactive', value: 'inactive' },
+    { label: 'Todas', value: undefined },
+    { label: 'Activas', value: 'active' },
+    { label: 'Inactivas', value: 'inactive' },
   ];
 
   return (
     <PageContainer>
       <PageHeader
-        title="Warehouses"
-        description="Physical sites that hold stock. Every warehouse has at least one location."
-        actions={canManage ? <ButtonLink href="/warehouses/new">New warehouse</ButtonLink> : undefined}
+        title="Sucursales"
+        description="Sitios físicos que almacenan stock. Toda sucursal tiene al menos un almacén."
+        actions={canManage ? <ButtonLink href="/warehouses/new">Nueva sucursal</ButtonLink> : undefined}
       />
 
       <div className="flex flex-wrap gap-2">
@@ -107,12 +107,12 @@ export default async function WarehousesPage({
 
       {result.data.length === 0 ? (
         status ? (
-          <EmptyState title="No warehouses match this filter" description="Try a different status." />
+          <EmptyState title="Ninguna sucursal coincide con este filtro" description="Prueba con otro estado." />
         ) : (
           <EmptyState
-            title="No warehouses yet"
-            description="Create your first warehouse to start tracking stock by site."
-            action={canManage ? <ButtonLink href="/warehouses/new">New warehouse</ButtonLink> : undefined}
+            title="Aún no hay sucursales"
+            description="Crea tu primera sucursal para empezar a rastrear el stock por sitio."
+            action={canManage ? <ButtonLink href="/warehouses/new">Nueva sucursal</ButtonLink> : undefined}
           />
         )
       ) : (
@@ -120,12 +120,12 @@ export default async function WarehousesPage({
           <Table>
             <THead>
               <TR>
-                <TH>Name</TH>
-                <TH>Code</TH>
-                <TH>Address</TH>
-                <TH>Status</TH>
+                <TH>Nombre</TH>
+                <TH>Código</TH>
+                <TH>Dirección</TH>
+                <TH>Estado</TH>
                 <TH className="w-0">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">Acciones</span>
                 </TH>
               </TR>
             </THead>
@@ -138,14 +138,16 @@ export default async function WarehousesPage({
                   </TD>
                   <TD className="text-slate-500">{formatAddress(warehouse.address)}</TD>
                   <TD>
-                    <Badge tone={statusTone(warehouse.status)}>{warehouse.status}</Badge>
+                    <Badge tone={statusTone(warehouse.status)}>
+                      {warehouse.status === 'active' ? 'Activa' : warehouse.status === 'inactive' ? 'Inactiva' : warehouse.status}
+                    </Badge>
                   </TD>
                   <TD>
                     <Link
                       href={`/warehouses/${warehouse.id}`}
                       className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                     >
-                      {canManage ? 'Edit' : 'View'}
+                      {canManage ? 'Editar' : 'Ver'}
                     </Link>
                   </TD>
                 </TR>

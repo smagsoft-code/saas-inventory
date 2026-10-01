@@ -13,9 +13,10 @@
 export const INVENTORY_SUMMARY_GROUP_BY = ['warehouse', 'category'] as const;
 export type InventorySummaryGroupBy = (typeof INVENTORY_SUMMARY_GROUP_BY)[number];
 
+// GL-1: "warehouse" (tabla `warehouses`) se etiqueta "Sucursal" en español (OUI-001).
 export const INVENTORY_SUMMARY_GROUP_BY_LABELS: Record<InventorySummaryGroupBy, string> = {
-  warehouse: 'Warehouse',
-  category: 'Category',
+  warehouse: 'Sucursal',
+  category: 'Categoría',
 };
 
 export interface InventoryWarehouseBucket {
@@ -41,6 +42,14 @@ export interface InventorySummaryTotals {
   availableQuantity: number;
   reservedQuantity: number;
   outOfStockCount: number;
+  /** OUI-002/S-HOME redesign — Σ (product_variants.cost × availableQuantity), current cost only
+   * (never FIFO/weighted-average — GAP-COST). Present only when the caller holds
+   * `pricing.cost.view` (ADR-0028); absent otherwise, never a masked 0. */
+  totalCostValue?: number;
+  /** Distinct variants with available stock whose cost is unset — excluded from `totalCostValue`,
+   * so it stays a known-incomplete total rather than a silent undercount. Present only alongside
+   * `totalCostValue`. */
+  missingCostCount?: number;
 }
 
 export interface InventorySummary {
@@ -67,10 +76,10 @@ export const MOVEMENTS_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'type'] as co
 export type MovementsSummaryGroupBy = (typeof MOVEMENTS_SUMMARY_GROUP_BY)[number];
 
 export const MOVEMENTS_SUMMARY_GROUP_BY_LABELS: Record<MovementsSummaryGroupBy, string> = {
-  day: 'Day',
-  week: 'Week',
-  month: 'Month',
-  type: 'Movement type',
+  day: 'Día',
+  week: 'Semana',
+  month: 'Mes',
+  type: 'Tipo de movimiento',
 };
 
 export interface MovementsSummaryBucket {
@@ -107,9 +116,9 @@ export const TRANSFERS_SUMMARY_GROUP_BY = ['status', 'destination', 'variant'] a
 export type TransfersSummaryGroupBy = (typeof TRANSFERS_SUMMARY_GROUP_BY)[number];
 
 export const TRANSFERS_SUMMARY_GROUP_BY_LABELS: Record<TransfersSummaryGroupBy, string> = {
-  status: 'Status',
-  destination: 'Destination',
-  variant: 'Product',
+  status: 'Estado',
+  destination: 'Destino',
+  variant: 'Producto',
 };
 
 export interface TransfersStatusBucket {
@@ -147,6 +156,10 @@ export interface TransfersSummary {
 
 export function isTransferStatusBucket(b: TransfersSummaryBucket): b is TransfersStatusBucket {
   return 'transferCount' in b;
+}
+
+export function isTransferDestinationBucket(b: TransfersSummaryBucket): b is TransfersDestinationBucket {
+  return 'destinationName' in b;
 }
 
 export function isTransferVariantBucket(b: TransfersSummaryBucket): b is TransfersVariantBucket {

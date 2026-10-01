@@ -69,6 +69,7 @@ export class SalesReportService {
           lt: range.lt,
           status,
           exceptional,
+          locationId: query.locationId,
         });
         const buckets: SalesCustomerBucketDto[] = rows.map((row) => {
           const subtotal = Number(row.subtotal);
@@ -93,6 +94,7 @@ export class SalesReportService {
           lt: range.lt,
           status,
           exceptional,
+          locationId: query.locationId,
         });
         const buckets: SalesProductBucketDto[] = rows.map((row) => ({
           key: row.key,
@@ -121,6 +123,7 @@ export class SalesReportService {
         unit,
         timezone,
         exceptional,
+        locationId: query.locationId,
       });
       const buckets: SalesPeriodBucketDto[] = rows.map((row) => {
         const subtotal = Number(row.subtotal);

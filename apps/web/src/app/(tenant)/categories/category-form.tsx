@@ -72,10 +72,10 @@ export function CategoryForm({
   function validate(): boolean {
     const next: { name?: string; slug?: string } = {};
     if (name.trim().length < 2 || name.trim().length > 120) {
-      next.name = 'Name must be 2–120 characters.';
+      next.name = 'El nombre debe tener 2–120 caracteres.';
     }
     if (!CATEGORY_SLUG_PATTERN.test(effectiveSlug) || effectiveSlug.length < 2) {
-      next.slug = 'Slug must be lowercase letters, numbers and hyphens.';
+      next.slug = 'El slug debe tener minúsculas, números y guiones.';
     }
     setFieldError(next);
     return Object.keys(next).length === 0;
@@ -120,7 +120,7 @@ export function CategoryForm({
       router.refresh();
     } catch (err) {
       if (isApiError(err) && err.status === 403) {
-        setError('You no longer have permission to make this change.');
+        setError('Ya no tienes permiso para hacer este cambio.');
       } else {
         setError(httpErrorMessage(err));
       }
@@ -131,7 +131,7 @@ export function CategoryForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex max-w-md flex-col gap-4">
-      <Field label="Name" required {...(fieldError.name ? { error: fieldError.name } : {})}>
+      <Field label="Nombre" required {...(fieldError.name ? { error: fieldError.name } : {})}>
         <Input
           required
           minLength={2}
@@ -147,7 +147,7 @@ export function CategoryForm({
       <Field
         label="Slug"
         required
-        hint="Lowercase letters, numbers and hyphens. Unique within the company."
+        hint="Minúsculas, números y guiones. Único dentro de la empresa."
         {...(fieldError.slug ? { error: fieldError.slug } : {})}
       >
         <Input
@@ -161,7 +161,7 @@ export function CategoryForm({
         />
       </Field>
 
-      <Field label="Parent category" hint="Optional. Leave as “None” for a top-level category.">
+      <Field label="Categoría padre" hint="Opcional. Deja «Ninguna» para una categoría de nivel superior.">
         <Select
           value={parentId}
           onChange={(e) => {
@@ -169,7 +169,7 @@ export function CategoryForm({
             setSuccess(false);
           }}
         >
-          <option value="">None</option>
+          <option value="">Ninguna</option>
           {parentOptions
             .filter((p) => p.id !== category?.id)
             .map((p) => (
@@ -181,7 +181,7 @@ export function CategoryForm({
       </Field>
 
       {mode === 'edit' && (
-        <Field label="Status">
+        <Field label="Estado">
           <Select
             value={status}
             onChange={(e) => {
@@ -189,18 +189,18 @@ export function CategoryForm({
               setSuccess(false);
             }}
           >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="active">Activa</option>
+            <option value="inactive">Inactiva</option>
           </Select>
         </Field>
       )}
 
       {error && <Alert tone="error">{error}</Alert>}
-      {success && <Alert tone="success">Category saved.</Alert>}
+      {success && <Alert tone="success">Categoría guardada.</Alert>}
 
       <div className="flex gap-2">
         <Button type="submit" loading={submitting} disabled={!dirty} className="w-fit">
-          {mode === 'create' ? 'Create category' : 'Save changes'}
+          {mode === 'create' ? 'Crear categoría' : 'Guardar cambios'}
         </Button>
         <Button
           type="button"
@@ -208,7 +208,7 @@ export function CategoryForm({
           className="w-fit"
           onClick={() => router.push('/categories')}
         >
-          {mode === 'create' ? 'Cancel' : 'Back to categories'}
+          {mode === 'create' ? 'Cancelar' : 'Volver a categorías'}
         </Button>
       </div>
     </form>

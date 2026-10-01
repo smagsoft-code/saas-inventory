@@ -91,7 +91,7 @@ export function SalesFilters({
       setResults(page.data);
       setSearched(true);
       if (liveRegion.current) {
-        liveRegion.current.textContent = `${page.data.length} customer${page.data.length === 1 ? '' : 's'} found`;
+        liveRegion.current.textContent = `${page.data.length} cliente${page.data.length === 1 ? '' : 's'} encontrado${page.data.length === 1 ? '' : 's'}`;
       }
     } catch (err) {
       setSearchError(httpErrorMessage(err));
@@ -121,7 +121,7 @@ export function SalesFilters({
   return (
     <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Status">
+        <Field label="Estado">
           <Select
             value={status}
             onChange={(e) => {
@@ -129,7 +129,7 @@ export function SalesFilters({
               apply(current({ status: e.target.value || undefined }));
             }}
           >
-            <option value="">Any status</option>
+            <option value="">Cualquier estado</option>
             {ORDER_STATUSES.map((s) => (
               <option key={s} value={s}>
                 {ORDER_STATUS_LABELS[s]}
@@ -138,7 +138,7 @@ export function SalesFilters({
           </Select>
         </Field>
 
-        <Field label="Document type">
+        <Field label="Tipo de documento">
           <Select
             value={documentType}
             onChange={(e) => {
@@ -146,7 +146,7 @@ export function SalesFilters({
               apply(current({ documentType: e.target.value || undefined }));
             }}
           >
-            <option value="">Any document</option>
+            <option value="">Cualquier documento</option>
             {DOCUMENT_TYPES.map((t) => (
               <option key={t} value={t}>
                 {DOCUMENT_TYPE_LABELS[t]}
@@ -155,7 +155,7 @@ export function SalesFilters({
           </Select>
         </Field>
 
-        <Field label="Created from" hint="UTC day start">
+        <Field label="Creado desde" hint="Inicio del día UTC">
           <Input
             type="date"
             value={from}
@@ -167,7 +167,7 @@ export function SalesFilters({
           />
         </Field>
 
-        <Field label="Created to" hint="UTC day end">
+        <Field label="Creado hasta" hint="Fin del día UTC">
           <Input
             type="date"
             value={to}
@@ -183,14 +183,14 @@ export function SalesFilters({
       {canSearchCustomers && (
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-medium text-slate-700">Customer</span>
+            <span className="font-medium text-slate-700">Cliente</span>
             {customerId ? (
               <>
                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
                   {customerLabel || customerId.slice(0, 8)}
                 </span>
                 <button type="button" onClick={clearCustomer} className="text-xs font-medium text-slate-500 hover:underline">
-                  Clear
+                  Quitar
                 </button>
               </>
             ) : (
@@ -199,7 +199,7 @@ export function SalesFilters({
                 onClick={() => setPickerOpen((v) => !v)}
                 className="text-xs font-medium text-[#2F6FED] hover:underline"
               >
-                {pickerOpen ? 'Close' : 'Filter by customer'}
+                {pickerOpen ? 'Cerrar' : 'Filtrar por cliente'}
               </button>
             )}
           </div>
@@ -209,19 +209,19 @@ export function SalesFilters({
               <form onSubmit={searchCustomers} className="flex gap-2">
                 <Input
                   type="search"
-                  aria-label="Search customers"
-                  placeholder="Name, tax id, email or phone"
+                  aria-label="Buscar clientes"
+                  placeholder="Nombre, identificación tributaria, correo o teléfono"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                 />
                 <Button type="submit" size="sm" loading={searching} disabled={searching}>
-                  Search
+                  Buscar
                 </Button>
               </form>
               <p ref={liveRegion} className="sr-only" role="status" aria-live="polite" />
               {searchError && <p className="text-sm text-red-700">{searchError}</p>}
               {searched && results.length === 0 && !searchError && (
-                <p className="text-sm text-slate-500">No customers match that search.</p>
+                <p className="text-sm text-slate-500">Ningún cliente coincide con esa búsqueda.</p>
               )}
               {results.length > 0 && (
                 <ul className="flex flex-col divide-y divide-slate-100">
@@ -232,7 +232,7 @@ export function SalesFilters({
                         {customer.taxId && <span className="text-slate-500"> · {customer.taxId}</span>}
                       </span>
                       <Button size="sm" variant="secondary" onClick={() => chooseCustomer(customer)}>
-                        Select
+                        Seleccionar
                       </Button>
                     </li>
                   ))}
@@ -258,7 +258,7 @@ export function SalesFilters({
             }}
             className="text-xs font-medium text-slate-500 hover:underline"
           >
-            Clear all filters
+            Quitar todos los filtros
           </button>
         </div>
       )}

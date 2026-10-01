@@ -49,12 +49,12 @@ describe('validateAttributeValues', () => {
   const variantFields = resolveAttributeFields(ASSIGNMENTS, DEFS, 'variant');
 
   it('flags a missing required value', () => {
-    expect(validateAttributeValues({}, variantFields)).toEqual({ voltage: 'Voltage is required.' });
+    expect(validateAttributeValues({}, variantFields)).toEqual({ voltage: 'Voltage es obligatorio.' });
   });
 
   it('enforces min/max for numbers', () => {
-    expect(validateAttributeValues({ voltage: 12 }, variantFields)).toEqual({ voltage: 'Voltage must be ≥ 110.' });
-    expect(validateAttributeValues({ voltage: 999 }, variantFields)).toEqual({ voltage: 'Voltage must be ≤ 240.' });
+    expect(validateAttributeValues({ voltage: 12 }, variantFields)).toEqual({ voltage: 'Voltage debe ser ≥ 110.' });
+    expect(validateAttributeValues({ voltage: 999 }, variantFields)).toEqual({ voltage: 'Voltage debe ser ≤ 240.' });
     expect(validateAttributeValues({ voltage: 220 }, variantFields)).toEqual({});
   });
 });

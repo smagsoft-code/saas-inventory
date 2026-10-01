@@ -34,7 +34,7 @@ export default function RegisterPage(): React.JSX.Element {
       router.refresh();
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.message : 'Could not create your account. Please try again.',
+        err instanceof ApiError ? err.message : 'No se pudo crear tu cuenta. Inténtalo de nuevo.',
       );
     } finally {
       setSubmitting(false);
@@ -44,11 +44,11 @@ export default function RegisterPage(): React.JSX.Element {
   return (
     <main className="mx-auto flex min-h-screen max-w-sm flex-col justify-center gap-6 p-8">
       <div>
-        <h1 className="text-xl font-semibold text-slate-900">Create your company</h1>
-        <p className="text-sm text-slate-500">You&apos;ll become the workspace administrator.</p>
+        <h1 className="text-xl font-semibold text-slate-900">Crea tu empresa</h1>
+        <p className="text-sm text-slate-500">Te convertirás en el administrador del espacio de trabajo.</p>
       </div>
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-        <Field label="Company name" required>
+        <Field label="Nombre de la empresa" required>
           <Input
             name="companyName"
             required
@@ -58,7 +58,7 @@ export default function RegisterPage(): React.JSX.Element {
             autoComplete="organization"
           />
         </Field>
-        <Field label="Your full name" required>
+        <Field label="Tu nombre completo" required>
           <Input
             name="fullName"
             required
@@ -68,7 +68,7 @@ export default function RegisterPage(): React.JSX.Element {
             autoComplete="name"
           />
         </Field>
-        <Field label="Email" required>
+        <Field label="Correo" required>
           <Input
             name="email"
             type="email"
@@ -78,7 +78,7 @@ export default function RegisterPage(): React.JSX.Element {
             autoComplete="email"
           />
         </Field>
-        <Field label="Password" required hint="Minimum 10 characters.">
+        <Field label="Contraseña" required hint="Mínimo 10 caracteres.">
           <Input
             name="password"
             type="password"
@@ -91,13 +91,13 @@ export default function RegisterPage(): React.JSX.Element {
         </Field>
         {error && <Alert tone="error">{error}</Alert>}
         <Button type="submit" loading={submitting}>
-          Create company
+          Crear empresa
         </Button>
       </form>
       <p className="text-sm text-slate-500">
-        Already have an account?{' '}
+        ¿Ya tienes una cuenta?{' '}
         <Link href="/login" className="font-medium text-slate-900 underline">
-          Sign in
+          Iniciar sesión
         </Link>
       </p>
     </main>

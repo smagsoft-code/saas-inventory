@@ -26,7 +26,7 @@ export function SidebarNav({
       {sections.map((section, index) => (
         <div key={section.title ?? `section-${index}`} className="flex flex-col gap-1">
           {section.title && (
-            <p className="px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            <p className="nav-label whitespace-nowrap px-3 pb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">
               {section.title}
             </p>
           )}
@@ -38,6 +38,7 @@ export function SidebarNav({
                 href={item.href}
                 onClick={onNavigate}
                 aria-current={active ? 'page' : undefined}
+                title={item.label}
                 className={cn(
                   'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
                   'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900',
@@ -47,7 +48,7 @@ export function SidebarNav({
                 )}
               >
                 <NavIconGlyph name={item.icon} className="h-5 w-5 shrink-0" />
-                {item.label}
+                <span className="nav-label whitespace-nowrap">{item.label}</span>
               </Link>
             );
           })}

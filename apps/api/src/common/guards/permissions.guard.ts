@@ -21,6 +21,20 @@ export class PermissionsGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<FastifyRequest>();
+
+    // ADR-0036 extension: a Platform Admin browsing under an active support session (TenantGuard
+    // only ever resolves this for GET requests — checked again here as defense in depth). Never
+    // evaluated against a specific `@RequirePermissions()` code, by design (ADR-0036 §20: support
+    // access is never gated by tenant RBAC) — every GET is allowed, every mutation refused,
+    // regardless of which permission a route happens to declare.
+    if (request.supportSession) {
+      if (request.method !== 'GET') {
+        throw new ForbiddenException('A support session cannot perform this action.');
+      }
+      return true;
+    }
+
     const targets = [context.getHandler(), context.getClass()];
     const requiredAll = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, targets);
     const requiredAny = this.reflector.getAllAndOverride<string[]>(ANY_PERMISSIONS_KEY, targets);
@@ -31,7 +45,6 @@ export class PermissionsGuard implements CanActivate {
       return true;
     }
 
-    const request = context.switchToHttp().getRequest<FastifyRequest>();
     const granted = new Set(request.tenantContext?.permissions ?? []);
 
     if (hasAllDeclaration && !requiredAll.every((code) => granted.has(code))) {

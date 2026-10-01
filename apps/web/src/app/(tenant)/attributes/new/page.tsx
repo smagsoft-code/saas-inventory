@@ -6,7 +6,7 @@ import { PageHeader } from '../../../../components/ui/page-header';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { AttributeForm } from '../attribute-form';
 
-export const metadata = { title: 'New attribute · SaaS Inventory' };
+export const metadata = { title: 'Nuevo atributo · SaaS Inventory' };
 
 export default async function NewAttributePage(): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -14,8 +14,8 @@ export default async function NewAttributePage(): Promise<React.JSX.Element> {
   if (!checker.can('catalog.attributes.manage')) {
     return (
       <PageContainer>
-        <PageHeader title="New attribute" />
-        <NoAccess message="You need the manage-attributes permission to create attributes." />
+        <PageHeader title="Nuevo atributo" />
+        <NoAccess message="Necesitas el permiso de gestión de atributos para crear atributos." />
       </PageContainer>
     );
   }
@@ -25,8 +25,8 @@ export default async function NewAttributePage(): Promise<React.JSX.Element> {
   return (
     <PageContainer>
       <PageHeader
-        title="New attribute"
-        description="Define a reusable attribute. Assign it to categories afterwards."
+        title="Nuevo atributo"
+        description="Define un atributo reutilizable. Asígnalo a categorías después."
       />
       <AttributeForm mode="create" units={units} />
     </PageContainer>

@@ -30,7 +30,13 @@ describe('TenantSettingsService', () => {
     it('returns system defaults with updatedAt=null when the tenant has never saved settings', async () => {
       harness.tenantSettingsRepository.find.mockResolvedValue(undefined);
       const result = await harness.service.getEffective(TENANT_ID);
-      expect(result).toEqual({ timezone: 'UTC', businessHours: [], updatedAt: null });
+      expect(result).toEqual({
+        timezone: 'UTC',
+        businessHours: [],
+        transfersRequireApproval: true,
+        transfersRequirePreparation: true,
+        updatedAt: null,
+      });
     });
 
     it('returns the stored row when one exists', async () => {
@@ -40,10 +46,14 @@ describe('TenantSettingsService', () => {
         tenantId: TENANT_ID,
         timezone: 'America/Bogota',
         businessHours: [{ dayOfWeek: 1, opensAt: '09:00', closesAt: '18:00' }],
+        transfersRequireApproval: false,
+        transfersRequirePreparation: true,
         updatedAt,
       });
       const result = await harness.service.getEffective(TENANT_ID);
       expect(result.timezone).toBe('America/Bogota');
+      expect(result.transfersRequireApproval).toBe(false);
+      expect(result.transfersRequirePreparation).toBe(true);
       expect(result.updatedAt).toBe(updatedAt.toISOString());
     });
   });
@@ -73,6 +83,8 @@ describe('TenantSettingsService', () => {
         tenantId: TENANT_ID,
         timezone: 'UTC',
         businessHours: [{ dayOfWeek: 0, isClosed: true }],
+        transfersRequireApproval: true,
+        transfersRequirePreparation: true,
         updatedAt: new Date('2026-01-01T00:00:00Z'),
       });
       await harness.service.update(TENANT_ID, { businessHours: [{ dayOfWeek: 0, isClosed: true }] }, META);
@@ -89,6 +101,8 @@ describe('TenantSettingsService', () => {
         tenantId: TENANT_ID,
         timezone: 'America/Bogota',
         businessHours: [],
+        transfersRequireApproval: true,
+        transfersRequirePreparation: true,
         updatedAt: new Date('2026-01-01T00:00:00Z'),
       });
       harness.tenantSettingsRepository.upsert.mockResolvedValue({
@@ -96,6 +110,8 @@ describe('TenantSettingsService', () => {
         tenantId: TENANT_ID,
         timezone: 'America/Bogota',
         businessHours: [{ dayOfWeek: 1, opensAt: '09:00', closesAt: '18:00' }],
+        transfersRequireApproval: true,
+        transfersRequirePreparation: true,
         updatedAt: new Date('2026-01-02T00:00:00Z'),
       });
 
@@ -108,6 +124,57 @@ describe('TenantSettingsService', () => {
       );
     });
 
+    it('leaves the transfer-workflow flags unchanged when omitted, carrying forward the previously effective value', async () => {
+      harness.tenantSettingsRepository.find.mockResolvedValue({
+        id: 'row-1',
+        tenantId: TENANT_ID,
+        timezone: 'UTC',
+        businessHours: [],
+        transfersRequireApproval: false,
+        transfersRequirePreparation: false,
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      });
+      harness.tenantSettingsRepository.upsert.mockResolvedValue({
+        id: 'row-1',
+        tenantId: TENANT_ID,
+        timezone: 'America/Bogota',
+        businessHours: [],
+        transfersRequireApproval: false,
+        transfersRequirePreparation: false,
+        updatedAt: new Date('2026-01-02T00:00:00Z'),
+      });
+
+      await harness.service.update(TENANT_ID, { timezone: 'America/Bogota' }, META);
+
+      expect(harness.tenantSettingsRepository.upsert).toHaveBeenCalledWith(
+        {},
+        TENANT_ID,
+        expect.objectContaining({ transfersRequireApproval: false, transfersRequirePreparation: false }),
+      );
+    });
+
+    it('updates the transfer-workflow flags independently of timezone/businessHours', async () => {
+      harness.tenantSettingsRepository.find.mockResolvedValue(undefined);
+      harness.tenantSettingsRepository.upsert.mockResolvedValue({
+        id: 'row-1',
+        tenantId: TENANT_ID,
+        timezone: 'UTC',
+        businessHours: [],
+        transfersRequireApproval: false,
+        transfersRequirePreparation: true,
+        updatedAt: new Date('2026-01-01T00:00:00Z'),
+      });
+
+      const result = await harness.service.update(TENANT_ID, { transfersRequireApproval: false }, META);
+
+      expect(harness.tenantSettingsRepository.upsert).toHaveBeenCalledWith(
+        {},
+        TENANT_ID,
+        expect.objectContaining({ transfersRequireApproval: false, transfersRequirePreparation: true }),
+      );
+      expect(result.transfersRequireApproval).toBe(false);
+    });
+
     it('writes an audit entry with before/after state', async () => {
       harness.tenantSettingsRepository.find.mockResolvedValue(undefined);
       harness.tenantSettingsRepository.upsert.mockResolvedValue({
@@ -115,6 +182,8 @@ describe('TenantSettingsService', () => {
         tenantId: TENANT_ID,
         timezone: 'America/Bogota',
         businessHours: [],
+        transfersRequireApproval: true,
+        transfersRequirePreparation: true,
         updatedAt: new Date('2026-01-01T00:00:00Z'),
       });
 
@@ -127,8 +196,8 @@ describe('TenantSettingsService', () => {
           actorId: ACTOR_ID,
           actionCode: 'tenant_settings.updated',
           entityType: 'tenant_settings',
-          beforeState: { timezone: 'UTC', businessHours: [] },
-          afterState: { timezone: 'America/Bogota', businessHours: [] },
+          beforeState: { timezone: 'UTC', businessHours: [], transfersRequireApproval: true, transfersRequirePreparation: true },
+          afterState: { timezone: 'America/Bogota', businessHours: [], transfersRequireApproval: true, transfersRequirePreparation: true },
         }),
       );
     });
@@ -140,6 +209,8 @@ describe('TenantSettingsService', () => {
         tenantId: TENANT_ID,
         timezone: 'UTC',
         businessHours: [],
+        transfersRequireApproval: true,
+        transfersRequirePreparation: true,
         updatedAt: new Date('2026-01-01T00:00:00Z'),
       });
       harness.auditLogService.record.mockRejectedValue(new Error('db down'));

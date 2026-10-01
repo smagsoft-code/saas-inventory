@@ -141,7 +141,7 @@ export function validateAttributeValues(
       !(Array.isArray(raw) && raw.length === 0);
 
     if (field.isRequired && !present && field.dataType !== 'boolean') {
-      errors[field.code] = `${field.name} is required.`;
+      errors[field.code] = `${field.name} es obligatorio.`;
       continue;
     }
     if (!present) {
@@ -149,9 +149,9 @@ export function validateAttributeValues(
     }
     if ((field.dataType === 'number' || field.dataType === 'decimal') && typeof raw === 'number') {
       if (field.minValue !== undefined && raw < field.minValue) {
-        errors[field.code] = `${field.name} must be ≥ ${field.minValue}.`;
+        errors[field.code] = `${field.name} debe ser ≥ ${field.minValue}.`;
       } else if (field.maxValue !== undefined && raw > field.maxValue) {
-        errors[field.code] = `${field.name} must be ≤ ${field.maxValue}.`;
+        errors[field.code] = `${field.name} debe ser ≤ ${field.maxValue}.`;
       }
     }
   }

@@ -1,6 +1,6 @@
 import { ApiExtraModels, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsOptional, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsOptional, ValidateNested } from 'class-validator';
 import { BusinessHoursEntryDto } from './business-hours-entry.dto';
 
 /** Every IANA timezone name Node itself recognizes — the same source of truth the runtime uses to
@@ -32,4 +32,20 @@ export class UpdateTenantSettingsDto {
   @ValidateNested({ each: true })
   @Type(() => BusinessHoursEntryDto)
   businessHours?: BusinessHoursEntryDto[];
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Whether creating a transfer still requires a manual "Aprobar" action before it can be prepared/dispatched.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  transfersRequireApproval?: boolean;
+
+  @ApiPropertyOptional({
+    type: Boolean,
+    description: 'Whether an approved transfer still requires a manual "Preparar" action (stock reservation) before it can be dispatched.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  transfersRequirePreparation?: boolean;
 }

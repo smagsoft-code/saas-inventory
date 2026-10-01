@@ -8,7 +8,7 @@ import { PageHeader } from '../../../../components/ui/page-header';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { MappingTemplates } from './mapping-templates';
 
-export const metadata = { title: 'Mapping templates · SaaS Inventory' };
+export const metadata = { title: 'Plantillas de mapeo · SaaS Inventory' };
 
 /**
  * Import mapping templates (`S-IMP-TEMPLATES`) — full CRUD on
@@ -22,8 +22,8 @@ export default async function MappingTemplatesPage(): Promise<React.JSX.Element>
   if (!checker.can('import.execute')) {
     return (
       <PageContainer>
-        <PageHeader title="Mapping templates" />
-        <NoAccess message="You need the import permission to manage mapping templates." />
+        <PageHeader title="Plantillas de mapeo" />
+        <NoAccess message="Necesitas el permiso de importación para administrar plantillas de mapeo." />
       </PageContainer>
     );
   }
@@ -36,8 +36,8 @@ export default async function MappingTemplatesPage(): Promise<React.JSX.Element>
   return (
     <PageContainer>
       <PageHeader
-        title="Mapping templates"
-        description="Saved column mappings — reuse a supplier's spreadsheet layout without re-mapping every import."
+        title="Plantillas de mapeo"
+        description="Mapeos de columnas guardados — reutiliza el formato de hoja de cálculo de un proveedor sin volver a mapear cada importación."
       />
 
       <MappingTemplates
@@ -49,7 +49,7 @@ export default async function MappingTemplatesPage(): Promise<React.JSX.Element>
 
       <p className="text-sm text-slate-500">
         <Link href="/imports" className="font-medium hover:underline">
-          Back to imports
+          Volver a importaciones
         </Link>
       </p>
     </PageContainer>

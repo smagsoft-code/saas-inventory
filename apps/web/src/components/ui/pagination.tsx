@@ -38,30 +38,30 @@ export function Pagination({
       className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <p className="text-sm text-slate-500">
-        Showing <span className="font-medium text-slate-700">{from}</span>–
-        <span className="font-medium text-slate-700">{to}</span> of{' '}
+        Mostrando <span className="font-medium text-slate-700">{from}</span>–
+        <span className="font-medium text-slate-700">{to}</span> de{' '}
         <span className="font-medium text-slate-700">{total}</span>
       </p>
       <div className="flex items-center gap-2">
         {hasPrev ? (
           <Link href={buildHref(page - 1)} className={linkClass} rel="prev">
-            Previous
+            Anterior
           </Link>
         ) : (
           <span className={cn(disabledClass)} aria-disabled>
-            Previous
+            Anterior
           </span>
         )}
         <span className="text-sm text-slate-500">
-          Page {page} of {totalPages}
+          Página {page} de {totalPages}
         </span>
         {hasNext ? (
           <Link href={buildHref(page + 1)} className={linkClass} rel="next">
-            Next
+            Siguiente
           </Link>
         ) : (
           <span className={cn(disabledClass)} aria-disabled>
-            Next
+            Siguiente
           </span>
         )}
       </div>

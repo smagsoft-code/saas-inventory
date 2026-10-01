@@ -20,16 +20,16 @@ export function SalesReportError({
   message: string;
   correlationId?: string | undefined;
 }): React.JSX.Element {
-  const title = status === 403 ? 'Access denied' : status >= 500 ? 'Something went wrong on our end' : 'Could not load the report';
+  const title = status === 403 ? 'Acceso denegado' : status >= 500 ? 'Algo salió mal de nuestro lado' : 'No se pudo cargar el reporte';
   return (
     <div className="flex flex-col items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
       <div>
         <p className="text-sm font-medium text-red-800">{title}</p>
         <p className="mt-0.5 text-sm text-red-700">{message}</p>
-        {correlationId && <p className="mt-1 text-xs text-red-600/80">Reference: {correlationId}</p>}
+        {correlationId && <p className="mt-1 text-xs text-red-600/80">Referencia: {correlationId}</p>}
       </div>
       <a href="#report" className="text-sm font-medium text-red-800 underline-offset-2 hover:underline">
-        Try again
+        Reintentar
       </a>
     </div>
   );
@@ -60,10 +60,10 @@ function OrderLevelKpis({ buckets, currency }: { buckets: SalesSummaryBucket[]; 
   const avgTicket = orderCount > 0 ? total / orderCount : 0;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-      <KpiTile label="Revenue" value={money(total, currency)} />
-      <KpiTile label="Orders" value={String(orderCount)} />
-      <KpiTile label="Avg ticket" value={money(avgTicket, currency)} />
-      <KpiTile label="Discounts" value={money(discountTotal, currency)} />
+      <KpiTile label="Ingresos" value={money(total, currency)} />
+      <KpiTile label="Pedidos" value={String(orderCount)} />
+      <KpiTile label="Ticket promedio" value={money(avgTicket, currency)} />
+      <KpiTile label="Descuentos" value={money(discountTotal, currency)} />
       <KpiTile label="Subtotal" value={money(subtotal, currency)} />
     </div>
   );
@@ -75,10 +75,10 @@ function ProductLevelKpis({ buckets, currency }: { buckets: SalesSummaryBucket[]
   const total = buckets.reduce((n, b) => n + (b as { total: number }).total, 0);
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <KpiTile label="Revenue" value={money(total, currency)} />
-      <KpiTile label="Units sold" value={String(quantity)} />
-      <KpiTile label="Discounts" value={money(discountTotal, currency)} />
-      <KpiTile label="Products" value={String(buckets.length)} />
+      <KpiTile label="Ingresos" value={money(total, currency)} />
+      <KpiTile label="Unidades vendidas" value={String(quantity)} />
+      <KpiTile label="Descuentos" value={money(discountTotal, currency)} />
+      <KpiTile label="Productos" value={String(buckets.length)} />
     </div>
   );
 }
@@ -129,11 +129,11 @@ export function SalesReportSection({ summary, currency }: { summary: SalesSummar
   if (summary.buckets.length === 0) {
     return (
       <EmptyState
-        title={summary.exceptional === 'only' ? 'No exceptional-discount sales in this period' : 'No sales in this period'}
+        title={summary.exceptional === 'only' ? 'Sin ventas con descuento excepcional en este período' : 'Sin ventas en este período'}
         description={
           summary.exceptional === 'only'
-            ? 'Try a wider date range, a different status, or set the exceptional-discount filter back to "All sales".'
-            : 'Try a wider date range, or a different status.'
+            ? 'Prueba con un rango de fechas más amplio, otro estado, o vuelve el filtro de descuento excepcional a «Todas las ventas».'
+            : 'Prueba con un rango de fechas más amplio, o un estado distinto.'
         }
       />
     );
@@ -154,26 +154,26 @@ export function SalesReportSection({ summary, currency }: { summary: SalesSummar
         <THead>
           {isProduct ? (
             <TR>
-              <TH>Product</TH>
-              <TH>SKU</TH>
-              <TH className="text-right">Quantity</TH>
-              <TH className="text-right">Revenue</TH>
-              <TH className="text-right">Discounts</TH>
+              <TH>Producto</TH>
+              <TH>Código</TH>
+              <TH className="text-right">Cantidad</TH>
+              <TH className="text-right">Ingresos</TH>
+              <TH className="text-right">Descuentos</TH>
             </TR>
           ) : isCustomer ? (
             <TR>
-              <TH>Customer</TH>
-              <TH className="text-right">Orders</TH>
-              <TH className="text-right">Revenue</TH>
-              <TH className="text-right">Avg ticket</TH>
+              <TH>Cliente</TH>
+              <TH className="text-right">Pedidos</TH>
+              <TH className="text-right">Ingresos</TH>
+              <TH className="text-right">Ticket promedio</TH>
             </TR>
           ) : (
             <TR>
-              <TH>Period</TH>
-              <TH className="text-right">Orders</TH>
-              <TH className="text-right">Revenue</TH>
-              <TH className="text-right">Avg ticket</TH>
-              <TH className="text-right">Discounts</TH>
+              <TH>Período</TH>
+              <TH className="text-right">Pedidos</TH>
+              <TH className="text-right">Ingresos</TH>
+              <TH className="text-right">Ticket promedio</TH>
+              <TH className="text-right">Descuentos</TH>
             </TR>
           )}
         </THead>

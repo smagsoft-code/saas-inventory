@@ -58,3 +58,13 @@ temp/
 
 # tools/pg-verify: ephemeral embedded-PostgreSQL data directory (PROMPT 03-A verification tool)
 .verify-pgdata/
+
+# Session scratch directory (tools/pg-verify/dev-server.ts's own embedded-Postgres data dir,
+# the local S3 shim's stored files, ad-hoc verification scripts/screenshots). MUST stay gitignored,
+# not just "never committed by habit": `git stash push -u` (and `git clean`) only skip files that
+# are actually ignored — an untracked-but-not-ignored file is fair game for either, and both will
+# silently delete a live embedded-Postgres data directory's files out from under the running
+# server. That happened once (an in-session incident, see the postmortem referenced from
+# tools/pg-verify/dev-server.ts's own header) and cost a full QA dataset. Never remove this entry
+# to "clean up" scratchpad/ — if it needs cleaning, delete it while the dev server is stopped.
+scratchpad/

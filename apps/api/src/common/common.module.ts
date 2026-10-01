@@ -1,7 +1,9 @@
 import { Global, Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
+import { PlatformSupportSessionsRepository } from '../auth/repositories/platform-support-sessions.repository';
 import { TenantMembershipsRepository } from '../auth/repositories/tenant-memberships.repository';
+import { TenantsPlatformRepository } from '../auth/repositories/tenants-platform.repository';
 import { AUTH_CONFIG, getAuthConfig } from './config/auth-config';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
 import { CsrfGuard } from './guards/csrf.guard';
@@ -27,6 +29,11 @@ import { ObjectStorageService } from './storage/object-storage.service';
     // depends only on the globally-provided PLATFORM_DATABASE token — same "each module gets its
     // own instance" convention already used for the other app_platform repositories.
     TenantMembershipsRepository,
+    // ADR-0036 extension — TenantGuard's support-session resolution branch (a Platform Admin
+    // browsing an ordinary tenant route under an active support session): both are stateless,
+    // depend only on PLATFORM_DATABASE, same convention as TenantMembershipsRepository above.
+    PlatformSupportSessionsRepository,
+    TenantsPlatformRepository,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: TenantGuard },
     { provide: APP_GUARD, useClass: CsrfGuard },

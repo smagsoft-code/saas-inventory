@@ -1,22 +1,35 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Inject, Post, Req, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Inject,
+  Param,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AUTH_CONFIG, type AuthConfig } from '../common/config/auth-config';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { SkipCsrf } from '../common/decorators/skip-csrf.decorator';
-import type { AuthPrincipal } from '../common/context/request-context';
 import {
   clearSelectionCookie,
   clearSessionCookies,
   setSelectionCookie,
   setSessionCookies,
 } from './cookies/auth-cookies.util';
+import { AcceptInvitationDto } from './dto/accept-invitation.dto';
 import {
   AuthSessionResponseDto,
   CurrentUserResponseDto,
   LoginResponseDto,
 } from './dto/auth-session-response.dto';
+import { InvitationInfoResponseDto } from './dto/invitation-info-response.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -59,6 +72,35 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<AuthSessionResponseDto> {
     const session = await this.authService.register(dto, requestMeta(request));
+    setSessionCookies(reply, session, this.authConfig);
+    return toResponse(session);
+  }
+
+  /** ADR-0036 §5/§23 — public, no auth. Never leaks whether an unknown token \"exists\" beyond the
+   * fixed `reason` the service already returns (not_found/expired/revoked/accepted). */
+  @Public()
+  @UseGuards(AuthThrottlerGuard)
+  @Get('invitations/:token')
+  @ApiOkResponse({ type: InvitationInfoResponseDto })
+  async invitationInfo(@Param('token') token: string): Promise<InvitationInfoResponseDto> {
+    return this.authService.getInvitationInfo(token);
+  }
+
+  /** ADR-0036 §5 — the admin sets their OWN password; the identity moves
+   * `pending_credential` -> `active` and a real tenant session is issued immediately, same
+   * "accept flows straight into being logged in" shape as `register()`. */
+  @Public()
+  @SkipCsrf()
+  @UseGuards(AuthThrottlerGuard)
+  @Post('accept-invitation')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: AuthSessionResponseDto })
+  async acceptInvitation(
+    @Body() dto: AcceptInvitationDto,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<AuthSessionResponseDto> {
+    const session = await this.authService.acceptInvitation(dto.token, dto.password, requestMeta(request));
     setSessionCookies(reply, session, this.authConfig);
     return toResponse(session);
   }
@@ -146,9 +188,24 @@ export class AuthController {
     clearSessionCookies(reply, this.authConfig);
   }
 
+  /**
+   * ADR-0036 extension — a Platform Admin browsing a Tenant under an active support session has no
+   * `authPrincipal` (no tenant JWT was ever issued for them — TenantGuard resolved
+   * `request.supportSession`/`request.tenantContext` from the session row instead, GET-only). This
+   * is the one route that branches on that instead of using `@CurrentUser()` (which would 401 a
+   * support principal outright) — everywhere else that still fails closed is correct: a support
+   * session grants read access to ordinary tenant GET routes, never a synthetic identity for them.
+   */
   @Get('me')
   @ApiOkResponse({ type: CurrentUserResponseDto })
-  async me(@CurrentUser() principal: AuthPrincipal): Promise<CurrentUserResponseDto> {
+  async me(@Req() request: FastifyRequest): Promise<CurrentUserResponseDto> {
+    if (request.supportSession) {
+      return this.authService.meAsSupport(request.platformPrincipal!.adminId, request.supportSession);
+    }
+    const principal = request.authPrincipal;
+    if (!principal) {
+      throw new UnauthorizedException('Authentication required.');
+    }
     return this.authService.me(principal.userId, principal.identityId, principal.tenantId, principal.tenantSlug);
   }
 }

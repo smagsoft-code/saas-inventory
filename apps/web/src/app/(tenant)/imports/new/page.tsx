@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { listMappingTemplates } from '../../../../lib/imports/templates';
+import { listWarehouses } from '../../../../lib/inventory/warehouses';
 import { listLocations } from '../../../../lib/inventory/locations';
 import { listCategories } from '../../../../lib/catalog/categories';
 import { PageContainer } from '../../../../components/ui/page-container';
@@ -9,7 +10,7 @@ import { PageHeader } from '../../../../components/ui/page-header';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { ImportUploadForm } from './import-upload-form';
 
-export const metadata = { title: 'New import · SaaS Inventory' };
+export const metadata = { title: 'Nueva importación · SaaS Inventory' };
 
 /**
  * Start an import (`S-IMP-NEW`) — the upload step of the staged pipeline. `import.execute` gates
@@ -24,15 +25,16 @@ export default async function NewImportPage(): Promise<React.JSX.Element> {
   if (!checker.can('import.execute')) {
     return (
       <PageContainer>
-        <PageHeader title="New import" />
-        <NoAccess message="You need the import permission to start an import." />
+        <PageHeader title="Nueva importación" />
+        <NoAccess message="Necesitas el permiso de importación para iniciar una importación." />
       </PageContainer>
     );
   }
   const canUseInventoryMode = checker.can('import.inventory');
 
-  const [templates, locations, categories] = await Promise.all([
+  const [templates, warehouses, locations, categories] = await Promise.all([
     listMappingTemplates({ pageSize: 100 }).catch(() => null),
+    checker.can('warehouses.view') ? listWarehouses({ pageSize: 100 }).catch(() => null) : Promise.resolve(null),
     checker.can('locations.view') ? listLocations({ pageSize: 100 }).catch(() => null) : Promise.resolve(null),
     checker.can('categories.view') ? listCategories({ pageSize: 100 }).catch(() => null) : Promise.resolve(null),
   ]);
@@ -40,16 +42,19 @@ export default async function NewImportPage(): Promise<React.JSX.Element> {
   return (
     <PageContainer>
       <PageHeader
-        title="New import"
-        description="Upload an .xlsx file, choose how its columns map to product fields, then validate and review before anything is written."
+        title="Nueva importación"
+        description="Sube un archivo .xlsx, elige cómo se asignan sus columnas a los campos del producto, luego valida y revisa antes de escribir nada."
       />
 
       <ImportUploadForm
         canUseInventoryMode={canUseInventoryMode}
         templates={(templates?.data ?? []).map((t) => ({ id: t.id, name: t.name }))}
+        warehouses={(warehouses?.data ?? [])
+          .filter((w) => w.status === 'active')
+          .map((w) => ({ id: w.id, name: w.name }))}
         locations={(locations?.data ?? [])
           .filter((l) => l.status === 'active')
-          .map((l) => ({ id: l.id, name: l.name }))}
+          .map((l) => ({ id: l.id, warehouseId: l.warehouseId, name: l.name }))}
         categories={(categories?.data ?? [])
           .filter((c) => c.status === 'active')
           .map((c) => ({ id: c.id, name: c.name }))}
@@ -57,11 +62,11 @@ export default async function NewImportPage(): Promise<React.JSX.Element> {
 
       <p className="text-sm text-slate-500">
         <Link href="/imports/templates" className="font-medium hover:underline">
-          Manage mapping templates
+          Administrar plantillas de mapeo
         </Link>{' '}
         · {' '}
         <Link href="/imports" className="font-medium hover:underline">
-          Back to imports
+          Volver a importaciones
         </Link>
       </p>
     </PageContainer>

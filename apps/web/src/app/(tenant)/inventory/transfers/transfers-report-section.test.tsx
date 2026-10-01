@@ -14,25 +14,17 @@ function baseSummary(overrides: Partial<TransfersSummary> = {}): TransfersSummar
 }
 
 describe('TransfersReportSection', () => {
-  it('always shows the groupBy-independent in-transit + open-transfer KPI tiles', () => {
+  it('shows the in-transit + open-transfer KPI tiles only — no "Agrupar por" selector or breakdown table', () => {
     render(<TransfersReportSection summary={baseSummary({ totals: { inTransitQuantity: 42, openTransferCount: 3 } })} />);
-    expect(screen.getByText('Units in transit')).toBeInTheDocument();
+    expect(screen.getByText('Unidades en tránsito')).toBeInTheDocument();
     expect(screen.getByText('42')).toBeInTheDocument();
-    expect(screen.getByText('Open transfers')).toBeInTheDocument();
+    expect(screen.getByText('Transferencias abiertas')).toBeInTheDocument();
     expect(screen.getByText('3')).toBeInTheDocument();
+    expect(screen.queryByText('Agrupar por')).not.toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('shows a status-specific empty state for the status grouping', () => {
-    render(<TransfersReportSection summary={baseSummary({ groupBy: 'status' })} />);
-    expect(screen.getByText('No transfers yet')).toBeInTheDocument();
-  });
-
-  it('shows an in-transit empty state for the destination grouping — never a fake zero row', () => {
-    render(<TransfersReportSection summary={baseSummary({ groupBy: 'destination' })} />);
-    expect(screen.getByText('Nothing in transit')).toBeInTheDocument();
-  });
-
-  it('renders status buckets with the human status label and count', () => {
+  it('ignores whatever buckets the backend still sends — never rendered', () => {
     const summary = baseSummary({
       groupBy: 'status',
       buckets: [
@@ -41,47 +33,22 @@ describe('TransfersReportSection', () => {
       ],
     });
     render(<TransfersReportSection summary={summary} />);
-    expect(screen.getByText('Draft')).toBeInTheDocument();
-    expect(screen.getByText('Dispatched')).toBeInTheDocument();
-    expect(screen.getByText('Status')).toBeInTheDocument(); // column header
-  });
-
-  it('renders destination buckets with the resolved name, in-transit qty and open count', () => {
-    const summary = baseSummary({
-      groupBy: 'destination',
-      totals: { inTransitQuantity: 15, openTransferCount: 1 },
-      buckets: [{ key: 'loc-1', destinationName: 'Store A', inTransitQuantity: 15, openTransferCount: 1 }],
-    });
-    render(<TransfersReportSection summary={summary} />);
-    expect(screen.getByText('Store A')).toBeInTheDocument();
-    expect(screen.getByText('Destination')).toBeInTheDocument();
-    expect(screen.getAllByText('15').length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('renders variant buckets with product name + sku', () => {
-    const summary = baseSummary({
-      groupBy: 'variant',
-      totals: { inTransitQuantity: 7, openTransferCount: 1 },
-      buckets: [{ key: 'var-1', sku: 'SKU-1', productName: 'Widget', inTransitQuantity: 7 }],
-    });
-    render(<TransfersReportSection summary={summary} />);
-    expect(screen.getByText('Widget')).toBeInTheDocument();
-    expect(screen.getByText('SKU-1')).toBeInTheDocument();
-    expect(screen.getByText('Product')).toBeInTheDocument(); // column header
+    expect(screen.queryByText('Borrador')).not.toBeInTheDocument();
+    expect(screen.queryByText('Despachada')).not.toBeInTheDocument();
   });
 });
 
 describe('TransfersReportError', () => {
   it('shows "Access denied" for a 403 and never renders a link to login', () => {
     render(<TransfersReportError status={403} message="You do not have permission." />);
-    expect(screen.getByText('Access denied')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Try again' })).toHaveAttribute('href', '#report');
+    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Reintentar' })).toHaveAttribute('href', '#report');
     expect(screen.queryByRole('link', { name: /login/i })).not.toBeInTheDocument();
   });
 
   it('shows a generic message for a 5xx and the correlation id', () => {
     render(<TransfersReportError status={500} message="Something went wrong on our end." correlationId="abc-123" />);
-    expect(screen.getByText('Something went wrong on our end')).toBeInTheDocument();
-    expect(screen.getByText('Reference: abc-123')).toBeInTheDocument();
+    expect(screen.getByText('Algo salió mal de nuestro lado')).toBeInTheDocument();
+    expect(screen.getByText('Referencia: abc-123')).toBeInTheDocument();
   });
 });

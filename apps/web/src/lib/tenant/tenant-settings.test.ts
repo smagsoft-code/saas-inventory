@@ -9,7 +9,13 @@ describe('resolveTenantTimezone', () => {
 
   it('returns the configured timezone when present', () => {
     expect(
-      resolveTenantTimezone({ timezone: 'America/Bogota', businessHours: [], updatedAt: '2026-01-01T00:00:00Z' }),
+      resolveTenantTimezone({
+        timezone: 'America/Bogota',
+        businessHours: [],
+        transfersRequireApproval: true,
+        transfersRequirePreparation: true,
+        updatedAt: '2026-01-01T00:00:00Z',
+      }),
     ).toBe('America/Bogota');
   });
 });

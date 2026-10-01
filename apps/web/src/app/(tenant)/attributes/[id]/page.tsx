@@ -19,7 +19,7 @@ import { NoAccess } from '../../../../components/ui/no-access';
 import { AttributeForm } from '../attribute-form';
 import { AttributeOptionsEditor } from './attribute-options-editor';
 
-export const metadata = { title: 'Attribute · SaaS Inventory' };
+export const metadata = { title: 'Atributo · SaaS Inventory' };
 
 export default async function AttributeDetailPage({
   params,
@@ -32,8 +32,8 @@ export default async function AttributeDetailPage({
   if (!checker.can('products.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Attribute" />
-        <NoAccess message="You need the catalogue-view permission to view attributes." />
+        <PageHeader title="Atributo" />
+        <NoAccess message="Necesitas el permiso de vista del catálogo para ver los atributos." />
       </PageContainer>
     );
   }
@@ -57,32 +57,36 @@ export default async function AttributeDetailPage({
     <PageContainer>
       <PageHeader
         title={definition.name}
-        description={`${ATTRIBUTE_DATA_TYPE_LABELS[definition.dataType] ?? definition.dataType} · ${definition.appliesTo === 'variant' ? 'per variant' : 'per product'}`}
-        actions={<Badge tone={statusTone(definition.status)}>{definition.status}</Badge>}
+        description={`${ATTRIBUTE_DATA_TYPE_LABELS[definition.dataType] ?? definition.dataType} · ${definition.appliesTo === 'variant' ? 'por variante' : 'por producto'}`}
+        actions={
+          <Badge tone={statusTone(definition.status)}>
+            {definition.status === 'active' ? 'Activo' : definition.status === 'inactive' ? 'Inactivo' : definition.status}
+          </Badge>
+        }
       />
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Definition</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Definición</h2>
           {canManage ? (
             <AttributeForm mode="edit" definition={definition} units={units} />
           ) : (
             <dl className="grid max-w-md grid-cols-[9rem_1fr] gap-y-2 text-sm">
-              <dt className="text-slate-500">Code</dt>
+              <dt className="text-slate-500">Código</dt>
               <dd className="text-slate-900"><code className="text-xs">{definition.code}</code></dd>
-              <dt className="text-slate-500">Type</dt>
+              <dt className="text-slate-500">Tipo</dt>
               <dd className="text-slate-900">{ATTRIBUTE_DATA_TYPE_LABELS[definition.dataType] ?? definition.dataType}</dd>
-              <dt className="text-slate-500">Applies to</dt>
-              <dd className="text-slate-900">{definition.appliesTo === 'variant' ? 'Variant' : 'Product'}</dd>
+              <dt className="text-slate-500">Aplica a</dt>
+              <dd className="text-slate-900">{definition.appliesTo === 'variant' ? 'Variante' : 'Producto'}</dd>
               {definition.description && (
                 <>
-                  <dt className="text-slate-500">Description</dt>
+                  <dt className="text-slate-500">Descripción</dt>
                   <dd className="text-slate-900">{definition.description}</dd>
                 </>
               )}
               {unitLabel && (
                 <>
-                  <dt className="text-slate-500">Unit</dt>
+                  <dt className="text-slate-500">Unidad</dt>
                   <dd className="text-slate-900">{unitLabel}</dd>
                 </>
               )}
@@ -95,9 +99,9 @@ export default async function AttributeDetailPage({
         <Card>
           <CardBody className="flex flex-col gap-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Options</h2>
+              <h2 className="text-sm font-semibold text-slate-900">Opciones</h2>
               <p className="mt-1 text-sm text-slate-500">
-                The selectable values for this {definition.dataType === 'multi_select' ? 'multi-select' : 'select'} attribute.
+                Los valores seleccionables de este atributo de {definition.dataType === 'multi_select' ? 'selección múltiple' : 'selección única'}.
               </p>
             </div>
             <AttributeOptionsEditor definitionId={definition.id} options={options} canManage={canManage} />

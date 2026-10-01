@@ -7,8 +7,11 @@ import type { Customer, CustomerStatus, CustomerType } from '../types/sales';
  * Client-side mutations (`POST`/`PATCH`) go through `apiFetch` directly in the form component —
  * the same split F17-04/F17-05 use.
  *
- * `ListCustomersQueryDto` accepts `q` (real free-text search over displayName/taxId/email/phone —
- * the one endpoint that has it, `GAP-SEARCH`), `status`, `type`. No `sort`. Nothing else is added.
+ * `ListCustomersQueryDto` accepts `q` (real free-text search over firstName/lastName/taxId/email/
+ * phone — the one endpoint that has it, `GAP-SEARCH`), `status`, `type`. No `sort`. Owner redesign:
+ * `/customers` only ever sends `q` now (Tipo/Estado filters were removed from the list UI) — `status`/
+ * `type` stay here for API completeness, same as every other kept-but-unused backend capability in
+ * this codebase.
  */
 export interface ListCustomersQuery {
   page?: number;

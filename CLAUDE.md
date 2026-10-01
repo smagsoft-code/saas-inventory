@@ -1245,3 +1245,85 @@ check) were written but **not executed against real PostgreSQL this pass** — `
 fixed port 55432 was already held by an unrelated, longer-running local dev-server
 (`scratchpad/.dev-pgdata`) this session deliberately did not stop, per the user's explicit choice;
 pg-verify still needs to be run once to confirm these tests pass for real. Not pushed.
+
+The TENANT ONBOARDING + TENANT SUPPORT block added two SuperAdmin-side capabilities under
+`apps/api/src/administration/` (`platform-tenants/`, `platform-support/`) —
+[ADR-0036](docs/decisions/0036-tenant-onboarding-and-support.md), closing `GAP-SA-CREATE-TENANT`
+and resolving `GAP-SA-IMPERSONATION`. **Tenant Onboarding:** `POST /platform/tenants` provisions a
+company + founding admin without the SuperAdmin ever collecting a password — reuses
+`TenantProvisioningService`/`IdentityProvisioningService` verbatim, branches on the admin email's
+global `identities` status (ADR-0033): `active` reuses the identity with no invitation,
+`pending_credential` issues a one-time invitation link (`tenant_admin_invitations`, new table,
+`InvitationTokenService` mirroring `RefreshTokenService`'s opaque-token-plus-HMAC shape), `disabled`
+is refused (409) with compensation (tenant suspended, user soft-deleted — combining
+`TenantProvisioningService`'s and `UsersService.create`'s existing rollback patterns). The invitee
+accepts via `GET/POST /auth/invitations/:token` + `/auth/accept-invitation` (both `@Public`,
+`(public)/accept-invitation/[token]`), setting their own password and logging in immediately.
+**Tenant Support:** `POST /platform/tenants/:tenantId/support-sessions` opens an audited,
+tenant-scoped, time-boxed `platform_support_sessions` row (`read`/`write` mode, required `reason`,
+`SUPPORT_SESSION_TTL_SECONDS` default 1800s, one live session per admin — DB-unique, gracefully
+superseded across tenants) — gated by a **new** `SupportSessionGuard`/`@RequireSupportSession()`
+layered strictly beside `@PlatformOnly()`, never through tenant RBAC (explicit prompt requirement).
+The curated `PlatformSupportController` exposes exactly `GET support/users`,
+`GET support/warehouses` (read), and `PATCH support/warehouses/:id/status` (the one write action,
+backed by a new column-level `GRANT UPDATE (status) ON warehouses TO app_platform`) — every write
+audited with the session id and reason attached (`GAP-SUPPORT-READ-SCOPE`: deliberately not a
+general tenant-data browser). No tenant JWT is ever issued for support and no phantom/shared-credential
+admin is ever created — the actor stays the Platform Admin throughout, re-verified live on every
+request. Migration `0033` adds both new platform-scoped (no-RLS) tables plus the grants; no existing
+table changes. Frontend: `/platform/tenants/new` (create, no password field), an "Administrador del
+Tenant" invitation panel + "Acceder como soporte" trigger on `/platform/tenants/[id]`, the curated
+`/platform/tenants/[id]/support` panel, and a persistent "MODO SOPORTE" banner
+(`support-mode-banner.tsx`, composed by `PlatformShell` on every `(superadmin)/` page) with an
+explicit exit action. Verified: 50/50 new integration tests passed against an isolated, disposable
+`embedded-postgres` instance (port 55433) — the developer's own persistent dev-server (port 55432)
+was never touched; API unit 608/608 (unchanged count — only existing specs' mocks extended for the
+`AuthConfig`/`AuthService` constructor additions); web unit 617/617 (96 files, +32 new tests across
+6 new components); lint/typecheck clean on both apps. Not pushed.
+
+The LOGIN + USUARIOS UI/UX block removed the "Crear empresa"/"Crear cuenta" CTA from `/login`
+(tenant creation is invitation-only now, ADR-0036) and relaxed the user-creation identifier: the
+UI now calls it "Usuario" instead of "Correo" and accepts any 10+ character string, not only a
+valid email address. Audited first — architecturally unblocked, not a `PENDING DECISION`:
+ADR-0033's `identities.email` (the login identifier's actual backing store, shared by every
+tenant's `users.email`) has no format CHECK at the DB level and is matched by plain
+case-insensitive string equality (`IdentitiesRepository.findByEmail`), so nothing downstream
+depends on email *format* — only `@IsEmail()` on two DTOs enforced it. `CreateUserDto.email`
+(`apps/api/src/core/users/dto/create-user.dto.ts`) is now `@IsString() @Length(10, 128)`,
+matching the pre-existing password minimum; `LoginDto.email`
+(`apps/api/src/auth/dto/login.dto.ts`) is now `@IsString() @Length(1, 255) @IsNotEmpty()` — both
+changed together deliberately, since relaxing only one would strand either new-style accounts
+(username accepted at creation, rejected at login) or existing ones (a real email, always ≥ some
+length, was never at risk either way). The DB column and wire-contract field are both still named
+`email` (unchanged) — renaming either was judged out of scope for a UI-label change, same
+principle CLAUDE.md §7.7 already applies to DB columns. `UpdateUserDto` has no email field at all
+(pre-existing — the identifier is set once, at creation, never edited), so no login-affecting edit
+path exists to re-check. `/register`, `POST /auth/register`, and `RegisterDto.email` (`@IsEmail()`)
+are **unchanged** — out of this block's explicit scope; the login page's CTA to it was removed, the
+route/endpoint itself is untouched, still directly reachable, and middleware.ts's
+`TENANT_PUBLIC_PATHS` still lists it (audited: no other in-app caller referenced the removed link).
+**Search:** `GET /users` gained `?q=` — free-text, case-insensitive, partial match against
+`fullName` only (never `email`), resolved server-side (`UsersRepository.findManyByTenant`'s
+`ILIKE '%q%'`, the same convention `CustomersRepository.listByTenant` already established, not a
+client-side filter over the paged slice) — closes `GAP-USER-FILTERS`'s name-search half
+(role/date filters remain open). `/users` gained a debounced `users-filters.tsx` search box (same
+live-search convention `ProductsFilters` established) and a trailing pencil-icon action column —
+same `href`, same permission surface as clicking the row name, not a second edit implementation;
+no new permission code. Verified against real PostgreSQL via `tools/pg-verify` (isolated,
+disposable `embedded-postgres` instance temporarily reassigned to port 55433 for this run only —
+the developer's own persistent dev-server on port 55432 was never touched; the tool's `PORT`
+constant and one call-site edit were reverted immediately after, zero residual diff): **557
+integration tests, 43 files** — the new `test/core/users-rbac.integration.test.ts` cases (7 added,
+20/20 in that file) all passed on both of two separate full runs. **5 failures on run 1 and 7 on
+run 2 are pre-existing flakiness, not a regression**: the specific tests that failed were
+different and non-overlapping between the two runs (e.g. `auth-flow`'s F18-01 failed on run 1 and
+passed on run 2; `sales-transition-concurrency`'s R13/R14 failed only on run 2) across files this
+block never touched (`event-processor`, `inventory-summary`, `sales-transition-concurrency`,
+`auth-flow`, `platform-summary`) — the signature of resource contention under
+`fileParallelism: true` against one shared embedded Postgres instance, not a deterministic defect;
+confirmed by the underlying Postgres log showing a `deadlock detected` and RLS-policy races in the
+exact same time window. API unit 622/622 (+14: the 2 new `UsersService.list` search-passthrough
+cases plus pre-existing uncommitted specs elsewhere in the tree); web unit 633/633 (97 files, +19:
+2 new `login-form.test.tsx` cases, 2 new + 1 rewritten `create-user-form.test.tsx` cases, 5 new
+`users-filters.test.tsx`); lint/typecheck clean on both apps. Not pushed — pending the user's
+visual/functional review.

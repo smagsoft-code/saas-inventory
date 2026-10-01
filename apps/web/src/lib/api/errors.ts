@@ -66,28 +66,31 @@ export function isNotFound(error: unknown): error is ApiError {
  */
 export function httpErrorMessage(error: unknown): string {
   if (!isApiError(error)) {
-    return 'Something went wrong. Please try again.';
+    return 'Algo salió mal. Inténtalo de nuevo.';
   }
   if (error.isNetworkError) {
-    return 'Could not reach the server. Check your connection and try again.';
+    return 'No se pudo contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
   }
   switch (error.status) {
     case 400:
     case 422:
-      return error.message || 'Some of the information provided is invalid.';
+      // OUI-001 / GAP-BACKEND-MESSAGES-EN: error.message viene del backend (apps/api), que hoy
+      // devuelve sus mensajes en inglés — traducir esa cadena está fuera de alcance de esta fase
+      // (no se toca apps/api). El fallback (sin mensaje del backend) sí está en español.
+      return error.message || 'Parte de la información ingresada no es válida.';
     case 401:
-      return 'Your session has expired. Please sign in again.';
+      return 'Tu sesión expiró. Inicia sesión de nuevo.';
     case 403:
-      return "You don't have permission to do that.";
+      return 'No tienes permiso para hacer eso.';
     case 404:
-      return 'That item could not be found.';
+      return 'No se encontró ese elemento.';
     case 409:
-      return error.message || 'That action conflicts with the current state.';
+      return error.message || 'Esa acción entra en conflicto con el estado actual.';
     case 429:
-      return 'Too many requests. Please wait a moment and try again.';
+      return 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.';
     default:
       return error.status >= 500
-        ? 'Something went wrong on our end. Please try again.'
-        : error.message || 'Something went wrong. Please try again.';
+        ? 'Algo salió mal de nuestro lado. Inténtalo de nuevo.'
+        : error.message || 'Algo salió mal. Inténtalo de nuevo.';
   }
 }

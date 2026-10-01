@@ -1,5 +1,6 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { CurrentPermissions } from '../../common/decorators/current-permissions.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { InventorySummaryQueryDto } from './dto/inventory-summary-query.dto';
@@ -28,7 +29,13 @@ export class InventoryReportController {
   async inventorySummary(
     @CurrentTenant() tenantId: string,
     @Query() query: InventorySummaryQueryDto,
+    @CurrentPermissions() permissions: string[],
   ): Promise<InventorySummaryResponseDto> {
-    return this.inventoryReportService.getInventorySummary(tenantId, query);
+    // OUI-002/S-HOME redesign — totals.totalCostValue/missingCostCount are field-gated on
+    // pricing.cost.view (ADR-0028's existing precedent for cost), not on this route's own
+    // @RequirePermissions — a caller with inventory.view but not pricing.cost.view still gets the
+    // rest of the response, just without those two fields.
+    const canViewCost = permissions.includes('pricing.cost.view');
+    return this.inventoryReportService.getInventorySummary(tenantId, query, canViewCost);
   }
 }

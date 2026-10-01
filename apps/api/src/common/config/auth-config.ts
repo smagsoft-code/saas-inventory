@@ -13,11 +13,24 @@ export interface AuthConfig {
    * JWT_REFRESH_SECRET env var meaningful rather than unused. */
   refreshTokenPepper: string;
   accessTokenTtlSeconds: number;
+  /** OUI-003 — a *sliding* inactivity window, not an absolute session lifetime: every successful
+   * `POST /auth/refresh` rotates the token and reissues it with `now + refreshTokenTtlSeconds`
+   * (`AuthService.refresh` -> `RefreshTokenService.generate`), so a user active at least once per
+   * this many seconds is refreshed silently forever; one idle longer than this has their next
+   * request rejected and is sent back to `/login`. */
   refreshTokenTtlSeconds: number;
   /** TTL of the interim tenant-selection token issued by `POST /auth/login` when an identity has
    * more than one active membership (016-C). Deliberately short — it only needs to survive a user
    * picking a company. */
   selectionTokenTtlSeconds: number;
+  /** ADR-0036 (Tenant Onboarding + Tenant Support). How long a SuperAdmin-issued
+   * `tenant_admin_invitations` link stays acceptable — default 7 days, long enough for a real
+   * person to receive and act on a manually-distributed link (no email delivery exists yet). */
+  invitationTokenTtlSeconds: number;
+  /** ADR-0036. How long a `platform_support_sessions` window stays usable before it must be
+   * restarted — default 30 minutes, short enough that a forgotten "salir del modo soporte" cannot
+   * leave a tenant exposed indefinitely. */
+  supportSessionTtlSeconds: number;
   argon2: {
     memoryCostKib: number;
     timeCost: number;
@@ -41,8 +54,13 @@ export function getAuthConfig(): AuthConfig {
     jwtSecret: getRequiredEnvVar('JWT_SECRET'),
     refreshTokenPepper: getRequiredEnvVar('JWT_REFRESH_SECRET'),
     accessTokenTtlSeconds: Number(getOptionalEnvVar('ACCESS_TOKEN_TTL_SECONDS', '900')),
-    refreshTokenTtlSeconds: Number(getOptionalEnvVar('REFRESH_TOKEN_TTL_SECONDS', '2592000')),
+    // OUI-003: a sliding inactivity window, not an absolute session cap — every successful refresh
+    // rotates the token and resets this clock (AuthService.refresh -> RefreshTokenService.generate).
+    // Default 1 hour (owner decision) so the fallback stays safe even with no .env override.
+    refreshTokenTtlSeconds: Number(getOptionalEnvVar('REFRESH_TOKEN_TTL_SECONDS', '3600')),
     selectionTokenTtlSeconds: Number(getOptionalEnvVar('SELECTION_TOKEN_TTL_SECONDS', '300')),
+    invitationTokenTtlSeconds: Number(getOptionalEnvVar('INVITATION_TOKEN_TTL_SECONDS', String(7 * 24 * 3600))),
+    supportSessionTtlSeconds: Number(getOptionalEnvVar('SUPPORT_SESSION_TTL_SECONDS', '1800')),
     argon2: {
       memoryCostKib: Number(getOptionalEnvVar('ARGON2_MEMORY_COST_KIB', '19456')),
       timeCost: Number(getOptionalEnvVar('ARGON2_TIME_COST', '2')),

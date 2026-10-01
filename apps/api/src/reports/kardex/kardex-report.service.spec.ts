@@ -32,6 +32,7 @@ function buildService() {
     resolveOrderNumbers: vi.fn().mockResolvedValue(new Map()),
     resolveReturnOrderNumbers: vi.fn().mockResolvedValue(new Map()),
     resolveReceiptTransferIds: vi.fn().mockResolvedValue(new Map()),
+    resolveTransferCodes: vi.fn().mockResolvedValue(new Map()),
     listLocationBalances: vi.fn().mockResolvedValue([]),
     getVariantDisplayInfo: vi.fn().mockResolvedValue({ productId: 'product-1', productName: 'Producto X', sku: 'SKU-1' }),
   };
@@ -98,6 +99,33 @@ describe('KardexReportService.getKardex', () => {
 
     expect(result.rows[0]!.label).toBe('Venta #ORD-000123');
     expect(result.rows[0]!.salida).toBe(3);
+  });
+
+  it('labels a TRANSFER_OUT row with the transfer code, resolved directly from its own referenceId', async () => {
+    const { service, repository } = buildService();
+    repository.listMovements.mockResolvedValueOnce([
+      movementRow({ movementType: 'TRANSFER_OUT', quantity: '-4', referenceType: 'transfer', referenceId: 'transfer-1', reason: null }),
+    ]);
+    repository.resolveTransferCodes.mockResolvedValueOnce(new Map([['transfer-1', 'SUC-PRIN-ALM-PRIN-005']]));
+
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+
+    expect(repository.resolveTransferCodes).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['transfer-1']);
+    expect(result.rows[0]!.label).toBe('Transferencia #SUC-PRIN-ALM-PRIN-005 (salida)');
+  });
+
+  it('labels a TRANSFER_IN row with the paired transfer code, resolved via the receipt then the transfer', async () => {
+    const { service, repository } = buildService();
+    repository.listMovements.mockResolvedValueOnce([
+      movementRow({ movementType: 'TRANSFER_IN', quantity: '4', referenceType: 'transfer_receipt', referenceId: 'receipt-1', reason: null }),
+    ]);
+    repository.resolveReceiptTransferIds.mockResolvedValueOnce(new Map([['receipt-1', 'transfer-1']]));
+    repository.resolveTransferCodes.mockResolvedValueOnce(new Map([['transfer-1', 'SUC-PRIN-ALM-PRIN-005']]));
+
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+
+    expect(repository.resolveTransferCodes).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['transfer-1']);
+    expect(result.rows[0]!.label).toBe('Transferencia #SUC-PRIN-ALM-PRIN-005 (entrada)');
   });
 
   it('marks the response truncated when the range exceeds the row cap', async () => {

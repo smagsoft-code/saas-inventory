@@ -1,4 +1,4 @@
-import { foreignKey, index, inet, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { boolean, foreignKey, index, inet, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, id, tenantId, updatedAt } from './_helpers';
 import { tenantIsolationPolicy } from './_policies';
 import { platformAdmins, tenants } from './01-platform';
@@ -34,6 +34,17 @@ export const tenantSettings = pgTable('tenant_settings', {
    * posture applied to configuration modeling. Defaults to `[]` (no hours configured — the
    * effective-value resolution in tenant-settings.service.ts treats this as "unrestricted"). */
   businessHours: jsonb('business_hours').notNull().default([]),
+  /** Transferencias workflow config (F17-TRANSFERS-AUDIT §1) — which of the two *gate* stages
+   * (`approved`, `preparing`) a transfer must pass through a manual action to reach, vs. skip
+   * straight through automatically. `dispatched`/`received` are NEVER skippable — they are the
+   * physical events themselves (stock actually leaving/arriving), not gates in front of one.
+   * Defaults `true`/`true` — every existing/new tenant keeps today's full
+   * draft→approved→preparing→dispatched→received flow unless an admin explicitly turns a gate off.
+   * See `transfers.service.ts`'s `advanceThroughDisabledStages` for how a disabled gate is
+   * actually skipped (the underlying approve()/prepare() mechanics — reservation, audit, the
+   * lockById row-lock — are reused verbatim, never duplicated or changed). */
+  transfersRequireApproval: boolean('transfers_require_approval').notNull().default(true),
+  transfersRequirePreparation: boolean('transfers_require_preparation').notNull().default(true),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 }, (t) => [

@@ -61,13 +61,13 @@ export function EditUserForm({
 
   if (!canEditFullName && !canEditStatus && !canEditRole) {
     return (
-      <p className="text-sm text-slate-500">You don&apos;t have permission to edit this user.</p>
+      <p className="text-sm text-slate-500">No tienes permiso para editar este usuario.</p>
     );
   }
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex max-w-sm flex-col gap-4">
-      <Field label="Full name" required>
+      <Field label="Nombre completo" required>
         <Input
           required
           minLength={2}
@@ -77,18 +77,18 @@ export function EditUserForm({
         />
       </Field>
       {canEditStatus && (
-        <Field label="Status">
+        <Field label="Estado">
           <Select value={status} onChange={(event) => setStatus(event.target.value)}>
-            <option value="invited">Invited</option>
-            <option value="active">Active</option>
-            <option value="disabled">Disabled</option>
+            <option value="invited">Invitado</option>
+            <option value="active">Activo</option>
+            <option value="disabled">Deshabilitado</option>
           </Select>
         </Field>
       )}
       {canEditRole && (
-        <Field label="Role">
+        <Field label="Rol">
           <Select value={roleId} onChange={(event) => setRoleId(event.target.value)}>
-            <option value="">No role</option>
+            <option value="">Sin rol</option>
             {roles.map((role) => (
               <option key={role.id} value={role.id}>
                 {role.name}
@@ -98,9 +98,9 @@ export function EditUserForm({
         </Field>
       )}
       {error && <Alert tone="error">{error}</Alert>}
-      {success && <Alert tone="success">Saved.</Alert>}
+      {success && <Alert tone="success">Guardado.</Alert>}
       <Button type="submit" loading={submitting} className="w-fit">
-        Save
+        Guardar
       </Button>
     </form>
   );

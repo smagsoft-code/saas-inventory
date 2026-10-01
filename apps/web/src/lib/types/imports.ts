@@ -38,15 +38,15 @@ export const IMPORT_JOB_STATUSES = [
 export type ImportJobStatus = (typeof IMPORT_JOB_STATUSES)[number];
 
 export const IMPORT_JOB_STATUS_LABELS: Record<ImportJobStatus, string> = {
-  uploaded: 'Uploaded',
-  mapping: 'Mapping',
-  validating: 'Validating',
-  ready: 'Ready to import',
-  importing: 'Importing',
-  completed: 'Completed',
-  completed_with_errors: 'Completed with errors',
-  failed: 'Failed',
-  cancelled: 'Cancelled',
+  uploaded: 'Subido',
+  mapping: 'Mapeo',
+  validating: 'Validando',
+  ready: 'Listo para importar',
+  importing: 'Importando',
+  completed: 'Completado',
+  completed_with_errors: 'Completado con errores',
+  failed: 'Falló',
+  cancelled: 'Cancelado',
 };
 
 /** A neutral fallback for a status the backend adds later — never assume "unknown" means error. */
@@ -88,10 +88,10 @@ export const DUPLICATE_HANDLING_MODES = [
 export type DuplicateHandlingMode = (typeof DUPLICATE_HANDLING_MODES)[number];
 
 export const DUPLICATE_HANDLING_MODE_LABELS: Record<DuplicateHandlingMode, string> = {
-  update_catalog_only: 'Update catalog only (safe default — stock untouched)',
-  update_catalog_and_inventory: 'Update catalog and inventory (needs the import-inventory permission)',
-  skip_existing: 'Skip rows whose SKU already exists',
-  reject_on_duplicate: 'Reject the row if its SKU already exists',
+  update_catalog_only: 'Solo actualizar catálogo (opción segura — no toca el inventario)',
+  update_catalog_and_inventory: 'Actualizar catálogo e inventario (requiere el permiso import-inventory)',
+  skip_existing: 'Omitir filas cuyo SKU ya existe',
+  reject_on_duplicate: 'Rechazar la fila si su SKU ya existe',
 };
 
 /** `import.inventory` is the extra permission the backend checks at confirm time for this mode. */
@@ -103,12 +103,12 @@ export const IMPORT_ROW_STATUSES = ['pending', 'valid', 'warning', 'invalid', 'i
 export type ImportRowStatus = (typeof IMPORT_ROW_STATUSES)[number];
 
 export const IMPORT_ROW_STATUS_LABELS: Record<ImportRowStatus, string> = {
-  pending: 'Pending',
-  valid: 'Valid',
-  warning: 'Warning',
-  invalid: 'Invalid',
-  imported: 'Imported',
-  skipped: 'Skipped',
+  pending: 'Pendiente',
+  valid: 'Válida',
+  warning: 'Advertencia',
+  invalid: 'Inválida',
+  imported: 'Importada',
+  skipped: 'Omitida',
 };
 
 export function importRowStatusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' {
@@ -126,9 +126,9 @@ export function importRowStatusTone(status: string): 'neutral' | 'success' | 'wa
 }
 
 export const IMPORT_MATCH_ACTION_LABELS: Record<string, string> = {
-  create: 'New product',
-  update: 'Existing product',
-  skip: 'Skipped',
+  create: 'Producto nuevo',
+  update: 'Producto existente',
+  skip: 'Omitida',
 };
 
 // --- target fields (columnMapping values) ---------------------------------------------------
@@ -168,13 +168,13 @@ export function isKnownImportTarget(field: string): boolean {
  * The backend re-validates; this only keeps the template form / upload form honest up front. */
 export function columnMappingProblem(mapping: Record<string, string>): string | null {
   const entries = Object.entries(mapping);
-  if (entries.length === 0) return 'Map at least one column.';
+  if (entries.length === 0) return 'Mapea al menos una columna.';
   const unknown = entries.filter(([, target]) => !isKnownImportTarget(target)).map(([, t]) => t);
-  if (unknown.length > 0) return `Unknown target field(s): ${unknown.join(', ')}.`;
+  if (unknown.length > 0) return `Campo(s) destino desconocido(s): ${unknown.join(', ')}.`;
   const nonAttr = entries.map(([, t]) => t).filter((t) => !t.startsWith(ATTRIBUTE_FIELD_PREFIX));
   const dup = nonAttr.filter((t, i) => nonAttr.indexOf(t) !== i);
-  if (dup.length > 0) return `Mapped more than once: ${[...new Set(dup)].join(', ')}.`;
-  if (!entries.some(([, t]) => t === 'sku')) return 'One column must map to "sku".';
+  if (dup.length > 0) return `Mapeado más de una vez: ${[...new Set(dup)].join(', ')}.`;
+  if (!entries.some(([, t]) => t === 'sku')) return 'Una columna debe asignarse a "sku".';
   return null;
 }
 

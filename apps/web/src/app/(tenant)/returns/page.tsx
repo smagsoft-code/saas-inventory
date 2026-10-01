@@ -24,7 +24,7 @@ import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
 import { ReturnsReportFilters, type ReturnsReportFilterValues } from './returns-report-filters';
 import { ReturnsReportError, ReturnsReportSection } from './returns-report-section';
 
-export const metadata = { title: 'Returns · SaaS Inventory' };
+export const metadata = { title: 'Devoluciones · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -62,8 +62,8 @@ export default async function ReturnsPage({
   if (!checker.can('sales.returns.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Returns" />
-        <NoAccess message="You need the returns permission to view this page." />
+        <PageHeader title="Devoluciones" />
+        <NoAccess message="Necesitas el permiso de devoluciones para ver esta página." />
       </PageContainer>
     );
   }
@@ -128,14 +128,14 @@ export default async function ReturnsPage({
   return (
     <PageContainer>
       <PageHeader
-        title="Returns"
-        description="Reversals of confirmed sales — request, inspect, and resolve the disposition of returned goods."
-        actions={canCreate ? <ButtonLink href="/returns/new">New return</ButtonLink> : undefined}
+        title="Devoluciones"
+        description="Reversos de ventas confirmadas — solicita, inspecciona y resuelve la disposición de la mercancía devuelta."
+        actions={canCreate ? <ButtonLink href="/returns/new">Nueva devolución</ButtonLink> : undefined}
       />
 
       <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
         <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
-          Returns report
+          Reporte de devoluciones
         </h2>
         <ReturnsReportFilters initial={reportFilters} />
         {summary ? (
@@ -149,12 +149,12 @@ export default async function ReturnsPage({
 
       <hr className="border-slate-200" />
 
-      <h2 className="text-sm font-semibold text-slate-900">Return history</h2>
+      <h2 className="text-sm font-semibold text-slate-900">Historial de devoluciones</h2>
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
           <Link href={buildHref({ status: null })} aria-current={!status ? 'true' : undefined} className={chip(!status)}>
-            All statuses
+            Todos los estados
           </Link>
           {RETURN_STATUSES.map((s) => (
             <Link
@@ -170,7 +170,7 @@ export default async function ReturnsPage({
 
         {orderId && (
           <p className="flex items-center gap-2 text-sm text-slate-600">
-            Filtered to one order
+            Filtrado a un pedido
             {canViewOrders ? (
               <Link href={`/sales/${orderId}`} className="font-medium text-slate-700 underline underline-offset-2">
                 {shortId(orderId)}
@@ -179,7 +179,7 @@ export default async function ReturnsPage({
               <code className="text-xs">{shortId(orderId)}</code>
             )}
             <Link href={buildHref({ orderId: null })} className="text-xs font-medium text-slate-500 hover:underline">
-              Clear
+              Quitar
             </Link>
           </p>
         )}
@@ -187,25 +187,25 @@ export default async function ReturnsPage({
 
       {result.data.length === 0 ? (
         <EmptyState
-          title={hasFilter ? 'No returns match these filters' : 'No returns yet'}
+          title={hasFilter ? 'Ninguna devolución coincide con estos filtros' : 'Aún no hay devoluciones'}
           description={
-            hasFilter ? 'Try a different status.' : 'A return is filed against a confirmed order when goods come back.'
+            hasFilter ? 'Prueba con otro estado.' : 'Una devolución se presenta contra un pedido confirmado cuando regresa mercancía.'
           }
-          {...(canCreate && !hasFilter ? { action: <ButtonLink href="/returns/new">New return</ButtonLink> } : {})}
+          {...(canCreate && !hasFilter ? { action: <ButtonLink href="/returns/new">Nueva devolución</ButtonLink> } : {})}
         />
       ) : (
         <>
           <Table>
             <THead>
               <TR>
-                <TH>Return</TH>
-                <TH>Order</TH>
-                <TH>Received at</TH>
-                <TH className="text-right">Lines</TH>
-                <TH>Status</TH>
-                <TH>Created</TH>
+                <TH>Devolución</TH>
+                <TH>Pedido</TH>
+                <TH>Recibido en</TH>
+                <TH className="text-right">Líneas</TH>
+                <TH>Estado</TH>
+                <TH>Creado</TH>
                 <TH className="w-0">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">Acciones</span>
                 </TH>
               </TR>
             </THead>
@@ -240,7 +240,7 @@ export default async function ReturnsPage({
                       href={`/returns/${ret.id}`}
                       className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                     >
-                      View
+                      Ver
                     </Link>
                   </TD>
                 </TR>

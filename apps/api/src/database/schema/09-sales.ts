@@ -35,14 +35,32 @@ import { locations } from './05-inventory';
 export const customers = pgTable('customers', {
   id: id(),
   tenantId: tenantId(),
+  /** The identification document type (owner redesign, F17-CUSTOMERS-AUDIT) — not
+   * individual/business (that distinction is dropped entirely). Drives `taxId`'s expected format:
+   * `cedula` → exactly 10 digits, `ruc` → exactly 13 digits, `pasaporte` → alphanumeric. */
   type: text('type').notNull(),
-  displayName: text('display_name').notNull(),
+  firstName: text('first_name').notNull(),
+  /** Nullable only for the rare legacy/backfilled row with no second name token — the create/update
+   * DTOs (apps/api/src/sales/customers/dto) require it, same as `firstName`. */
+  lastName: text('last_name'),
+  /** Derived, never written directly. `concat_ws` would skip a NULL `lastName` cleanly, but
+   * Postgres's built-in `concat_ws`/`concat` are STABLE, not IMMUTABLE (their generic `"any"`
+   * variadic goes through a type's output function, which isn't guaranteed immutable for every
+   * type — e.g. timestamptz depends on the session's TimeZone GUC) — a GENERATED column requires
+   * an IMMUTABLE expression, so this uses plain `||` (immutable for text) with an explicit CASE
+   * instead. Every existing reader of `customers.displayName` (order snapshot, audit log, search)
+   * keeps working unchanged. */
+  displayName: text('display_name')
+    .notNull()
+    .generatedAlwaysAs(sql`CASE WHEN last_name IS NULL OR last_name = '' THEN first_name ELSE first_name || ' ' || last_name END`),
   taxId: text('tax_id'),
   email: text('email'),
   phone: text('phone'),
-  address: jsonb('address'),
+  /** A single free-form line (owner redesign) — was a structured jsonb object
+   * (line1/line2/city/state/postalCode/country); `orders.customer_address_snapshot` (a separate,
+   * historical column) is untouched and keeps its own jsonb shape. */
+  address: text('address'),
   status: text('status').notNull().default('active'),
-  notes: text('notes'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
   deletedAt: deletedAt(),
@@ -50,7 +68,7 @@ export const customers = pgTable('customers', {
   foreignKey({ name: 'customers_tenant_fk', columns: [t.tenantId], foreignColumns: [tenants.id] }).onDelete('restrict'),
   unique('customers_tenant_id_id_key').on(t.tenantId, t.id),
   uniqueIndex('customers_tenant_id_tax_id_key').on(t.tenantId, t.taxId).where(sql`${t.taxId} IS NOT NULL`),
-  check('customers_type_check', sql`${t.type} IN ('individual', 'business')`),
+  check('customers_type_check', sql`${t.type} IN ('cedula', 'ruc', 'pasaporte')`),
   check('customers_status_check', sql`${t.status} IN ('active', 'inactive')`),
   tenantIsolationPolicy('customers'),
 ]).enableRLS();

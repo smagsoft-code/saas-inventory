@@ -32,6 +32,13 @@ describe('safeReturnTo', () => {
     expect(safeReturnTo('/platform/login?returnTo=/platform', '/platform')).toBe('/platform');
   });
 
+  it('never returns to an auth route regardless of case (a stale browser-autocompleted "/LOGIN" must not loop into a 404)', () => {
+    expect(safeReturnTo('/LOGIN')).toBe('/');
+    expect(safeReturnTo('/Login')).toBe('/');
+    expect(safeReturnTo('/REGISTER')).toBe('/');
+    expect(safeReturnTo('/Platform/Login')).toBe('/');
+  });
+
   it('honours a custom fallback', () => {
     expect(safeReturnTo('//evil', '/dashboard')).toBe('/dashboard');
     expect(safeReturnTo('/platform', '/platform')).toBe('/platform');

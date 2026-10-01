@@ -68,9 +68,9 @@ export function ImportRows({ jobId }: { jobId: string }): React.JSX.Element {
     <Card>
       <CardBody className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-slate-900">Rows</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Filas</h2>
           <label className="flex items-center gap-2 text-sm text-slate-600">
-            Status
+            Estado
             <select
               className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm"
               value={status}
@@ -79,7 +79,7 @@ export function ImportRows({ jobId }: { jobId: string }): React.JSX.Element {
                 setStatus(e.target.value as ImportRowStatus | '');
               }}
             >
-              <option value="">All</option>
+              <option value="">Todos</option>
               {IMPORT_ROW_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {IMPORT_ROW_STATUS_LABELS[s]}
@@ -93,22 +93,22 @@ export function ImportRows({ jobId }: { jobId: string }): React.JSX.Element {
 
         {loading && !result ? (
           <p className="flex items-center gap-2 text-sm text-slate-500">
-            <Spinner className="h-4 w-4" /> Loading rows…
+            <Spinner className="h-4 w-4" /> Cargando filas…
           </p>
         ) : rows.length === 0 ? (
           <p className="text-sm text-slate-500">
-            {status ? `No ${IMPORT_ROW_STATUS_LABELS[status].toLowerCase()} rows.` : 'No rows staged yet.'}
+            {status ? `Sin filas ${IMPORT_ROW_STATUS_LABELS[status].toLowerCase()}.` : 'Aún no hay filas registradas.'}
           </p>
         ) : (
           <>
             <Table>
               <THead>
                 <TR>
-                  <TH className="text-right">Row</TH>
-                  <TH>Status</TH>
-                  <TH>Match</TH>
-                  <TH>Data</TH>
-                  <TH>Findings</TH>
+                  <TH className="text-right">Fila</TH>
+                  <TH>Estado</TH>
+                  <TH>Coincidencia</TH>
+                  <TH>Datos</TH>
+                  <TH>Hallazgos</TH>
                 </TR>
               </THead>
               <TBody>
@@ -154,7 +154,7 @@ export function ImportRows({ jobId }: { jobId: string }): React.JSX.Element {
             {totalPages > 1 && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-slate-500">
-                  Page {result?.meta.page} of {totalPages} · {result?.meta.total} rows
+                  Página {result?.meta.page} de {totalPages} · {result?.meta.total} filas
                 </span>
                 <div className="flex gap-2">
                   <button
@@ -163,7 +163,7 @@ export function ImportRows({ jobId }: { jobId: string }): React.JSX.Element {
                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                     className="rounded-md border border-slate-300 px-3 py-1 font-medium text-slate-700 disabled:text-slate-300"
                   >
-                    Previous
+                    Anterior
                   </button>
                   <button
                     type="button"
@@ -171,7 +171,7 @@ export function ImportRows({ jobId }: { jobId: string }): React.JSX.Element {
                     onClick={() => setPage((p) => p + 1)}
                     className="rounded-md border border-slate-300 px-3 py-1 font-medium text-slate-700 disabled:text-slate-300"
                   >
-                    Next
+                    Siguiente
                   </button>
                 </div>
               </div>

@@ -27,10 +27,20 @@ export type InventoryTotalsRow = {
   availableQuantity: string;
   reservedQuantity: string;
   outOfStockCount: string;
+  /** Σ (product_variants.cost × available_sum) per variant, NULL cost treated as 0 — "current cost"
+   * valuation, never FIFO/weighted-average (no costing method exists, GAP-COST). Always computed by
+   * this query (the join is already there for nothing extra); the service layer decides whether to
+   * put it on the response, gated on `pricing.cost.view` (ADR-0028's existing precedent). */
+  totalCostValue: string;
+  /** Distinct variants with available_sum > 0 whose product_variants.cost is NULL — excluded from
+   * `totalCostValue` above, so this count is the honest "how much of that total might be missing"
+   * companion, never silently folded into the total as a false 0. */
+  missingCostCount: string;
 };
 
 interface Filters {
   warehouseId?: string | undefined;
+  locationId?: string | undefined;
   categoryId?: string | undefined;
 }
 
@@ -58,11 +68,11 @@ interface Filters {
  * policy rather than inventing per-report location scoping — see this phase's final report for the
  * full reasoning trail.
  *
- * `warehouseId`/`categoryId` filters and both `groupBy` branches always join `locations` AND
- * `product_variants`/`products` regardless of which grouping was requested, so either filter can
- * apply no matter the `groupBy` value (e.g. "category breakdown for one warehouse") — a constant,
- * indexed join cost (`inventory_balances_tenant_location_idx` / `_tenant_variant_idx`), not a
- * per-row scan.
+ * `warehouseId`/`locationId`/`categoryId` filters and both `groupBy` branches always join
+ * `locations` AND `product_variants`/`products` regardless of which grouping was requested, so any
+ * filter can apply no matter the `groupBy` value (e.g. "category breakdown for one warehouse") — a
+ * constant, indexed join cost (`inventory_balances_tenant_location_idx` / `_tenant_variant_idx`),
+ * not a per-row scan.
  */
 @Injectable()
 export class InventoryReportRepository {
@@ -80,6 +90,7 @@ export class InventoryReportRepository {
         JOIN products p ON p.tenant_id = pv.tenant_id AND p.id = pv.product_id
         WHERE ib.tenant_id = ${tenantId}
           ${filters.warehouseId ? sql`AND l.warehouse_id = ${filters.warehouseId}` : sql``}
+          ${filters.locationId ? sql`AND ib.location_id = ${filters.locationId}` : sql``}
           ${filters.categoryId ? sql`AND p.category_id = ${filters.categoryId}` : sql``}
         GROUP BY l.warehouse_id, ib.product_variant_id
       ),
@@ -115,6 +126,7 @@ export class InventoryReportRepository {
         JOIN products p ON p.tenant_id = pv.tenant_id AND p.id = pv.product_id
         WHERE ib.tenant_id = ${tenantId}
           ${filters.warehouseId ? sql`AND l.warehouse_id = ${filters.warehouseId}` : sql``}
+          ${filters.locationId ? sql`AND ib.location_id = ${filters.locationId}` : sql``}
           ${filters.categoryId ? sql`AND p.category_id = ${filters.categoryId}` : sql``}
         GROUP BY p.category_id, ib.product_variant_id
       ),
@@ -137,29 +149,45 @@ export class InventoryReportRepository {
   }
 
   /** Tenant-wide totals for the applied filter set, independent of `groupBy` — always joins the
-   * same tables as the grouped queries above so `warehouseId`/`categoryId` behave identically. */
+   * same tables as the grouped queries above so `warehouseId`/`locationId`/`categoryId` behave
+   * identically. `variant_cost` is `MAX(pv.cost)` — a variant's cost is constant across the
+   * locations folded into `available_sum` here, so `MAX` over a single-valued group is exact, not
+   * an approximation; it exists only so the aggregate can multiply it against `available_sum` in
+   * one pass, one CTE, no second query. */
   async totals(tx: TenantTransaction, tenantId: string, filters: Filters): Promise<InventoryTotalsRow> {
     const rows = await tx.execute<InventoryTotalsRow>(sql`
       WITH per_variant AS (
         SELECT
           ib.product_variant_id AS variant_id,
           SUM(ib.quantity_available) AS available_sum,
-          SUM(ib.quantity_reserved) AS reserved_sum
+          SUM(ib.quantity_reserved) AS reserved_sum,
+          MAX(pv.cost) AS variant_cost
         FROM inventory_balances ib
         JOIN locations l ON l.tenant_id = ib.tenant_id AND l.id = ib.location_id
         JOIN product_variants pv ON pv.tenant_id = ib.tenant_id AND pv.id = ib.product_variant_id
         JOIN products p ON p.tenant_id = pv.tenant_id AND p.id = pv.product_id
         WHERE ib.tenant_id = ${tenantId}
           ${filters.warehouseId ? sql`AND l.warehouse_id = ${filters.warehouseId}` : sql``}
+          ${filters.locationId ? sql`AND ib.location_id = ${filters.locationId}` : sql``}
           ${filters.categoryId ? sql`AND p.category_id = ${filters.categoryId}` : sql``}
         GROUP BY ib.product_variant_id
       )
       SELECT
         COALESCE(SUM(available_sum), 0) AS "availableQuantity",
         COALESCE(SUM(reserved_sum), 0) AS "reservedQuantity",
-        COUNT(*) FILTER (WHERE available_sum = 0) AS "outOfStockCount"
+        COUNT(*) FILTER (WHERE available_sum = 0) AS "outOfStockCount",
+        COALESCE(SUM(COALESCE(variant_cost, 0) * available_sum), 0) AS "totalCostValue",
+        COUNT(*) FILTER (WHERE available_sum > 0 AND variant_cost IS NULL) AS "missingCostCount"
       FROM per_variant
     `);
-    return rows[0] ?? { availableQuantity: '0', reservedQuantity: '0', outOfStockCount: '0' };
+    return (
+      rows[0] ?? {
+        availableQuantity: '0',
+        reservedQuantity: '0',
+        outOfStockCount: '0',
+        totalCostValue: '0',
+        missingCostCount: '0',
+      }
+    );
   }
 }

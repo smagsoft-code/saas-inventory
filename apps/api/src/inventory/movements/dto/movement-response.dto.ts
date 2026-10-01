@@ -38,7 +38,7 @@ export class MovementResponseDto {
   @ApiPropertyOptional({
     type: String,
     description:
-      'Human-readable reference label for SALE ("Venta #ORD-000123") and TRANSFER_OUT/TRANSFER_IN ("Transferencia #xxxxxxxx"). Omitted for every other movement type — those already carry a plain `reason`.',
+      'Human-readable reference label for SALE ("Venta #ORD-000123") and TRANSFER_OUT/TRANSFER_IN ("Transferencia #SUC-PRIN-ALM-PRIN-005", the transfer\'s own code). Omitted for every other movement type — those already carry a plain `reason`.',
   })
   referenceLabel?: string;
 

@@ -19,12 +19,12 @@ function baseSummary(overrides: Partial<SalesSummary> = {}): SalesSummary {
 describe('SalesReportSection', () => {
   it('shows an empty state when there are no buckets — never a fake zero table', () => {
     render(<SalesReportSection summary={baseSummary()} currency="USD" />);
-    expect(screen.getByText('No sales in this period')).toBeInTheDocument();
+    expect(screen.getByText('Sin ventas en este período')).toBeInTheDocument();
   });
 
   it('the empty state names the exceptional-discount filter when it is the active one (F18-06)', () => {
     render(<SalesReportSection summary={baseSummary({ exceptional: 'only' })} currency="USD" />);
-    expect(screen.getByText('No exceptional-discount sales in this period')).toBeInTheDocument();
+    expect(screen.getByText('Sin ventas con descuento excepcional en este período')).toBeInTheDocument();
   });
 
   it('renders period rows with real Revenue/Orders/Avg ticket/Discounts KPI tiles (day/week/month)', () => {
@@ -51,9 +51,9 @@ describe('SalesReportSection', () => {
     render(<SalesReportSection summary={summary} currency="USD" />);
     expect(screen.getByText('Widget')).toBeInTheDocument();
     expect(screen.getByText('SKU-1')).toBeInTheDocument();
-    expect(screen.getByText('Units sold')).toBeInTheDocument();
-    expect(screen.queryByText('Avg ticket')).not.toBeInTheDocument();
-    expect(screen.queryByText('Orders')).not.toBeInTheDocument();
+    expect(screen.getByText('Unidades vendidas')).toBeInTheDocument();
+    expect(screen.queryByText('Ticket promedio')).not.toBeInTheDocument();
+    expect(screen.queryByText('Pedidos')).not.toBeInTheDocument();
   });
 
   it('renders customer buckets with the frozen customer name', () => {
@@ -71,19 +71,19 @@ describe('SalesReportSection', () => {
 describe('SalesReportError', () => {
   it('shows an access-denied title for a 403 — never a redirect to login', () => {
     render(<SalesReportError status={403} message="You don't have permission to do that." />);
-    expect(screen.getByText('Access denied')).toBeInTheDocument();
+    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
     expect(screen.getByText("You don't have permission to do that.")).toBeInTheDocument();
   });
 
   it('shows a friendly title and the correlation id for a 5xx', () => {
     render(<SalesReportError status={500} message="Something went wrong on our end. Please try again." correlationId="corr-123" />);
-    expect(screen.getByText('Something went wrong on our end')).toBeInTheDocument();
+    expect(screen.getByText('Algo salió mal de nuestro lado')).toBeInTheDocument();
     expect(screen.getByText(/corr-123/)).toBeInTheDocument();
   });
 
   it('offers a retry link back to #report', () => {
     render(<SalesReportError status={400} message="Some of the information provided is invalid." />);
-    const retry = screen.getByRole('link', { name: 'Try again' });
+    const retry = screen.getByRole('link', { name: 'Reintentar' });
     expect(retry).toHaveAttribute('href', '#report');
   });
 });

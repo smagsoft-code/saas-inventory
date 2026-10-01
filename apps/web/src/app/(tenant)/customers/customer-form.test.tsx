@@ -13,12 +13,14 @@ const mockedFetch = vi.mocked(apiFetch);
 
 const CUSTOMER: Customer = {
   id: 'cust-1',
-  type: 'business',
-  displayName: 'Acme',
-  taxId: 'T-1',
+  type: 'ruc',
+  firstName: 'Acme',
+  lastName: 'Corp',
+  displayName: 'Acme Corp',
+  taxId: '1790012345001',
   email: 'a@b.com',
   phone: '555',
-  address: { line1: 'Main 1' },
+  address: 'Main 1',
   status: 'active',
   createdAt: '',
   updatedAt: '',
@@ -35,42 +37,57 @@ describe('CustomerForm', () => {
   it('POSTs exactly CreateCustomerDto and never a tenantId', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'new-1' });
     render(<CustomerForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Jane Doe' } });
-    fireEvent.change(screen.getByLabelText(/tax id/i), { target: { value: 'X-9' } });
-    fireEvent.click(screen.getByRole('button', { name: /create customer/i }));
+    fireEvent.change(screen.getByLabelText(/^nombres$/i), { target: { value: 'Jane' } });
+    fireEvent.change(screen.getByLabelText(/^apellidos$/i), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByLabelText(/^cédula$/i), { target: { value: '0102030405' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear cliente/i }));
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/customers/new-1'));
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/customers', {
       method: 'POST',
-      body: { type: 'individual', displayName: 'Jane Doe', taxId: 'X-9' },
+      body: { type: 'cedula', firstName: 'Jane', lastName: 'Doe', taxId: '0102030405' },
     });
     expect(JSON.stringify(mockedFetch.mock.calls)).not.toMatch(/tenantId/i);
   });
 
-  it('blocks an invalid email client-side', () => {
+  it('blocks an invalid identification format client-side before any request', () => {
     render(<CustomerForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Jane' } });
-    fireEvent.change(screen.getByLabelText(/^email/i), { target: { value: 'not-an-email' } });
-    fireEvent.click(screen.getByRole('button', { name: /create customer/i }));
-    expect(screen.getByText(/valid email/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^nombres$/i), { target: { value: 'Jane' } });
+    fireEvent.change(screen.getByLabelText(/^apellidos$/i), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByLabelText(/^cédula$/i), { target: { value: '123' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear cliente/i }));
+    expect(screen.getByText(/10 números/i)).toBeInTheDocument();
     expect(mockedFetch).not.toHaveBeenCalled();
   });
 
-  it('surfaces a duplicate tax id (409) in place', async () => {
+  it('blocks an invalid email client-side', () => {
+    render(<CustomerForm mode="create" />);
+    fireEvent.change(screen.getByLabelText(/^nombres$/i), { target: { value: 'Jane' } });
+    fireEvent.change(screen.getByLabelText(/^apellidos$/i), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByLabelText(/^cédula$/i), { target: { value: '0102030405' } });
+    fireEvent.change(screen.getByLabelText(/^correo$/i), { target: { value: 'not-an-email' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear cliente/i }));
+    expect(screen.getByText(/correo electrónico válido/i)).toBeInTheDocument();
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it('surfaces a duplicate identification (409) in place', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(409, 'CONFLICT', 'dup', undefined));
     render(<CustomerForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Jane' } });
-    fireEvent.click(screen.getByRole('button', { name: /create customer/i }));
-    expect(await screen.findByText(/already uses that tax id/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^nombres$/i), { target: { value: 'Jane' } });
+    fireEvent.change(screen.getByLabelText(/^apellidos$/i), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByLabelText(/^cédula$/i), { target: { value: '0102030405' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear cliente/i }));
+    expect(await screen.findByText(/ya usa esa identificación/i)).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('PATCHes only the changed fields on edit', async () => {
     mockedFetch.mockResolvedValueOnce({ ...CUSTOMER, phone: '999' });
     render(<CustomerForm mode="edit" customer={CUSTOMER} />);
-    fireEvent.change(screen.getByLabelText(/phone/i), { target: { value: '999' } });
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
-    await waitFor(() => expect(screen.getByText(/customer saved/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText(/teléfono/i), { target: { value: '999' } });
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+    await waitFor(() => expect(screen.getByText(/cliente guardado/i)).toBeInTheDocument());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/customers/cust-1', { method: 'PATCH', body: { phone: '999' } });
   });
 
@@ -78,8 +95,10 @@ describe('CustomerForm', () => {
     let resolve: (v: unknown) => void = () => {};
     mockedFetch.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
     render(<CustomerForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Jane' } });
-    const btn = screen.getByRole('button', { name: /create customer/i });
+    fireEvent.change(screen.getByLabelText(/^nombres$/i), { target: { value: 'Jane' } });
+    fireEvent.change(screen.getByLabelText(/^apellidos$/i), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByLabelText(/^cédula$/i), { target: { value: '0102030405' } });
+    const btn = screen.getByRole('button', { name: /crear cliente/i });
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(mockedFetch).toHaveBeenCalledTimes(1);
@@ -90,8 +109,10 @@ describe('CustomerForm', () => {
   it('never writes to browser storage', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'new-1' });
     render(<CustomerForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Jane' } });
-    fireEvent.click(screen.getByRole('button', { name: /create customer/i }));
+    fireEvent.change(screen.getByLabelText(/^nombres$/i), { target: { value: 'Jane' } });
+    fireEvent.change(screen.getByLabelText(/^apellidos$/i), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByLabelText(/^cédula$/i), { target: { value: '0102030405' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear cliente/i }));
     await waitFor(() => expect(pushMock).toHaveBeenCalled());
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);

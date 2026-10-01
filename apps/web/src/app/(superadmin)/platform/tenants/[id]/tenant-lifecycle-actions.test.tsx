@@ -20,10 +20,10 @@ describe('TenantLifecycleActions', () => {
     mockedFetch.mockResolvedValueOnce(undefined);
     render(<TenantLifecycleActions tenantId="t1" tenantName="Acme" action="suspend" />);
 
-    fireEvent.click(screen.getByRole('button', { name: /suspend company/i }));
+    fireEvent.click(screen.getByRole('button', { name: /suspender empresa/i }));
     expect(mockedFetch).not.toHaveBeenCalled(); // confirm not yet given
 
-    fireEvent.click(screen.getByRole('button', { name: /confirm suspend/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar suspensión/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/platform/tenants/t1/suspend', { method: 'POST' });
   });
@@ -32,8 +32,8 @@ describe('TenantLifecycleActions', () => {
     mockedFetch.mockResolvedValueOnce(undefined);
     render(<TenantLifecycleActions tenantId="t9" tenantName="Beta" action="activate" />);
 
-    expect(screen.queryByText(/confirm/i)).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /activate company/i }));
+    expect(screen.queryByText(/confirmar/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /activar empresa/i }));
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/platform/tenants/t9/activate', { method: 'POST' }),
     );
@@ -42,7 +42,7 @@ describe('TenantLifecycleActions', () => {
   it('never sends a tenantId in a body/query — only the path segment, method POST only', async () => {
     mockedFetch.mockResolvedValueOnce(undefined);
     render(<TenantLifecycleActions tenantId="t1" tenantName="Acme" action="activate" />);
-    fireEvent.click(screen.getByRole('button', { name: /activate company/i }));
+    fireEvent.click(screen.getByRole('button', { name: /activar empresa/i }));
     await waitFor(() => expect(mockedFetch).toHaveBeenCalled());
     const [, options] = mockedFetch.mock.calls[0]!;
     expect(options).toEqual({ method: 'POST' });
@@ -52,25 +52,25 @@ describe('TenantLifecycleActions', () => {
   it('shows a safe message on 403 and does not refresh', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'nope', undefined));
     render(<TenantLifecycleActions tenantId="t1" tenantName="Acme" action="activate" />);
-    fireEvent.click(screen.getByRole('button', { name: /activate company/i }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(/not authorized/i);
+    fireEvent.click(screen.getByRole('button', { name: /activar empresa/i }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/no está autorizada/i);
     expect(refreshMock).not.toHaveBeenCalled();
   });
 
   it('never echoes a 5xx body', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'at Object.<anonymous> stack', undefined));
     render(<TenantLifecycleActions tenantId="t1" tenantName="Acme" action="suspend" />);
-    fireEvent.click(screen.getByRole('button', { name: /suspend company/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm suspend/i }));
+    fireEvent.click(screen.getByRole('button', { name: /suspender empresa/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar suspensión/i }));
     const alert = await screen.findByRole('alert');
     expect(alert).not.toHaveTextContent(/stack/i);
-    expect(alert).toHaveTextContent(/something went wrong/i);
+    expect(alert).toHaveTextContent(/algo salió mal/i);
   });
 
   it('does not touch browser storage', () => {
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
     render(<TenantLifecycleActions tenantId="t1" tenantName="Acme" action="suspend" />);
-    fireEvent.click(screen.getByRole('button', { name: /suspend company/i }));
+    fireEvent.click(screen.getByRole('button', { name: /suspender empresa/i }));
     expect(setItem).not.toHaveBeenCalled();
     setItem.mockRestore();
   });

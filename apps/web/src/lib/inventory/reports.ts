@@ -16,6 +16,9 @@ import type {
  */
 export interface InventorySummaryQuery {
   warehouseId?: string;
+  /** OUI-002/S-HOME redesign — `inventory_balances.location_id` equality filter, the finer-grained
+   * Almacén sibling of `warehouseId` (Sucursal). */
+  locationId?: string;
   categoryId?: string;
   groupBy?: InventorySummaryGroupBy;
 }
@@ -24,6 +27,9 @@ export async function getInventorySummary(query: InventorySummaryQuery = {}): Pr
   const params: Record<string, string> = {};
   if (query.warehouseId) {
     params['warehouseId'] = query.warehouseId;
+  }
+  if (query.locationId) {
+    params['locationId'] = query.locationId;
   }
   if (query.categoryId) {
     params['categoryId'] = query.categoryId;

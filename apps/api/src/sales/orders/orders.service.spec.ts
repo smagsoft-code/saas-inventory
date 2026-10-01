@@ -31,14 +31,15 @@ const CART = {
 const CUSTOMER = {
   id: 'customer-1',
   tenantId: TENANT_ID,
-  type: 'business',
+  type: 'ruc',
+  firstName: 'Contoso',
+  lastName: 'SA',
   displayName: 'Contoso SA',
   taxId: '1790012345001',
   email: 'ap@contoso.example',
   phone: '+59322222222',
-  address: { city: 'Quito' },
+  address: 'Av. Amazonas, Quito',
   status: 'active',
-  notes: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   deletedAt: null,
@@ -205,7 +206,7 @@ describe('OrdersService.checkout', () => {
     ['sales_note', { email: null }, /email/],
     ['sales_note', { phone: null }, /phone/],
     ['sales_note', { address: null }, /address/],
-    ['sales_note', { address: {} }, /address/],
+    ['sales_note', { address: '' }, /address/],
   ] as const)('rejects %s when the customer is missing %o -> 422, no order (§10, §13-§16)', async (documentType, patch, messagePattern) => {
     const { service, customersRepository, ordersRepository, stockLedgerService, idempotencyRepository } = build();
     customersRepository.findById.mockResolvedValue({ ...CUSTOMER, ...patch });

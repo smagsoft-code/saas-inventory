@@ -211,10 +211,11 @@ async function verifySchema(): Promise<void> {
     const tables = await sql<{ table_name: string }[]>`
       select table_name from information_schema.tables
       where table_schema = 'public' and table_type = 'BASE TABLE'`;
-    // 50, not 48 — identities + tenant_memberships (016-B, migration 0028, ADR-0033) were added
-    // after this figure was first written and this check was never updated (same class of drift
-    // this comment already documents twice — see the 45->46->48 history).
-    check('50 tables exist', tables.length === 50, `found ${tables.length}`);
+    // 52, not 48 — identities + tenant_memberships (016-B, migration 0028, ADR-0033) took it to 50,
+    // then tenant_admin_invitations + platform_support_sessions (migration 0033, ADR-0036) took it
+    // to 52; this check was not updated at either point (same class of drift this comment already
+    // documents — see the 45->46->48->50 history).
+    check('52 tables exist', tables.length === 52, `found ${tables.length}`);
 
     const fks = await sql<{ count: number }[]>`
       select count(*)::int as count from information_schema.table_constraints
@@ -398,12 +399,13 @@ async function verifyRls(): Promise<void> {
       from pg_class c
       join pg_namespace n on n.oid = c.relnamespace
       where n.nspname = 'public' and c.relkind = 'r'
-        and c.relname not in ('tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens', 'identities', 'tenant_memberships')`;
+        and c.relname not in ('tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens', 'identities', 'tenant_memberships', 'platform_support_sessions', 'tenant_admin_invitations')`;
     // Filtering an empty `rows` is vacuously "zero without RLS" — assert the expected table count
     // explicitly first (same class of false-positive this file already got burned by in §8).
-    // 50 total tables - 7 platform-scoped (tenants, platform_admins, permissions,
-    // measurement_units, platform_admin_refresh_tokens, identities, tenant_memberships) = 43
-    // tenant-owned tables (see the 50-tables comment above for why this isn't 42/41 any more).
+    // 52 total tables - 9 platform-scoped (tenants, platform_admins, permissions,
+    // measurement_units, platform_admin_refresh_tokens, identities, tenant_memberships,
+    // platform_support_sessions, tenant_admin_invitations — ADR-0036) = 43 tenant-owned tables
+    // (see the 52-tables comment above for why this isn't 42/41 any more).
     check('43 tenant-owned tables were found to check', rows.length === 43, `found ${rows.length}`);
     const withoutRls = rows.filter((r) => !r.relrowsecurity);
     const withoutForce = rows.filter((r) => !r.relforcerowsecurity);
@@ -553,13 +555,15 @@ async function verifyPermissionsCatalog(): Promise<void> {
     // migration 0001). Same `module.resource.action` pattern, no ADR needed for the catalog rows.
     'sales.returns.view',
     'sales.returns.create',
+    // ROLES/PERMISSIONS block (migration 0032) — custom role/permission CRUD, see ADR-0034.
+    'core.roles.manage',
   ].sort();
 
   const sql = postgres(MIGRATOR_URL, { max: 1 });
   try {
     const rows = await sql<{ code: string }[]>`select code from permissions order by code`;
     const actual = rows.map((r) => r.code).sort();
-    check('permissions catalog has exactly 41 rows', actual.length === 41, `found ${actual.length}`);
+    check('permissions catalog has exactly 42 rows', actual.length === 42, `found ${actual.length}`);
     check('permissions catalog matches database.md exactly, no narrative examples added', JSON.stringify(actual) === JSON.stringify(expected));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       console.log('  expected:', expected);

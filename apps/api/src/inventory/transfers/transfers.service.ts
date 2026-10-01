@@ -8,6 +8,7 @@ import type { AuditMeta } from '../inventory-audit-meta';
 import { MovingAverageCostService } from '../kardex/moving-average-cost.service';
 import { LocationAuthorizationService } from '../location-authorization.service';
 import { IdempotencyKeysRepository } from '../repositories/idempotency-keys.repository';
+import { InventoryBalancesRepository } from '../repositories/inventory-balances.repository';
 import { InventoryMovementsRepository } from '../repositories/inventory-movements.repository';
 import type { InventoryTransferItemRow } from '../repositories/inventory-transfer-items.repository';
 import { InventoryTransferItemsRepository } from '../repositories/inventory-transfer-items.repository';
@@ -16,6 +17,8 @@ import type { InventoryTransferRow } from '../repositories/inventory-transfers.r
 import { InventoryTransfersRepository } from '../repositories/inventory-transfers.repository';
 import { LocationsRepository } from '../repositories/locations.repository';
 import { ProductVariantsLookupRepository } from '../repositories/product-variants-lookup.repository';
+import { TransferWorkflowConfigRepository } from '../repositories/transfer-workflow-config.repository';
+import { WarehousesRepository } from '../repositories/warehouses.repository';
 import { InsufficientStockError, StockLedgerService } from '../stock-ledger.service';
 import type { CreateTransferDto } from './dto/create-transfer.dto';
 import type { DispatchTransferDto } from './dto/dispatch-transfer.dto';
@@ -40,6 +43,16 @@ function hashRequest(body: unknown): string {
  * re-reads `status` and correctly rejects an already-applied transition. StockLedgerService's own
  * per-balance-row locking (nested inside) additionally serializes different transfers competing for
  * the same product+location.
+ *
+ * F17-TRANSFERS-AUDIT §1: not every tenant has staff for every gate. `approved`/`preparing` are
+ * *gates* in front of what is otherwise the exact same mechanics — `doApprove`/`doPrepare` hold the
+ * one real implementation of each, called either by the manual `approve()`/`prepare()` endpoint OR
+ * by `advanceThroughDisabledStages()` right after create()/approve() when the tenant's
+ * `TransferWorkflowConfig` says that gate isn't required. Either way the row lock, the
+ * RESERVATION movement, the audit entry are identical — a disabled gate is skipped, never
+ * bypassed by a second, parallel code path. `dispatched`/`received` are never configurable: they
+ * are the physical events themselves (stock actually leaving/arriving), not gates in front of one,
+ * so `dispatch()`/`receive()`/`cancel()` below are completely unchanged by this.
  */
 @Injectable()
 export class TransfersService {
@@ -48,7 +61,10 @@ export class TransfersService {
     private readonly itemsRepository: InventoryTransferItemsRepository,
     private readonly receiptsRepository: InventoryTransferReceiptsRepository,
     private readonly locationsRepository: LocationsRepository,
+    private readonly warehousesRepository: WarehousesRepository,
+    private readonly balancesRepository: InventoryBalancesRepository,
     private readonly productVariantsLookup: ProductVariantsLookupRepository,
+    private readonly workflowConfigRepository: TransferWorkflowConfigRepository,
     private readonly locationAuthorizationService: LocationAuthorizationService,
     private readonly stockLedgerService: StockLedgerService,
     private readonly idempotencyKeysRepository: IdempotencyKeysRepository,
@@ -116,10 +132,34 @@ export class TransfersService {
         }
       }
 
+      // Advisory, read-only guard (spec §4): reject up front against the available stock visible
+      // right now, so a request for more than is on the shelf never gets this far. This does NOT
+      // reserve anything and does NOT change WHEN stock is actually held — `prepare()` below is
+      // still the sole place that reserves (RESERVATION movement) and is still the authoritative,
+      // re-validated-under-lock check (§5: a concurrent sale between create() and prepare() can
+      // still make prepare() fail with InsufficientStockError — that race is inherent and expected,
+      // not a bug this check is meant to close).
+      for (const item of dto.items) {
+        const balance = await this.balancesRepository.findByVariantAndLocation(tx, tenantId, item.productVariantId, dto.sourceLocationId);
+        const available = balance ? Number(balance.quantityAvailable ?? 0) : 0;
+        if (item.quantityRequested > available) {
+          throw new ConflictException(
+            `Stock insuficiente para la variante ${item.productVariantId} en el almacén de origen. Disponible: ${available}.`,
+          );
+        }
+      }
+
+      const sourceWarehouse = await this.warehousesRepository.findById(tx, tenantId, source.warehouseId);
+      if (!sourceWarehouse) {
+        throw new NotFoundException('Source warehouse not found.');
+      }
+
       const transferId = generateId();
+      const code = await this.transfersRepository.nextTransferCode(tx, tenantId, dto.sourceLocationId, sourceWarehouse.code, source.code);
       const created = await this.transfersRepository.create(tx, {
         id: transferId,
         tenantId,
+        code,
         sourceLocationId: dto.sourceLocationId,
         destinationLocationId: dto.destinationLocationId,
         requestedBy: actorId,
@@ -145,7 +185,10 @@ export class TransfersService {
         meta,
       });
 
-      return this.toResponse(tx, tenantId, created);
+      const workflow = await this.workflowConfigRepository.get(tx, tenantId);
+      const advanced = await this.advanceThroughDisabledStages(tx, tenantId, actorId, created, meta, workflow);
+
+      return this.toResponse(tx, tenantId, advanced);
     });
   }
 
@@ -159,13 +202,17 @@ export class TransfersService {
         throw new ConflictException(`Transfer must be in "draft" status to approve (currently "${transfer.status}").`);
       }
 
-      const updated = await this.transfersRepository.update(tx, tenantId, id, { status: 'approved', approvedBy: actorId, approvedAt: new Date() });
-      if (!updated) {
-        throw new NotFoundException('Transfer not found.');
-      }
+      const approved = await this.doApprove(tx, tenantId, actorId, transfer, meta);
 
-      await this.writeAudit(tx, { tenantId, actorId, actionCode: 'inventory_transfer.approved', entityId: id, meta });
-      return this.toResponse(tx, tenantId, updated);
+      // A manual "Aprobar" click can still land on a tenant that also has "Preparar" disabled
+      // (§1 — only "Aprobar" itself is required here) — advance through that gate too, same as
+      // create() does, rather than leaving the transfer sitting in "approved" with no visible next
+      // action for anyone but a Bodega-permission holder to manually "Preparar" a stage the tenant
+      // said doesn't apply to them.
+      const workflow = await this.workflowConfigRepository.get(tx, tenantId);
+      const advanced = await this.advanceThroughDisabledStages(tx, tenantId, actorId, approved, meta, workflow);
+
+      return this.toResponse(tx, tenantId, advanced);
     });
   }
 
@@ -180,21 +227,65 @@ export class TransfersService {
         throw new ConflictException(`Transfer must be in "approved" status to prepare (currently "${transfer.status}").`);
       }
 
-      await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, transfer.sourceLocationId);
-
-      const items = await this.itemsRepository.listByTransfer(tx, tenantId, id);
-      for (const item of items) {
-        await this.reserveItem(tx, tenantId, transfer, item);
-      }
-
-      const updated = await this.transfersRepository.update(tx, tenantId, id, { status: 'preparing' });
-      if (!updated) {
-        throw new NotFoundException('Transfer not found.');
-      }
-
-      await this.writeAudit(tx, { tenantId, actorId, actionCode: 'inventory_transfer.prepared', entityId: id, meta });
+      const updated = await this.doPrepare(tx, tenantId, actorId, transfer, meta);
       return this.toResponse(tx, tenantId, updated);
     });
+  }
+
+  /** The one real implementation of draft -> approved — called by the manual `approve()` endpoint
+   * and by `advanceThroughDisabledStages` when the tenant's workflow config skips this gate. Caller
+   * must already hold the row lock and have verified `transfer.status === 'draft'`. */
+  private async doApprove(tx: TenantTransaction, tenantId: string, actorId: string, transfer: InventoryTransferRow, meta: AuditMeta): Promise<InventoryTransferRow> {
+    const updated = await this.transfersRepository.update(tx, tenantId, transfer.id, { status: 'approved', approvedBy: actorId, approvedAt: new Date() });
+    if (!updated) {
+      throw new NotFoundException('Transfer not found.');
+    }
+    await this.writeAudit(tx, { tenantId, actorId, actionCode: 'inventory_transfer.approved', entityId: transfer.id, meta });
+    return updated;
+  }
+
+  /** The one real implementation of approved -> preparing (reserves stock at source for every
+   * item's full quantityRequested) — called by the manual `prepare()` endpoint and by
+   * `advanceThroughDisabledStages` when the tenant's workflow config skips this gate. Caller must
+   * already hold the row lock and have verified `transfer.status === 'approved'`. */
+  private async doPrepare(tx: TenantTransaction, tenantId: string, actorId: string, transfer: InventoryTransferRow, meta: AuditMeta): Promise<InventoryTransferRow> {
+    await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, transfer.sourceLocationId);
+
+    const items = await this.itemsRepository.listByTransfer(tx, tenantId, transfer.id);
+    for (const item of items) {
+      await this.reserveItem(tx, tenantId, transfer, item);
+    }
+
+    const updated = await this.transfersRepository.update(tx, tenantId, transfer.id, { status: 'preparing' });
+    if (!updated) {
+      throw new NotFoundException('Transfer not found.');
+    }
+    await this.writeAudit(tx, { tenantId, actorId, actionCode: 'inventory_transfer.prepared', entityId: transfer.id, meta });
+    return updated;
+  }
+
+  /** F17-TRANSFERS-AUDIT §1 — fast-forwards a freshly-created or freshly-approved transfer through
+   * any gate the tenant's `TransferWorkflowConfig` has turned off, reusing `doApprove`/`doPrepare`
+   * verbatim (never a parallel/shortcut implementation). Stops at the first gate that IS required,
+   * or at `preparing` — `dispatch()`/`receive()` are always manual, physical-event actions, never
+   * auto-advanced. A no-op (returns `transfer` unchanged) when both gates are required, which is
+   * every tenant's default. */
+  private async advanceThroughDisabledStages(
+    tx: TenantTransaction,
+    tenantId: string,
+    actorId: string,
+    transfer: InventoryTransferRow,
+    meta: AuditMeta,
+    workflow: { requireApproval: boolean; requirePreparation: boolean },
+  ): Promise<InventoryTransferRow> {
+    let current = transfer;
+    if (current.status === 'draft' && !workflow.requireApproval) {
+      current = await this.doApprove(tx, tenantId, actorId, current, meta);
+    }
+    if (current.status === 'approved' && !workflow.requirePreparation) {
+      current = await this.doPrepare(tx, tenantId, actorId, current, meta);
+    }
+    return current;
   }
 
   /** preparing -> dispatched: releases the preparing-time reservation and decrements physical stock
@@ -493,8 +584,12 @@ export class TransfersService {
 
   private async toResponse(tx: TenantTransaction, tenantId: string, transfer: InventoryTransferRow): Promise<TransferResponseDto> {
     const items = await this.itemsRepository.listByTransfer(tx, tenantId, transfer.id);
+    const variantIds = [...new Set(items.map((item) => item.productVariantId))];
+    const names = await this.productVariantsLookup.findByIds(tx, tenantId, variantIds);
+    const nameById = new Map(names.map((row) => [row.id, row]));
     return {
       id: transfer.id,
+      code: transfer.code,
       sourceLocationId: transfer.sourceLocationId,
       destinationLocationId: transfer.destinationLocationId,
       status: transfer.status,
@@ -511,6 +606,7 @@ export class TransfersService {
       items: items.map((item) => ({
         id: item.id,
         productVariantId: item.productVariantId,
+        ...(nameById.get(item.productVariantId) ? { productName: nameById.get(item.productVariantId)!.productName, sku: nameById.get(item.productVariantId)!.sku } : {}),
         quantityRequested: Number(item.quantityRequested),
         quantityDispatched: Number(item.quantityDispatched),
         quantityReceived: Number(item.quantityReceived),

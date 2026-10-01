@@ -13,7 +13,7 @@ import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
 
-export const metadata = { title: 'Locations · SaaS Inventory' };
+export const metadata = { title: 'Almacenes · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
 type StatusFilter = 'active' | 'inactive' | undefined;
@@ -37,8 +37,8 @@ export default async function LocationsPage({
   if (!checker.can('locations.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Locations" />
-        <NoAccess message="You need the locations permission to view this page." />
+        <PageHeader title="Almacenes" />
+        <NoAccess message="Necesitas el permiso de almacenes para ver esta página." />
       </PageContainer>
     );
   }
@@ -78,17 +78,17 @@ export default async function LocationsPage({
   }
 
   const statusFilters: { label: string; value: StatusFilter }[] = [
-    { label: 'All', value: undefined },
-    { label: 'Active', value: 'active' },
-    { label: 'Inactive', value: 'inactive' },
+    { label: 'Todos', value: undefined },
+    { label: 'Activos', value: 'active' },
+    { label: 'Inactivos', value: 'inactive' },
   ];
 
   return (
     <PageContainer>
       <PageHeader
-        title="Locations"
-        description="The places within a warehouse where stock physically sits."
-        actions={canManage ? <ButtonLink href="/locations/new">New location</ButtonLink> : undefined}
+        title="Almacenes"
+        description="Los lugares dentro de una sucursal donde el stock está físicamente."
+        actions={canManage ? <ButtonLink href="/locations/new">Nuevo almacén</ButtonLink> : undefined}
       />
 
       <div className="flex flex-wrap items-center gap-3">
@@ -123,7 +123,7 @@ export default async function LocationsPage({
                   : 'rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50'
               }
             >
-              All warehouses
+              Todas las sucursales
             </Link>
             {warehouses.data.map((w) => {
               const active = warehouseId === w.id;
@@ -149,14 +149,14 @@ export default async function LocationsPage({
       {result.data.length === 0 ? (
         status || warehouseId ? (
           <EmptyState
-            title="No locations match this filter"
-            description="Try a different warehouse or status."
+            title="Ningún almacén coincide con este filtro"
+            description="Prueba con otra sucursal o estado."
           />
         ) : (
           <EmptyState
-            title="No locations yet"
-            description="Create a warehouse first — it comes with a default “General” location."
-            action={canManage ? <ButtonLink href="/locations/new">New location</ButtonLink> : undefined}
+            title="Aún no hay almacenes"
+            description="Crea primero una sucursal — viene con un almacén «General» por defecto."
+            action={canManage ? <ButtonLink href="/locations/new">Nuevo almacén</ButtonLink> : undefined}
           />
         )
       ) : (
@@ -164,13 +164,13 @@ export default async function LocationsPage({
           <Table>
             <THead>
               <TR>
-                <TH>Name</TH>
-                <TH>Code</TH>
-                <TH>Warehouse</TH>
-                <TH>Sellable</TH>
-                <TH>Status</TH>
+                <TH>Nombre</TH>
+                <TH>Código</TH>
+                <TH>Sucursal</TH>
+                <TH>Vendible</TH>
+                <TH>Estado</TH>
                 <TH className="w-0">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">Acciones</span>
                 </TH>
               </TR>
             </THead>
@@ -186,20 +186,22 @@ export default async function LocationsPage({
                   </TD>
                   <TD>
                     {location.isSellable ? (
-                      <span className="text-slate-500">Yes</span>
+                      <span className="text-slate-500">Sí</span>
                     ) : (
-                      <Badge tone="warning">Non-sellable</Badge>
+                      <Badge tone="warning">No vendible</Badge>
                     )}
                   </TD>
                   <TD>
-                    <Badge tone={statusTone(location.status)}>{location.status}</Badge>
+                    <Badge tone={statusTone(location.status)}>
+                      {location.status === 'active' ? 'Activo' : location.status === 'inactive' ? 'Inactivo' : location.status}
+                    </Badge>
                   </TD>
                   <TD>
                     <Link
                       href={`/locations/${location.id}`}
                       className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                     >
-                      {canManage ? 'Edit' : 'View'}
+                      {canManage ? 'Editar' : 'Ver'}
                     </Link>
                   </TD>
                 </TR>

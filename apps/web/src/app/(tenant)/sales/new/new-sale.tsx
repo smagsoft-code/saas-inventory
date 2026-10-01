@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
 import {
@@ -15,7 +15,7 @@ import {
   type Order,
 } from '../../../../lib/types/sales';
 import { Alert } from '../../../../components/ui/alert';
-import { Button } from '../../../../components/ui/button';
+import { Button, ButtonLink } from '../../../../components/ui/button';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { Field } from '../../../../components/ui/field';
 import { Input, Select } from '../../../../components/ui/input';
@@ -23,6 +23,11 @@ import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table
 
 interface Ref {
   id: string;
+  name: string;
+}
+interface LocationOption {
+  id: string;
+  warehouseId: string;
   name: string;
 }
 interface CustomerRef {
@@ -55,6 +60,7 @@ export function NewSale({
   initialCustomer,
   customerIdHint,
   products,
+  warehouses,
   locations,
   canSearchCustomers,
 }: {
@@ -62,7 +68,8 @@ export function NewSale({
   initialCustomer: CustomerRef | null;
   customerIdHint?: string;
   products: Ref[];
-  locations: Ref[];
+  warehouses: Ref[];
+  locations: LocationOption[];
   canSearchCustomers: boolean;
 }): React.JSX.Element {
   const router = useRouter();
@@ -75,8 +82,34 @@ export function NewSale({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // "Start a sale" phase
-  const [startLocationId, setStartLocationId] = useState(locations[0]?.id ?? '');
+  // "Start a sale" phase — Sucursal → Almacén, purely client-side (both lists are already bounded
+  // fetches from the server component).
+  const [startWarehouseId, setStartWarehouseId] = useState(warehouses[0]?.id ?? '');
+  const [startLocationId, setStartLocationId] = useState(
+    () => locations.find((l) => l.warehouseId === (warehouses[0]?.id ?? ''))?.id ?? '',
+  );
+  const startLocationsInWarehouse = useMemo(
+    () => locations.filter((l) => l.warehouseId === startWarehouseId),
+    [locations, startWarehouseId],
+  );
+  function onStartWarehouseChange(nextWarehouseId: string): void {
+    setStartWarehouseId(nextWarehouseId);
+    setStartLocationId(locations.find((l) => l.warehouseId === nextWarehouseId)?.id ?? '');
+  }
+
+  // Once a cart exists, its Almacén select is also Sucursal-scoped — but the *committed* value is
+  // always `cart.locationId` (a `PATCH /cart` result), never local state. `changeWarehouseId` only
+  // narrows which locations are offered; picking one still goes straight through `changeLocation`.
+  const [changeWarehouseId, setChangeWarehouseId] = useState(
+    () => locations.find((l) => l.id === initialCart?.locationId)?.warehouseId ?? '',
+  );
+  useEffect(() => {
+    setChangeWarehouseId(locations.find((l) => l.id === cart?.locationId)?.warehouseId ?? '');
+  }, [cart?.locationId, locations]);
+  const changeLocationsInWarehouse = useMemo(
+    () => locations.filter((l) => l.warehouseId === changeWarehouseId),
+    [locations, changeWarehouseId],
+  );
 
   // Customer search panel
   const [customerPanelOpen, setCustomerPanelOpen] = useState(false);
@@ -114,7 +147,7 @@ export function NewSale({
 
   function friendlyError(err: unknown): string {
     if (isApiError(err) && err.status === 403) {
-      return 'You are not authorized to operate on this location.';
+      return 'No tienes autorización para operar en este almacén.';
     }
     return httpErrorMessage(err);
   }
@@ -139,7 +172,7 @@ export function NewSale({
   async function startSale(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     if (!startLocationId) {
-      setError('Choose the location the sale is made from.');
+      setError('Elige el almacén desde donde se hace la venta.');
       return;
     }
     await run('start', async () => {
@@ -220,11 +253,11 @@ export function NewSale({
     }
     const qty = Number(quantity);
     if (!productVariantId || !Number.isFinite(qty) || qty <= 0) {
-      setError('Choose a variant and a quantity greater than zero.');
+      setError('Elige una variante y una cantidad mayor que cero.');
       return;
     }
     if (inCartVariantIds.has(productVariantId)) {
-      setError('That variant is already on the sale — change its quantity in the lines below.');
+      setError('Esa variante ya está en la venta — cambia su cantidad en las líneas de abajo.');
       return;
     }
     await run('add-line', async () => {
@@ -299,18 +332,18 @@ export function NewSale({
       <Card>
         <CardBody className="flex flex-col gap-4">
           <Alert tone="success">
-            Order <span className="font-medium">{order.orderNumber}</span> created — status{' '}
-            <span className="font-medium">{order.status}</span>. Stock is reserved.
+            Pedido <span className="font-medium">{order.orderNumber}</span> creado — estado{' '}
+            <span className="font-medium">{order.status}</span>. El stock está reservado.
           </Alert>
           {exceptional && (
             <Alert tone="warning">
-              One or more lines are below the minimum price. The order needs a price approval before it can be confirmed.
+              Una o más líneas están por debajo del precio mínimo. El pedido necesita una aprobación de precio antes de poder confirmarse.
             </Alert>
           )}
           <dl className="grid max-w-sm grid-cols-2 gap-y-1 text-sm">
-            <dt className="text-slate-500">Customer</dt>
+            <dt className="text-slate-500">Cliente</dt>
             <dd className="text-slate-900">{order.customer.name}</dd>
-            <dt className="text-slate-500">Document</dt>
+            <dt className="text-slate-500">Documento</dt>
             <dd className="text-slate-900">{DOCUMENT_TYPE_LABELS[order.documentType as DocumentType] ?? order.documentType}</dd>
             <dt className="text-slate-500">Total</dt>
             <dd className="text-slate-900">
@@ -318,14 +351,9 @@ export function NewSale({
             </dd>
           </dl>
           <div className="flex gap-2">
-            <Link
-              href={`/sales/${order.id}`}
-              className="inline-flex h-10 items-center rounded-md bg-slate-900 px-4 text-sm font-medium text-white hover:bg-slate-800"
-            >
-              View order
-            </Link>
+            <ButtonLink href={`/sales/${order.id}`}>Ver pedido</ButtonLink>
             <Button variant="ghost" onClick={startAnother}>
-              Start another sale
+              Iniciar otra venta
             </Button>
           </div>
         </CardBody>
@@ -338,20 +366,34 @@ export function NewSale({
       <Card>
         <CardBody>
           <form onSubmit={startSale} noValidate className="flex max-w-sm flex-col gap-4">
-            <Field label="Location" required hint="Where the sale is made from — it sets stock availability.">
-              <Select value={startLocationId} onChange={(e) => setStartLocationId(e.target.value)}>
-                <option value="">Choose a location…</option>
-                {locations.map((l) => (
+            <Field label="Sucursal" required>
+              <Select value={startWarehouseId} onChange={(e) => onStartWarehouseChange(e.target.value)}>
+                <option value="">Elegir una sucursal…</option>
+                {warehouses.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Almacén" required hint="Desde dónde se hace la venta — determina la disponibilidad de stock.">
+              <Select
+                value={startLocationId}
+                disabled={!startWarehouseId}
+                onChange={(e) => setStartLocationId(e.target.value)}
+              >
+                <option value="">{startWarehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}</option>
+                {startLocationsInWarehouse.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
                   </option>
                 ))}
               </Select>
             </Field>
-            {customerIdHint && <p className="text-xs text-slate-500">This sale will start for the selected customer.</p>}
+            {customerIdHint && <p className="text-xs text-slate-500">Esta venta empezará para el cliente seleccionado.</p>}
             {error && <Alert tone="error">{error}</Alert>}
             <Button type="submit" loading={busy === 'start'} disabled={busy !== null || !startLocationId} className="w-fit">
-              Start sale
+              Iniciar venta
             </Button>
           </form>
         </CardBody>
@@ -370,8 +412,8 @@ export function NewSale({
         <CardBody className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-medium text-slate-900">Customer</p>
-              <p className="text-sm text-slate-500">{customerLabel ?? (cart.customerId ? 'Selected' : 'None chosen yet')}</p>
+              <p className="text-sm font-medium text-slate-900">Cliente</p>
+              <p className="text-sm text-slate-500">{customerLabel ?? (cart.customerId ? 'Seleccionado' : 'Ninguno elegido aún')}</p>
             </div>
             {canSearchCustomers && (
               <Button
@@ -380,15 +422,15 @@ export function NewSale({
                 disabled={busy !== null}
                 onClick={() => setCustomerPanelOpen((v) => !v)}
               >
-                {cart.customerId ? 'Change customer' : 'Choose customer'}
+                {cart.customerId ? 'Cambiar cliente' : 'Elegir cliente'}
               </Button>
             )}
           </div>
 
           {missingCustomerData.length > 0 && (
             <Alert tone="warning">
-              This customer is missing {missingCustomerData.join(', ')}. Checkout will fail until it is completed
-              (open the customer record to fix it).
+              A este cliente le falta {missingCustomerData.join(', ')}. El cierre de venta fallará hasta que se
+              complete (abre el registro del cliente para corregirlo).
             </Alert>
           )}
 
@@ -397,16 +439,16 @@ export function NewSale({
               <form onSubmit={searchCustomers} className="flex gap-2">
                 <Input
                   type="search"
-                  placeholder="Name, tax id, email or phone"
+                  placeholder="Nombre, identificación tributaria, correo o teléfono"
                   value={customerQuery}
                   onChange={(e) => setCustomerQuery(e.target.value)}
                 />
                 <Button type="submit" size="sm" loading={busy === 'customer-search'} disabled={busy !== null}>
-                  Search
+                  Buscar
                 </Button>
               </form>
               {customerSearched && customerResults.length === 0 && (
-                <p className="text-sm text-slate-500">No customers match that search.</p>
+                <p className="text-sm text-slate-500">Ningún cliente coincide con esa búsqueda.</p>
               )}
               {customerResults.length > 0 && (
                 <ul className="flex flex-col divide-y divide-slate-100">
@@ -418,26 +460,39 @@ export function NewSale({
                         {c.email && <span className="text-slate-500"> · {c.email}</span>}
                       </span>
                       <Button size="sm" variant="secondary" disabled={busy !== null} onClick={() => void chooseCustomer(c)}>
-                        Select
+                        Seleccionar
                       </Button>
                     </li>
                   ))}
                 </ul>
               )}
               <p className="text-xs text-slate-500">
-                Need a new customer? <Link href="/customers/new" className="underline">Add one</Link>, then search again.
+                ¿Necesitas un cliente nuevo? <Link href="/customers/new" className="underline">Agrega uno</Link>, luego busca de nuevo.
               </p>
             </div>
           )}
 
-          <Field label="Location" hint="Changing this re-checks stock availability.">
+          <Field label="Sucursal">
+            <Select
+              value={changeWarehouseId}
+              disabled={busy !== null || warehouses.length === 0}
+              onChange={(e) => setChangeWarehouseId(e.target.value)}
+            >
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Almacén" hint="Cambiar esto vuelve a comprobar la disponibilidad de stock.">
             <Select
               value={cart.locationId}
-              disabled={busy !== null || locations.length === 0}
+              disabled={busy !== null || changeLocationsInWarehouse.length === 0}
               onChange={(e) => void changeLocation(e.target.value)}
             >
-              {locations.length === 0 && <option value={cart.locationId}>{locationName}</option>}
-              {locations.map((l) => (
+              {changeLocationsInWarehouse.length === 0 && <option value={cart.locationId}>{locationName}</option>}
+              {changeLocationsInWarehouse.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
                 </option>
@@ -449,21 +504,21 @@ export function NewSale({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Lines</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Líneas</h2>
 
           {cart.items.length === 0 ? (
-            <p className="text-sm text-slate-500">No lines yet — add a product below.</p>
+            <p className="text-sm text-slate-500">Aún no hay líneas — agrega un producto abajo.</p>
           ) : (
             <Table>
               <THead>
                 <TR>
-                  <TH>Item</TH>
-                  <TH className="text-right">Qty</TH>
-                  <TH className="text-right">Unit price</TH>
-                  <TH className="text-right">Line subtotal</TH>
-                  <TH className="text-right">Available</TH>
+                  <TH>Artículo</TH>
+                  <TH className="text-right">Cant.</TH>
+                  <TH className="text-right">Precio unitario</TH>
+                  <TH className="text-right">Subtotal de línea</TH>
+                  <TH className="text-right">Disponible</TH>
                   <TH className="w-0">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">Acciones</span>
                   </TH>
                 </TR>
               </THead>
@@ -475,16 +530,16 @@ export function NewSale({
                       <span className="text-slate-500"> · {item.productName}</span>
                       {!item.sellable && (
                         <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
-                          not sellable
+                          no vendible
                         </span>
                       )}
                       {item.negotiatedUnitPrice !== undefined && (
-                        <span className="ml-2 text-xs text-slate-500">negotiated</span>
+                        <span className="ml-2 text-xs text-slate-500">negociado</span>
                       )}
                     </TD>
                     <TD className="text-right">
                       <label className="sr-only" htmlFor={`qty-${item.id}`}>
-                        Quantity for {item.sku}
+                        Cantidad para {item.sku}
                       </label>
                       <input
                         id={`qty-${item.id}`}
@@ -513,7 +568,7 @@ export function NewSale({
                         disabled={busy !== null}
                         onClick={() => void removeLine(item.id)}
                       >
-                        Remove
+                        Quitar
                       </Button>
                     </TD>
                   </TR>
@@ -523,13 +578,13 @@ export function NewSale({
           )}
 
           <form onSubmit={addLine} noValidate className="grid gap-3 rounded-md border border-slate-200 p-3 sm:grid-cols-4">
-            <Field label="Product" required>
+            <Field label="Producto" required>
               <Select
                 value={productId}
                 disabled={productsDisabled || busy !== null}
                 onChange={(e) => void onProductChange(e.target.value)}
               >
-                <option value="">{productsDisabled ? 'No products' : 'Choose…'}</option>
+                <option value="">{productsDisabled ? 'Sin productos' : 'Elegir…'}</option>
                 {products.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
@@ -537,13 +592,13 @@ export function NewSale({
                 ))}
               </Select>
             </Field>
-            <Field label="Variant" required {...(variantsLoading ? { hint: 'Loading…' } : {})}>
+            <Field label="Variante" required {...(variantsLoading ? { hint: 'Cargando…' } : {})}>
               <Select
                 value={productVariantId}
                 disabled={!productId || variantsLoading || busy !== null}
                 onChange={(e) => setProductVariantId(e.target.value)}
               >
-                <option value="">{productId ? 'Choose…' : 'Pick a product first'}</option>
+                <option value="">{productId ? 'Elegir…' : 'Elige primero un producto'}</option>
                 {variants.map((v) => (
                   <option key={v.id} value={v.id}>
                     {v.sku}
@@ -551,7 +606,7 @@ export function NewSale({
                 ))}
               </Select>
             </Field>
-            <Field label="Quantity" required>
+            <Field label="Cantidad" required>
               <Input
                 type="number"
                 min={0}
@@ -560,7 +615,7 @@ export function NewSale({
                 onChange={(e) => setQuantity(e.target.value)}
               />
             </Field>
-            <Field label="Custom price" hint="Optional — negotiated unit price.">
+            <Field label="Precio personalizado" hint="Opcional — precio unitario negociado.">
               <Input
                 type="number"
                 min={0}
@@ -571,7 +626,7 @@ export function NewSale({
             </Field>
             <div className="sm:col-span-4">
               <Button type="submit" size="sm" loading={busy === 'add-line'} disabled={busy !== null || productsDisabled} className="w-fit">
-                Add line
+                Agregar línea
               </Button>
             </div>
           </form>
@@ -584,9 +639,9 @@ export function NewSale({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Create order</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Crear pedido</h2>
           <fieldset className="flex flex-col gap-2">
-            <legend className="text-sm font-medium text-slate-700">Document type</legend>
+            <legend className="text-sm font-medium text-slate-700">Tipo de documento</legend>
             {DOCUMENT_TYPES.map((t) => (
               <label key={t} className="flex items-center gap-2 text-sm text-slate-700">
                 <input
@@ -602,14 +657,14 @@ export function NewSale({
             ))}
           </fieldset>
 
-          {!cart.customerId && <p className="text-sm text-amber-700">Choose a customer to continue.</p>}
-          {cart.items.length === 0 && <p className="text-sm text-amber-700">Add at least one line to continue.</p>}
+          {!cart.customerId && <p className="text-sm text-amber-700">Elige un cliente para continuar.</p>}
+          {cart.items.length === 0 && <p className="text-sm text-amber-700">Agrega al menos una línea para continuar.</p>}
           {unsellableLines.length > 0 && (
-            <p className="text-sm text-red-700">Remove the lines marked “not sellable” before creating the order.</p>
+            <p className="text-sm text-red-700">Quita las líneas marcadas «no vendible» antes de crear el pedido.</p>
           )}
 
           <Button loading={busy === 'checkout'} disabled={!canCheckout} onClick={() => void checkout()} className="w-fit">
-            Create order
+            Crear pedido
           </Button>
         </CardBody>
       </Card>

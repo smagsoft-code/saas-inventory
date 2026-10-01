@@ -1,12 +1,14 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { EmptyState } from '../../../../components/ui/empty-state';
+import { ButtonLink } from '../../../../components/ui/button';
 import { getPlatformSession } from '../../../../lib/auth/platform-session';
 import { listPlatformTenants } from '../../../../lib/platform/tenants';
 import { PlatformTenantsTable } from './platform-tenants-table';
 
-export const metadata = { title: 'Companies · Platform' };
+export const metadata = { title: 'Empresas · Plataforma' };
 
 /**
  * `S-SA-TENANTS` — the SuperAdmin company list (F17-13). `GET /api/v1/platform/tenants`
@@ -14,9 +16,9 @@ export const metadata = { title: 'Companies · Platform' };
  * DTO exposes and nothing tenant-scoped (isolation — `f17-super-admin.md` §4). No server
  * filter/sort/search params exist, so the (small) array is filtered/sorted client-side.
  *
- * Read-only: the only mutations that exist platform-side are suspend/activate, which live on the
- * detail page. There is no create-company endpoint (`GAP-SA-CREATE-TENANT`) → no "New company"
- * action anywhere.
+ * The only mutations that exist platform-side beyond creation are suspend/activate, which live on
+ * the detail page. Creation (ADR-0036, closes `GAP-SA-CREATE-TENANT`) is `POST /platform/tenants`
+ * at `/platform/tenants/new` — no password field, an invitation is issued instead.
  */
 export default async function PlatformTenantsPage(): Promise<React.JSX.Element> {
   const admin = await getPlatformSession();
@@ -31,14 +33,24 @@ export default async function PlatformTenantsPage(): Promise<React.JSX.Element> 
   return (
     <PageContainer>
       <PageHeader
-        title="Companies"
-        description="Every company on the platform. Suspend or activate one from its detail page."
+        title="Empresas"
+        description="Todas las empresas de la plataforma. Suspende o activa una, o accede como soporte, desde su página de detalle."
+        actions={
+          <ButtonLink href="/platform/tenants/new" size="sm">
+            Crear empresa
+          </ButtonLink>
+        }
       />
 
       {tenants.length === 0 ? (
         <EmptyState
-          title="No companies yet"
-          description="Companies appear here after they sign up. Platform-side provisioning is not available."
+          title="Aún no hay empresas"
+          description="Crea la primera empresa, o espera a que alguien se registre por su cuenta."
+          action={
+            <Link href="/platform/tenants/new" className="text-sm font-medium text-slate-900 underline">
+              Crear la primera empresa
+            </Link>
+          }
         />
       ) : (
         <PlatformTenantsTable tenants={tenants} />

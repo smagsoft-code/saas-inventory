@@ -10,7 +10,7 @@ import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
 
 const SETTINGS_PATH = '/api/v1/administration/tenant-settings';
-const DAY_LABELS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const DAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
 
 /** One editable row per weekday. A day is only sent to the server when `enabled` — an absent day
  * means "no hours configured", the same meaning the backend gives an empty array. */
@@ -50,7 +50,7 @@ function localValidationError(days: DayState[]): string | null {
   for (let day = 0; day < days.length; day += 1) {
     const d = days[day];
     if (d && d.enabled && !d.isClosed && d.opensAt >= d.closesAt) {
-      return `${DAY_LABELS[day]}: opening time must be before closing time.`;
+      return `${DAY_LABELS[day]}: la hora de apertura debe ser anterior a la de cierre.`;
     }
   }
   return null;
@@ -84,14 +84,14 @@ export function BusinessHoursForm({
               .map((e) => (
                 <li key={e.dayOfWeek} className="text-slate-900">
                   {DAY_LABELS[e.dayOfWeek]}:{' '}
-                  {e.isClosed ? 'Closed' : `${e.opensAt}–${e.closesAt}`}
+                  {e.isClosed ? 'Cerrado' : `${e.opensAt}–${e.closesAt}`}
                 </li>
               ))}
           </ul>
         ) : (
-          <p>No business hours configured.</p>
+          <p>No hay horario comercial configurado.</p>
         )}
-        <p className="mt-2 text-xs">You don&apos;t have permission to change this.</p>
+        <p className="mt-2 text-xs">No tienes permiso para cambiar esto.</p>
       </div>
     );
   }
@@ -125,7 +125,7 @@ export function BusinessHoursForm({
     } catch (err) {
       setError(
         isApiError(err) && err.status === 403
-          ? 'You no longer have permission to change this.'
+          ? 'Ya no tienes permiso para cambiar esto.'
           : httpErrorMessage(err),
       );
     } finally {
@@ -156,13 +156,13 @@ export function BusinessHoursForm({
                     onChange={(e) => update(day, { isClosed: e.target.checked })}
                     className="h-4 w-4 rounded border-slate-300"
                   />
-                  Closed
+                  Cerrado
                 </label>
                 {!d.isClosed && (
                   <div className="flex items-center gap-2">
                     <Input
                       type="time"
-                      aria-label={`${DAY_LABELS[day]} opening time`}
+                      aria-label={`Hora de apertura del ${DAY_LABELS[day]}`}
                       value={d.opensAt}
                       onChange={(e) => update(day, { opensAt: e.target.value })}
                       className="w-32"
@@ -172,7 +172,7 @@ export function BusinessHoursForm({
                     </span>
                     <Input
                       type="time"
-                      aria-label={`${DAY_LABELS[day]} closing time`}
+                      aria-label={`Hora de cierre del ${DAY_LABELS[day]}`}
                       value={d.closesAt}
                       onChange={(e) => update(day, { closesAt: e.target.value })}
                       className="w-32"
@@ -185,9 +185,9 @@ export function BusinessHoursForm({
         ))}
       </div>
       {error && <Alert tone="error">{error}</Alert>}
-      {success && <Alert tone="success">Business hours saved.</Alert>}
+      {success && <Alert tone="success">Horario comercial guardado.</Alert>}
       <Button type="submit" loading={submitting} disabled={!dirty} className="w-fit">
-        Save business hours
+        Guardar horario comercial
       </Button>
     </form>
   );

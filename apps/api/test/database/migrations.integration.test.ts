@@ -89,6 +89,8 @@ describe.skipIf(!integrationTestsEnabled)('migrations', () => {
         'platform_admin_refresh_tokens',
         'identities',
         'tenant_memberships',
+        'tenant_admin_invitations',
+        'platform_support_sessions',
       ];
       for (const table of expectedTables) {
         expect(actualTables.has(table), `expected table "${table}" to exist`).toBe(true);

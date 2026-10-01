@@ -43,7 +43,7 @@ export function TenantSettingsForm({ tenant }: { tenant: Tenant }): React.JSX.El
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex max-w-md flex-col gap-4">
-      <Field label="Company name" required error={error}>
+      <Field label="Nombre de la empresa" required error={error}>
         <Input
           required
           minLength={2}
@@ -55,9 +55,9 @@ export function TenantSettingsForm({ tenant }: { tenant: Tenant }): React.JSX.El
           }}
         />
       </Field>
-      {success && <Alert tone="success">Company name saved.</Alert>}
+      {success && <Alert tone="success">Nombre de la empresa guardado.</Alert>}
       <Button type="submit" loading={submitting} disabled={!dirty} className="w-fit">
-        Save
+        Guardar
       </Button>
     </form>
   );

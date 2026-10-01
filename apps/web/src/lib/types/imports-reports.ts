@@ -16,10 +16,10 @@ export const IMPORTS_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'status'] as co
 export type ImportsSummaryGroupBy = (typeof IMPORTS_SUMMARY_GROUP_BY)[number];
 
 export const IMPORTS_SUMMARY_GROUP_BY_LABELS: Record<ImportsSummaryGroupBy, string> = {
-  day: 'Day',
-  week: 'Week',
-  month: 'Month',
-  status: 'Status',
+  day: 'Día',
+  week: 'Semana',
+  month: 'Mes',
+  status: 'Estado',
 };
 
 /** Identical shape for a period bucket (`key` = tenant-local `YYYY-MM-DD`), a status bucket

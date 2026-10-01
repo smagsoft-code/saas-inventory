@@ -34,12 +34,12 @@ export type AddressField = (typeof ADDRESS_FIELDS)[number];
 export type WarehouseAddress = Partial<Record<AddressField, string>>;
 
 export const ADDRESS_FIELD_LABELS: Record<AddressField, string> = {
-  line1: 'Address line 1',
-  line2: 'Address line 2',
-  city: 'City',
-  state: 'State / province',
-  postalCode: 'Postal code',
-  country: 'Country',
+  line1: 'Dirección línea 1',
+  line2: 'Dirección línea 2',
+  city: 'Ciudad',
+  state: 'Estado / provincia',
+  postalCode: 'Código postal',
+  country: 'País',
 };
 
 // --- warehouses --------------------------------------------------------------------------------
@@ -156,18 +156,18 @@ export const MOVEMENT_TYPES = [
 export type MovementType = (typeof MOVEMENT_TYPES)[number];
 
 export const MOVEMENT_TYPE_LABELS: Record<MovementType, string> = {
-  RECEIPT: 'Receipt',
-  SALE: 'Sale',
-  RETURN: 'Return',
-  ADJUSTMENT_IN: 'Adjustment in',
-  ADJUSTMENT_OUT: 'Adjustment out',
-  TRANSFER_OUT: 'Transfer out',
-  TRANSFER_IN: 'Transfer in',
-  RESERVATION: 'Reservation',
-  RESERVATION_RELEASE: 'Reservation release',
-  COMMITMENT: 'Commitment',
-  COMMITMENT_RELEASE: 'Commitment release',
-  INITIAL_STOCK: 'Initial stock',
+  RECEIPT: 'Recepción',
+  SALE: 'Venta',
+  RETURN: 'Devolución',
+  ADJUSTMENT_IN: 'Ajuste positivo',
+  ADJUSTMENT_OUT: 'Ajuste negativo',
+  TRANSFER_OUT: 'Salida por transferencia',
+  TRANSFER_IN: 'Entrada por transferencia',
+  RESERVATION: 'Reserva',
+  RESERVATION_RELEASE: 'Liberación de reserva',
+  COMMITMENT: 'Compromiso',
+  COMMITMENT_RELEASE: 'Liberación de compromiso',
+  INITIAL_STOCK: 'Stock inicial',
 };
 
 /** The only movement types a manual adjustment may create (`CreateAdjustmentDto`). */
@@ -245,13 +245,13 @@ export const TRANSFER_STATUSES = [
 export type TransferStatus = (typeof TRANSFER_STATUSES)[number];
 
 export const TRANSFER_STATUS_LABELS: Record<TransferStatus, string> = {
-  draft: 'Draft',
-  approved: 'Approved',
-  preparing: 'Preparing',
-  dispatched: 'Dispatched',
-  partially_received: 'Partially received',
-  received: 'Received',
-  cancelled: 'Cancelled',
+  draft: 'Borrador',
+  approved: 'Aprobada',
+  preparing: 'En preparación',
+  dispatched: 'Despachada',
+  partially_received: 'Recibida parcialmente',
+  received: 'Recibida',
+  cancelled: 'Cancelada',
 };
 
 /** The per-line incident flags `ReceiveTransferItemDto` accepts. */
@@ -259,15 +259,19 @@ export const TRANSFER_INCIDENT_TYPES = ['shortage', 'damage', 'excess'] as const
 export type TransferIncidentType = (typeof TRANSFER_INCIDENT_TYPES)[number];
 
 export const TRANSFER_INCIDENT_TYPE_LABELS: Record<TransferIncidentType, string> = {
-  shortage: 'Shortage',
-  damage: 'Damage',
-  excess: 'Excess',
+  shortage: 'Faltante',
+  damage: 'Daño',
+  excess: 'Sobrante',
 };
 
 /** `TransferItemResponseDto`. `quantityInTransit` is derived (`dispatched − received`). */
 export interface TransferItem {
   id: string;
   productVariantId: string;
+  /** Resolved server-side (F17-TRANSFERS-AUDIT, `GAP-VARIANT-LIST` resolved for this one case).
+   * Omitted only if the variant is somehow unresolvable — should not happen in practice. */
+  productName?: string;
+  sku?: string;
   quantityRequested: number;
   quantityDispatched: number;
   quantityReceived: number;
@@ -277,6 +281,10 @@ export interface TransferItem {
 /** `GET /inventory/transfers` list item / `GET /inventory/transfers/:id` — `TransferResponseDto`. */
 export interface Transfer {
   id: string;
+  /** Human-readable sequence — `${sourceWarehouse.code}-${sourceLocation.code}-NNN`, e.g.
+   * "MATR-ALM-001" — computed server-side at create() (F17-TRANSFERS-AUDIT, GAP-TRANSFER-CODE
+   * resolved). Shown in place of the raw id everywhere a transfer is listed or referenced. */
+  code: string;
   sourceLocationId: string;
   destinationLocationId: string;
   status: string;

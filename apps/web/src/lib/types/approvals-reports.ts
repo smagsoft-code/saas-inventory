@@ -10,10 +10,10 @@ export const APPROVALS_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'status'] as 
 export type ApprovalsSummaryGroupBy = (typeof APPROVALS_SUMMARY_GROUP_BY)[number];
 
 export const APPROVALS_SUMMARY_GROUP_BY_LABELS: Record<ApprovalsSummaryGroupBy, string> = {
-  day: 'Day',
-  week: 'Week',
-  month: 'Month',
-  status: 'Status',
+  day: 'Día',
+  week: 'Semana',
+  month: 'Mes',
+  status: 'Estado',
 };
 
 export const APPROVALS_SUMMARY_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const;

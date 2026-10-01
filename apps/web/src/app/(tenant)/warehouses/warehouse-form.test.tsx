@@ -33,11 +33,11 @@ describe('WarehouseForm', () => {
     mockedFetch.mockResolvedValueOnce({ ...WAREHOUSE, id: 'new-id' });
     render(<WarehouseForm mode="create" />);
 
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'North Depot' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'north-1' } });
-    expect((screen.getByLabelText(/^code/i) as HTMLInputElement).value).toBe('NORTH-1');
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'North Depot' } });
+    fireEvent.change(screen.getByLabelText(/^código$/i), { target: { value: 'north-1' } });
+    expect((screen.getByLabelText(/^código$/i) as HTMLInputElement).value).toBe('NORTH-1');
 
-    fireEvent.click(screen.getByRole('button', { name: /create warehouse/i }));
+    fireEvent.click(screen.getByRole('button', { name: /crear sucursal/i }));
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/warehouses/new-id'));
 
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/warehouses', {
@@ -52,10 +52,10 @@ describe('WarehouseForm', () => {
   it('create: sends a non-empty address as an object', async () => {
     mockedFetch.mockResolvedValueOnce({ ...WAREHOUSE, id: 'x' });
     render(<WarehouseForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Depot' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'DEP' } });
-    fireEvent.change(screen.getByLabelText(/city/i), { target: { value: 'Quito' } });
-    fireEvent.click(screen.getByRole('button', { name: /create warehouse/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Depot' } });
+    fireEvent.change(screen.getByLabelText(/^código$/i), { target: { value: 'DEP' } });
+    fireEvent.change(screen.getByLabelText(/ciudad/i), { target: { value: 'Quito' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear sucursal/i }));
     await waitFor(() => expect(replaceMock).toHaveBeenCalled());
     const [, opts] = mockedFetch.mock.calls.at(-1)!;
     expect((opts as { body: { address?: unknown } }).body.address).toEqual({ city: 'Quito' });
@@ -63,10 +63,10 @@ describe('WarehouseForm', () => {
 
   it('create: blocks an invalid code client-side without calling the API', () => {
     render(<WarehouseForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Depot' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'bad code!' } });
-    fireEvent.click(screen.getByRole('button', { name: /create warehouse/i }));
-    expect(screen.getByText(/uppercase letters and numbers/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Depot' } });
+    fireEvent.change(screen.getByLabelText(/^código$/i), { target: { value: 'bad code!' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear sucursal/i }));
+    expect(screen.getByText(/mayúsculas y números/i)).toBeInTheDocument();
     expect(mockedFetch).not.toHaveBeenCalled();
   });
 
@@ -74,9 +74,9 @@ describe('WarehouseForm', () => {
     let resolve: (v: unknown) => void = () => {};
     mockedFetch.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
     render(<WarehouseForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Depot' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'DEP' } });
-    const btn = screen.getByRole('button', { name: /create warehouse/i });
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Depot' } });
+    fireEvent.change(screen.getByLabelText(/^código$/i), { target: { value: 'DEP' } });
+    const btn = screen.getByRole('button', { name: /crear sucursal/i });
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(mockedFetch.mock.calls.filter(([p]) => p === '/api/v1/warehouses')).toHaveLength(1);
@@ -89,9 +89,9 @@ describe('WarehouseForm', () => {
       new ApiError(409, 'CONFLICT', 'A warehouse with this code already exists.', undefined),
     );
     render(<WarehouseForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Depot' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'DEP' } });
-    fireEvent.click(screen.getByRole('button', { name: /create warehouse/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Depot' } });
+    fireEvent.change(screen.getByLabelText(/^código$/i), { target: { value: 'DEP' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear sucursal/i }));
     expect(await screen.findByText(/code already exists/i)).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });
@@ -99,14 +99,14 @@ describe('WarehouseForm', () => {
   it('edit: Save stays disabled until a field changes, then PATCHes only changed fields', async () => {
     mockedFetch.mockResolvedValueOnce(WAREHOUSE);
     render(<WarehouseForm mode="edit" warehouse={WAREHOUSE} />);
-    const save = screen.getByRole('button', { name: /save changes/i });
+    const save = screen.getByRole('button', { name: /guardar cambios/i });
     expect(save).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText(/status/i), { target: { value: 'inactive' } });
+    fireEvent.change(screen.getByLabelText(/^estado$/i), { target: { value: 'inactive' } });
     expect(save).toBeEnabled();
     fireEvent.click(save);
 
-    await waitFor(() => expect(screen.getByText(/warehouse saved/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/sucursal guardada/i)).toBeInTheDocument());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/warehouses/w1', {
       method: 'PATCH',
       body: { status: 'inactive' },
@@ -116,18 +116,18 @@ describe('WarehouseForm', () => {
   it('edit: a 403 is surfaced in place, never a redirect', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'Forbidden', undefined));
     render(<WarehouseForm mode="edit" warehouse={WAREHOUSE} />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Central 2' } });
-    fireEvent.click(screen.getByRole('button', { name: /save changes/i }));
-    expect(await screen.findByText(/no longer have permission/i)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Central 2' } });
+    fireEvent.click(screen.getByRole('button', { name: /guardar cambios/i }));
+    expect(await screen.findByText(/ya no tienes permiso/i)).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('never writes anything to browser storage', async () => {
     mockedFetch.mockResolvedValueOnce({ ...WAREHOUSE, id: 'x' });
     render(<WarehouseForm mode="create" />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Depot' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'DEP' } });
-    fireEvent.click(screen.getByRole('button', { name: /create warehouse/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Depot' } });
+    fireEvent.change(screen.getByLabelText(/^código$/i), { target: { value: 'DEP' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear sucursal/i }));
     await waitFor(() => expect(replaceMock).toHaveBeenCalled());
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);

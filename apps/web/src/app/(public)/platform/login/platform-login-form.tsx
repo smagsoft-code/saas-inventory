@@ -17,12 +17,12 @@ const LOGIN_PATH = '/api/v1/platform/auth/login';
  * echoed. Platform admins are provisioned out-of-band; there is no self-registration link. */
 function loginErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.isNetworkError) return 'Could not reach the server. Check your connection and try again.';
-    if (err.status === 429) return 'Too many attempts. Please wait a moment and try again.';
-    if (err.status >= 500) return 'Something went wrong on our end. Please try again.';
-    return err.message || 'Could not sign in. Please try again.';
+    if (err.isNetworkError) return 'No se pudo contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
+    if (err.status === 429) return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
+    if (err.status >= 500) return 'Algo salió mal de nuestro lado. Inténtalo de nuevo.';
+    return err.message || 'No se pudo iniciar sesión. Inténtalo de nuevo.';
   }
-  return 'Could not sign in. Please try again.';
+  return 'No se pudo iniciar sesión. Inténtalo de nuevo.';
 }
 
 export function PlatformLoginForm(): React.JSX.Element {
@@ -60,7 +60,7 @@ export function PlatformLoginForm(): React.JSX.Element {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-      <Field label="Email" required>
+      <Field label="Correo" required>
         <Input
           name="email"
           type="email"
@@ -70,7 +70,7 @@ export function PlatformLoginForm(): React.JSX.Element {
           autoComplete="email"
         />
       </Field>
-      <Field label="Password" required>
+      <Field label="Contraseña" required>
         <Input
           name="password"
           type="password"
@@ -82,7 +82,7 @@ export function PlatformLoginForm(): React.JSX.Element {
       </Field>
       {error && <Alert tone="error">{error}</Alert>}
       <Button type="submit" loading={submitting}>
-        Sign in
+        Iniciar sesión
       </Button>
     </form>
   );

@@ -142,7 +142,7 @@ function AttributeControl({
                 aria-describedby={describedBy}
                 onChange={(e) => onChange(e.target.checked)}
               />
-              Yes
+              Sí
             </label>
           )}
         </GroupShell>
@@ -179,7 +179,7 @@ function AttributeControl({
           label={field.name}
           required={field.isRequired}
           {...(error ? { error } : {})}
-          hint={hint ?? 'Stored in ISO-8601 (UTC).'}
+          hint={hint ?? 'Se guarda en ISO-8601 (UTC).'}
         >
           <Input
             type="datetime-local"
@@ -197,14 +197,14 @@ function AttributeControl({
             disabled={disabled}
             onChange={(e) => onChange(e.target.value || undefined)}
           >
-            <option value="">{field.isRequired ? 'Choose…' : 'None'}</option>
+            <option value="">{field.isRequired ? 'Elegir…' : 'Ninguno'}</option>
             {options.map((option) => (
               <option key={option.id} value={option.code}>
                 {option.label}
               </option>
             ))}
             {typeof value === 'string' && value !== '' && !options.some((o) => o.code === value) && (
-              <option value={value}>{value} (inactive)</option>
+              <option value={value}>{value} (inactivo)</option>
             )}
           </Select>
         </Field>
@@ -243,7 +243,7 @@ function AttributeControl({
                     disabled={disabled}
                     onChange={() => onChange(selected.filter((c) => c !== code))}
                   />
-                  {code} (inactive)
+                  {code} (inactivo)
                 </label>
               ))}
             </div>
@@ -267,10 +267,10 @@ function AttributeControl({
 function attributeHint(field: AttributeField): string | undefined {
   if (field.dataType === 'number' || field.dataType === 'decimal') {
     if (field.minValue !== undefined && field.maxValue !== undefined) {
-      return `Between ${field.minValue} and ${field.maxValue}.`;
+      return `Entre ${field.minValue} y ${field.maxValue}.`;
     }
-    if (field.minValue !== undefined) return `Minimum ${field.minValue}.`;
-    if (field.maxValue !== undefined) return `Maximum ${field.maxValue}.`;
+    if (field.minValue !== undefined) return `Mínimo ${field.minValue}.`;
+    if (field.maxValue !== undefined) return `Máximo ${field.maxValue}.`;
   }
   return undefined;
 }

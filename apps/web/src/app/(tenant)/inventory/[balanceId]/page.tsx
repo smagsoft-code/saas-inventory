@@ -10,7 +10,7 @@ import { PageHeader } from '../../../../components/ui/page-header';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { NoAccess } from '../../../../components/ui/no-access';
 
-export const metadata = { title: 'Stock detail · SaaS Inventory' };
+export const metadata = { title: 'Detalle de existencias · SaaS Inventory' };
 
 export default async function BalanceDetailPage({
   params,
@@ -23,8 +23,8 @@ export default async function BalanceDetailPage({
   if (!checker.can('inventory.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Stock detail" />
-        <NoAccess message="You need the inventory permission to view this page." />
+        <PageHeader title="Detalle de existencias" />
+        <NoAccess message="Necesitas el permiso de inventario para ver esta página." />
       </PageContainer>
     );
   }
@@ -44,24 +44,24 @@ export default async function BalanceDetailPage({
   const kardexHref = `/inventory/movements?productVariantId=${balance.productVariantId}&locationId=${balance.locationId}`;
 
   const quantities = [
-    { label: 'Available', value: balance.quantityAvailable, hint: 'Physical − reserved − committed (computed by the database).' },
-    { label: 'Physical', value: balance.quantityPhysical },
-    { label: 'Reserved', value: balance.quantityReserved },
-    { label: 'Committed', value: balance.quantityCommitted },
+    { label: 'Disponible', value: balance.quantityAvailable, hint: 'Físico − reservado − comprometido (calculado por la base de datos).' },
+    { label: 'Físico', value: balance.quantityPhysical },
+    { label: 'Reservado', value: balance.quantityReserved },
+    { label: 'Comprometido', value: balance.quantityCommitted },
   ];
 
   return (
     <PageContainer>
       <PageHeader
-        title="Stock detail"
-        description={`${index.locationName(balance.locationId)} · variant ${shortId(balance.productVariantId)}`}
+        title="Detalle de existencias"
+        description={`${index.locationName(balance.locationId)} · variante ${shortId(balance.productVariantId)}`}
         actions={
           canAdjust ? (
             <Link
               href={`/inventory/adjust?productVariantId=${balance.productVariantId}&locationId=${balance.locationId}`}
               className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
             >
-              Adjust stock
+              Ajustar existencias
             </Link>
           ) : undefined
         }
@@ -78,26 +78,26 @@ export default async function BalanceDetailPage({
             ))}
           </div>
           <p className="text-xs text-slate-500">
-            Available = physical − reserved − committed, computed by the database.
+            Disponible = físico − reservado − comprometido, calculado por la base de datos.
           </p>
 
           <dl className="grid max-w-md grid-cols-[8rem_1fr] gap-y-2 text-sm">
-            <dt className="text-slate-500">Location</dt>
+            <dt className="text-slate-500">Almacén</dt>
             <dd className="text-slate-900">{index.locationName(balance.locationId)}</dd>
-            <dt className="text-slate-500">Warehouse</dt>
+            <dt className="text-slate-500">Sucursal</dt>
             <dd className="text-slate-900">{index.warehouseName(balance.locationId)}</dd>
-            <dt className="text-slate-500">Variant</dt>
+            <dt className="text-slate-500">Variante</dt>
             <dd className="text-slate-900">
               <code className="text-xs">{balance.productVariantId}</code>
             </dd>
-            <dt className="text-slate-500">Version</dt>
+            <dt className="text-slate-500">Versión</dt>
             <dd className="text-slate-900">{balance.version}</dd>
-            <dt className="text-slate-500">Updated</dt>
+            <dt className="text-slate-500">Actualizado</dt>
             <dd className="text-slate-900">{new Date(balance.updatedAt).toLocaleString()}</dd>
           </dl>
 
           <Link href={kardexHref} className="text-sm font-medium text-slate-700 underline underline-offset-2">
-            View movement history for this variant &amp; location
+            Ver historial de movimientos de esta variante y almacén
           </Link>
         </CardBody>
       </Card>

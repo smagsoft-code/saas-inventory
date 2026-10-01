@@ -8,6 +8,8 @@ const testAuthConfig: AuthConfig = {
   accessTokenTtlSeconds: 900,
   refreshTokenTtlSeconds: 2_592_000,
   selectionTokenTtlSeconds: 300,
+  invitationTokenTtlSeconds: 604800,
+  supportSessionTtlSeconds: 1800,
   argon2: { memoryCostKib: 8192, timeCost: 1, parallelism: 1 },
   cookieDomain: undefined,
   cookieSecure: false,

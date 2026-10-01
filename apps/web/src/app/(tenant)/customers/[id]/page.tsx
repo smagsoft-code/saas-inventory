@@ -23,7 +23,7 @@ import { NoAccess } from '../../../../components/ui/no-access';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
 import { CustomerForm } from '../customer-form';
 
-export const metadata = { title: 'Customer · SaaS Inventory' };
+export const metadata = { title: 'Cliente · SaaS Inventory' };
 
 export default async function CustomerDetailPage({
   params,
@@ -36,8 +36,8 @@ export default async function CustomerDetailPage({
   if (!checker.can('sales.customers.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Customer" />
-        <NoAccess message="You need the customers permission to view this page." />
+        <PageHeader title="Cliente" />
+        <NoAccess message="Necesitas el permiso de clientes para ver esta página." />
       </PageContainer>
     );
   }
@@ -60,9 +60,6 @@ export default async function CustomerDetailPage({
     : null;
 
   const missing = customerMissingCommercialData(customer);
-  const addressEntries = Object.entries((customer.address ?? {}) as Record<string, unknown>).filter(
-    ([, v]) => typeof v === 'string' && v !== '',
-  );
 
   return (
     <PageContainer>
@@ -71,41 +68,33 @@ export default async function CustomerDetailPage({
         description={CUSTOMER_TYPE_LABELS[customer.type as CustomerType] ?? customer.type}
         actions={
           <div className="flex items-center gap-2">
-            <Badge tone={statusTone(customer.status)}>{customer.status}</Badge>
-            {canSell && <ButtonLink href={`/sales/new?customerId=${customer.id}`} size="sm">Start a sale</ButtonLink>}
+            <Badge tone={statusTone(customer.status)}>{customer.status === 'active' ? 'Activo' : 'Inactivo'}</Badge>
+            {canSell && <ButtonLink href={`/sales/new?customerId=${customer.id}`} size="sm">Iniciar una venta</ButtonLink>}
           </div>
         }
       />
 
       {missing.length > 0 && (
         <Alert tone="warning">
-          This customer is missing {missing.join(', ')}. A sale cannot be completed until these are filled in.
+          A este cliente le falta {missing.join(', ')}. La venta no podrá completarse hasta que se llenen estos datos.
         </Alert>
       )}
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Details</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Detalles</h2>
           {canManage ? (
             <CustomerForm mode="edit" customer={customer} />
           ) : (
             <dl className="grid max-w-md grid-cols-[8rem_1fr] gap-y-2 text-sm">
-              <dt className="text-slate-500">Tax id</dt>
+              <dt className="text-slate-500">Identificación tributaria</dt>
               <dd className="text-slate-900">{customer.taxId ?? '—'}</dd>
-              <dt className="text-slate-500">Email</dt>
+              <dt className="text-slate-500">Correo</dt>
               <dd className="text-slate-900">{customer.email ?? '—'}</dd>
-              <dt className="text-slate-500">Phone</dt>
+              <dt className="text-slate-500">Teléfono</dt>
               <dd className="text-slate-900">{customer.phone ?? '—'}</dd>
-              <dt className="text-slate-500">Address</dt>
-              <dd className="text-slate-900">
-                {addressEntries.length > 0 ? addressEntries.map(([, v]) => String(v)).join(', ') : '—'}
-              </dd>
-              {customer.notes && (
-                <>
-                  <dt className="text-slate-500">Notes</dt>
-                  <dd className="whitespace-pre-wrap text-slate-900">{customer.notes}</dd>
-                </>
-              )}
+              <dt className="text-slate-500">Dirección</dt>
+              <dd className="text-slate-900">{customer.address ?? '—'}</dd>
             </dl>
           )}
         </CardBody>
@@ -114,20 +103,20 @@ export default async function CustomerDetailPage({
       {canViewOrders && (
         <Card>
           <CardBody className="flex flex-col gap-4">
-            <h2 className="text-sm font-semibold text-slate-900">Orders</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Pedidos</h2>
             {!orders || orders.data.length === 0 ? (
-              <p className="text-sm text-slate-500">This customer has no orders.</p>
+              <p className="text-sm text-slate-500">Este cliente no tiene pedidos.</p>
             ) : (
               <Table>
                 <THead>
                   <TR>
-                    <TH>Order</TH>
-                    <TH>Status</TH>
-                    <TH>Document</TH>
+                    <TH>Pedido</TH>
+                    <TH>Estado</TH>
+                    <TH>Documento</TH>
                     <TH className="text-right">Total</TH>
-                    <TH>Created</TH>
+                    <TH>Creado</TH>
                     <TH className="w-0">
-                      <span className="sr-only">Actions</span>
+                      <span className="sr-only">Acciones</span>
                     </TH>
                   </TR>
                 </THead>
@@ -152,7 +141,7 @@ export default async function CustomerDetailPage({
                           href={`/sales/${order.id}`}
                           className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                         >
-                          View
+                          Ver
                         </Link>
                       </TD>
                     </TR>
@@ -165,7 +154,7 @@ export default async function CustomerDetailPage({
       )}
 
       <Link href="/customers" className="text-sm font-medium text-slate-500 hover:underline">
-        Back to customers
+        Volver a clientes
       </Link>
     </PageContainer>
   );

@@ -74,6 +74,7 @@ export class UsersService {
         page: query.page,
         pageSize: query.pageSize,
         status: query.status,
+        q: query.q,
       });
       const roleNamesByUser = await this.rolesRepository.roleNamesForUsers(
         tx,

@@ -29,7 +29,7 @@ describe('httpErrorMessage', () => {
     const msg = httpErrorMessage(
       new ApiError(500, 'INTERNAL_ERROR', 'TypeError: undefined is not a function', undefined),
     );
-    expect(msg).toBe('Something went wrong on our end. Please try again.');
+    expect(msg).toBe('Algo salió mal de nuestro lado. Inténtalo de nuevo.');
   });
 
   it('prefers the backend message for a 4xx validation error', () => {
@@ -40,18 +40,18 @@ describe('httpErrorMessage', () => {
 
   it('uses a fixed sentence for 401/403/429', () => {
     expect(httpErrorMessage(new ApiError(401, 'UNAUTHORIZED', 'x', undefined))).toMatch(
-      /session has expired/i,
+      /sesión expiró/i,
     );
-    expect(httpErrorMessage(new ApiError(403, 'FORBIDDEN', 'x', undefined))).toMatch(/permission/i);
+    expect(httpErrorMessage(new ApiError(403, 'FORBIDDEN', 'x', undefined))).toMatch(/permiso/i);
     expect(httpErrorMessage(new ApiError(429, 'TOO_MANY_REQUESTS', 'x', undefined))).toMatch(
-      /too many/i,
+      /demasiadas/i,
     );
   });
 
   it('has a message for a network failure and for a non-ApiError', () => {
     expect(httpErrorMessage(new ApiError(0, 'NETWORK_ERROR', 'x', undefined))).toMatch(
-      /could not reach/i,
+      /no se pudo contactar/i,
     );
-    expect(httpErrorMessage('boom')).toBe('Something went wrong. Please try again.');
+    expect(httpErrorMessage('boom')).toBe('Algo salió mal. Inténtalo de nuevo.');
   });
 });

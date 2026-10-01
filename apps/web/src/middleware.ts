@@ -11,8 +11,19 @@ import { NextResponse, type NextRequest } from 'next/server';
  *  - `/platform/*`  → the platform-admin area, gated on `platform_access_token`, login at
  *    `/platform/login`.
  *  - everything else → the tenant area, gated on `access_token`, login at `/login`.
+ *
+ * `/accept-invitation/:token` (ADR-0036) is deliberately public here too — its whole point is
+ * that the invited admin has **no** session yet, so gating it on `access_token` would bounce them
+ * straight to `/login` before the page ever renders (exactly the bug this comment now documents).
+ *
+ * ADR-0036 extension — Tenant Support: a Platform Admin browsing a tenant route under an active
+ * support session carries `platform_access_token`, never `access_token` (no tenant session is ever
+ * issued for them — ADR-0032). This is still just cookie *presence*: whether a live support
+ * session actually exists for that tenant is decided server-side (`TenantGuard`), same as every
+ * other check this file only approximates for UX.
  */
 const TENANT_PUBLIC_PATHS = new Set(['/login', '/register']);
+const TENANT_PUBLIC_PREFIXES = ['/accept-invitation/'];
 const PLATFORM_LOGIN_PATH = '/platform/login';
 
 export function middleware(request: NextRequest): NextResponse {
@@ -35,10 +46,10 @@ export function middleware(request: NextRequest): NextResponse {
   }
 
   // --- tenant context ----------------------------------------------------------------------
-  if (TENANT_PUBLIC_PATHS.has(pathname)) {
+  if (TENANT_PUBLIC_PATHS.has(pathname) || TENANT_PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
-  if (request.cookies.has('access_token')) {
+  if (request.cookies.has('access_token') || request.cookies.has('platform_access_token')) {
     return NextResponse.next();
   }
   const loginUrl = new URL('/login', request.url);

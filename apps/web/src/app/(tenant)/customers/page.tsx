@@ -2,52 +2,38 @@ import Link from 'next/link';
 import { getSession } from '../../../lib/auth/session';
 import { createPermissionChecker } from '../../../lib/auth/permissions';
 import { listCustomers } from '../../../lib/sales/customers';
-import {
-  CUSTOMER_STATUSES,
-  CUSTOMER_TYPES,
-  CUSTOMER_TYPE_LABELS,
-  type Customer,
-  type CustomerStatus,
-  type CustomerType,
-} from '../../../lib/types/sales';
+import { CUSTOMER_TYPE_LABELS, type Customer, type CustomerType } from '../../../lib/types/sales';
 import { PageContainer } from '../../../components/ui/page-container';
 import { PageHeader } from '../../../components/ui/page-header';
 import { ButtonLink } from '../../../components/ui/button';
-import { Badge, statusTone } from '../../../components/ui/badge';
 import { EmptyState } from '../../../components/ui/empty-state';
 import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
+import { CustomersSearch } from './customers-search';
 
-export const metadata = { title: 'Customers · SaaS Inventory' };
+export const metadata = { title: 'Clientes · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
 
-function parseType(value: string | undefined): CustomerType | undefined {
-  return (CUSTOMER_TYPES as readonly string[]).includes(value ?? '') ? (value as CustomerType) : undefined;
-}
-function parseStatus(value: string | undefined): CustomerStatus | undefined {
-  return (CUSTOMER_STATUSES as readonly string[]).includes(value ?? '') ? (value as CustomerStatus) : undefined;
-}
-
 /**
  * Customers list (`S-CUST-LIST`) — `GET /api/v1/customers` (`sales.customers.view`), offset
- * paginated. Real filters only: `q` (free-text over displayName / taxId / email / phone — the one
- * endpoint that has real search, `GAP-SEARCH`), `status`, `type`. No sort. The search box is a
- * native GET form — the backend does the matching, never the client.
+ * paginated. Owner redesign: only a live `q` search box (firstName/lastName/taxId/email/phone) —
+ * no Tipo/Estado filters, no Buscar submit button. Columns: Nombre | Tipo | Cédula/Ruc | Correo |
+ * Teléfono | [editar icon].
  */
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; status?: string; type?: string }>;
+  searchParams: Promise<{ page?: string; q?: string }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
   const checker = createPermissionChecker(session?.permissions ?? []);
   if (!checker.can('sales.customers.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Customers" />
-        <NoAccess message="You need the customers permission to view this page." />
+        <PageHeader title="Clientes" />
+        <NoAccess message="Necesitas el permiso de clientes para ver esta página." />
       </PageContainer>
     );
   }
@@ -56,85 +42,38 @@ export default async function CustomersPage({
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const q = sp.q?.trim() || undefined;
-  const status = parseStatus(sp.status);
-  const type = parseType(sp.type);
 
   const result = await listCustomers({
     page,
     pageSize: PAGE_SIZE,
     ...(q ? { q } : {}),
-    ...(status ? { status } : {}),
-    ...(type ? { type } : {}),
   });
 
   function buildHref(nextPage: number): string {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
-    if (status) params.set('status', status);
-    if (type) params.set('type', type);
     if (nextPage > 1) params.set('page', String(nextPage));
     return `/customers${params.toString() ? `?${params}` : ''}`;
   }
 
-  const hasFilter = Boolean(q || status || type);
+  const hasFilter = Boolean(q);
 
   return (
     <PageContainer>
       <PageHeader
-        title="Customers"
-        description="The people and businesses you sell to."
-        actions={canManage ? <ButtonLink href="/customers/new">New customer</ButtonLink> : undefined}
+        title="Clientes"
+        description="Las personas y empresas a las que vendes."
+        actions={canManage ? <ButtonLink href="/customers/new">Nuevo cliente</ButtonLink> : undefined}
       />
 
-      <form method="get" className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-1 flex-col gap-1 text-xs font-medium text-slate-600 sm:max-w-xs">
-          Search
-          <input
-            type="search"
-            name="q"
-            defaultValue={q ?? ''}
-            placeholder="Name, tax id, email or phone"
-            className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-900"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-          Type
-          <select name="type" defaultValue={type ?? ''} className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-900">
-            <option value="">Any</option>
-            {CUSTOMER_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {CUSTOMER_TYPE_LABELS[t]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-          Status
-          <select name="status" defaultValue={status ?? ''} className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-900">
-            <option value="">Any</option>
-            {CUSTOMER_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" className="h-9 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
-          Search
-        </button>
-        {hasFilter && (
-          <Link href="/customers" className="h-9 rounded-md px-2 text-sm font-medium text-slate-500 hover:underline">
-            Clear
-          </Link>
-        )}
-      </form>
+      <CustomersSearch initialQ={q ?? ''} />
 
       {result.data.length === 0 ? (
         <EmptyState
-          title={hasFilter ? 'No customers match your search' : 'No customers yet'}
-          description={hasFilter ? 'Try a different term or clear the filters.' : 'Add a customer to start selling.'}
+          title={hasFilter ? 'Ningún cliente coincide con tu búsqueda' : 'Aún no hay clientes'}
+          description={hasFilter ? 'Prueba con otro término.' : 'Agrega un cliente para empezar a vender.'}
           {...(canManage && !hasFilter
-            ? { action: <ButtonLink href="/customers/new">New customer</ButtonLink> }
+            ? { action: <ButtonLink href="/customers/new">Nuevo cliente</ButtonLink> }
             : {})}
         />
       ) : (
@@ -142,14 +81,13 @@ export default async function CustomersPage({
           <Table>
             <THead>
               <TR>
-                <TH>Name</TH>
-                <TH>Type</TH>
-                <TH>Tax id</TH>
-                <TH>Email</TH>
-                <TH>Phone</TH>
-                <TH>Status</TH>
+                <TH>Nombre</TH>
+                <TH>Tipo</TH>
+                <TH>Cédula/Ruc</TH>
+                <TH>Correo</TH>
+                <TH>Teléfono</TH>
                 <TH className="w-0">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">Acciones</span>
                 </TH>
               </TR>
             </THead>
@@ -164,14 +102,26 @@ export default async function CustomersPage({
                   <TD className="text-slate-500">{customer.email ?? '—'}</TD>
                   <TD className="text-slate-500">{customer.phone ?? '—'}</TD>
                   <TD>
-                    <Badge tone={statusTone(customer.status)}>{customer.status}</Badge>
-                  </TD>
-                  <TD>
                     <Link
                       href={`/customers/${customer.id}`}
-                      className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+                      aria-label={`${canManage ? 'Editar' : 'Ver'} ${customer.displayName}`}
+                      title={canManage ? 'Editar' : 'Ver'}
+                      className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
                     >
-                      {canManage ? 'Edit' : 'View'}
+                      <svg
+                        viewBox="0 0 24 24"
+                        className="h-4 w-4"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={1.5}
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M16.862 4.487a2.06 2.06 0 0 1 2.915 2.914L8.5 18.678l-4 1 1-4Z"
+                        />
+                      </svg>
                     </Link>
                   </TD>
                 </TR>

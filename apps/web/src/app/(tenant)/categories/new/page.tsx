@@ -6,7 +6,7 @@ import { PageHeader } from '../../../../components/ui/page-header';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { CategoryForm } from '../category-form';
 
-export const metadata = { title: 'New category · SaaS Inventory' };
+export const metadata = { title: 'Nueva categoría · SaaS Inventory' };
 
 export default async function NewCategoryPage(): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -14,8 +14,8 @@ export default async function NewCategoryPage(): Promise<React.JSX.Element> {
   if (!checker.can('categories.manage')) {
     return (
       <PageContainer>
-        <PageHeader title="New category" />
-        <NoAccess message="You need the manage-categories permission to create categories." />
+        <PageHeader title="Nueva categoría" />
+        <NoAccess message="Necesitas el permiso de gestión de categorías para crear categorías." />
       </PageContainer>
     );
   }
@@ -24,7 +24,7 @@ export default async function NewCategoryPage(): Promise<React.JSX.Element> {
 
   return (
     <PageContainer>
-      <PageHeader title="New category" description="Add a category to the catalogue." />
+      <PageHeader title="Nueva categoría" description="Agrega una categoría al catálogo." />
       <CategoryForm
         mode="create"
         parentOptions={parents.data.map((c) => ({ id: c.id, name: c.name }))}

@@ -8,7 +8,7 @@ import { Alert } from '../../../../components/ui/alert';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { LocationForm } from '../location-form';
 
-export const metadata = { title: 'New location · SaaS Inventory' };
+export const metadata = { title: 'Nuevo almacén · SaaS Inventory' };
 
 export default async function NewLocationPage(): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -16,8 +16,8 @@ export default async function NewLocationPage(): Promise<React.JSX.Element> {
   if (!checker.can('locations.manage')) {
     return (
       <PageContainer>
-        <PageHeader title="New location" />
-        <NoAccess message="You need the manage-locations permission to create locations." />
+        <PageHeader title="Nuevo almacén" />
+        <NoAccess message="Necesitas el permiso de gestión de almacenes para crear almacenes." />
       </PageContainer>
     );
   }
@@ -31,11 +31,11 @@ export default async function NewLocationPage(): Promise<React.JSX.Element> {
 
   return (
     <PageContainer>
-      <PageHeader title="New location" description="Add a place within a warehouse." />
+      <PageHeader title="Nuevo almacén" description="Agrega un lugar dentro de una sucursal." />
       {!canViewWarehouses && (
         <Alert tone="warning">
-          You cannot list warehouses, so the warehouse selector is empty. Ask an administrator for
-          the warehouses permission.
+          No puedes listar sucursales, por eso el selector de sucursal está vacío. Pide a un
+          administrador el permiso de sucursales.
         </Alert>
       )}
       <LocationForm

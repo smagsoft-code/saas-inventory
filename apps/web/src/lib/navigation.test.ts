@@ -10,9 +10,9 @@ describe('filterNavigation', () => {
     const labels = (sections: typeof NAVIGATION) =>
       sections.flatMap((s) => s.items.map((i) => i.label));
     expect(labels(withUsers)).toEqual(
-      expect.arrayContaining(['Dashboard', 'Users', 'Company settings']),
+      expect.arrayContaining(['Inicio', 'Usuarios', 'Configuración']),
     );
-    expect(labels(withoutUsers)).toEqual(['Dashboard', 'Company settings']);
+    expect(labels(withoutUsers)).toEqual(['Inicio', 'Configuración']);
   });
 
   it('shows the Catalog items only with the right permissions', () => {
@@ -20,24 +20,24 @@ describe('filterNavigation', () => {
       filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) =>
         s.items.map((i) => i.label),
       );
-    // no catalog permissions → no Categories / Attributes, and the empty "Catalog" section is dropped
-    expect(labels([])).not.toContain('Categories');
-    expect(labels([])).not.toContain('Attributes');
-    expect(labels(['categories.view'])).toContain('Categories');
-    expect(labels(['categories.view'])).not.toContain('Attributes');
-    expect(labels(['categories.view'])).not.toContain('Products');
+    // no catalog permissions → no Categorías / Atributos, and the empty "Catálogo" section is dropped
+    expect(labels([])).not.toContain('Categorías');
+    expect(labels([])).not.toContain('Atributos');
+    expect(labels(['categories.view'])).toContain('Categorías');
+    expect(labels(['categories.view'])).not.toContain('Atributos');
+    expect(labels(['categories.view'])).not.toContain('Productos');
     // Products and Attributes ride on products.view
-    expect(labels(['products.view'])).toContain('Attributes');
-    expect(labels(['products.view'])).toContain('Products');
-    expect(labels([])).not.toContain('Products');
+    expect(labels(['products.view'])).toContain('Atributos');
+    expect(labels(['products.view'])).toContain('Productos');
+    expect(labels([])).not.toContain('Productos');
   });
 
   it('shows QR codes only with catalog.qr.manage', () => {
     const labels = (perms: string[]) =>
       filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));
-    expect(labels([])).not.toContain('QR codes');
-    expect(labels(['products.view'])).not.toContain('QR codes');
-    expect(labels(['catalog.qr.manage'])).toContain('QR codes');
+    expect(labels([])).not.toContain('Códigos QR');
+    expect(labels(['products.view'])).not.toContain('Códigos QR');
+    expect(labels(['catalog.qr.manage'])).toContain('Códigos QR');
   });
 
   it('shows Roles only with core.roles.read (read-only view — no CRUD nav)', () => {
@@ -51,9 +51,9 @@ describe('filterNavigation', () => {
   it('shows Imports only with import.execute', () => {
     const labels = (perms: string[]) =>
       filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));
-    expect(labels([])).not.toContain('Imports');
-    expect(labels(['products.view'])).not.toContain('Imports');
-    expect(labels(['import.execute'])).toContain('Imports');
+    expect(labels([])).not.toContain('Importación');
+    expect(labels(['products.view'])).not.toContain('Importación');
+    expect(labels(['import.execute'])).toContain('Importación');
   });
 
   it('shows the Inventory items only with the matching permissions', () => {
@@ -61,53 +61,53 @@ describe('filterNavigation', () => {
       filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) =>
         s.items.map((i) => i.label),
       );
-    expect(labels([])).not.toContain('Warehouses');
-    expect(labels([])).not.toContain('Locations');
-    expect(labels(['warehouses.view'])).toContain('Warehouses');
-    expect(labels(['warehouses.view'])).not.toContain('Locations');
-    expect(labels(['locations.view'])).toContain('Locations');
-    // Stock on hand + Movements + Transfers ride on inventory.view
-    expect(labels([])).not.toContain('Stock on hand');
-    expect(labels([])).not.toContain('Transfers');
+    expect(labels([])).not.toContain('Sucursales');
+    expect(labels([])).not.toContain('Almacenes');
+    expect(labels(['warehouses.view'])).toContain('Sucursales');
+    expect(labels(['warehouses.view'])).not.toContain('Almacenes');
+    expect(labels(['locations.view'])).toContain('Almacenes');
+    // Inventario + Movimientos + Transferencias ride on inventory.view
+    expect(labels([])).not.toContain('Inventario');
+    expect(labels([])).not.toContain('Transferencias');
     expect(labels(['inventory.view'])).toEqual(
-      expect.arrayContaining(['Stock on hand', 'Movements', 'Transfers']),
+      expect.arrayContaining(['Inventario', 'Movimientos', 'Transferencias']),
     );
-    expect(labels(['inventory.view'])).not.toContain('Warehouses');
+    expect(labels(['inventory.view'])).not.toContain('Sucursales');
     // the transfer-request permission alone does not surface the Transfers nav item
-    expect(labels(['inventory.transfers.request'])).not.toContain('Transfers');
-    // the whole "Inventory" section is dropped when the user holds none of its permissions
+    expect(labels(['inventory.transfers.request'])).not.toContain('Transferencias');
+    // the whole "Inventario" section is dropped when the user holds none of its permissions
     expect(
       filterNavigation(NAVIGATION, createPermissionChecker([])).map((s) => s.title),
-    ).not.toContain('Inventory');
+    ).not.toContain('Inventario');
   });
 
   it('shows the Sales items only with the matching permissions', () => {
     const labels = (perms: string[]) =>
       filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));
-    expect(labels([])).not.toContain('New sale');
-    expect(labels([])).not.toContain('Customers');
-    expect(labels(['sales.orders.create'])).toContain('New sale');
-    expect(labels(['sales.orders.create'])).not.toContain('Customers');
-    expect(labels(['sales.customers.view'])).toContain('Customers');
-    expect(labels(['sales.customers.view'])).not.toContain('New sale');
+    expect(labels([])).not.toContain('Nueva venta');
+    expect(labels([])).not.toContain('Clientes');
+    expect(labels(['sales.orders.create'])).toContain('Nueva venta');
+    expect(labels(['sales.orders.create'])).not.toContain('Clientes');
+    expect(labels(['sales.customers.view'])).toContain('Clientes');
+    expect(labels(['sales.customers.view'])).not.toContain('Nueva venta');
     // Sales history rides on sales.orders.view
-    expect(labels([])).not.toContain('Sales history');
-    expect(labels(['sales.orders.view'])).toContain('Sales history');
+    expect(labels([])).not.toContain('Historial de ventas');
+    expect(labels(['sales.orders.view'])).toContain('Historial de ventas');
     // Returns rides on sales.returns.view
-    expect(labels([])).not.toContain('Returns');
-    expect(labels(['sales.returns.view'])).toContain('Returns');
-    expect(labels(['inventory.returns.manage'])).not.toContain('Returns');
-    // the whole "Sales" section is dropped when the user holds none of its permissions
-    expect(filterNavigation(NAVIGATION, createPermissionChecker([])).map((s) => s.title)).not.toContain('Sales');
+    expect(labels([])).not.toContain('Devoluciones');
+    expect(labels(['sales.returns.view'])).toContain('Devoluciones');
+    expect(labels(['inventory.returns.manage'])).not.toContain('Devoluciones');
+    // the whole "Ventas" section is dropped when the user holds none of its permissions
+    expect(filterNavigation(NAVIGATION, createPermissionChecker([])).map((s) => s.title)).not.toContain('Ventas');
   });
 
   it('shows Approvals for a holder of EITHER pricing-discount permission (anyPermission / OR gate)', () => {
     const labels = (perms: string[]) =>
       filterNavigation(NAVIGATION, createPermissionChecker(perms)).flatMap((s) => s.items.map((i) => i.label));
-    expect(labels([])).not.toContain('Approvals');
-    expect(labels(['sales.orders.view'])).not.toContain('Approvals');
-    expect(labels(['pricing.discount.request'])).toContain('Approvals');
-    expect(labels(['pricing.discount.approve'])).toContain('Approvals');
+    expect(labels([])).not.toContain('Aprobaciones');
+    expect(labels(['sales.orders.view'])).not.toContain('Aprobaciones');
+    expect(labels(['pricing.discount.request'])).toContain('Aprobaciones');
+    expect(labels(['pricing.discount.approve'])).toContain('Aprobaciones');
   });
 
   it('drops a section that becomes empty', () => {

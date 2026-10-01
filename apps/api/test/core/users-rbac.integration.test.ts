@@ -281,6 +281,110 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('core: tenant/users/roles R
     });
   });
 
+  describe('LOGIN + USUARIOS UI/UX block: "Usuario" identifier (10+ chars, not required to be an email)', () => {
+    it('creates a user with a non-email identifier of exactly 10 characters, and that user can log in with it', async () => {
+      const admin = await registerTenant('Kappa Tenant Co', 'admin@kappa-tenant.example');
+
+      const created = await inject({
+        method: 'POST',
+        url: '/api/v1/users',
+        headers: writeHeaders(admin),
+        payload: { email: 'vendedor01', fullName: 'Non Email User', password: 'a-very-long-password' },
+      });
+      expect(created.statusCode).toBe(201);
+      const body = JSON.parse(created.body) as { email: string };
+      expect(body.email).toBe('vendedor01');
+
+      const session = await loginAs('vendedor01', 'a-very-long-password');
+      expect(session.user.tenantId).toBe(admin.user.tenantId);
+    });
+
+    it('rejects an identifier shorter than 10 characters (400) — never a partial creation', async () => {
+      const admin = await registerTenant('Lambda Tenant Co', 'admin@lambda-tenant.example');
+
+      const response = await inject({
+        method: 'POST',
+        url: '/api/v1/users',
+        headers: writeHeaders(admin),
+        payload: { email: 'short', fullName: 'Too Short', password: 'a-very-long-password' },
+      });
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('a pre-existing email-style identifier keeps logging in unaffected (backward compatibility)', async () => {
+      const admin = await registerTenant('Mu Tenant Co', 'admin@mu-tenant.example');
+      const session = await loginAs('admin@mu-tenant.example', 'a-very-long-password');
+      expect(session.user.tenantId).toBe(admin.user.tenantId);
+    });
+  });
+
+  describe('LOGIN + USUARIOS UI/UX block: GET /users?q= name search (GAP-USER-FILTERS)', () => {
+    it('finds a partial, case-insensitive match against fullName — never against email', async () => {
+      const admin = await registerTenant('Nu Tenant Co', 'admin@nu-tenant.example');
+      for (const fullName of ['Juan Perez', 'Juan Carlos', 'Juan Pablo', 'Maria Lopez']) {
+        const response = await inject({
+          method: 'POST',
+          url: '/api/v1/users',
+          headers: writeHeaders(admin),
+          payload: { email: `${fullName.toLowerCase().replace(/\s+/g, '.')}@nu-tenant.example`, fullName, password: 'a-very-long-password' },
+        });
+        expect(response.statusCode).toBe(201);
+      }
+
+      const response = await inject({ method: 'GET', url: '/api/v1/users?q=juan', headers: readHeaders(admin) });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body) as { data: { fullName: string }[] };
+      const names = body.data.map((u) => u.fullName).sort();
+      expect(names).toEqual(['Juan Carlos', 'Juan Pablo', 'Juan Perez']);
+    });
+
+    it('an empty/omitted q returns the unfiltered tenant-scoped list', async () => {
+      const admin = await registerTenant('Xi Tenant Co', 'admin@xi-tenant.example');
+      await inject({
+        method: 'POST',
+        url: '/api/v1/users',
+        headers: writeHeaders(admin),
+        payload: { email: 'someone@xi-tenant.example', fullName: 'Someone Else', password: 'a-very-long-password' },
+      });
+
+      const response = await inject({ method: 'GET', url: '/api/v1/users', headers: readHeaders(admin) });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body) as { data: unknown[] };
+      expect(body.data.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it('a q with no match returns an empty page, not an error', async () => {
+      const admin = await registerTenant('Omicron Tenant Co', 'admin@omicron-tenant.example');
+
+      const response = await inject({
+        method: 'GET',
+        url: '/api/v1/users?q=zzz-no-such-name',
+        headers: readHeaders(admin),
+      });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body) as { data: unknown[]; meta: { total: number } };
+      expect(body.data).toEqual([]);
+      expect(body.meta.total).toBe(0);
+    });
+
+    it("q never crosses tenant boundaries — tenant A's search cannot surface tenant B's users", async () => {
+      const tenantA = await registerTenant('Pi Tenant Co', 'admin@pi-tenant.example');
+      await registerTenant('Rho Tenant Co', 'zzzunique-only-in-rho@rho-tenant.example');
+      // registerTenant's founding admin fullName is always "Test Admin" — searching by tenant B's
+      // distinctive company/email fragment would never match on fullName anyway; this asserts the
+      // tenant scope directly by searching for the admin's own shared fullName and checking count.
+      const response = await inject({
+        method: 'GET',
+        url: `/api/v1/users?q=${encodeURIComponent('Test Admin')}`,
+        headers: readHeaders(tenantA),
+      });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body) as { data: { id: string }[] };
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0]?.id).toBe(tenantA.user.id);
+    });
+  });
+
   describe('privilege escalation (§21/§22/§28 scenarios D/E — mandatory)', () => {
     it('a user can never change their own role, even to a role they could otherwise assign to others', async () => {
       const admin = await registerTenant('Kappa Tenant Co', 'admin@kappa-tenant.example');

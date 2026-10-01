@@ -18,7 +18,7 @@ function baseSummary(overrides: Partial<ApprovalsSummary> = {}): ApprovalsSummar
 describe('ApprovalsReportSection', () => {
   it('shows an empty state when there are no buckets — never a fake zero table', () => {
     render(<ApprovalsReportSection summary={baseSummary()} currency="USD" />);
-    expect(screen.getByText('No approval requests in this period')).toBeInTheDocument();
+    expect(screen.getByText('Sin solicitudes de aprobación en este período')).toBeInTheDocument();
   });
 
   it('renders period rows with Requests / Approval rate / Pending / Approved discount KPI tiles', () => {
@@ -40,7 +40,7 @@ describe('ApprovalsReportSection', () => {
     render(<ApprovalsReportSection summary={summary} currency="USD" />);
     expect(screen.getByText('2026-08-01')).toBeInTheDocument();
     // "Approval rate" is both a KPI tile label and a column header.
-    expect(screen.getAllByText('Approval rate').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Tasa de aprobación').length).toBeGreaterThan(0);
     // 0.75 -> "75.0%" appears in both the KPI tile and the table row.
     expect(screen.getAllByText('75.0%')).toHaveLength(2);
     expect(screen.getAllByText('180.00 USD')).toHaveLength(2);
@@ -76,27 +76,27 @@ describe('ApprovalsReportSection', () => {
       ],
     });
     render(<ApprovalsReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('Approved')).toBeInTheDocument();
-    expect(screen.getByText('Rejected')).toBeInTheDocument();
-    expect(screen.getByText('Statuses')).toBeInTheDocument();
-    expect(screen.queryByText('Approval rate')).not.toBeInTheDocument();
+    expect(screen.getByText('Aprobada')).toBeInTheDocument();
+    expect(screen.getByText('Rechazada')).toBeInTheDocument();
+    expect(screen.getByText('Estados')).toBeInTheDocument();
+    expect(screen.queryByText('Tasa de aprobación')).not.toBeInTheDocument();
   });
 });
 
 describe('ApprovalsReportError', () => {
   it('shows an access-denied title for a 403 — never a redirect to login', () => {
     render(<ApprovalsReportError status={403} message="You don't have permission to do that." />);
-    expect(screen.getByText('Access denied')).toBeInTheDocument();
+    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
   });
 
   it('shows a friendly title and the correlation id for a 5xx', () => {
     render(<ApprovalsReportError status={500} message="Something went wrong on our end." correlationId="corr-123" />);
-    expect(screen.getByText('Something went wrong on our end')).toBeInTheDocument();
+    expect(screen.getByText('Algo salió mal de nuestro lado')).toBeInTheDocument();
     expect(screen.getByText(/corr-123/)).toBeInTheDocument();
   });
 
   it('offers a retry link back to #report', () => {
     render(<ApprovalsReportError status={400} message="Some of the information provided is invalid." />);
-    expect(screen.getByRole('link', { name: 'Try again' })).toHaveAttribute('href', '#report');
+    expect(screen.getByRole('link', { name: 'Reintentar' })).toHaveAttribute('href', '#report');
   });
 });

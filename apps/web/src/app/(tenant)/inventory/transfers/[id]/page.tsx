@@ -5,6 +5,7 @@ import { createPermissionChecker } from '../../../../../lib/auth/permissions';
 import { isApiError } from '../../../../../lib/api/errors';
 import { getTransfer } from '../../../../../lib/inventory/transfers';
 import { buildLocationIndex, shortId } from '../../../../../lib/inventory/location-index';
+import { buildUserIndex } from '../../../../../lib/core/users';
 import {
   TRANSFER_STATUS_LABELS,
   transferStatusTone,
@@ -16,9 +17,10 @@ import { Card, CardBody } from '../../../../../components/ui/card';
 import { Badge } from '../../../../../components/ui/badge';
 import { NoAccess } from '../../../../../components/ui/no-access';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../../components/ui/table';
+import { CreatedToast } from './created-toast';
 import { TransferActions } from './transfer-actions';
 
-export const metadata = { title: 'Transfer · SaaS Inventory' };
+export const metadata = { title: 'Transferencia · SaaS Inventory' };
 
 /**
  * Transfer detail (`S-INV-TRANSFER-DETAIL`) — `GET /api/v1/inventory/transfers/:id`
@@ -28,17 +30,20 @@ export const metadata = { title: 'Transfer · SaaS Inventory' };
  */
 export default async function TransferDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ created?: string }>;
 }): Promise<React.JSX.Element> {
   const { id } = await params;
+  const { created } = await searchParams;
   const session = await getSession();
   const checker = createPermissionChecker(session?.permissions ?? []);
   if (!checker.can('inventory.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Transfer" />
-        <NoAccess message="You need the inventory permission to view this page." />
+        <PageHeader title="Transferencia" />
+        <NoAccess message="Necesitas el permiso de inventario para ver esta página." />
       </PageContainer>
     );
   }
@@ -53,23 +58,26 @@ export default async function TransferDetailPage({
     throw error;
   }
 
-  const index = await buildLocationIndex(checker.can('warehouses.view'));
+  const [index, userIndex] = await Promise.all([
+    buildLocationIndex(checker.can('warehouses.view')),
+    buildUserIndex(checker.can('core.users.read')),
+  ]);
   const status = transfer.status as TransferStatus;
 
   const canView = checker.can('inventory.view');
   const timeline: { label: string; value: string | undefined }[] = [
-    { label: 'Created', value: transfer.createdAt },
-    { label: 'Approved', value: transfer.approvedAt },
-    { label: 'Dispatched', value: transfer.dispatchedAt },
-    { label: 'Received', value: transfer.receivedAt },
-    { label: 'Cancelled', value: transfer.cancelledAt },
-    { label: 'Updated', value: transfer.updatedAt },
+    { label: 'Creada', value: transfer.createdAt },
+    { label: 'Aprobada', value: transfer.approvedAt },
+    { label: 'Despachada', value: transfer.dispatchedAt },
+    { label: 'Recibida', value: transfer.receivedAt },
+    { label: 'Cancelada', value: transfer.cancelledAt },
+    { label: 'Actualizada', value: transfer.updatedAt },
   ];
 
   return (
     <PageContainer>
       <PageHeader
-        title={`Transfer ${shortId(transfer.id)}`}
+        title={`Transferencia ${transfer.code}`}
         description={`${index.locationName(transfer.sourceLocationId)} → ${index.locationName(transfer.destinationLocationId)}`}
         actions={
           <Badge tone={transferStatusTone(transfer.status)}>
@@ -78,42 +86,38 @@ export default async function TransferDetailPage({
         }
       />
 
+      <CreatedToast show={created === '1'} />
+
       <Card>
         <CardBody className="flex flex-col gap-4">
           <dl className="grid max-w-lg grid-cols-[10rem_1fr] gap-y-2 text-sm">
-            <dt className="text-slate-500">From</dt>
+            <dt className="text-slate-500">Origen</dt>
             <dd className="text-slate-900">
               {index.locationName(transfer.sourceLocationId)}
               <span className="text-slate-500"> · {index.warehouseName(transfer.sourceLocationId)}</span>
             </dd>
-            <dt className="text-slate-500">To</dt>
+            <dt className="text-slate-500">Destino</dt>
             <dd className="text-slate-900">
               {index.locationName(transfer.destinationLocationId)}
               <span className="text-slate-500"> · {index.warehouseName(transfer.destinationLocationId)}</span>
             </dd>
-            <dt className="text-slate-500">Requested by</dt>
-            <dd className="text-slate-900">
-              <code className="text-xs">{shortId(transfer.requestedBy)}</code>
-            </dd>
+            <dt className="text-slate-500">Solicitada por</dt>
+            <dd className="text-slate-900">{userIndex.userName(transfer.requestedBy)}</dd>
             {transfer.approvedBy && (
               <>
-                <dt className="text-slate-500">Approved by</dt>
-                <dd className="text-slate-900">
-                  <code className="text-xs">{shortId(transfer.approvedBy)}</code>
-                </dd>
+                <dt className="text-slate-500">Aprobada por</dt>
+                <dd className="text-slate-900">{userIndex.userName(transfer.approvedBy)}</dd>
               </>
             )}
             {transfer.dispatchedBy && (
               <>
-                <dt className="text-slate-500">Dispatched by</dt>
-                <dd className="text-slate-900">
-                  <code className="text-xs">{shortId(transfer.dispatchedBy)}</code>
-                </dd>
+                <dt className="text-slate-500">Despachada por</dt>
+                <dd className="text-slate-900">{userIndex.userName(transfer.dispatchedBy)}</dd>
               </>
             )}
             {transfer.notes && (
               <>
-                <dt className="text-slate-500">Notes</dt>
+                <dt className="text-slate-500">Notas</dt>
                 <dd className="whitespace-pre-wrap text-slate-900">{transfer.notes}</dd>
               </>
             )}
@@ -126,39 +130,26 @@ export default async function TransferDetailPage({
                 </div>
               ))}
           </dl>
-
-          <div className="flex flex-wrap gap-4 text-sm">
-            <Link
-              href={`/inventory?locationId=${transfer.sourceLocationId}`}
-              className="font-medium text-slate-700 underline underline-offset-2"
-            >
-              Source location stock
-            </Link>
-            <Link
-              href={`/inventory?locationId=${transfer.destinationLocationId}`}
-              className="font-medium text-slate-700 underline underline-offset-2"
-            >
-              Destination location stock
-            </Link>
-          </div>
         </CardBody>
       </Card>
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Lines</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Líneas</h2>
           <Table>
             <THead>
               <TR>
-                <TH>Variant</TH>
-                <TH className="text-right">Requested</TH>
-                <TH className="text-right">Dispatched</TH>
-                <TH className="text-right">Received</TH>
-                <TH className="text-right">In transit</TH>
+                <TH>Producto</TH>
+                <TH className="text-right">Solicitado</TH>
+                <TH className="text-right">Despachado</TH>
+                <TH className="text-right">Recibido</TH>
+                <TH className="text-right">En tránsito</TH>
               </TR>
             </THead>
             <TBody>
-              {transfer.items.map((item) => (
+              {transfer.items.map((item) => {
+                const label = item.productName ? (item.sku ? `${item.productName} — ${item.sku}` : item.productName) : shortId(item.productVariantId);
+                return (
                 <TR key={item.id}>
                   <TD>
                     {canView ? (
@@ -166,10 +157,10 @@ export default async function TransferDetailPage({
                         href={`/inventory/movements?productVariantId=${item.productVariantId}`}
                         className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                       >
-                        <code className="text-xs">{shortId(item.productVariantId)}</code>
+                        {label}
                       </Link>
                     ) : (
-                      <code className="text-xs text-slate-500">{shortId(item.productVariantId)}</code>
+                      <span className="text-sm text-slate-500">{label}</span>
                     )}
                   </TD>
                   <TD className="text-right text-slate-500">{item.quantityRequested}</TD>
@@ -177,7 +168,8 @@ export default async function TransferDetailPage({
                   <TD className="text-right text-slate-500">{item.quantityReceived}</TD>
                   <TD className="text-right text-slate-500">{item.quantityInTransit}</TD>
                 </TR>
-              ))}
+                );
+              })}
             </TBody>
           </Table>
         </CardBody>
@@ -189,6 +181,8 @@ export default async function TransferDetailPage({
         items={transfer.items.map((item) => ({
           id: item.id,
           productVariantId: item.productVariantId,
+          ...(item.productName ? { productName: item.productName } : {}),
+          ...(item.sku ? { sku: item.sku } : {}),
           quantityRequested: item.quantityRequested,
           quantityDispatched: item.quantityDispatched,
           quantityReceived: item.quantityReceived,
@@ -199,7 +193,7 @@ export default async function TransferDetailPage({
       />
 
       <Link href="/inventory/transfers" className="text-sm font-medium text-slate-500 hover:underline">
-        Back to transfers
+        Volver a transferencias
       </Link>
     </PageContainer>
   );

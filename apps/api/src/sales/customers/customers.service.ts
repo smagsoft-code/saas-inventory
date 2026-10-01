@@ -21,24 +21,17 @@ function toResponse(row: CustomerRow): CustomerResponseDto {
   return {
     id: row.id,
     type: row.type,
+    firstName: row.firstName,
+    ...(row.lastName ? { lastName: row.lastName } : {}),
     displayName: row.displayName,
     ...(row.taxId ? { taxId: row.taxId } : {}),
     ...(row.email ? { email: row.email } : {}),
     ...(row.phone ? { phone: row.phone } : {}),
-    ...(row.address ? { address: row.address as Record<string, unknown> } : {}),
+    ...(row.address ? { address: row.address } : {}),
     status: row.status,
-    ...(row.notes ? { notes: row.notes } : {}),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
-}
-
-function addressToJson(address: Record<string, unknown> | undefined): Record<string, unknown> | null {
-  if (!address) {
-    return null;
-  }
-  const entries = Object.entries(address).filter(([, value]) => value !== undefined && value !== null && value !== '');
-  return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
 /**
@@ -90,12 +83,12 @@ export class CustomersService {
           id: generateId(),
           tenantId,
           type: dto.type,
-          displayName: dto.displayName,
-          taxId: dto.taxId ?? null,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+          taxId: dto.taxId,
           email: dto.email ?? null,
           phone: dto.phone ?? null,
-          address: addressToJson(dto.address as Record<string, unknown> | undefined),
-          notes: dto.notes ?? null,
+          address: dto.address ?? null,
         });
       } catch (error) {
         if (isUniqueViolation(error)) {
@@ -128,13 +121,13 @@ export class CustomersService {
       try {
         updated = await this.customersRepository.update(tx, tenantId, id, {
           ...(dto.type !== undefined ? { type: dto.type } : {}),
-          ...(dto.displayName !== undefined ? { displayName: dto.displayName } : {}),
+          ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
+          ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
           ...(dto.taxId !== undefined ? { taxId: dto.taxId } : {}),
           ...(dto.email !== undefined ? { email: dto.email } : {}),
           ...(dto.phone !== undefined ? { phone: dto.phone } : {}),
-          ...(dto.address !== undefined ? { address: addressToJson(dto.address as Record<string, unknown>) } : {}),
+          ...(dto.address !== undefined ? { address: dto.address } : {}),
           ...(dto.status !== undefined ? { status: dto.status } : {}),
-          ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
         });
       } catch (error) {
         if (isUniqueViolation(error)) {

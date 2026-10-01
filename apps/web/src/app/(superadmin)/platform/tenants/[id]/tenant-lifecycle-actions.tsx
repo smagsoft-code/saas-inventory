@@ -45,9 +45,9 @@ export function TenantLifecycleActions({
       router.refresh();
     } catch (err) {
       if (isApiError(err) && err.status === 403) {
-        setError('Your platform session is not authorized to perform this action.');
+        setError('Tu sesión de plataforma no está autorizada para realizar esta acción.');
       } else if (isApiError(err) && err.status === 404) {
-        setError('This company no longer exists.');
+        setError('Esta empresa ya no existe.');
       } else {
         setError(httpErrorMessage(err));
       }
@@ -61,12 +61,12 @@ export function TenantLifecycleActions({
       <div className="flex flex-col gap-3">
         {error && <Alert tone="error">{error}</Alert>}
         <p className="text-sm text-slate-500">
-          Reactivating restores access for this company&apos;s users immediately. The action is
-          recorded in the platform audit log.
+          Reactivar restaura el acceso de los usuarios de esta empresa de inmediato. La acción queda
+          registrada en el log de auditoría de la plataforma.
         </p>
         <div>
           <Button loading={busy} disabled={busy} onClick={() => void run()}>
-            Activate company
+            Activar empresa
           </Button>
         </div>
       </div>
@@ -77,24 +77,25 @@ export function TenantLifecycleActions({
     <div className="flex flex-col gap-3">
       {error && <Alert tone="error">{error}</Alert>}
       <p className="text-sm text-slate-500">
-        Suspending blocks every user of <span className="font-medium">{tenantName}</span> from using
-        the platform, effective immediately (existing sessions stop working on the next request).
-        Reactivation is instant. The action is recorded in the platform audit log.
+        Suspender bloquea a todos los usuarios de <span className="font-medium">{tenantName}</span> el uso
+        de la plataforma, con efecto inmediato (las sesiones existentes dejan de funcionar en la
+        siguiente solicitud). La reactivación es instantánea. La acción queda registrada en el log
+        de auditoría de la plataforma.
       </p>
       {confirming ? (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          <span>Suspend {tenantName}?</span>
+          <span>¿Suspender {tenantName}?</span>
           <Button variant="danger" size="sm" loading={busy} disabled={busy} onClick={() => void run()}>
-            Confirm suspend
+            Confirmar suspensión
           </Button>
           <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(false)}>
-            Keep active
+            Mantener activa
           </Button>
         </div>
       ) : (
         <div>
           <Button variant="danger" disabled={busy} onClick={() => setConfirming(true)}>
-            Suspend company
+            Suspender empresa
           </Button>
         </div>
       )}

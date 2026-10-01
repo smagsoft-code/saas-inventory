@@ -241,7 +241,9 @@ export class OrdersService {
       const orderId = generateId();
       const orderNumber = await this.ordersRepository.nextOrderNumber(tx, tenantId);
       const invoiceStatus = dto.documentType === 'invoice' ? 'pending' : null;
-      const address = (customer.address ?? null) as Record<string, unknown> | null;
+      // customers.address is now a single free-form text line (migration 0037); the order's own
+      // snapshot column keeps its original structured jsonb shape, so wrap it as line1.
+      const address = customer.address ? { line1: customer.address } : null;
 
       const order = await this.ordersRepository.create(tx, {
         id: orderId,
@@ -524,8 +526,7 @@ export class OrdersService {
     if (!customer.taxId) missing.push('taxId');
     if (!customer.email) missing.push('email');
     if (!customer.phone) missing.push('phone');
-    const address = customer.address as Record<string, unknown> | null;
-    if (!address || Object.keys(address).length === 0) missing.push('address');
+    if (!customer.address) missing.push('address');
     if (missing.length > 0) {
       throw new UnprocessableEntityException(`Customer is missing data required to create a sales order: ${missing.join(', ')}.`);
     }

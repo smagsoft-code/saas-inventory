@@ -20,6 +20,7 @@ function transfer(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: TRANSFER_ID,
     tenantId: TENANT_ID,
+    code: 'WH-SRC-001',
     sourceLocationId: SOURCE_ID,
     destinationLocationId: DEST_ID,
     status: 'draft',
@@ -53,11 +54,14 @@ function item(overrides: Partial<Record<string, unknown>> = {}) {
 }
 
 function buildService() {
-  const transfersRepository = { findById: vi.fn(), lockById: vi.fn(), listByTenant: vi.fn(), create: vi.fn(), update: vi.fn() };
+  const transfersRepository = { findById: vi.fn(), lockById: vi.fn(), listByTenant: vi.fn(), create: vi.fn(), update: vi.fn(), nextTransferCode: vi.fn() };
   const itemsRepository = { listByTransfer: vi.fn(), findById: vi.fn(), createMany: vi.fn(), setDispatched: vi.fn(), incrementReceived: vi.fn() };
   const receiptsRepository = { createReceipt: vi.fn(), createReceiptItems: vi.fn(), listByTransfer: vi.fn() };
   const locationsRepository = { findById: vi.fn() };
-  const productVariantsLookup = { exists: vi.fn() };
+  const warehousesRepository = { findById: vi.fn() };
+  const balancesRepository = { findByVariantAndLocation: vi.fn() };
+  const productVariantsLookup = { exists: vi.fn(), findByIds: vi.fn().mockResolvedValue([]) };
+  const workflowConfigRepository = { get: vi.fn().mockResolvedValue({ requireApproval: true, requirePreparation: true }) };
   const locationAuthorizationService = { assertAccess: vi.fn() };
   const stockLedgerService = { applyMovement: vi.fn() };
   const idempotencyKeysRepository = { find: vi.fn(), create: vi.fn() };
@@ -70,7 +74,10 @@ function buildService() {
     itemsRepository as never,
     receiptsRepository as never,
     locationsRepository as never,
+    warehousesRepository as never,
+    balancesRepository as never,
     productVariantsLookup as never,
+    workflowConfigRepository as never,
     locationAuthorizationService as never,
     stockLedgerService as never,
     idempotencyKeysRepository as never,
@@ -80,6 +87,9 @@ function buildService() {
   );
 
   itemsRepository.listByTransfer.mockResolvedValue([]);
+  warehousesRepository.findById.mockResolvedValue({ id: 'warehouse-1', code: 'WH' });
+  balancesRepository.findByVariantAndLocation.mockResolvedValue({ quantityAvailable: '1000' });
+  transfersRepository.nextTransferCode.mockResolvedValue('WH-SRC-001');
 
   return {
     service,
@@ -87,6 +97,9 @@ function buildService() {
     itemsRepository,
     receiptsRepository,
     locationsRepository,
+    warehousesRepository,
+    balancesRepository,
+    workflowConfigRepository,
     productVariantsLookup,
     locationAuthorizationService,
     stockLedgerService,
@@ -144,8 +157,108 @@ describe('TransfersService', () => {
 
       await service.create(TENANT_ID, ACTOR_ID, { sourceLocationId: SOURCE_ID, destinationLocationId: DEST_ID, items: [{ productVariantId: VARIANT_ID, quantityRequested: 5 }] }, META);
 
-      expect(transfersRepository.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ sourceLocationId: SOURCE_ID, destinationLocationId: DEST_ID, requestedBy: ACTOR_ID }));
+      expect(transfersRepository.create).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ code: 'WH-SRC-001', sourceLocationId: SOURCE_ID, destinationLocationId: DEST_ID, requestedBy: ACTOR_ID }),
+      );
       expect(itemsRepository.createMany).toHaveBeenCalledWith(expect.anything(), [expect.objectContaining({ productVariantId: VARIANT_ID, quantityRequested: 5 })]);
+    });
+
+    it('rejects a quantityRequested above the source location\'s available stock (409) — spec §4, an advisory pre-check, not a reservation', async () => {
+      const { service, locationsRepository, productVariantsLookup, balancesRepository, transfersRepository } = buildService();
+      locationsRepository.findById.mockResolvedValue({ id: SOURCE_ID, warehouseId: 'warehouse-1', code: 'SRC' });
+      productVariantsLookup.exists.mockResolvedValue(true);
+      balancesRepository.findByVariantAndLocation.mockResolvedValue({ quantityAvailable: '3' });
+
+      await expect(
+        service.create(TENANT_ID, ACTOR_ID, { sourceLocationId: SOURCE_ID, destinationLocationId: DEST_ID, items: [{ productVariantId: VARIANT_ID, quantityRequested: 5 }] }, META),
+      ).rejects.toThrow(ConflictException);
+      expect(transfersRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('treats a missing balance row as zero available stock', async () => {
+      const { service, locationsRepository, productVariantsLookup, balancesRepository } = buildService();
+      locationsRepository.findById.mockResolvedValue({ id: SOURCE_ID, warehouseId: 'warehouse-1', code: 'SRC' });
+      productVariantsLookup.exists.mockResolvedValue(true);
+      balancesRepository.findByVariantAndLocation.mockResolvedValue(undefined);
+
+      await expect(
+        service.create(TENANT_ID, ACTOR_ID, { sourceLocationId: SOURCE_ID, destinationLocationId: DEST_ID, items: [{ productVariantId: VARIANT_ID, quantityRequested: 1 }] }, META),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('generates the code from the source warehouse/location scope (nextTransferCode)', async () => {
+      const { service, locationsRepository, productVariantsLookup, transfersRepository, warehousesRepository } = buildService();
+      locationsRepository.findById.mockResolvedValue({ id: SOURCE_ID, warehouseId: 'warehouse-1', code: 'SRC' });
+      productVariantsLookup.exists.mockResolvedValue(true);
+      warehousesRepository.findById.mockResolvedValue({ id: 'warehouse-1', code: 'MATR' });
+      transfersRepository.nextTransferCode.mockResolvedValue('MATR-SRC-004');
+      transfersRepository.create.mockResolvedValue(transfer({ code: 'MATR-SRC-004' }));
+
+      await service.create(TENANT_ID, ACTOR_ID, { sourceLocationId: SOURCE_ID, destinationLocationId: DEST_ID, items: [{ productVariantId: VARIANT_ID, quantityRequested: 1 }] }, META);
+
+      expect(transfersRepository.nextTransferCode).toHaveBeenCalledWith(expect.anything(), TENANT_ID, SOURCE_ID, 'MATR', 'SRC');
+      expect(transfersRepository.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ code: 'MATR-SRC-004' }));
+    });
+
+    it('F17-TRANSFERS-AUDIT §1: auto-approves but does NOT auto-prepare when only requireApproval is disabled', async () => {
+      const { service, locationsRepository, productVariantsLookup, transfersRepository, workflowConfigRepository, stockLedgerService } = buildService();
+      locationsRepository.findById.mockResolvedValue({ id: SOURCE_ID, warehouseId: 'warehouse-1', code: 'SRC' });
+      productVariantsLookup.exists.mockResolvedValue(true);
+      workflowConfigRepository.get.mockResolvedValue({ requireApproval: false, requirePreparation: true });
+      transfersRepository.create.mockResolvedValue(transfer({ status: 'draft' }));
+      transfersRepository.update.mockImplementation((..._args: unknown[]) => {
+        const values = _args[3] as Record<string, unknown>;
+        return Promise.resolve(transfer({ status: 'approved', ...values }));
+      });
+
+      const result = await service.create(
+        TENANT_ID,
+        ACTOR_ID,
+        { sourceLocationId: SOURCE_ID, destinationLocationId: DEST_ID, items: [{ productVariantId: VARIANT_ID, quantityRequested: 1 }] },
+        META,
+      );
+
+      expect(result.status).toBe('approved');
+      expect(stockLedgerService.applyMovement).not.toHaveBeenCalled();
+    });
+
+    it('F17-TRANSFERS-AUDIT §1: auto-approves AND auto-prepares (reserves stock) when both gates are disabled', async () => {
+      const {
+        service,
+        locationsRepository,
+        productVariantsLookup,
+        transfersRepository,
+        workflowConfigRepository,
+        stockLedgerService,
+        itemsRepository,
+        locationAuthorizationService,
+      } = buildService();
+      locationsRepository.findById.mockResolvedValue({ id: SOURCE_ID, warehouseId: 'warehouse-1', code: 'SRC' });
+      productVariantsLookup.exists.mockResolvedValue(true);
+      workflowConfigRepository.get.mockResolvedValue({ requireApproval: false, requirePreparation: false });
+      transfersRepository.create.mockResolvedValue(transfer({ status: 'draft' }));
+      transfersRepository.update.mockImplementation((..._args: unknown[]) => {
+        const values = _args[3] as { status?: string };
+        return Promise.resolve(transfer({ status: values.status ?? 'draft', ...values }));
+      });
+      itemsRepository.listByTransfer.mockResolvedValue([item({ quantityRequested: '3' })]);
+      locationAuthorizationService.assertAccess.mockResolvedValue(undefined);
+      stockLedgerService.applyMovement.mockResolvedValue({ balance: {}, movement: {} });
+
+      const result = await service.create(
+        TENANT_ID,
+        ACTOR_ID,
+        { sourceLocationId: SOURCE_ID, destinationLocationId: DEST_ID, items: [{ productVariantId: VARIANT_ID, quantityRequested: 3 }] },
+        META,
+      );
+
+      expect(result.status).toBe('preparing');
+      expect(locationAuthorizationService.assertAccess).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ACTOR_ID, SOURCE_ID);
+      expect(stockLedgerService.applyMovement).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ movementType: 'RESERVATION', quantity: 3, locationId: SOURCE_ID }),
+      );
     });
   });
 
@@ -154,6 +267,35 @@ describe('TransfersService', () => {
       const { service, transfersRepository } = buildService();
       transfersRepository.lockById.mockResolvedValue(transfer({ status: 'approved' }));
       await expect(service.approve(TENANT_ID, ACTOR_ID, TRANSFER_ID, META)).rejects.toThrow(ConflictException);
+    });
+
+    it('transitions draft to approved and does not auto-advance when both gates are required (default)', async () => {
+      const { service, transfersRepository, stockLedgerService } = buildService();
+      transfersRepository.lockById.mockResolvedValue(transfer({ status: 'draft' }));
+      transfersRepository.update.mockResolvedValue(transfer({ status: 'approved', approvedBy: ACTOR_ID }));
+
+      const result = await service.approve(TENANT_ID, ACTOR_ID, TRANSFER_ID, META);
+
+      expect(result.status).toBe('approved');
+      expect(stockLedgerService.applyMovement).not.toHaveBeenCalled();
+    });
+
+    it('F17-TRANSFERS-AUDIT §1: auto-prepares (reserves stock) right after approving when requirePreparation is disabled', async () => {
+      const { service, transfersRepository, workflowConfigRepository, itemsRepository, locationAuthorizationService, stockLedgerService } = buildService();
+      transfersRepository.lockById.mockResolvedValue(transfer({ status: 'draft' }));
+      workflowConfigRepository.get.mockResolvedValue({ requireApproval: true, requirePreparation: false });
+      transfersRepository.update.mockImplementation((..._args: unknown[]) => {
+        const values = _args[3] as { status?: string };
+        return Promise.resolve(transfer({ status: values.status ?? 'approved', ...values }));
+      });
+      itemsRepository.listByTransfer.mockResolvedValue([item({ quantityRequested: '5' })]);
+      locationAuthorizationService.assertAccess.mockResolvedValue(undefined);
+      stockLedgerService.applyMovement.mockResolvedValue({ balance: {}, movement: {} });
+
+      const result = await service.approve(TENANT_ID, ACTOR_ID, TRANSFER_ID, META);
+
+      expect(result.status).toBe('preparing');
+      expect(stockLedgerService.applyMovement).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ movementType: 'RESERVATION', quantity: 5 }));
     });
 
     it('throws NotFoundException for a nonexistent/foreign-tenant transfer', async () => {

@@ -87,11 +87,11 @@ export function WarehouseForm({
     const next: { name?: string; code?: string } = {};
     const trimmedName = name.trim();
     if (trimmedName.length < 2 || trimmedName.length > 120) {
-      next.name = 'Name must be 2–120 characters.';
+      next.name = 'El nombre debe tener 2–120 caracteres.';
     }
     const trimmedCode = code.trim();
     if (trimmedCode.length < 1 || trimmedCode.length > 40 || !INVENTORY_CODE_PATTERN.test(trimmedCode)) {
-      next.code = 'Code must be uppercase letters and numbers, optionally hyphen-separated.';
+      next.code = 'El código debe tener mayúsculas y números, opcionalmente separados por guiones.';
     }
     setFieldError(next);
     return Object.keys(next).length === 0;
@@ -141,7 +141,7 @@ export function WarehouseForm({
       router.refresh();
     } catch (err) {
       if (isApiError(err) && err.status === 403) {
-        setError('You no longer have permission to make this change.');
+        setError('Ya no tienes permiso para hacer este cambio.');
       } else {
         setError(httpErrorMessage(err));
       }
@@ -152,7 +152,7 @@ export function WarehouseForm({
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex max-w-md flex-col gap-4">
-      <Field label="Name" required {...(fieldError.name ? { error: fieldError.name } : {})}>
+      <Field label="Nombre" required {...(fieldError.name ? { error: fieldError.name } : {})}>
         <Input
           required
           minLength={2}
@@ -166,9 +166,9 @@ export function WarehouseForm({
       </Field>
 
       <Field
-        label="Code"
+        label="Código"
         required
-        hint="Uppercase letters and numbers, optionally hyphen-separated. Unique within the company."
+        hint="Mayúsculas y números, opcionalmente separados por guiones. Único dentro de la empresa."
         {...(fieldError.code ? { error: fieldError.code } : {})}
       >
         <Input
@@ -183,7 +183,7 @@ export function WarehouseForm({
       </Field>
 
       <fieldset className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-        <legend className="px-1 text-xs font-medium text-slate-500">Address (optional)</legend>
+        <legend className="px-1 text-xs font-medium text-slate-500">Dirección (opcional)</legend>
         {ADDRESS_FIELDS.map((key) => (
           <Field key={key} label={ADDRESS_FIELD_LABELS[key]}>
             <Input
@@ -195,7 +195,7 @@ export function WarehouseForm({
       </fieldset>
 
       {mode === 'edit' && (
-        <Field label="Status">
+        <Field label="Estado">
           <Select
             value={status}
             onChange={(e) => {
@@ -203,18 +203,18 @@ export function WarehouseForm({
               setSuccess(false);
             }}
           >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="active">Activa</option>
+            <option value="inactive">Inactiva</option>
           </Select>
         </Field>
       )}
 
       {error && <Alert tone="error">{error}</Alert>}
-      {success && <Alert tone="success">Warehouse saved.</Alert>}
+      {success && <Alert tone="success">Sucursal guardada.</Alert>}
 
       <div className="flex gap-2">
         <Button type="submit" loading={submitting} disabled={!dirty} className="w-fit">
-          {mode === 'create' ? 'Create warehouse' : 'Save changes'}
+          {mode === 'create' ? 'Crear sucursal' : 'Guardar cambios'}
         </Button>
         <Button
           type="button"
@@ -222,7 +222,7 @@ export function WarehouseForm({
           className="w-fit"
           onClick={() => router.push('/warehouses')}
         >
-          {mode === 'create' ? 'Cancel' : 'Back to warehouses'}
+          {mode === 'create' ? 'Cancelar' : 'Volver a sucursales'}
         </Button>
       </div>
     </form>

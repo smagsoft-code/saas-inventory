@@ -36,7 +36,12 @@ Legend for support: **A** fully supported · **B** additive backend change recom
   (FASE 16 behaviour) before showing the form.
 - **Actions:** submit → on `authenticated` redirect to `returnTo` (open-redirect-safe); on
   `tenant_selection_required` → in-place transition to `S-AUTH-SELECT-TENANT`.
-- **Validation:** email format + non-empty password (client hint only); backend is authority.
+- **Validation:** non-empty identifier ("Usuario" — a real email still works, and so does the
+  10+ character username `S-USER-NEW` now also accepts) + non-empty password (client hint only);
+  backend is authority. **LOGIN + USUARIOS UI/UX block:** the "Crear empresa"/"Crear cuenta" CTA
+  to `/register` was removed from this screen — tenant creation is invitation-only now
+  (ADR-0036); `/register` and `POST /auth/register` are untouched and still directly reachable
+  (no other caller was found referencing the removed link).
 - **Errors:** generic `401 "Invalid email or password."` for wrong password / unknown email /
   disabled identity / pending_credential / no active membership (never distinguished — security.md
   §6). Stray field → `400` (DTO whitelist). `429` rate limited (`AuthThrottlerGuard`).
@@ -178,26 +183,42 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 
 ### `S-USERS-LIST` — Users
 - **Persona:** TA · **Route:** `/users` · **Scope:** tenant · **Permission:** `core.users.read`.
-- **Endpoint:** `GET /api/v1/users` — query `{ page, pageSize, status? }` → `PaginatedResult<UserResponseDto>`;
-  each `{ id, email, fullName, status, roleNames[], lastLoginAt?, createdAt }`.
-- **Columns:** fullName, email, status badge (`invited`/`active`/`disabled`), roleNames, lastLoginAt.
-- **Filters:** status (single). **No role filter, no name search, no date filter** →
-  [`GAP-USER-FILTERS`](f17-gaps.md#gap-user-filters) (F18/additive).
+- **Endpoint:** `GET /api/v1/users` — query `{ page, pageSize, status?, q? }` → `PaginatedResult<UserResponseDto>`;
+  each `{ id, email, fullName, status, roleNames[], lastLoginAt?, createdAt }`. `q` (added by the
+  **LOGIN + USUARIOS UI/UX block**) is a free-text, case-insensitive, partial match against
+  `fullName` only (never `email`), resolved server-side (`UsersRepository.findManyByTenant`,
+  `ILIKE '%q%'`) — never a client-side filter over the already-paged slice.
+- **Columns:** fullName, "Usuario" (the `email` field, relabeled — no DB/wire rename), status badge
+  (`invited`/`active`/`disabled`), roleNames, a trailing pencil-icon action column.
+- **Filters:** status (backend only, no UI control yet); **name search (`q`), debounced, live** —
+  `users-filters.tsx`, same convention `ProductsFilters` established. **No role filter, no date
+  filter** → [`GAP-USER-FILTERS`](f17-gaps.md#gap-user-filters) **PARTIALLY RESOLVED** (name search
+  only).
 - **Sort:** none exposed → [`GAP-SORT`](f17-gaps.md#gap-sort).
-- **Pagination:** offset (`meta`).
-- **Actions:** New user (`core.users.create`); row → `S-USER-DETAIL`.
-- **Responsive:** table → cards mobile (name + status + roles line).
-- **F17** (exists FASE 16 — F17 = through-the-shell + filter/pagination polish).
+- **Pagination:** offset (`meta`); UI still fetches a single fixed `pageSize: 50` page, no pager
+  control — pre-existing, unchanged by this block.
+- **Actions:** New user (`core.users.create`); row name **or** the trailing pencil icon →
+  `S-USER-DETAIL` (identical `href`, identical permission surface — the icon is not a second edit
+  implementation, just a second entry point to the same link).
+- **Responsive:** table → horizontal scroll on narrow viewports (pre-existing `overflow-x-auto`,
+  unchanged); verified down to ~390px.
+- **F17** (exists FASE 16 — F17 = through-the-shell + filter/pagination polish); name search + edit
+  icon added by the **LOGIN + USUARIOS UI/UX block**.
 
 ### `S-USER-NEW` — Create user
 - **Persona:** TA · **Route:** `/users/new` · **Permission:** `core.users.create`.
 - **Endpoint:** `POST /api/v1/users` → `CreateUserDto` (email, fullName, password, roleId) → `UserResponseDto`.
   (Also provisions the global `identities` + `tenant_memberships` rows — 016-C — transparent to the UI.)
 - **Role selector source:** `GET /api/v1/roles` (`core.roles.read`).
-- **Validation:** email format, password minLength 10, role required. Self-escalation rule
-  (ADR-0031) is enforced **server-side** — `core.roles.assign` never lets a user grant a role
-  above their own; the UI reflects the resulting 403, never re-implements the rule.
-- **Errors:** `409` duplicate email in tenant; `403` escalation attempt.
+- **Validation:** identifier ("Usuario") minLength 10 — **LOGIN + USUARIOS UI/UX block:** no
+  longer required to be a valid email address (`CreateUserDto.email` still validates, just
+  `@IsString() @Length(10, 128)` instead of `@IsEmail()` — the DB column and wire field are both
+  still named `email`, unchanged, since nothing downstream depends on email *format*: ADR-0033's
+  `identities.email` has no format CHECK and is matched by plain case-insensitive string equality)
+  — password minLength 10, role required. Self-escalation rule (ADR-0031) is enforced
+  **server-side** — `core.roles.assign` never lets a user grant a role above their own; the UI
+  reflects the resulting 403, never re-implements the rule.
+- **Errors:** `409` duplicate identifier in tenant; `403` escalation attempt.
 - **F17** (exists FASE 16).
 
 ### `S-USER-DETAIL` / `S-USER-EDIT` — User detail & edit
@@ -723,15 +744,47 @@ See [f17-super-admin.md](f17-super-admin.md) for the full analysis. Summary of s
 - **Columns:** name, slug, status badge (`active`/`suspended`/`archived`), isDemo, createdAt.
 - **Filters/sort/grouping:** **all client-side** over the array (no server params).
 - **Actions:** row → `S-SA-TENANT-DETAIL`.
-- **Gaps:** no user counts / activity / any tenant-scoped data (isolation — **C**); no create-tenant
-  (platform-initiated) → [`GAP-SA-CREATE-TENANT`](f17-gaps.md#gap-sa-create-tenant).
+- **Gaps:** no user counts / activity / any tenant-scoped data outside a live support session
+  (isolation — **C**); ~~no create-tenant~~ **RESOLVED — ADR-0036, `S-SA-TENANT-NEW`.**
 - **F17** (for exactly these 6 fields + suspend/activate).
 - **BUILT — F17-13 (2026-09)** at `/platform/tenants`. `page.tsx` (server, `listPlatformTenants()`)
   + `platform-tenants-table.tsx` (client): search (name/slug), status filter, demo/real filter,
   sort (created ↕ / name) — all over the one fetched array, **no extra request, no server param
-  invented**. `Table`/`Badge`/`EmptyState`/`Field` reused. Read-only: no "New company" (no
-  endpoint). "N of M companies" live count; "no companies match these filters" ≠ page-level "no
-  companies yet" empty state.
+  invented**. `Table`/`Badge`/`EmptyState`/`Field` reused. "N of M companies" live count; "no
+  companies match these filters" ≠ page-level "no companies yet" empty state. **ADR-0036 (2026-09)**
+  adds a "Crear empresa" action → `S-SA-TENANT-NEW`.
+
+### `S-SA-TENANT-NEW` — Create a company (ADR-0036)
+- **Persona:** PA · **Route:** `(superadmin)/tenants/new` · **Scope:** platform.
+- **Endpoint:** `POST /api/v1/platform/tenants` (`@PlatformOnly`) → tenant + admin +
+  `identityReused` + a one-time `invitationUrl`/`invitationExpiresAt` when a new credential is
+  needed.
+- **Form:** `companyName`, `adminFullName`, `adminEmail` — **no password field, ever** (§1 of the
+  prompt this ADR implements). On success: either an "identity reused, no invitation needed" notice
+  (the email already had an active global identity — ADR-0033), or the invitation link shown
+  **exactly once** with a copy-to-clipboard control and its expiry.
+- **BUILT — ADR-0036 (2026-09)** at `/platform/tenants/new`, `create-tenant-form.tsx`.
+
+### `S-SA-SUPPORT-START` — Start a Tenant Support session (ADR-0036)
+- **Persona:** PA · **Route:** inline on `S-SA-TENANT-DETAIL` · **Scope:** platform, tenant-scoped
+  once started.
+- **Endpoint:** `POST /api/v1/platform/tenants/:tenantId/support-sessions` → `{mode, reason}` →
+  `platform_support_sessions` row.
+- **Form:** mode (`Solo lectura` / `Intervención`) + a required reason (mandatory for write,
+  encouraged for read) — never a tenant credential, never a tenant login.
+- **BUILT — ADR-0036 (2026-09)**, `start-support-session-form.tsx`.
+
+### `S-SA-SUPPORT` — Tenant Support panel (ADR-0036)
+- **Persona:** PA · **Route:** `(superadmin)/tenants/[id]/support` · **Scope:** exactly one tenant,
+  only while a `platform_support_sessions` row for it is `active`.
+- **Endpoints:** `GET .../support/users`, `GET .../support/warehouses` (`SUPPORT_READ`);
+  `PATCH .../support/warehouses/:warehouseId/status` (`SUPPORT_WRITE`, the one curated write
+  action — see [`GAP-SUPPORT-READ-SCOPE`](f17-gaps.md#gap-support-read-scope)). Every route re-checks
+  the live session server-side (`SupportSessionGuard`) regardless of what the page renders.
+  No session for this tenant → a clear "start one" message, never a raw 403.
+- **BUILT — ADR-0036 (2026-09)** at `/platform/tenants/[id]/support`, plus a persistent
+  "MODO SOPORTE" banner (`support-mode-banner.tsx`, rendered from `PlatformShell` on every
+  `(superadmin)/` page while a session is active) with an explicit exit action.
 
 ### `S-SA-TENANT-DETAIL` — Company detail
 - **Persona:** PA · **Route:** `(superadmin)/tenants/[id]` · **Scope:** platform.
@@ -739,8 +792,10 @@ See [f17-super-admin.md](f17-super-admin.md) for the full analysis. Summary of s
 - **Actions:** `POST /api/v1/platform/tenants/:tenantId/suspend` / `/activate` (`@PlatformOnly`,
   audited) — the only tenant-lifecycle actions that exist. `archived` status exists in the DB
   CHECK but **no action sets it** → not offered.
-- **Gaps:** cannot list/manage the tenant's admins/users/memberships (no endpoint —
-  [`GAP-SA-TENANT-ADMINS`](f17-gaps.md#gap-sa-tenant-admins)); cannot see login activity,
+- **Gaps:** cannot unconditionally list/manage the tenant's admins/users/memberships — **PARTIALLY
+  RESOLVED (ADR-0036):** curated, audited access exists via a live Tenant Support session only
+  ([`GAP-SA-TENANT-ADMINS`](f17-gaps.md#gap-sa-tenant-admins),
+  [`GAP-SUPPORT-READ-SCOPE`](f17-gaps.md#gap-support-read-scope)); cannot see login activity,
   storage, plan, billing (none exist).
 - **F17** (view + suspend/activate).
 - **BUILT — F17-13 (2026-09)** at `/platform/tenants/[id]`. `page.tsx` (server,
@@ -751,12 +806,26 @@ See [f17-super-admin.md](f17-super-admin.md) for the full analysis. Summary of s
   implication, does not manage it. `apiFetch` carries the `platform_csrf_token` double-submit
   header. `archived` → no action (no endpoint sets it) — the state is shown with an explanatory
   line. No edit / delete (no endpoint).
+- **ADR-0036 (2026-09)** adds two more cards: "Administrador del Tenant" (`admin-invitation-panel.tsx`
+  — invitation status, Reenviar/Revocar) and "Soporte" (`start-support-session-form.tsx` — the
+  "Acceder como soporte" trigger → `S-SA-SUPPORT`).
+
+### `S-ACCEPT-INVITATION` — Activate a Tenant admin credential (ADR-0036)
+- **Persona:** the tenant's founding admin (not yet a session-holder anywhere) · **Route:**
+  `(public)/accept-invitation/[token]` · **Scope:** none — unauthenticated, single-use.
+- **Endpoints:** `GET /api/v1/auth/invitations/:token` (`@Public`, always `200`, validity carried in
+  the body — never a raw 404/410 for an expired/revoked/accepted link) renders the tenant name +
+  email; `POST /api/v1/auth/accept-invitation` (`@Public`) sets the admin's **own** password
+  (the SuperAdmin never chooses or sees it), activates `identities.status → active`, and logs the
+  admin in immediately (the same session-cookie flow `/register` uses) — no separate login step.
+- **BUILT — ADR-0036 (2026-09)**, `page.tsx` + `accept-invitation-form.tsx`.
 
 ### Not built in F17 Super-Admin (GAP / future)
 - Platform dashboard with real per-tenant metrics — [`GAP-PLATFORM-AGGREGATE`](../reporting/data-gaps.md#gap-platform-aggregate).
 - Platform-admin management (list/create/disable other platform admins) —
   [`GAP-SA-ADMIN-CRUD`](f17-gaps.md#gap-sa-admin-crud) — only the seed script exists.
-- Create/provision a tenant from the platform side — [`GAP-SA-CREATE-TENANT`](f17-gaps.md#gap-sa-create-tenant).
+- Unconditional browsing of a tenant's users/admins outside a live support session —
+  [`GAP-SUPPORT-READ-SCOPE`](f17-gaps.md#gap-support-read-scope).
 
 ---
 

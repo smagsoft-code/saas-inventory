@@ -122,7 +122,7 @@ export function ImportPipeline({
 
   function friendlyError(err: unknown): string {
     if (isApiError(err) && err.status === 403) {
-      return 'You are not authorized for this step (importing inventory quantities needs the import-inventory permission).';
+      return 'No tienes autorización para este paso (importar cantidades de inventario requiere el permiso import-inventory).';
     }
     return httpErrorMessage(err);
   }
@@ -161,32 +161,32 @@ export function ImportPipeline({
   return (
     <Card>
       <CardBody className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-slate-900">Pipeline</h2>
+        <h2 className="text-sm font-semibold text-slate-900">Proceso</h2>
 
         {error && <Alert tone="error">{error}</Alert>}
 
         {/* Counters — real values from the job / preview, never a progress bar or percentage. */}
         <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
-          <Counter label="Total rows" value={job.totalRows ?? preview?.totalRows} />
-          <Counter label="Valid" value={job.validRows ?? preview?.validRows} />
-          <Counter label="Warnings" value={job.warningRows ?? preview?.warningRows} />
-          <Counter label="Invalid" value={job.invalidRows ?? preview?.invalidRows} />
+          <Counter label="Filas totales" value={job.totalRows ?? preview?.totalRows} />
+          <Counter label="Válidas" value={job.validRows ?? preview?.validRows} />
+          <Counter label="Advertencias" value={job.warningRows ?? preview?.warningRows} />
+          <Counter label="Inválidas" value={job.invalidRows ?? preview?.invalidRows} />
           {(job.status === 'ready' || wantsPreview) && preview && (
             <>
-              <Counter label="New products" value={preview.newProducts} />
-              <Counter label="Existing products" value={preview.existingProducts} />
-              <Counter label="Pending" value={preview.pendingRows} />
-              <Counter label="Imported" value={job.importedRows ?? preview.importedRows} />
+              <Counter label="Productos nuevos" value={preview.newProducts} />
+              <Counter label="Productos existentes" value={preview.existingProducts} />
+              <Counter label="Pendientes" value={preview.pendingRows} />
+              <Counter label="Importadas" value={job.importedRows ?? preview.importedRows} />
             </>
           )}
         </dl>
 
         {job.status === 'uploaded' && actions.setMapping && (
           <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-            <p className="text-sm text-slate-700">This import still needs a column mapping.</p>
-            <Field label="Mapping" className="max-w-sm">
+            <p className="text-sm text-slate-700">Esta importación todavía necesita un mapeo de columnas.</p>
+            <Field label="Mapeo" className="max-w-sm">
               <Select value={mappingChoice} onChange={(e) => setMappingChoice(e.target.value)} disabled={busy !== null}>
-                <option value={STANDARD_MAPPING_OPTION}>Standard template layout</option>
+                <option value={STANDARD_MAPPING_OPTION}>Diseño de plantilla estándar</option>
                 {(templates ?? []).map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}
@@ -196,7 +196,7 @@ export function ImportPipeline({
             </Field>
             <div>
               <Button loading={busy === 'mapping'} disabled={busy !== null} onClick={() => void applyMapping()}>
-                Apply mapping
+                Aplicar mapeo
               </Button>
             </div>
           </div>
@@ -204,26 +204,26 @@ export function ImportPipeline({
 
         {isImportJobProcessing(job.status) && (
           <p className="text-sm text-slate-600" role="status">
-            {job.status === 'validating' ? 'Validating rows…' : 'Importing rows…'} Large files run in the background —
-            this page refreshes on its own.
+            {job.status === 'validating' ? 'Validando filas…' : 'Importando filas…'} Los archivos grandes se procesan en
+            segundo plano — esta página se actualiza sola.
           </p>
         )}
 
         {job.status === 'ready' && (
           <p className="text-sm text-slate-700">
-            {committableRows} row{committableRows === 1 ? '' : 's'} ready to import
-            {(job.invalidRows ?? 0) > 0 ? ` · ${job.invalidRows} invalid row(s) will be left behind` : ''}.
+            {committableRows} fila{committableRows === 1 ? '' : 's'} lista{committableRows === 1 ? '' : 's'} para importar
+            {(job.invalidRows ?? 0) > 0 ? ` · ${job.invalidRows} fila(s) inválida(s) quedarán fuera` : ''}.
           </p>
         )}
 
         {job.status === 'failed' && (
-          <Alert tone="error">This import failed. Review the rows below, then retry the remaining work.</Alert>
+          <Alert tone="error">Esta importación falló. Revisa las filas de abajo y reintenta el trabajo pendiente.</Alert>
         )}
 
         {inventoryModeBlocked && actions.confirm && (
           <Alert tone="warning">
-            This import updates inventory quantities, which needs the import-inventory permission. Confirming without it
-            will be rejected.
+            Esta importación actualiza cantidades de inventario, lo que requiere el permiso import-inventory. Confirmar
+            sin él será rechazado.
           </Alert>
         )}
 
@@ -234,19 +234,19 @@ export function ImportPipeline({
               disabled={busy !== null}
               onClick={() => void run('validate', () => apiFetch(`${base}/validate`, { method: 'POST' }))}
             >
-              {job.status === 'failed' ? 'Retry validation' : 'Validate rows'}
+              {job.status === 'failed' ? 'Reintentar validación' : 'Validar filas'}
             </Button>
           )}
 
           {actions.confirm && !confirmOpen && (
             <Button disabled={busy !== null} onClick={() => setConfirmOpen(true)}>
-              {job.status === 'failed' ? 'Retry import' : `Import ${committableRows} row${committableRows === 1 ? '' : 's'}`}
+              {job.status === 'failed' ? 'Reintentar importación' : `Importar ${committableRows} fila${committableRows === 1 ? '' : 's'}`}
             </Button>
           )}
 
           {actions.cancel && !cancelOpen && (
             <Button variant="danger" disabled={busy !== null} onClick={() => setCancelOpen(true)}>
-              Cancel import
+              Cancelar importación
             </Button>
           )}
 
@@ -256,16 +256,17 @@ export function ImportPipeline({
             disabled={busy !== null}
             onClick={() => void run('refresh', () => refresh())}
           >
-            Refresh
+            Actualizar
           </Button>
         </div>
 
         {confirmOpen && actions.confirm && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             <span>
-              Import the {committableRows} valid/warning row{committableRows === 1 ? '' : 's'} now? This writes catalog
-              {job.duplicateHandlingMode === 'update_catalog_and_inventory' ? ' and inventory' : ''} records through the
-              normal validated path. It cannot be undone from here.
+              ¿Importar ahora {committableRows} fila{committableRows === 1 ? '' : 's'} válida{committableRows === 1 ? '' : 's'}/con
+              advertencia? Esto escribe registros de catálogo
+              {job.duplicateHandlingMode === 'update_catalog_and_inventory' ? ' e inventario' : ''} por la vía validada
+              normal. No se puede deshacer desde aquí.
             </span>
             <Button
               size="sm"
@@ -273,17 +274,17 @@ export function ImportPipeline({
               disabled={busy !== null}
               onClick={() => void run('confirm', () => apiFetch(`${base}/confirm`, { method: 'POST' }))}
             >
-              Confirm import
+              Confirmar importación
             </Button>
             <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setConfirmOpen(false)}>
-              Cancel
+              Cancelar
             </Button>
           </div>
         )}
 
         {cancelOpen && actions.cancel && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            <span>Cancel this import? Nothing that has already been imported is reverted.</span>
+            <span>¿Cancelar esta importación? Nada de lo ya importado se revierte.</span>
             <Button
               size="sm"
               variant="danger"
@@ -291,10 +292,10 @@ export function ImportPipeline({
               disabled={busy !== null}
               onClick={() => void run('cancel', () => apiFetch(`${base}/cancel`, { method: 'POST' }))}
             >
-              Confirm cancel
+              Confirmar cancelación
             </Button>
             <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setCancelOpen(false)}>
-              Keep import
+              Mantener importación
             </Button>
           </div>
         )}
@@ -305,7 +306,7 @@ export function ImportPipeline({
               href={errorReportHref}
               className="font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900"
             >
-              Download error report (.xlsx)
+              Descargar reporte de errores (.xlsx)
             </a>
             <label className="flex items-center gap-1 text-xs text-slate-500">
               <input
@@ -313,7 +314,7 @@ export function ImportPipeline({
                 checked={includeWarnings}
                 onChange={(e) => setIncludeWarnings(e.target.checked)}
               />
-              include warning rows
+              incluir filas con advertencia
             </label>
           </div>
         )}

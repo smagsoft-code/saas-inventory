@@ -16,67 +16,67 @@
 
 // --- customers -------------------------------------------------------------------------------
 
-export const CUSTOMER_TYPES = ['individual', 'business'] as const;
+/** Owner redesign: the identification document itself, replacing the old individual/business
+ * distinction. Drives both the identification field's input format and its validation. */
+export const CUSTOMER_TYPES = ['cedula', 'ruc', 'pasaporte'] as const;
 export type CustomerType = (typeof CUSTOMER_TYPES)[number];
 
 export const CUSTOMER_TYPE_LABELS: Record<CustomerType, string> = {
-  individual: 'Individual',
-  business: 'Business',
+  cedula: 'Cédula',
+  ruc: 'RUC',
+  pasaporte: 'Pasaporte',
+};
+
+/** Format hint shown next to the identification field, keyed by `type` (`IsTaxIdForType`,
+ * migration 0037). */
+export const CUSTOMER_TAX_ID_HINTS: Record<CustomerType, string> = {
+  cedula: '10 números',
+  ruc: '13 números',
+  pasaporte: 'Números y letras',
 };
 
 export const CUSTOMER_STATUSES = ['active', 'inactive'] as const;
 export type CustomerStatus = (typeof CUSTOMER_STATUSES)[number];
 
-/** The address keys `AddressDto` validates (all optional). */
-export const CUSTOMER_ADDRESS_FIELDS = ['line1', 'line2', 'city', 'state', 'postalCode', 'country'] as const;
-export type CustomerAddressField = (typeof CUSTOMER_ADDRESS_FIELDS)[number];
-export type CustomerAddress = Partial<Record<CustomerAddressField, string>>;
-
-export const CUSTOMER_ADDRESS_FIELD_LABELS: Record<CustomerAddressField, string> = {
-  line1: 'Address line 1',
-  line2: 'Address line 2',
-  city: 'City',
-  state: 'State / province',
-  postalCode: 'Postal code',
-  country: 'Country',
-};
-
-/** `GET /customers` list item / `GET /customers/:id` — `CustomerResponseDto`. */
+/** `GET /customers` list item / `GET /customers/:id` — `CustomerResponseDto`. `address` is a
+ * single free-form line (no structured sub-fields) — unrelated to `OrderCustomerSnapshot.address`,
+ * which stays the order's own frozen jsonb shape. */
 export interface Customer {
   id: string;
   type: string;
+  firstName: string;
+  lastName?: string;
   displayName: string;
   taxId?: string;
   email?: string;
   phone?: string;
-  address?: Record<string, unknown>;
+  address?: string;
   status: string;
-  notes?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 /** `POST /customers` body — `CreateCustomerDto`. No `tenantId`/`status` (server-derived; starts
- * `active`). `taxId` is unique per tenant when present. */
+ * `active`). `taxId` is required and format-checked against `type`; unique per tenant. */
 export interface CreateCustomerInput {
   type: CustomerType;
-  displayName: string;
-  taxId?: string;
+  firstName: string;
+  lastName: string;
+  taxId: string;
   email?: string;
   phone?: string;
-  address?: CustomerAddress;
-  notes?: string;
+  address?: string;
 }
 
 /** `PATCH /customers/:id` body — `UpdateCustomerDto`. Every field optional. */
 export interface UpdateCustomerInput {
   type?: CustomerType;
-  displayName?: string;
+  firstName?: string;
+  lastName?: string;
   taxId?: string;
   email?: string;
   phone?: string;
-  address?: CustomerAddress;
-  notes?: string;
+  address?: string;
   status?: CustomerStatus;
 }
 
@@ -85,10 +85,10 @@ export interface UpdateCustomerInput {
  * This is a UX mirror only; the backend re-checks. */
 export function customerMissingCommercialData(customer: Pick<Customer, 'taxId' | 'email' | 'phone' | 'address'>): string[] {
   const missing: string[] = [];
-  if (!customer.taxId) missing.push('tax id');
-  if (!customer.email) missing.push('email');
-  if (!customer.phone) missing.push('phone');
-  if (!customer.address || Object.keys(customer.address).length === 0) missing.push('address');
+  if (!customer.taxId) missing.push('identificación tributaria');
+  if (!customer.email) missing.push('correo electrónico');
+  if (!customer.phone) missing.push('teléfono');
+  if (!customer.address) missing.push('dirección');
   return missing;
 }
 
@@ -157,12 +157,13 @@ export interface UpdateCartItemInput {
 export const ORDER_STATUSES = ['draft', 'pending', 'confirmed', 'fulfilled', 'cancelled'] as const;
 export type OrderStatus = (typeof ORDER_STATUSES)[number];
 
+// GL-3: "Order" -> "Pedido" (decisión del owner, OUI-001).
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
-  draft: 'Draft',
-  pending: 'Pending',
-  confirmed: 'Confirmed',
-  fulfilled: 'Fulfilled',
-  cancelled: 'Cancelled',
+  draft: 'Borrador',
+  pending: 'Pendiente',
+  confirmed: 'Confirmado',
+  fulfilled: 'Completado',
+  cancelled: 'Cancelado',
 };
 
 export function orderStatusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' {
@@ -183,8 +184,8 @@ export const DOCUMENT_TYPES = ['invoice', 'sales_note'] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
-  invoice: 'Invoice',
-  sales_note: 'Sales note',
+  invoice: 'Factura',
+  sales_note: 'Nota de venta',
 };
 
 export interface OrderCustomerSnapshot {
@@ -255,10 +256,10 @@ export const PRICE_APPROVAL_STATUSES = ['pending', 'approved', 'rejected', 'canc
 export type PriceApprovalStatus = (typeof PRICE_APPROVAL_STATUSES)[number];
 
 export const PRICE_APPROVAL_STATUS_LABELS: Record<PriceApprovalStatus, string> = {
-  pending: 'Pending',
-  approved: 'Approved',
-  rejected: 'Rejected',
-  cancelled: 'Cancelled',
+  pending: 'Pendiente',
+  approved: 'Aprobada',
+  rejected: 'Rechazada',
+  cancelled: 'Cancelada',
 };
 
 export function priceApprovalStatusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' {
@@ -308,10 +309,10 @@ export const RETURN_STATUSES = ['requested', 'inspecting', 'resolved', 'cancelle
 export type ReturnStatus = (typeof RETURN_STATUSES)[number];
 
 export const RETURN_STATUS_LABELS: Record<ReturnStatus, string> = {
-  requested: 'Requested',
-  inspecting: 'Inspecting',
-  resolved: 'Resolved',
-  cancelled: 'Cancelled',
+  requested: 'Solicitada',
+  inspecting: 'En inspección',
+  resolved: 'Resuelta',
+  cancelled: 'Cancelada',
 };
 
 export function returnStatusTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' {
@@ -334,10 +335,10 @@ export const DISPOSITIONS = ['restock', 'quarantine', 'damaged', 'scrap'] as con
 export type Disposition = (typeof DISPOSITIONS)[number];
 
 export const DISPOSITION_LABELS: Record<Disposition, string> = {
-  restock: 'Restock (sellable)',
-  quarantine: 'Quarantine',
-  damaged: 'Damaged',
-  scrap: 'Scrap',
+  restock: 'Reingreso a stock (vendible)',
+  quarantine: 'Cuarentena',
+  damaged: 'Dañado',
+  scrap: 'Descarte',
 };
 
 /** `ReturnItemResponseDto`. Carries `orderItemId` + `productVariantId` only — no SKU/product name
@@ -412,10 +413,10 @@ export const NOTIFICATION_OVERALL_STATUSES = ['none', 'pending', 'delivered', 'f
 export type NotificationOverallStatus = (typeof NOTIFICATION_OVERALL_STATUSES)[number];
 
 export const NOTIFICATION_OVERALL_LABELS: Record<NotificationOverallStatus, string> = {
-  none: 'No notification',
-  pending: 'Queued',
-  delivered: 'Delivered',
-  failed: 'Delivery failed',
+  none: 'Sin notificación',
+  pending: 'En cola',
+  delivered: 'Entregada',
+  failed: 'Falló el envío',
 };
 
 export function notificationOverallTone(status: string): 'neutral' | 'success' | 'warning' | 'danger' {
@@ -432,8 +433,8 @@ export function notificationOverallTone(status: string): 'neutral' | 'success' |
 }
 
 export const NOTIFICATION_EVENT_TYPE_LABELS: Record<string, string> = {
-  'sales.order.confirmed': 'Order confirmed',
-  'sales.order.cancelled': 'Order cancelled',
+  'sales.order.confirmed': 'Pedido confirmado',
+  'sales.order.cancelled': 'Pedido cancelado',
 };
 
 /** One `event_outbox` row's delivery metadata — `OrderNotificationEventDto`. Never the payload or

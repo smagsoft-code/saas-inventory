@@ -2,15 +2,16 @@ import Link from 'next/link';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { listOrders } from '../../../../lib/sales/orders';
+import { listWarehouses } from '../../../../lib/inventory/warehouses';
 import { buildLocationIndex } from '../../../../lib/inventory/location-index';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { Card, CardBody } from '../../../../components/ui/card';
 import { Alert } from '../../../../components/ui/alert';
 import { NoAccess } from '../../../../components/ui/no-access';
-import { ReturnForm, type OrderOption, type LocationOption } from './return-form';
+import { ReturnForm, type OrderOption, type WarehouseOption, type LocationOption } from './return-form';
 
-export const metadata = { title: 'New return · SaaS Inventory' };
+export const metadata = { title: 'Nueva devolución · SaaS Inventory' };
 
 /**
  * Create a sales return (`S-RET-NEW`) — `POST /api/v1/sales-returns` (`sales.returns.create`,
@@ -29,8 +30,8 @@ export default async function NewReturnPage({
   if (!checker.can('sales.returns.create')) {
     return (
       <PageContainer>
-        <PageHeader title="New return" />
-        <NoAccess message="You need the create-returns permission to file a return." />
+        <PageHeader title="Nueva devolución" />
+        <NoAccess message="Necesitas el permiso de creación de devoluciones para presentar una devolución." />
       </PageContainer>
     );
   }
@@ -38,9 +39,11 @@ export default async function NewReturnPage({
   const sp = await searchParams;
   const preselectOrderId = sp.orderId || undefined;
 
-  const [orders, index] = await Promise.all([
+  const canViewWarehouses = checker.can('warehouses.view');
+  const [orders, warehouses, index] = await Promise.all([
     listOrders({ status: 'confirmed', pageSize: 100 }).catch(() => null),
-    buildLocationIndex(checker.can('warehouses.view')),
+    canViewWarehouses ? listWarehouses({ pageSize: 100, status: 'active' }).catch(() => null) : Promise.resolve(null),
+    buildLocationIndex(canViewWarehouses),
   ]);
 
   const orderOptions: OrderOption[] = (orders?.data ?? []).map((order) => ({
@@ -48,33 +51,35 @@ export default async function NewReturnPage({
     orderNumber: order.orderNumber,
     customerName: order.customer.name,
   }));
+  const warehouseOptions: WarehouseOption[] = (warehouses?.data ?? []).map((w) => ({ id: w.id, name: w.name }));
   const locationOptions: LocationOption[] = index.locations
     .filter((location) => location.status === 'active')
-    .map((location) => ({ id: location.id, name: location.name }));
+    .map((location) => ({ id: location.id, warehouseId: location.warehouseId, name: location.name }));
 
   return (
     <PageContainer>
-      <PageHeader title="New return" description="File a return against a confirmed order." />
+      <PageHeader title="Nueva devolución" description="Presenta una devolución contra un pedido confirmado." />
 
       {orderOptions.length === 0 ? (
         <Card>
           <CardBody>
             <Alert tone="info">
-              There are no confirmed orders to return.{' '}
+              No hay pedidos confirmados para devolver.{' '}
               <Link href="/sales" className="underline">
-                Go to sales history
+                Ir al historial de ventas
               </Link>
               .
             </Alert>
           </CardBody>
         </Card>
-      ) : locationOptions.length === 0 ? (
+      ) : warehouseOptions.length === 0 || locationOptions.length === 0 ? (
         <Card>
           <CardBody>
             <Alert tone="warning">
-              No active location is available to receive the returned goods.{' '}
+              No hay ninguna sucursal o almacén activo disponible para recibir la mercancía
+              devuelta.{' '}
               <Link href="/locations" className="underline">
-                Add or activate a location
+                Agregar o activar un almacén
               </Link>
               .
             </Alert>
@@ -83,13 +88,14 @@ export default async function NewReturnPage({
       ) : (
         <ReturnForm
           orders={orderOptions}
+          warehouses={warehouseOptions}
           locations={locationOptions}
           {...(preselectOrderId ? { preselectOrderId } : {})}
         />
       )}
 
       <Link href="/returns" className="text-sm font-medium text-slate-500 hover:underline">
-        Back to returns
+        Volver a devoluciones
       </Link>
     </PageContainer>
   );

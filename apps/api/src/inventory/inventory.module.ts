@@ -8,10 +8,12 @@ import { VariantCostLookupRepository } from './kardex/variant-cost-lookup.reposi
 import { LocationAssignmentsController } from './location-assignments/location-assignments.controller';
 import { LocationAssignmentsService } from './location-assignments/location-assignments.service';
 import { LocationAuthorizationService } from './location-authorization.service';
+import { LocationScopeController } from './location-scope/location-scope.controller';
 import { LocationsController } from './locations/locations.controller';
 import { LocationsService } from './locations/locations.service';
 import { MovementsController } from './movements/movements.controller';
 import { MovementsService } from './movements/movements.service';
+import { ProductsInStockController } from './products-in-stock/products-in-stock.controller';
 import { IdempotencyKeysRepository } from './repositories/idempotency-keys.repository';
 import { InventoryBalancesRepository } from './repositories/inventory-balances.repository';
 import { InventoryMovementsRepository } from './repositories/inventory-movements.repository';
@@ -20,6 +22,8 @@ import { InventoryTransferReceiptsRepository } from './repositories/inventory-tr
 import { InventoryTransfersRepository } from './repositories/inventory-transfers.repository';
 import { LocationsRepository } from './repositories/locations.repository';
 import { ProductVariantsLookupRepository } from './repositories/product-variants-lookup.repository';
+import { ProductsInStockRepository } from './repositories/products-in-stock.repository';
+import { TransferWorkflowConfigRepository } from './repositories/transfer-workflow-config.repository';
 import { UserLocationAssignmentsRepository } from './repositories/user-location-assignments.repository';
 import { WarehousesRepository } from './repositories/warehouses.repository';
 import { StockLedgerService } from './stock-ledger.service';
@@ -47,7 +51,16 @@ import { WarehousesService } from './warehouses/warehouses.service';
  * is the one direction the edge runs; InventoryModule itself never imports ImportModule.
  */
 @Module({
-  controllers: [WarehousesController, LocationsController, LocationAssignmentsController, BalancesController, MovementsController, TransfersController],
+  controllers: [
+    WarehousesController,
+    LocationsController,
+    LocationAssignmentsController,
+    LocationScopeController,
+    BalancesController,
+    MovementsController,
+    ProductsInStockController,
+    TransfersController,
+  ],
   providers: [
     WarehousesService,
     LocationsService,
@@ -68,6 +81,8 @@ import { WarehousesService } from './warehouses/warehouses.service';
     InventoryTransferReceiptsRepository,
     IdempotencyKeysRepository,
     ProductVariantsLookupRepository,
+    ProductsInStockRepository,
+    TransferWorkflowConfigRepository,
     UsersRepository,
     MovingAverageCostService,
     VariantCostLookupRepository,

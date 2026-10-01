@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { PlatformShell } from '../../components/shell/platform-shell';
 import { getPlatformSession } from '../../lib/auth/platform-session';
+import { getCurrentSupportSession } from '../../lib/platform/tenants';
 
 /**
  * Platform-admin area (`(superadmin)/`, F17-01 §3.C / §11 / §13) — **structurally separate** from
@@ -22,5 +23,14 @@ export default async function SuperadminLayout({
     redirect('/platform/login');
   }
 
-  return <PlatformShell admin={admin}>{children}</PlatformShell>;
+  // ADR-0036 — best-effort: a transient failure reading the current support session must never
+  // block the whole platform shell from rendering (fails "closed" toward no banner, not toward no
+  // access — SupportSessionGuard is the real authority on every support-scoped request regardless).
+  const supportSession = await getCurrentSupportSession().catch(() => null);
+
+  return (
+    <PlatformShell admin={admin} supportSession={supportSession}>
+      {children}
+    </PlatformShell>
+  );
 }

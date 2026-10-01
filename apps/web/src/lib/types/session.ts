@@ -24,6 +24,11 @@ export interface Session {
    * closes `GAP-TZ-VISIBILITY` for any screen that needs to resolve "today"/"this month" in the
    * tenant's own timezone. */
   timezone: string;
+  /** ADR-0036 extension — present only when this "session" is actually a Platform Admin browsing
+   * this tenant under an active support session (never for a real tenant user: `id`/`identityId`
+   * are synthetic `support:...` values in that case, never a real `users`/`identities` row). Lets
+   * the tenant shell render the same "MODO SOPORTE" banner the platform shell shows. */
+  supportSession?: { id: string; mode: 'read' | 'write'; reason: string; expiresAt: string };
 }
 
 /**

@@ -12,7 +12,7 @@ import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
 
-export const metadata = { title: 'Categories · SaaS Inventory' };
+export const metadata = { title: 'Categorías · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
 type StatusFilter = 'active' | 'inactive' | undefined;
@@ -37,8 +37,8 @@ export default async function CategoriesPage({
   if (!checker.can('categories.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Categories" />
-        <NoAccess message="You need the categories permission to view this page." />
+        <PageHeader title="Categorías" />
+        <NoAccess message="Necesitas el permiso de categorías para ver esta página." />
       </PageContainer>
     );
   }
@@ -67,18 +67,18 @@ export default async function CategoriesPage({
   }
 
   const filters: { label: string; value: StatusFilter }[] = [
-    { label: 'All', value: undefined },
-    { label: 'Active', value: 'active' },
-    { label: 'Inactive', value: 'inactive' },
+    { label: 'Todas', value: undefined },
+    { label: 'Activas', value: 'active' },
+    { label: 'Inactivas', value: 'inactive' },
   ];
 
   return (
     <PageContainer>
       <PageHeader
-        title="Categories"
-        description="Organise the catalogue. A category defines which attributes its products carry."
+        title="Categorías"
+        description="Organiza el catálogo. Una categoría define qué atributos llevan sus productos."
         actions={
-          canManage ? <ButtonLink href="/categories/new">New category</ButtonLink> : undefined
+          canManage ? <ButtonLink href="/categories/new">Nueva categoría</ButtonLink> : undefined
         }
       />
 
@@ -105,14 +105,14 @@ export default async function CategoriesPage({
       {result.data.length === 0 ? (
         status ? (
           <EmptyState
-            title="No categories match this filter"
-            description="Try a different status."
+            title="Ninguna categoría coincide con este filtro"
+            description="Prueba con otro estado."
           />
         ) : (
           <EmptyState
-            title="No categories yet"
-            description="Create your first category to start organising products."
-            action={canManage ? <ButtonLink href="/categories/new">New category</ButtonLink> : undefined}
+            title="Aún no hay categorías"
+            description="Crea tu primera categoría para empezar a organizar los productos."
+            action={canManage ? <ButtonLink href="/categories/new">Nueva categoría</ButtonLink> : undefined}
           />
         )
       ) : (
@@ -120,11 +120,11 @@ export default async function CategoriesPage({
           <Table>
             <THead>
               <TR>
-                <TH>Name</TH>
+                <TH>Nombre</TH>
                 <TH>Slug</TH>
-                <TH>Parent</TH>
-                <TH>Status</TH>
-                <TH className="w-0"><span className="sr-only">Actions</span></TH>
+                <TH>Padre</TH>
+                <TH>Estado</TH>
+                <TH className="w-0"><span className="sr-only">Acciones</span></TH>
               </TR>
             </THead>
             <TBody>
@@ -136,18 +136,20 @@ export default async function CategoriesPage({
                   </TD>
                   <TD className="text-slate-500">
                     {category.parentCategoryId
-                      ? nameById.get(category.parentCategoryId) ?? 'Subcategory'
+                      ? nameById.get(category.parentCategoryId) ?? 'Subcategoría'
                       : '—'}
                   </TD>
                   <TD>
-                    <Badge tone={statusTone(category.status)}>{category.status}</Badge>
+                    <Badge tone={statusTone(category.status)}>
+                      {category.status === 'active' ? 'Activa' : category.status === 'inactive' ? 'Inactiva' : category.status}
+                    </Badge>
                   </TD>
                   <TD>
                     <Link
                       href={`/categories/${category.id}`}
                       className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                     >
-                      {canManage ? 'Edit' : 'View'}
+                      {canManage ? 'Editar' : 'Ver'}
                     </Link>
                   </TD>
                 </TR>

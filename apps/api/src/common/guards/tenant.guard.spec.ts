@@ -52,13 +52,22 @@ const ACTIVE_MEMBERSHIP = {
 
 describe('TenantGuard', () => {
   let membershipsRepository: { findActiveForIdentityAndTenant: ReturnType<typeof vi.fn> };
+  let supportSessionsRepository: { findActiveForAdmin: ReturnType<typeof vi.fn> };
+  let tenantsPlatformRepository: { findById: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     membershipsRepository = { findActiveForIdentityAndTenant: vi.fn().mockResolvedValue(ACTIVE_MEMBERSHIP) };
+    supportSessionsRepository = { findActiveForAdmin: vi.fn().mockResolvedValue(undefined) };
+    tenantsPlatformRepository = { findById: vi.fn().mockResolvedValue(undefined) };
   });
 
   function buildGuard(reflector: Reflector): TenantGuard {
-    return new TenantGuard(reflector, membershipsRepository as never);
+    return new TenantGuard(
+      reflector,
+      membershipsRepository as never,
+      supportSessionsRepository as never,
+      tenantsPlatformRepository as never,
+    );
   }
 
   it('allows a @Public() route through without resolving anything', async () => {
@@ -124,5 +133,65 @@ describe('TenantGuard', () => {
     const { context, reflector } = contextFor({ authPrincipal: PRINCIPAL });
     await buildGuard(reflector).canActivate(context);
     expect(membershipsRepository.findActiveForIdentityAndTenant).toHaveBeenCalledWith('identity-1', 'tenant-1');
+  });
+
+  describe('ADR-0036 extension — Platform Admin support-session read access to ordinary tenant routes', () => {
+    const ACTIVE_SESSION = {
+      id: 'session-1',
+      platformAdminId: 'admin-1',
+      tenantId: 'tenant-1',
+      mode: 'read',
+      reason: 'checking a ticket',
+      status: 'active',
+      startedAt: new Date('2026-01-01T00:00:00Z'),
+      expiresAt: new Date('2026-01-01T00:30:00Z'),
+    };
+    const ACTIVE_TENANT = { id: 'tenant-1', name: 'Acme', slug: 'acme', status: 'active', isDemo: false, createdAt: new Date() };
+
+    it('resolves tenantContext/supportSession from the active session on a GET with no tenant JWT', async () => {
+      supportSessionsRepository.findActiveForAdmin.mockResolvedValue(ACTIVE_SESSION);
+      tenantsPlatformRepository.findById.mockResolvedValue(ACTIVE_TENANT);
+      const request: Record<string, unknown> = { platformPrincipal: { adminId: 'admin-1' }, method: 'GET' };
+      const { context, reflector } = contextFor(request);
+
+      await expect(buildGuard(reflector).canActivate(context)).resolves.toBe(true);
+      expect(supportSessionsRepository.findActiveForAdmin).toHaveBeenCalledWith('admin-1');
+      expect(request['supportSession']).toEqual({
+        supportSessionId: 'session-1',
+        tenantId: 'tenant-1',
+        mode: 'read',
+        reason: 'checking a ticket',
+        startedAt: ACTIVE_SESSION.startedAt,
+        expiresAt: ACTIVE_SESSION.expiresAt,
+      });
+      expect(request['tenantContext']).toMatchObject({ tenantId: 'tenant-1', tenantSlug: 'acme' });
+      // Never a real users/identities row — membership lookup is never reached for this branch.
+      expect(membershipsRepository.findActiveForIdentityAndTenant).not.toHaveBeenCalled();
+    });
+
+    it('never resolves a support session for a non-GET request — the curated support controller is the only write surface', async () => {
+      const request: Record<string, unknown> = { platformPrincipal: { adminId: 'admin-1' }, method: 'POST' };
+      const { context, reflector } = contextFor(request);
+
+      await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('No resolvable tenant context.');
+      expect(supportSessionsRepository.findActiveForAdmin).not.toHaveBeenCalled();
+    });
+
+    it('rejects when the platform admin has no active support session', async () => {
+      supportSessionsRepository.findActiveForAdmin.mockResolvedValue(undefined);
+      const request: Record<string, unknown> = { platformPrincipal: { adminId: 'admin-1' }, method: 'GET' };
+      const { context, reflector } = contextFor(request);
+
+      await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('No resolvable tenant context.');
+    });
+
+    it('rejects when the session\'s tenant is not active (suspended mid-session)', async () => {
+      supportSessionsRepository.findActiveForAdmin.mockResolvedValue(ACTIVE_SESSION);
+      tenantsPlatformRepository.findById.mockResolvedValue({ ...ACTIVE_TENANT, status: 'suspended' });
+      const request: Record<string, unknown> = { platformPrincipal: { adminId: 'admin-1' }, method: 'GET' };
+      const { context, reflector } = contextFor(request);
+
+      await expect(buildGuard(reflector).canActivate(context)).rejects.toThrow('No resolvable tenant context.');
+    });
   });
 });

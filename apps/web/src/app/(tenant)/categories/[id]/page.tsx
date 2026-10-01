@@ -12,7 +12,7 @@ import { NoAccess } from '../../../../components/ui/no-access';
 import { CategoryForm } from '../category-form';
 import { CategoryAttributesEditor } from './category-attributes-editor';
 
-export const metadata = { title: 'Category · SaaS Inventory' };
+export const metadata = { title: 'Categoría · SaaS Inventory' };
 
 export default async function CategoryDetailPage({
   params,
@@ -25,8 +25,8 @@ export default async function CategoryDetailPage({
   if (!checker.can('categories.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Category" />
-        <NoAccess message="You need the categories permission to view this page." />
+        <PageHeader title="Categoría" />
+        <NoAccess message="Necesitas el permiso de categorías para ver esta página." />
       </PageContainer>
     );
   }
@@ -55,12 +55,16 @@ export default async function CategoryDetailPage({
       <PageHeader
         title={category.name}
         description={`/${category.slug}`}
-        actions={<Badge tone={statusTone(category.status)}>{category.status}</Badge>}
+        actions={
+          <Badge tone={statusTone(category.status)}>
+            {category.status === 'active' ? 'Activa' : category.status === 'inactive' ? 'Inactiva' : category.status}
+          </Badge>
+        }
       />
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Details</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Detalles</h2>
           {canManageCategory ? (
             <CategoryForm
               mode="edit"
@@ -69,14 +73,14 @@ export default async function CategoryDetailPage({
             />
           ) : (
             <dl className="grid max-w-md grid-cols-[8rem_1fr] gap-y-2 text-sm">
-              <dt className="text-slate-500">Name</dt>
+              <dt className="text-slate-500">Nombre</dt>
               <dd className="text-slate-900">{category.name}</dd>
               <dt className="text-slate-500">Slug</dt>
               <dd className="text-slate-900"><code className="text-xs">{category.slug}</code></dd>
-              <dt className="text-slate-500">Parent</dt>
+              <dt className="text-slate-500">Padre</dt>
               <dd className="text-slate-900">
                 {category.parentCategoryId
-                  ? parents.data.find((c) => c.id === category.parentCategoryId)?.name ?? 'Subcategory'
+                  ? parents.data.find((c) => c.id === category.parentCategoryId)?.name ?? 'Subcategoría'
                   : '—'}
               </dd>
             </dl>
@@ -87,10 +91,10 @@ export default async function CategoryDetailPage({
       <Card>
         <CardBody className="flex flex-col gap-4">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Attributes</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Atributos</h2>
             <p className="mt-1 text-sm text-slate-500">
-              The attribute definitions products in this category carry (ADR-0026). Order and
-              “required” here drive the product form.
+              Las definiciones de atributos que llevan los productos de esta categoría (ADR-0026). El
+              orden y «obligatorio» aquí determinan el formulario de producto.
             </p>
           </div>
           {canViewAttributes ? (
@@ -102,7 +106,7 @@ export default async function CategoryDetailPage({
             />
           ) : (
             <p className="text-sm text-slate-500">
-              You don&apos;t have permission to view attribute assignments.
+              No tienes permiso para ver las asignaciones de atributos.
             </p>
           )}
         </CardBody>

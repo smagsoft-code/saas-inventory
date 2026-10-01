@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../lib/api/client';
@@ -46,23 +45,23 @@ async function attemptSilentRestore(): Promise<boolean> {
  * 5xx body is never echoed. */
 function loginErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.isNetworkError) return 'Could not reach the server. Check your connection and try again.';
-    if (err.status === 429) return 'Too many attempts. Please wait a moment and try again.';
-    if (err.status >= 500) return 'Something went wrong on our end. Please try again.';
-    return err.message || 'Could not sign in. Please try again.';
+    if (err.isNetworkError) return 'No se pudo contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
+    if (err.status === 429) return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
+    if (err.status >= 500) return 'Algo salió mal de nuestro lado. Inténtalo de nuevo.';
+    return err.message || 'No se pudo iniciar sesión. Inténtalo de nuevo.';
   }
-  return 'Could not sign in. Please try again.';
+  return 'No se pudo iniciar sesión. Inténtalo de nuevo.';
 }
 
 function selectionErrorMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    if (err.isNetworkError) return 'Could not reach the server. Check your connection and try again.';
-    if (err.status === 401) return 'Your sign-in timed out before you picked a company. Please sign in again.';
-    if (err.status === 429) return 'Too many attempts. Please wait a moment and try again.';
-    if (err.status >= 500) return 'Something went wrong on our end. Please try again.';
-    return err.message || 'Could not open that company. Please sign in again.';
+    if (err.isNetworkError) return 'No se pudo contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
+    if (err.status === 401) return 'Tu inicio de sesión expiró antes de elegir una empresa. Inicia sesión de nuevo.';
+    if (err.status === 429) return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
+    if (err.status >= 500) return 'Algo salió mal de nuestro lado. Inténtalo de nuevo.';
+    return err.message || 'No se pudo abrir esa empresa. Inicia sesión de nuevo.';
   }
-  return 'Could not open that company. Please sign in again.';
+  return 'No se pudo abrir esa empresa. Inicia sesión de nuevo.';
 }
 
 export function LoginForm(): React.JSX.Element {
@@ -170,7 +169,7 @@ export function LoginForm(): React.JSX.Element {
     return (
       <div className="flex items-center gap-2 text-sm text-slate-500">
         <Spinner className="h-4 w-4" />
-        Checking your session…
+        Verificando tu sesión…
       </div>
     );
   }
@@ -179,8 +178,8 @@ export function LoginForm(): React.JSX.Element {
     return (
       <div className="flex flex-col gap-4">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">Choose a company</h2>
-          <p className="text-sm text-slate-500">Pick where you want to work.</p>
+          <h2 className="text-base font-semibold text-slate-900">Elige una empresa</h2>
+          <p className="text-sm text-slate-500">Elige dónde quieres trabajar.</p>
         </div>
         {error && <Alert tone="error">{error}</Alert>}
         <ul className="flex flex-col gap-2">
@@ -214,7 +213,7 @@ export function LoginForm(): React.JSX.Element {
           onClick={backToCredentials}
           disabled={selectingTenantId !== null}
         >
-          Back to sign in
+          Volver a iniciar sesión
         </Button>
       </div>
     );
@@ -223,17 +222,17 @@ export function LoginForm(): React.JSX.Element {
   return (
     <>
       <form onSubmit={handleCredentialsSubmit} noValidate className="flex flex-col gap-4">
-        <Field label="Email" required>
+        <Field label="Correo" required>
           <Input
             name="email"
-            type="email"
+            type="text"
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            autoComplete="email"
+            autoComplete="username"
           />
         </Field>
-        <Field label="Password" required>
+        <Field label="Contraseña" required>
           <Input
             name="password"
             type="password"
@@ -245,15 +244,9 @@ export function LoginForm(): React.JSX.Element {
         </Field>
         {error && <Alert tone="error">{error}</Alert>}
         <Button type="submit" loading={submitting}>
-          Sign in
+          Iniciar sesión
         </Button>
       </form>
-      <p className="mt-6 text-sm text-slate-500">
-        No account yet?{' '}
-        <Link href="/register" className="font-medium text-slate-900 underline">
-          Create your company
-        </Link>
-      </p>
     </>
   );
 }

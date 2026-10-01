@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq } from 'drizzle-orm';
+import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { inventoryTransfers } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
 export interface InventoryTransferRow {
   id: string;
   tenantId: string;
+  code: string;
   sourceLocationId: string;
   destinationLocationId: string;
   status: string;
@@ -24,6 +25,7 @@ export interface InventoryTransferRow {
 export interface CreateTransferValues {
   id: string;
   tenantId: string;
+  code: string;
   sourceLocationId: string;
   destinationLocationId: string;
   requestedBy: string;
@@ -100,12 +102,36 @@ export class InventoryTransfersRepository {
     return { rows, total: totalRow?.total ?? 0 };
   }
 
+  /** Concurrency-safe, (tenant, source location)-scoped transfer numbering — same
+   * `pg_advisory_xact_lock(hashtext(...))` + `count(*)` pattern as
+   * `orders.repository.ts`'s `nextOrderNumber()`: the advisory lock serializes concurrent creates
+   * from the same source location before the count, and transfers are never hard-deleted, so
+   * `count(*) + 1` stays monotonic per location. Scoped narrower than orders (per source location,
+   * not per tenant) per the spec's `CODIGO_SUCURSAL-CODIGO_ALMACEN-NNN` format — see migration
+   * 0035's header for the backfill that seeded this same scope for pre-existing rows. */
+  async nextTransferCode(
+    tx: TenantTransaction,
+    tenantId: string,
+    sourceLocationId: string,
+    warehouseCode: string,
+    locationCode: string,
+  ): Promise<string> {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`inventory.transfer_code:${tenantId}:${sourceLocationId}`}))`);
+    const [row] = await tx
+      .select({ total: count() })
+      .from(inventoryTransfers)
+      .where(and(eq(inventoryTransfers.tenantId, tenantId), eq(inventoryTransfers.sourceLocationId, sourceLocationId)));
+    const next = (row?.total ?? 0) + 1;
+    return `${warehouseCode}-${locationCode}-${String(next).padStart(3, '0')}`;
+  }
+
   async create(tx: TenantTransaction, values: CreateTransferValues): Promise<InventoryTransferRow> {
     const [row] = await tx
       .insert(inventoryTransfers)
       .values({
         id: values.id,
         tenantId: values.tenantId,
+        code: values.code,
         sourceLocationId: values.sourceLocationId,
         destinationLocationId: values.destinationLocationId,
         requestedBy: values.requestedBy,

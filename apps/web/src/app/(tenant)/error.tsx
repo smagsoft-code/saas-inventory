@@ -19,7 +19,7 @@ export default function TenantError({
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      <ErrorState error={error} onRetry={reset} title="This page could not be loaded" />
+      <ErrorState error={error} onRetry={reset} title="No se pudo cargar esta página" />
     </div>
   );
 }

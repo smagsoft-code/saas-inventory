@@ -1,6 +1,7 @@
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { listProducts } from '../../../../lib/catalog/products';
+import { listWarehouses } from '../../../../lib/inventory/warehouses';
 import { buildLocationIndex } from '../../../../lib/inventory/location-index';
 import { getActiveCart } from '../../../../lib/sales/cart';
 import { getCustomer } from '../../../../lib/sales/customers';
@@ -10,7 +11,7 @@ import { Alert } from '../../../../components/ui/alert';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { NewSale } from './new-sale';
 
-export const metadata = { title: 'New sale · SaaS Inventory' };
+export const metadata = { title: 'Nueva venta · SaaS Inventory' };
 
 /**
  * New sale (`S-SALE-NEW`) — the vendor cart → order flow. Completing a sale needs both
@@ -29,21 +30,23 @@ export default async function NewSalePage({
   if (!checker.can('sales.carts.manage') || !checker.can('sales.orders.create')) {
     return (
       <PageContainer>
-        <PageHeader title="New sale" />
-        <NoAccess message="You need the cart and order-create permissions to make a sale." />
+        <PageHeader title="Nueva venta" />
+        <NoAccess message="Necesitas los permisos de carrito y creación de pedidos para hacer una venta." />
       </PageContainer>
     );
   }
   const canViewProducts = checker.can('products.view');
+  const canViewWarehouses = checker.can('warehouses.view');
   const canViewLocations = checker.can('locations.view');
   const canSearchCustomers = checker.can('sales.customers.view');
 
   const sp = await searchParams;
 
-  const [cart, products, index] = await Promise.all([
+  const [cart, products, warehouses, index] = await Promise.all([
     getActiveCart(),
     canViewProducts ? listProducts({ pageSize: 100, status: 'active' }).catch(() => null) : Promise.resolve(null),
-    buildLocationIndex(checker.can('warehouses.view')),
+    canViewWarehouses ? listWarehouses({ pageSize: 100, status: 'active' }).catch(() => null) : Promise.resolve(null),
+    buildLocationIndex(canViewWarehouses),
   ]);
   const locations = index.locations.filter((l) => l.status === 'active');
 
@@ -59,24 +62,25 @@ export default async function NewSalePage({
   return (
     <PageContainer>
       <PageHeader
-        title="New sale"
-        description="Pick the customer and location, add products, then create the order. The order reserves stock — confirming it later commits the sale."
+        title="Nueva venta"
+        description="Elige el cliente y el almacén, agrega productos y crea el pedido. El pedido reserva stock — confirmarlo después cierra la venta."
       />
       {!canViewLocations && (
-        <Alert tone="warning">You cannot list locations, so the location selector is empty.</Alert>
+        <Alert tone="warning">No puedes listar almacenes, por eso el selector de almacén está vacío.</Alert>
       )}
       {!canViewProducts && (
-        <Alert tone="warning">You cannot list products, so lines cannot be added.</Alert>
+        <Alert tone="warning">No puedes listar productos, por eso no se pueden agregar líneas.</Alert>
       )}
       {!canSearchCustomers && (
-        <Alert tone="warning">You cannot search customers — ask someone with that permission to set one.</Alert>
+        <Alert tone="warning">No puedes buscar clientes — pide a alguien con ese permiso que elija uno.</Alert>
       )}
       <NewSale
         initialCart={cart}
         initialCustomer={initialCustomer}
         {...(sp.customerId && !cart ? { customerIdHint: sp.customerId } : {})}
         products={(products?.data ?? []).map((p) => ({ id: p.id, name: p.name }))}
-        locations={locations.map((l) => ({ id: l.id, name: l.name }))}
+        warehouses={(warehouses?.data ?? []).map((w) => ({ id: w.id, name: w.name }))}
+        locations={locations.map((l) => ({ id: l.id, warehouseId: l.warehouseId, name: l.name }))}
         canSearchCustomers={canSearchCustomers}
       />
     </PageContainer>

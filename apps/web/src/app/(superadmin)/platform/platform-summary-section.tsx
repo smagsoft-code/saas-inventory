@@ -6,7 +6,7 @@ import type { PlatformSummary } from '../../../lib/types/platform-summary';
 export function PlatformSummaryError({ message }: { message: string }): React.JSX.Element {
   return (
     <div className="rounded-lg border border-red-200 bg-red-50 p-4">
-      <p className="text-sm font-medium text-red-800">Could not load platform metrics</p>
+      <p className="text-sm font-medium text-red-800">No se pudieron cargar las métricas de la plataforma</p>
       <p className="mt-0.5 text-sm text-red-700">{message}</p>
     </div>
   );
@@ -38,11 +38,11 @@ export function PlatformSummarySection({
 }): React.JSX.Element {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <Tile label="Companies" value={String(summary.totalCount)} />
-      <Tile label="Active" value={String(summary.byStatus.active)} hint={`${summary.byStatus.suspended} suspended · ${summary.byStatus.archived} archived`} />
+      <Tile label="Empresas" value={String(summary.totalCount)} />
+      <Tile label="Activas" value={String(summary.byStatus.active)} hint={`${summary.byStatus.suspended} suspendidas · ${summary.byStatus.archived} archivadas`} />
       <Tile label="Demo" value={String(summary.demoCount)} />
       <Tile
-        label="New"
+        label="Nuevas"
         value={summary.period ? String(summary.period.newInPeriod) : '—'}
         hint={newWindowLabel}
       />

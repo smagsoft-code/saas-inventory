@@ -14,6 +14,10 @@ export interface SalesSummaryQuery {
   status?: string;
   /** F18-06 — filter by `order_items.is_exceptional_discount`. Omitted / `'all'` = no filter. */
   exceptional?: SalesSummaryExceptional;
+  /** OUI-002/S-HOME redesign — `orders.location_id` equality filter (every order has exactly one).
+   * Narrows the aggregate to one Almacén; does not add a location grouping (`GAP-ORDERS-LOCATION`
+   * stays open for that half). */
+  locationId?: string;
 }
 
 export async function getSalesSummary(query: SalesSummaryQuery): Promise<SalesSummary> {
@@ -23,6 +27,9 @@ export async function getSalesSummary(query: SalesSummaryQuery): Promise<SalesSu
   }
   if (query.exceptional && query.exceptional !== 'all') {
     params['exceptional'] = query.exceptional;
+  }
+  if (query.locationId) {
+    params['locationId'] = query.locationId;
   }
   return serverApiFetch<SalesSummary>('/api/v1/reports/sales-summary', { query: params });
 }

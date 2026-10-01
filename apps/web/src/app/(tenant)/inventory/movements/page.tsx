@@ -23,11 +23,6 @@ export const metadata = { title: 'Movimientos de inventario · SaaS Inventory' }
 
 const PAGE_SIZE = 20;
 
-// The system's actual predominant color (Button's primary variant) is dark slate, not blue — same
-// header treatment the Kardex table (`/inventory`) uses, kept identical here per owner feedback
-// ("el formato de la tabla debe ser igual al de inventario").
-const HEADER_CLASS = 'bg-slate-900 !text-white';
-
 function parseMovementType(value: string | undefined): MovementType | undefined {
   return (MOVEMENT_TYPES as readonly string[]).includes(value ?? '') ? (value as MovementType) : undefined;
 }
@@ -136,13 +131,13 @@ export default async function MovementsPage({
           <Table>
             <THead>
               <TR>
-                <TH className={HEADER_CLASS}>Cuándo</TH>
-                <TH className={HEADER_CLASS}>Tipo</TH>
-                <TH className={HEADER_CLASS}>Almacén</TH>
-                <TH className={`text-right ${HEADER_CLASS}`}>Cantidad</TH>
-                <TH className={`text-right ${HEADER_CLASS}`}>Saldo después</TH>
-                <TH className={HEADER_CLASS}>Motivo / referencia</TH>
-                <TH className={HEADER_CLASS}>Usuario</TH>
+                <TH>Cuándo</TH>
+                <TH>Tipo</TH>
+                <TH>Almacén</TH>
+                <TH className="text-right">Cantidad</TH>
+                <TH className="text-right">Saldo después</TH>
+                <TH>Motivo / referencia</TH>
+                <TH>Usuario</TH>
               </TR>
             </THead>
             <TBody className="!divide-slate-200">

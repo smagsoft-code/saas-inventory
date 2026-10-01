@@ -41,8 +41,8 @@ describe('OrderActions', () => {
         exceptionalLines={[]}
       />,
     );
-    expect(screen.getByRole('button', { name: /confirm order/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /cancel order/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /confirmar pedido/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /cancelar pedido/i })).not.toBeInTheDocument();
   });
 
   it('confirm POSTs /confirm with no body and no tenantId, then refreshes', async () => {
@@ -50,7 +50,7 @@ describe('OrderActions', () => {
     render(
       <OrderActions orderId={ORDER} status="pending" canConfirm canCancel canRequestApproval exceptionalLines={[]} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /confirm order/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar pedido/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/orders/order-1/confirm', { method: 'POST' });
     expect(JSON.stringify(mockedFetch.mock.calls)).not.toMatch(/tenantId/i);
@@ -62,7 +62,7 @@ describe('OrderActions', () => {
     render(
       <OrderActions orderId={ORDER} status="pending" canConfirm canCancel canRequestApproval exceptionalLines={[]} />,
     );
-    const btn = screen.getByRole('button', { name: /confirm order/i });
+    const btn = screen.getByRole('button', { name: /confirmar pedido/i });
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(mockedFetch).toHaveBeenCalledTimes(1);
@@ -77,7 +77,7 @@ describe('OrderActions', () => {
     render(
       <OrderActions orderId={ORDER} status="pending" canConfirm canCancel canRequestApproval exceptionalLines={EXC} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /confirm order/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar pedido/i }));
     expect(await screen.findByText(/awaiting approval/i)).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
   });
@@ -87,9 +87,9 @@ describe('OrderActions', () => {
     render(
       <OrderActions orderId={ORDER} status="pending" canConfirm canCancel canRequestApproval exceptionalLines={[]} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /cancel order/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cancelar pedido/i }));
     expect(mockedFetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /confirm cancel/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar cancelación/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/orders/order-1/cancel', { method: 'POST' });
   });
@@ -99,9 +99,9 @@ describe('OrderActions', () => {
     render(
       <OrderActions orderId={ORDER} status="pending" canConfirm canCancel canRequestApproval exceptionalLines={EXC} />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /request approval/i }));
-    fireEvent.change(screen.getByLabelText(/reason/i), { target: { value: 'matched competitor quote' } });
-    fireEvent.click(screen.getByRole('button', { name: /submit request/i }));
+    fireEvent.click(screen.getByRole('button', { name: /solicitar aprobación/i }));
+    fireEvent.change(screen.getByLabelText(/motivo/i), { target: { value: 'matched competitor quote' } });
+    fireEvent.click(screen.getByRole('button', { name: /enviar solicitud/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/price-approvals', {
       method: 'POST',
@@ -120,6 +120,6 @@ describe('OrderActions', () => {
         exceptionalLines={[{ ...EXC[0]!, hasApproval: true }]}
       />,
     );
-    expect(screen.queryByRole('button', { name: /request approval/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /solicitar aprobación/i })).not.toBeInTheDocument();
   });
 });

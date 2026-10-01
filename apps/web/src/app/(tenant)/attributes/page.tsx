@@ -11,7 +11,7 @@ import { EmptyState } from '../../../components/ui/empty-state';
 import { NoAccess } from '../../../components/ui/no-access';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
 
-export const metadata = { title: 'Attributes · SaaS Inventory' };
+export const metadata = { title: 'Atributos · SaaS Inventory' };
 
 type StatusFilter = 'active' | 'inactive' | undefined;
 
@@ -31,8 +31,8 @@ export default async function AttributesPage({
   if (!checker.can('products.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Attributes" />
-        <NoAccess message="You need the catalogue-view permission to view attributes." />
+        <PageHeader title="Atributos" />
+        <NoAccess message="Necesitas el permiso de vista del catálogo para ver los atributos." />
       </PageContainer>
     );
   }
@@ -46,17 +46,17 @@ export default async function AttributesPage({
   const rows = status ? all.filter((d) => d.status === status) : all;
 
   const filters: { label: string; value: StatusFilter }[] = [
-    { label: 'All', value: undefined },
-    { label: 'Active', value: 'active' },
-    { label: 'Inactive', value: 'inactive' },
+    { label: 'Todos', value: undefined },
+    { label: 'Activos', value: 'active' },
+    { label: 'Inactivos', value: 'inactive' },
   ];
 
   return (
     <PageContainer>
       <PageHeader
-        title="Attributes"
-        description="Reusable attribute definitions. Assign them to categories to give products structured fields."
-        actions={canManage ? <ButtonLink href="/attributes/new">New attribute</ButtonLink> : undefined}
+        title="Atributos"
+        description="Definiciones de atributos reutilizables. Asígnalas a categorías para dar a los productos campos estructurados."
+        actions={canManage ? <ButtonLink href="/attributes/new">Nuevo atributo</ButtonLink> : undefined}
       />
 
       <div className="flex flex-wrap gap-2">
@@ -82,24 +82,24 @@ export default async function AttributesPage({
       {rows.length === 0 ? (
         all.length === 0 ? (
           <EmptyState
-            title="No attributes yet"
-            description="Define an attribute like “Colour” or “Voltage” and assign it to a category."
-            action={canManage ? <ButtonLink href="/attributes/new">New attribute</ButtonLink> : undefined}
+            title="Aún no hay atributos"
+            description="Define un atributo como «Color» o «Voltaje» y asígnalo a una categoría."
+            action={canManage ? <ButtonLink href="/attributes/new">Nuevo atributo</ButtonLink> : undefined}
           />
         ) : (
-          <EmptyState title="No attributes match this filter" description="Try a different status." />
+          <EmptyState title="Ningún atributo coincide con este filtro" description="Prueba con otro estado." />
         )
       ) : (
         <Table>
           <THead>
             <TR>
-              <TH>Name</TH>
-              <TH>Code</TH>
-              <TH>Type</TH>
-              <TH>Applies to</TH>
-              <TH>Required by default</TH>
-              <TH>Status</TH>
-              <TH className="w-0"><span className="sr-only">Actions</span></TH>
+              <TH>Nombre</TH>
+              <TH>Código</TH>
+              <TH>Tipo</TH>
+              <TH>Aplica a</TH>
+              <TH>Obligatorio por defecto</TH>
+              <TH>Estado</TH>
+              <TH className="w-0"><span className="sr-only">Acciones</span></TH>
             </TR>
           </THead>
           <TBody>
@@ -108,15 +108,19 @@ export default async function AttributesPage({
                 <TD className="font-medium">{def.name}</TD>
                 <TD className="text-slate-500"><code className="text-xs">{def.code}</code></TD>
                 <TD>{ATTRIBUTE_DATA_TYPE_LABELS[def.dataType] ?? def.dataType}</TD>
-                <TD className="text-slate-500">{def.appliesTo === 'variant' ? 'Variant' : 'Product'}</TD>
-                <TD className="text-slate-500">{def.isRequiredDefault ? 'Yes' : 'No'}</TD>
-                <TD><Badge tone={statusTone(def.status)}>{def.status}</Badge></TD>
+                <TD className="text-slate-500">{def.appliesTo === 'variant' ? 'Variante' : 'Producto'}</TD>
+                <TD className="text-slate-500">{def.isRequiredDefault ? 'Sí' : 'No'}</TD>
+                <TD>
+                  <Badge tone={statusTone(def.status)}>
+                    {def.status === 'active' ? 'Activo' : def.status === 'inactive' ? 'Inactivo' : def.status}
+                  </Badge>
+                </TD>
                 <TD>
                   <Link
                     href={`/attributes/${def.id}`}
                     className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                   >
-                    {canManage ? 'Edit' : 'View'}
+                    {canManage ? 'Editar' : 'Ver'}
                   </Link>
                 </TD>
               </TR>

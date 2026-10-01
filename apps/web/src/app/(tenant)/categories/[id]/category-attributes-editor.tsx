@@ -60,7 +60,7 @@ export function CategoryAttributesEditor({
 
   if (!canManage) {
     return initialAssigned.length === 0 ? (
-      <p className="text-sm text-slate-500">No attributes assigned to this category.</p>
+      <p className="text-sm text-slate-500">Esta categoría no tiene atributos asignados.</p>
     ) : (
       <ul className="flex flex-col gap-1 text-sm">
         {[...initialAssigned]
@@ -68,7 +68,7 @@ export function CategoryAttributesEditor({
           .map((a) => (
             <li key={a.attributeDefinitionId} className="text-slate-900">
               {a.name} <span className="text-slate-400">({ATTRIBUTE_DATA_TYPE_LABELS[a.dataType] ?? a.dataType})</span>
-              {a.isRequired && <span className="ml-2 text-xs text-amber-700">required</span>}
+              {a.isRequired && <span className="ml-2 text-xs text-amber-700">obligatorio</span>}
             </li>
           ))}
       </ul>
@@ -126,7 +126,7 @@ export function CategoryAttributesEditor({
     } catch (err) {
       setError(
         isApiError(err) && err.status === 403
-          ? 'You need the manage-attributes permission to change category attributes.'
+          ? 'Necesitas el permiso de gestión de atributos para cambiar los atributos de la categoría.'
           : httpErrorMessage(err),
       );
     } finally {
@@ -138,7 +138,7 @@ export function CategoryAttributesEditor({
     <div className="flex flex-col gap-4">
       {rows.length === 0 ? (
         <p className="text-sm text-slate-500">
-          No attributes assigned. Products in this category will carry no dynamic attributes.
+          Sin atributos asignados. Los productos de esta categoría no llevarán atributos dinámicos.
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-slate-100 rounded-lg border border-slate-200">
@@ -155,7 +155,7 @@ export function CategoryAttributesEditor({
                     {def ? ATTRIBUTE_DATA_TYPE_LABELS[def.dataType] ?? def.dataType : '—'}
                   </Badge>
                   {def && def.appliesTo === 'variant' && (
-                    <span className="ml-2 text-xs text-slate-400">per variant</span>
+                    <span className="ml-2 text-xs text-slate-400">por variante</span>
                   )}
                 </span>
                 <label className="flex items-center gap-1.5 text-xs text-slate-600">
@@ -165,12 +165,12 @@ export function CategoryAttributesEditor({
                     onChange={() => toggleRequired(row.attributeDefinitionId)}
                     className="h-4 w-4 rounded border-slate-300"
                   />
-                  Required
+                  Obligatorio
                 </label>
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    aria-label={`Move ${def?.name ?? 'attribute'} up`}
+                    aria-label={`Subir ${def?.name ?? 'atributo'}`}
                     disabled={index === 0}
                     onClick={() => move(index, -1)}
                     className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30"
@@ -179,7 +179,7 @@ export function CategoryAttributesEditor({
                   </button>
                   <button
                     type="button"
-                    aria-label={`Move ${def?.name ?? 'attribute'} down`}
+                    aria-label={`Bajar ${def?.name ?? 'atributo'}`}
                     disabled={index === rows.length - 1}
                     onClick={() => move(index, 1)}
                     className="rounded p-1 text-slate-500 hover:bg-slate-100 disabled:opacity-30"
@@ -191,7 +191,7 @@ export function CategoryAttributesEditor({
                     onClick={() => remove(row.attributeDefinitionId)}
                     className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50"
                   >
-                    Remove
+                    Quitar
                   </button>
                 </div>
               </li>
@@ -203,13 +203,13 @@ export function CategoryAttributesEditor({
       {available.length > 0 && (
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-slate-700">Add an attribute</span>
+            <span className="font-medium text-slate-700">Agregar un atributo</span>
             <select
               value={toAdd}
               onChange={(e) => setToAdd(e.target.value)}
               className="rounded-md border border-slate-300 bg-white px-3 py-2 pr-8 text-sm"
             >
-              <option value="">Choose an attribute…</option>
+              <option value="">Elegir un atributo…</option>
               {available.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name} ({ATTRIBUTE_DATA_TYPE_LABELS[d.dataType] ?? d.dataType})
@@ -218,16 +218,16 @@ export function CategoryAttributesEditor({
             </select>
           </label>
           <Button type="button" variant="secondary" onClick={add} disabled={!toAdd}>
-            Add
+            Agregar
           </Button>
         </div>
       )}
 
       {error && <Alert tone="error">{error}</Alert>}
-      {success && <Alert tone="success">Category attributes saved.</Alert>}
+      {success && <Alert tone="success">Atributos de la categoría guardados.</Alert>}
 
       <Button type="button" onClick={save} loading={submitting} disabled={!dirty} className="w-fit">
-        Save attributes
+        Guardar atributos
       </Button>
     </div>
   );

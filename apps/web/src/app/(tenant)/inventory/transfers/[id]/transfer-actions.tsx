@@ -15,16 +15,26 @@ import { Button } from '../../../../../components/ui/button';
 import { Card, CardBody } from '../../../../../components/ui/card';
 import { Field } from '../../../../../components/ui/field';
 import { Input, Select, Textarea } from '../../../../../components/ui/input';
+import { Toast } from '../../../../../components/ui/toast';
 
 interface ActionItem {
   id: string;
   productVariantId: string;
+  productName?: string;
+  sku?: string;
   quantityRequested: number;
   quantityDispatched: number;
   quantityReceived: number;
 }
 
 type Transition = 'approve' | 'prepare' | 'dispatch' | 'receive' | 'cancel';
+
+function itemLabel(item: ActionItem): string {
+  if (!item.productName) {
+    return `Variante ${item.productVariantId.slice(0, 8)}…`;
+  }
+  return item.sku ? `${item.productName} — ${item.sku}` : item.productName;
+}
 
 /** A distinct idempotency key per logical receiving attempt — reused across retries of that same
  * attempt, regenerated only for a fresh one (matches `randomCorrelationId` in the api client). */
@@ -34,6 +44,25 @@ function newIdempotencyKey(): string {
   }
   return `web-receive-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
+
+const SUCCESS_MESSAGE: Record<Transition, string> = {
+  approve: 'Transferencia aprobada correctamente.',
+  prepare: 'Transferencia preparada correctamente.',
+  dispatch: 'Transferencia despachada correctamente.',
+  receive: 'Transferencia recibida correctamente.',
+  cancel: 'Transferencia cancelada correctamente.',
+};
+
+/** The next action a status implies, purely for the "you can't act on this" explanation below —
+ * never used to decide whether a button renders (that's still `transferActionsForStatus` +
+ * the caller's real permissions). */
+const NEXT_ACTION_LABEL: Partial<Record<string, string>> = {
+  draft: 'aprobarla',
+  approved: 'prepararla',
+  preparing: 'despacharla',
+  dispatched: 'recibirla',
+  partially_received: 'recibirla',
+};
 
 /**
  * The transfer lifecycle controls (`S-INV-TRANSFER-DETAIL` actions). Each button maps to one real
@@ -46,7 +75,10 @@ function newIdempotencyKey(): string {
  *  - Cancel   → `POST .../cancel`   (`inventory.transfers.approve`, status `draft`/`approved`/`preparing`)
  *
  * The backend is the authority — a 403 (location authorization) / 409 (state) is shown in place,
- * never a redirect. Every action is single-flight (`busy` guard).
+ * never a redirect. Every action is single-flight (`busy` guard). When a non-terminal status has NO
+ * action visible to the current user, this renders an explanatory note instead of nothing — see
+ * `NEXT_ACTION_LABEL` below (F17-TRANSFERS-AUDIT §12: most "el botón Aprobar no funciona" reports
+ * turn out to be exactly this — the permission genuinely isn't granted, by design).
  */
 export function TransferActions({
   transferId,
@@ -75,6 +107,7 @@ export function TransferActions({
 
   const [busy, setBusy] = useState<Transition | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
 
   // Dispatch panel
@@ -94,8 +127,8 @@ export function TransferActions({
   function friendlyError(err: unknown, locationHint: boolean): string {
     if (isApiError(err) && err.status === 403) {
       return locationHint
-        ? 'You are not authorized to operate on this transfer’s location.'
-        : 'You are not authorized to perform this action.';
+        ? 'No tienes autorización para operar en el almacén de esta transferencia.'
+        : 'No tienes autorización para realizar esta acción.';
     }
     return httpErrorMessage(err);
   }
@@ -110,9 +143,11 @@ export function TransferActions({
     }
     setBusy(transition);
     setError(null);
+    setSuccess(null);
     try {
       await request();
       opts.onDone?.();
+      setSuccess(SUCCESS_MESSAGE[transition]);
       router.refresh();
     } catch (err) {
       setError(friendlyError(err, opts.locationHint ?? false));
@@ -173,7 +208,7 @@ export function TransferActions({
       .filter((line): line is NonNullable<typeof line> => line !== null);
 
     if (lines.length === 0) {
-      setError('Enter a quantity for at least one line.');
+      setError('Ingresa una cantidad para al menos una línea.');
       return;
     }
 
@@ -188,15 +223,37 @@ export function TransferActions({
     );
   }
 
-  if (!showApprove && !showPrepare && !showDispatch && !showReceive && !showCancel) {
+  const noVisibleActions = !showApprove && !showPrepare && !showDispatch && !showReceive && !showCancel;
+  const nextActionLabel = NEXT_ACTION_LABEL[status];
+
+  // A status that still has a next step, but none of it is visible to THIS user — surfaces why,
+  // instead of silently showing nothing (the actual cause behind "el botón Aprobar no funciona"
+  // reports in most cases: the permission genuinely isn't granted, by design — separation of
+  // duties, ADR-0009/roles — not a broken button). A truly terminal status (received/cancelled)
+  // still renders nothing, same as before.
+  if (noVisibleActions && nextActionLabel) {
+    return (
+      <Card>
+        <CardBody>
+          <Alert tone="info">
+            Esta transferencia está lista para que alguien con el permiso correspondiente pueda{' '}
+            {nextActionLabel}. Tu cuenta no tiene ese permiso — pide a un administrador que te lo
+            asigne, o que realice esa acción.
+          </Alert>
+        </CardBody>
+      </Card>
+    );
+  }
+  if (noVisibleActions) {
     return null;
   }
 
   return (
     <Card>
       <CardBody className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-slate-900">Actions</h2>
+        <h2 className="text-sm font-semibold text-slate-900">Acciones</h2>
 
+        {success && <Toast message={success} onDismiss={() => setSuccess(null)} />}
         {error && <Alert tone="error">{error}</Alert>}
 
         <div className="flex flex-wrap gap-2">
@@ -206,7 +263,7 @@ export function TransferActions({
               disabled={busy !== null}
               onClick={() => void run('approve', () => apiFetch(`${base}/approve`, { method: 'POST' }))}
             >
-              Approve
+              Aprobar
             </Button>
           )}
           {showPrepare && (
@@ -215,29 +272,29 @@ export function TransferActions({
               disabled={busy !== null}
               onClick={() => void run('prepare', () => apiFetch(`${base}/prepare`, { method: 'POST' }), { locationHint: true })}
             >
-              Prepare
+              Preparar
             </Button>
           )}
           {showDispatch && !dispatchOpen && (
             <Button variant="secondary" disabled={busy !== null} onClick={openDispatch}>
-              Dispatch…
+              Despachar…
             </Button>
           )}
           {showReceive && !receiveOpen && (
             <Button variant="secondary" disabled={busy !== null} onClick={openReceive}>
-              Receive…
+              Recibir…
             </Button>
           )}
           {showCancel && !confirmCancel && (
             <Button variant="danger" disabled={busy !== null} onClick={() => setConfirmCancel(true)}>
-              Cancel transfer
+              Cancelar transferencia
             </Button>
           )}
         </div>
 
         {confirmCancel && showCancel && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            <span>Cancel this transfer? Any reservation at the source is released.</span>
+            <span>¿Cancelar esta transferencia? Se libera cualquier reserva en el origen.</span>
             <Button
               variant="danger"
               size="sm"
@@ -249,22 +306,22 @@ export function TransferActions({
                 })
               }
             >
-              Confirm cancel
+              Confirmar cancelación
             </Button>
             <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => setConfirmCancel(false)}>
-              Keep transfer
+              Mantener transferencia
             </Button>
           </div>
         )}
 
         {showDispatch && dispatchOpen && (
           <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-            <p className="text-sm font-medium text-slate-700">Dispatch quantities</p>
+            <p className="text-sm font-medium text-slate-700">Cantidades a despachar</p>
             <p className="text-xs text-slate-500">
-              Defaults to each line&apos;s requested quantity. Lower a value only if you are short-shipping it.
+              Por defecto es la cantidad solicitada de cada línea. Reduce el valor solo si vas a despachar menos.
             </p>
             {items.map((item) => (
-              <Field key={item.id} label={`Variant ${item.productVariantId.slice(0, 8)}… (requested ${item.quantityRequested})`}>
+              <Field key={item.id} label={`${itemLabel(item)} (solicitado ${item.quantityRequested})`}>
                 <Input
                   type="number"
                   min={0}
@@ -277,10 +334,10 @@ export function TransferActions({
             ))}
             <div className="flex gap-2">
               <Button loading={busy === 'dispatch'} disabled={busy !== null} onClick={() => void submitDispatch()}>
-                Dispatch
+                Despachar
               </Button>
               <Button variant="ghost" disabled={busy !== null} onClick={() => setDispatchOpen(false)}>
-                Cancel
+                Cancelar
               </Button>
             </div>
           </div>
@@ -288,15 +345,15 @@ export function TransferActions({
 
         {showReceive && receiveOpen && (
           <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-            <p className="text-sm font-medium text-slate-700">Receive stock</p>
+            <p className="text-sm font-medium text-slate-700">Recibir existencias</p>
             {outstanding.length === 0 ? (
-              <p className="text-sm text-slate-500">Nothing is outstanding to receive on this transfer.</p>
+              <p className="text-sm text-slate-500">No hay nada pendiente por recibir en esta transferencia.</p>
             ) : (
               outstanding.map((item) => {
                 const remaining = item.quantityDispatched - item.quantityReceived;
                 return (
                   <div key={item.id} className="flex flex-col gap-2 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
-                    <Field label={`Variant ${item.productVariantId.slice(0, 8)}… (up to ${remaining})`}>
+                    <Field label={`${itemLabel(item)} (hasta ${remaining})`}>
                       <Input
                         type="number"
                         min={0}
@@ -307,12 +364,12 @@ export function TransferActions({
                       />
                     </Field>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <Field label="Incident" hint="Optional.">
+                      <Field label="Incidencia" hint="Opcional.">
                         <Select
                           value={receiveIncident[item.id] ?? ''}
                           onChange={(e) => setReceiveIncident((cur) => ({ ...cur, [item.id]: e.target.value }))}
                         >
-                          <option value="">None</option>
+                          <option value="">Ninguna</option>
                           {TRANSFER_INCIDENT_TYPES.map((t) => (
                             <option key={t} value={t}>
                               {TRANSFER_INCIDENT_TYPE_LABELS[t]}
@@ -321,7 +378,7 @@ export function TransferActions({
                         </Select>
                       </Field>
                       {receiveIncident[item.id] && (
-                        <Field label="Incident notes" hint="Optional.">
+                        <Field label="Notas de la incidencia" hint="Opcional.">
                           <Input
                             maxLength={500}
                             value={receiveIncidentNotes[item.id] ?? ''}
@@ -334,7 +391,7 @@ export function TransferActions({
                 );
               })
             )}
-            <Field label="Notes" hint="Optional — recorded on the receiving event.">
+            <Field label="Notas" hint="Opcional — se registra en el evento de recepción.">
               <Textarea maxLength={1000} value={receiveNotes} onChange={(e) => setReceiveNotes(e.target.value)} />
             </Field>
             <div className="flex gap-2">
@@ -343,10 +400,10 @@ export function TransferActions({
                 disabled={busy !== null || outstanding.length === 0}
                 onClick={() => void submitReceive()}
               >
-                Confirm receipt
+                Confirmar recepción
               </Button>
               <Button variant="ghost" disabled={busy !== null} onClick={() => setReceiveOpen(false)}>
-                Cancel
+                Cancelar
               </Button>
             </div>
           </div>

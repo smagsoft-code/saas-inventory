@@ -43,7 +43,7 @@ export function ApprovalActions({
   }
   if (isOwnRequest) {
     return (
-      <Alert tone="info">You filed this request — another user with the approval permission must resolve it.</Alert>
+      <Alert tone="info">Tú presentaste esta solicitud — otro usuario con el permiso de aprobación debe resolverla.</Alert>
     );
   }
 
@@ -57,7 +57,7 @@ export function ApprovalActions({
       router.refresh();
     } catch (err) {
       if (isApiError(err) && err.status === 403) {
-        setError('You are not authorized to resolve this request.');
+        setError('No tienes autorización para resolver esta solicitud.');
       } else {
         setError(httpErrorMessage(err));
       }
@@ -73,18 +73,18 @@ export function ApprovalActions({
       {confirming === null ? (
         <div className="flex flex-wrap gap-2">
           <Button disabled={busy !== null} onClick={() => setConfirming('approve')}>
-            Approve
+            Aprobar
           </Button>
           <Button variant="danger" disabled={busy !== null} onClick={() => setConfirming('reject')}>
-            Reject
+            Rechazar
           </Button>
         </div>
       ) : (
         <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
           <span>
             {confirming === 'approve'
-              ? 'Approve this exceptional discount? The order can then be confirmed.'
-              : 'Reject this request? The order cannot be confirmed at this price.'}
+              ? '¿Aprobar este descuento excepcional? El pedido podrá confirmarse después.'
+              : '¿Rechazar esta solicitud? El pedido no podrá confirmarse a este precio.'}
           </span>
           <Button
             size="sm"
@@ -93,10 +93,10 @@ export function ApprovalActions({
             disabled={busy !== null}
             onClick={() => void decide(confirming)}
           >
-            {confirming === 'approve' ? 'Confirm approve' : 'Confirm reject'}
+            {confirming === 'approve' ? 'Confirmar aprobación' : 'Confirmar rechazo'}
           </Button>
           <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setConfirming(null)}>
-            Cancel
+            Cancelar
           </Button>
         </div>
       )}

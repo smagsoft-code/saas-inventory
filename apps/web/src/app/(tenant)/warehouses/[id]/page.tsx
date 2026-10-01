@@ -13,7 +13,7 @@ import { Badge, statusTone } from '../../../../components/ui/badge';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { WarehouseForm } from '../warehouse-form';
 
-export const metadata = { title: 'Warehouse · SaaS Inventory' };
+export const metadata = { title: 'Sucursal · SaaS Inventory' };
 
 export default async function WarehouseDetailPage({
   params,
@@ -26,8 +26,8 @@ export default async function WarehouseDetailPage({
   if (!checker.can('warehouses.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Warehouse" />
-        <NoAccess message="You need the warehouses permission to view this page." />
+        <PageHeader title="Sucursal" />
+        <NoAccess message="Necesitas el permiso de sucursales para ver esta página." />
       </PageContainer>
     );
   }
@@ -58,25 +58,29 @@ export default async function WarehouseDetailPage({
       <PageHeader
         title={warehouse.name}
         description={warehouse.code}
-        actions={<Badge tone={statusTone(warehouse.status)}>{warehouse.status}</Badge>}
+        actions={
+          <Badge tone={statusTone(warehouse.status)}>
+            {warehouse.status === 'active' ? 'Activa' : warehouse.status === 'inactive' ? 'Inactiva' : warehouse.status}
+          </Badge>
+        }
       />
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Details</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Detalles</h2>
           {canManage ? (
             <WarehouseForm mode="edit" warehouse={warehouse} />
           ) : (
             <dl className="grid max-w-md grid-cols-[10rem_1fr] gap-y-2 text-sm">
-              <dt className="text-slate-500">Name</dt>
+              <dt className="text-slate-500">Nombre</dt>
               <dd className="text-slate-900">{warehouse.name}</dd>
-              <dt className="text-slate-500">Code</dt>
+              <dt className="text-slate-500">Código</dt>
               <dd className="text-slate-900">
                 <code className="text-xs">{warehouse.code}</code>
               </dd>
               {addressRows.length === 0 ? (
                 <>
-                  <dt className="text-slate-500">Address</dt>
+                  <dt className="text-slate-500">Dirección</dt>
                   <dd className="text-slate-900">—</dd>
                 </>
               ) : (
@@ -96,16 +100,16 @@ export default async function WarehouseDetailPage({
         <Card>
           <CardBody className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-900">Locations</h2>
+              <h2 className="text-sm font-semibold text-slate-900">Almacenes</h2>
               <Link
                 href={`/locations?warehouseId=${warehouse.id}`}
                 className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
               >
-                Manage locations
+                Gestionar almacenes
               </Link>
             </div>
             {locations.data.length === 0 ? (
-              <p className="text-sm text-slate-500">This warehouse has no locations yet.</p>
+              <p className="text-sm text-slate-500">Esta sucursal aún no tiene almacenes.</p>
             ) : (
               <ul className="flex flex-col gap-1 text-sm">
                 {locations.data.map((location) => (
@@ -117,9 +121,11 @@ export default async function WarehouseDetailPage({
                       {location.name}
                     </Link>
                     <code className="text-xs text-slate-400">{location.code}</code>
-                    {!location.isSellable && <Badge tone="warning">non-sellable</Badge>}
+                    {!location.isSellable && <Badge tone="warning">no vendible</Badge>}
                     {location.status !== 'active' && (
-                      <Badge tone={statusTone(location.status)}>{location.status}</Badge>
+                      <Badge tone={statusTone(location.status)}>
+                        {location.status === 'inactive' ? 'Inactivo' : location.status}
+                      </Badge>
                     )}
                   </li>
                 ))}

@@ -12,6 +12,15 @@ export class TenantSettingsResponseDto {
   @ApiProperty({ type: [BusinessHoursEntryDto] })
   businessHours!: BusinessHoursEntryDto[];
 
+  /** Transferencias workflow config (F17-TRANSFERS-AUDIT §1) — whether a transfer must pass
+   * through a manual "Aprobar"/"Preparar" action to advance, or skips that gate automatically.
+   * `dispatched`/`received` are never configurable — see `transfers.service.ts`. */
+  @ApiProperty({ type: Boolean })
+  transfersRequireApproval!: boolean;
+
+  @ApiProperty({ type: Boolean })
+  transfersRequirePreparation!: boolean;
+
   @ApiProperty({ type: String, nullable: true, description: 'null when the tenant has never saved custom settings.' })
   updatedAt!: string | null;
 }

@@ -1,30 +1,39 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsEmail, IsIn, IsOptional, IsString, Length, ValidateNested } from 'class-validator';
-import { AddressDto } from './address.dto';
+import { IsEmail, IsIn, IsOptional, IsString, Length } from 'class-validator';
+import { IsTaxIdForType } from './tax-id-format.validator';
 
-const CUSTOMER_TYPES = ['individual', 'business'] as const;
+const CUSTOMER_TYPES = ['cedula', 'ruc', 'pasaporte'] as const;
 
 /** No `tenantId`/`status` field — tenant is always CurrentTenant, and a customer always starts
- * `active` (the column default). `displayName` is the schema's single name column
- * (database.md#customers): the prompt's "nombre + apellido" maps here, not to duplicate
- * first/last columns. `taxId` is the identification field — unique per tenant when present
- * (`customers_tenant_id_tax_id_key` partial index), never globally. */
+ * `active` (the column default). Owner redesign: `type` is the identification document itself
+ * (cedula/ruc/pasaporte, replacing the old individual/business distinction); `taxId` is that
+ * document's number, required, format-checked against `type` (`IsTaxIdForType`), and unique per
+ * tenant when present (`customers_tenant_id_tax_id_key` partial index), never globally. `address`
+ * is one free-form line (no structured sub-fields) — `orders.customer_address_snapshot` is a
+ * separate, historical column and keeps its own shape. */
 export class CreateCustomerDto {
   @ApiProperty({ enum: CUSTOMER_TYPES })
   @IsIn(CUSTOMER_TYPES)
   type!: (typeof CUSTOMER_TYPES)[number];
 
-  @ApiProperty({ type: String, minLength: 1, maxLength: 200 })
+  @ApiProperty({ type: String, minLength: 1, maxLength: 120 })
   @IsString()
-  @Length(1, 200)
-  displayName!: string;
+  @Length(1, 120)
+  firstName!: string;
 
-  @ApiPropertyOptional({ type: String, maxLength: 50, description: 'Tax id / identification — unique within this tenant when present.' })
-  @IsOptional()
+  @ApiProperty({ type: String, minLength: 1, maxLength: 120 })
+  @IsString()
+  @Length(1, 120)
+  lastName!: string;
+
+  @ApiProperty({
+    type: String,
+    description: 'Identification number — exactly 10 digits for cedula, exactly 13 digits for ruc, alphanumeric for pasaporte. Unique within this tenant.',
+  })
   @IsString()
   @Length(1, 50)
-  taxId?: string;
+  @IsTaxIdForType()
+  taxId!: string;
 
   @ApiPropertyOptional({ type: String, maxLength: 254 })
   @IsOptional()
@@ -38,15 +47,9 @@ export class CreateCustomerDto {
   @Length(1, 40)
   phone?: string;
 
-  @ApiPropertyOptional({ type: AddressDto })
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => AddressDto)
-  address?: AddressDto;
-
-  @ApiPropertyOptional({ type: String, maxLength: 2000 })
+  @ApiPropertyOptional({ type: String, maxLength: 400 })
   @IsOptional()
   @IsString()
-  @Length(0, 2000)
-  notes?: string;
+  @Length(0, 400)
+  address?: string;
 }

@@ -27,8 +27,8 @@ describe('CategoryAttributesEditor', () => {
       />,
     );
     expect(screen.getByText('Colour')).toBeInTheDocument();
-    expect(screen.getByText(/required/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /save attributes/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/obligatorio/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /guardar atributos/i })).not.toBeInTheDocument();
   });
 
   it('adds an attribute and PUTs the full set with derived displayOrder', async () => {
@@ -36,15 +36,15 @@ describe('CategoryAttributesEditor', () => {
     render(
       <CategoryAttributesEditor categoryId="c1" assigned={[]} definitions={DEFS} canManage />,
     );
-    expect(screen.getByRole('button', { name: /save attributes/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /guardar atributos/i })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText(/add an attribute/i), { target: { value: 'd2' } });
-    fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
-    fireEvent.change(screen.getByLabelText(/add an attribute/i), { target: { value: 'd1' } });
-    fireEvent.click(screen.getByRole('button', { name: /^add$/i }));
+    fireEvent.change(screen.getByLabelText(/agregar un atributo/i), { target: { value: 'd2' } });
+    fireEvent.click(screen.getByRole('button', { name: /^agregar$/i }));
+    fireEvent.change(screen.getByLabelText(/agregar un atributo/i), { target: { value: 'd1' } });
+    fireEvent.click(screen.getByRole('button', { name: /^agregar$/i }));
 
-    fireEvent.click(screen.getByRole('button', { name: /save attributes/i }));
-    await waitFor(() => expect(screen.getByText(/category attributes saved/i)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /guardar atributos/i }));
+    await waitFor(() => expect(screen.getByText(/atributos de la categoría guardados/i)).toBeInTheDocument());
 
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/categories/c1/attributes', {
       method: 'PUT',
@@ -70,9 +70,9 @@ describe('CategoryAttributesEditor', () => {
         canManage
       />,
     );
-    fireEvent.click(screen.getAllByRole('checkbox', { name: /required/i })[0]!);
-    fireEvent.click(screen.getByRole('button', { name: /move power up/i }));
-    fireEvent.click(screen.getByRole('button', { name: /save attributes/i }));
+    fireEvent.click(screen.getAllByRole('checkbox', { name: /obligatorio/i })[0]!);
+    fireEvent.click(screen.getByRole('button', { name: /subir power/i }));
+    fireEvent.click(screen.getByRole('button', { name: /guardar atributos/i }));
 
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/categories/c1/attributes', {

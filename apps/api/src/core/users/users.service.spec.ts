@@ -208,6 +208,37 @@ describe('UsersService', () => {
     });
   });
 
+  describe('list — name search passthrough (LOGIN + USUARIOS UI/UX block, GAP-USER-FILTERS)', () => {
+    it('forwards q to the repository unchanged, alongside page/pageSize/status — never filtered here', async () => {
+      const { service, usersRepository, rolesRepository } = buildService();
+      usersRepository.findManyByTenant.mockResolvedValue({ rows: [], total: 0 });
+      rolesRepository.roleNamesForUsers.mockResolvedValue(new Map());
+
+      await service.list(TENANT_ID, { page: 1, pageSize: 20, status: 'active', q: 'Juan' });
+
+      expect(usersRepository.findManyByTenant).toHaveBeenCalledWith(expect.anything(), TENANT_ID, {
+        page: 1,
+        pageSize: 20,
+        status: 'active',
+        q: 'Juan',
+      });
+    });
+
+    it('forwards an undefined q as-is when no search was given', async () => {
+      const { service, usersRepository, rolesRepository } = buildService();
+      usersRepository.findManyByTenant.mockResolvedValue({ rows: [], total: 0 });
+      rolesRepository.roleNamesForUsers.mockResolvedValue(new Map());
+
+      await service.list(TENANT_ID, { page: 1, pageSize: 20 });
+
+      expect(usersRepository.findManyByTenant).toHaveBeenCalledWith(
+        expect.anything(),
+        TENANT_ID,
+        expect.objectContaining({ q: undefined }),
+      );
+    });
+  });
+
   describe('getById — cross-tenant/nonexistent (§12/§28 scenario A)', () => {
     it('throws NotFoundException rather than leaking whether the id exists in another tenant', async () => {
       const { service, usersRepository } = buildService();

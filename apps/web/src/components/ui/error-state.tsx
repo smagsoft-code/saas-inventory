@@ -11,7 +11,7 @@ import { Button } from './button';
 export function ErrorState({
   error,
   onRetry,
-  title = 'Something went wrong',
+  title = 'Algo salió mal',
 }: {
   error: unknown;
   onRetry?: () => void;
@@ -25,12 +25,12 @@ export function ErrorState({
         <p className="text-sm font-medium text-red-800">{title}</p>
         <p className="mt-0.5 text-sm text-red-700">{httpErrorMessage(error)}</p>
         {correlationId && (
-          <p className="mt-1 text-xs text-red-600/80">Reference: {correlationId}</p>
+          <p className="mt-1 text-xs text-red-600/80">Referencia: {correlationId}</p>
         )}
       </div>
       {onRetry && (
         <Button variant="secondary" size="sm" onClick={onRetry}>
-          Try again
+          Reintentar
         </Button>
       )}
     </div>

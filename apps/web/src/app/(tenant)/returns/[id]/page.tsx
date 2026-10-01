@@ -21,7 +21,7 @@ import { NoAccess } from '../../../../components/ui/no-access';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
 import { ReturnActions, type ActionLine } from './return-actions';
 
-export const metadata = { title: 'Return · SaaS Inventory' };
+export const metadata = { title: 'Devolución · SaaS Inventory' };
 
 /**
  * Sales return detail (`S-RET-DETAIL`) — `GET /api/v1/sales-returns/:id` (`sales.returns.view`).
@@ -41,8 +41,8 @@ export default async function ReturnDetailPage({
   if (!checker.can('sales.returns.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Return" />
-        <NoAccess message="You need the returns permission to view this page." />
+        <PageHeader title="Devolución" />
+        <NoAccess message="Necesitas el permiso de devoluciones para ver esta página." />
       </PageContainer>
     );
   }
@@ -87,8 +87,8 @@ export default async function ReturnDetailPage({
   return (
     <PageContainer>
       <PageHeader
-        title={`Return ${shortId(ret.id)}`}
-        description={`Received at ${index.locationName(ret.locationId)}`}
+        title={`Devolución ${shortId(ret.id)}`}
+        description={`Recibido en ${index.locationName(ret.locationId)}`}
         actions={
           <Badge tone={returnStatusTone(ret.status)}>
             {RETURN_STATUS_LABELS[ret.status as ReturnStatus] ?? ret.status}
@@ -99,7 +99,7 @@ export default async function ReturnDetailPage({
       <Card>
         <CardBody className="flex flex-col gap-4">
           <dl className="grid max-w-lg grid-cols-[10rem_1fr] gap-y-2 text-sm">
-            <dt className="text-slate-500">Order</dt>
+            <dt className="text-slate-500">Pedido</dt>
             <dd className="text-slate-900">
               {canViewOrders ? (
                 <Link href={`/sales/${ret.orderId}`} className="font-medium underline underline-offset-2">
@@ -109,44 +109,44 @@ export default async function ReturnDetailPage({
                 <code className="text-xs">{shortId(ret.orderId)}</code>
               )}
             </dd>
-            <dt className="text-slate-500">Receiving location</dt>
+            <dt className="text-slate-500">Almacén de recepción</dt>
             <dd className="text-slate-900">
               {index.locationName(ret.locationId)}
               <span className="text-slate-500"> · {index.warehouseName(ret.locationId)}</span>
             </dd>
-            <dt className="text-slate-500">Requested by</dt>
+            <dt className="text-slate-500">Solicitado por</dt>
             <dd className="text-slate-900">
               <code className="text-xs">{shortId(ret.requestedBy)}</code>
             </dd>
             {ret.receivedBy && (
               <>
-                <dt className="text-slate-500">Received by</dt>
+                <dt className="text-slate-500">Recibido por</dt>
                 <dd className="text-slate-900">
                   <code className="text-xs">{shortId(ret.receivedBy)}</code>
                 </dd>
               </>
             )}
-            <dt className="text-slate-500">Reason</dt>
+            <dt className="text-slate-500">Motivo</dt>
             <dd className="whitespace-pre-wrap text-slate-900">{ret.reason}</dd>
-            <dt className="text-slate-500">Created</dt>
-            <dd className="text-slate-900">{new Date(ret.createdAt).toLocaleString()}</dd>
-            <dt className="text-slate-500">Updated</dt>
-            <dd className="text-slate-900">{new Date(ret.updatedAt).toLocaleString()}</dd>
+            <dt className="text-slate-500">Creado</dt>
+            <dd className="text-slate-900">{new Date(ret.createdAt).toLocaleString('es')}</dd>
+            <dt className="text-slate-500">Actualizado</dt>
+            <dd className="text-slate-900">{new Date(ret.updatedAt).toLocaleString('es')}</dd>
           </dl>
         </CardBody>
       </Card>
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Lines</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Líneas</h2>
           <Table>
             <THead>
               <TR>
-                <TH>Item</TH>
-                <TH className="text-right">Qty returned</TH>
-                <TH>Disposition</TH>
-                <TH>Disposition location</TH>
-                <TH>Notes</TH>
+                <TH>Artículo</TH>
+                <TH className="text-right">Cant. devuelta</TH>
+                <TH>Disposición</TH>
+                <TH>Almacén de disposición</TH>
+                <TH>Notas</TH>
               </TR>
             </THead>
             <TBody>
@@ -169,7 +169,7 @@ export default async function ReturnDetailPage({
                             href={`/inventory/movements?productVariantId=${item.productVariantId}`}
                             className="text-xs text-slate-500 underline-offset-2 hover:underline"
                           >
-                            movements
+                            movimientos
                           </Link>
                         </div>
                       )}
@@ -205,11 +205,11 @@ export default async function ReturnDetailPage({
 
       <div className="flex gap-4 text-sm">
         <Link href="/returns" className="font-medium text-slate-500 hover:underline">
-          All returns
+          Todas las devoluciones
         </Link>
         {canViewOrders && (
           <Link href={`/sales/${ret.orderId}`} className="font-medium text-slate-500 hover:underline">
-            Order {order ? order.orderNumber : shortId(ret.orderId)}
+            Pedido {order ? order.orderNumber : shortId(ret.orderId)}
           </Link>
         )}
       </div>

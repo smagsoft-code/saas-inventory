@@ -24,17 +24,17 @@ describe('ImportsReportSection', () => {
         summary={baseSummary({ totals: { key: 'total', jobCount: 5, totalRows: 900, validRows: 850, invalidRows: 30, warningRows: 20, importedRows: 800 } })}
       />,
     );
-    expect(screen.getByText('Jobs completed')).toBeInTheDocument();
+    expect(screen.getByText('Trabajos completados')).toBeInTheDocument();
     expect(screen.getByText('5')).toBeInTheDocument();
-    expect(screen.getByText('Rows imported')).toBeInTheDocument();
+    expect(screen.getByText('Filas importadas')).toBeInTheDocument();
     expect(screen.getByText('800')).toBeInTheDocument();
-    expect(screen.getByText('Rows invalid')).toBeInTheDocument();
+    expect(screen.getByText('Filas inválidas')).toBeInTheDocument();
     expect(screen.getByText('30')).toBeInTheDocument();
   });
 
   it('shows an empty state (never a fake zero row) when there are no buckets', () => {
     render(<ImportsReportSection summary={baseSummary()} />);
-    expect(screen.getByText('No completed imports in this period')).toBeInTheDocument();
+    expect(screen.getByText('Sin importaciones completadas en este período')).toBeInTheDocument();
   });
 
   it('renders period buckets with the raw YYYY-MM-DD key and every row-count column', () => {
@@ -48,7 +48,7 @@ describe('ImportsReportSection', () => {
     });
     render(<ImportsReportSection summary={summary} />);
     expect(screen.getByText('2026-08-01')).toBeInTheDocument();
-    expect(screen.getByText('Period')).toBeInTheDocument(); // column header
+    expect(screen.getByText('Período')).toBeInTheDocument(); // column header
   });
 
   it('renders status buckets with the human import-status label', () => {
@@ -61,23 +61,23 @@ describe('ImportsReportSection', () => {
       ],
     });
     render(<ImportsReportSection summary={summary} />);
-    expect(screen.getByText('Completed')).toBeInTheDocument();
-    expect(screen.getByText('Completed with errors')).toBeInTheDocument();
-    expect(screen.getByText('Status')).toBeInTheDocument(); // column header
+    expect(screen.getByText('Completado')).toBeInTheDocument();
+    expect(screen.getByText('Completado con errores')).toBeInTheDocument();
+    expect(screen.getByText('Estado')).toBeInTheDocument(); // column header
   });
 });
 
 describe('ImportsReportError', () => {
   it('shows "Access denied" for a 403 and never renders a link to login', () => {
     render(<ImportsReportError status={403} message="You do not have permission." />);
-    expect(screen.getByText('Access denied')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Try again' })).toHaveAttribute('href', '#report');
+    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Reintentar' })).toHaveAttribute('href', '#report');
     expect(screen.queryByRole('link', { name: /login/i })).not.toBeInTheDocument();
   });
 
   it('shows a generic message for a 5xx and the correlation id', () => {
     render(<ImportsReportError status={500} message="Something went wrong on our end." correlationId="abc-123" />);
-    expect(screen.getByText('Something went wrong on our end')).toBeInTheDocument();
-    expect(screen.getByText('Reference: abc-123')).toBeInTheDocument();
+    expect(screen.getByText('Algo salió mal de nuestro lado')).toBeInTheDocument();
+    expect(screen.getByText('Referencia: abc-123')).toBeInTheDocument();
   });
 });

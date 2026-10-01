@@ -11,7 +11,7 @@ import {
 
 describe('columnMappingProblem (mirror of assertValidColumnMapping)', () => {
   it('rejects an empty map', () => {
-    expect(columnMappingProblem({})).toMatch(/at least one/i);
+    expect(columnMappingProblem({})).toMatch(/al menos una/i);
   });
 
   it('requires a column mapped to sku', () => {
@@ -19,11 +19,11 @@ describe('columnMappingProblem (mirror of assertValidColumnMapping)', () => {
   });
 
   it('rejects an unknown target field', () => {
-    expect(columnMappingProblem({ A: 'sku', B: 'totallyMadeUp' })).toMatch(/unknown target/i);
+    expect(columnMappingProblem({ A: 'sku', B: 'totallyMadeUp' })).toMatch(/destino desconocido/i);
   });
 
   it('rejects the same non-attr target used twice', () => {
-    expect(columnMappingProblem({ A: 'sku', B: 'name', C: 'name' })).toMatch(/more than once/i);
+    expect(columnMappingProblem({ A: 'sku', B: 'name', C: 'name' })).toMatch(/más de una vez/i);
   });
 
   it('accepts standard fields and attr:<code> targets, and multiple attr targets', () => {

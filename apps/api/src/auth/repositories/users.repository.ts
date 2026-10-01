@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, ilike, isNull, type SQL } from 'drizzle-orm';
 import { users } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -81,15 +81,20 @@ export class UsersRepository {
   }
 
   /** Admin-facing paginated listing (§11) — never selects `password_hash`. `status` is an
-   * optional allow-listed filter (validated by the DTO before this is called). */
+   * optional allow-listed filter (validated by the DTO before this is called). `q` is a free-text,
+   * case-insensitive, partial match against `fullName` only (never `email`) — same `ILIKE '%q%'`
+   * convention `CustomersRepository.listByTenant` already established. */
   async findManyByTenant(
     tx: TenantTransaction,
     tenantId: string,
-    params: { page: number; pageSize: number; status?: string | undefined },
+    params: { page: number; pageSize: number; status?: string | undefined; q?: string | undefined },
   ): Promise<{ rows: UserListRow[]; total: number }> {
-    const conditions = [eq(users.tenantId, tenantId), isNull(users.deletedAt)];
+    const conditions: SQL[] = [eq(users.tenantId, tenantId), isNull(users.deletedAt)];
     if (params.status) {
       conditions.push(eq(users.status, params.status));
+    }
+    if (params.q) {
+      conditions.push(ilike(users.fullName, `%${params.q}%`));
     }
     const where = and(...conditions);
 

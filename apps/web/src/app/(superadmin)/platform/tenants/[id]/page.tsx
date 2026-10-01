@@ -6,15 +6,17 @@ import { Card, CardBody } from '../../../../../components/ui/card';
 import { Badge } from '../../../../../components/ui/badge';
 import { isApiError } from '../../../../../lib/api/errors';
 import { getPlatformSession } from '../../../../../lib/auth/platform-session';
-import { getPlatformTenant } from '../../../../../lib/platform/tenants';
+import { getAdminInvitationStatus, getCurrentSupportSession, getPlatformTenant } from '../../../../../lib/platform/tenants';
 import {
   TENANT_STATUS_LABELS,
   tenantStatusTone,
   tenantLifecycleAction,
 } from '../../../../../lib/types/platform-tenant';
+import { AdminInvitationPanel } from './admin-invitation-panel';
+import { StartSupportSessionForm } from './start-support-session-form';
 import { TenantLifecycleActions } from './tenant-lifecycle-actions';
 
-export const metadata = { title: 'Company · Platform' };
+export const metadata = { title: 'Empresa · Plataforma' };
 
 /**
  * `S-SA-TENANT-DETAIL` (F17-13) — `GET /api/v1/platform/tenants/:tenantId` (`@PlatformOnly()`).
@@ -45,21 +47,26 @@ export default async function PlatformTenantDetailPage({
     throw error;
   }
 
+  const [invitation, currentSession] = await Promise.all([
+    getAdminInvitationStatus(id),
+    getCurrentSupportSession().catch(() => null),
+  ]);
+
   const action = tenantLifecycleAction(tenant.status);
   const fields: { label: string; value: React.ReactNode }[] = [
-    { label: 'Name', value: tenant.name },
+    { label: 'Nombre', value: tenant.name },
     { label: 'Slug', value: <code className="text-xs">{tenant.slug}</code> },
     {
-      label: 'Status',
+      label: 'Estado',
       value: (
         <Badge tone={tenantStatusTone(tenant.status)}>
           {TENANT_STATUS_LABELS[tenant.status] ?? tenant.status}
         </Badge>
       ),
     },
-    { label: 'Type', value: tenant.isDemo ? 'Demo company' : 'Real company' },
-    { label: 'Company ID', value: <code className="text-xs">{tenant.id}</code> },
-    { label: 'Created', value: new Date(tenant.createdAt).toLocaleString() },
+    { label: 'Tipo', value: tenant.isDemo ? 'Empresa demo' : 'Empresa real' },
+    { label: 'ID de empresa', value: <code className="text-xs">{tenant.id}</code> },
+    { label: 'Creada', value: new Date(tenant.createdAt).toLocaleString('es') },
   ];
 
   return (
@@ -72,14 +79,14 @@ export default async function PlatformTenantDetailPage({
             href="/platform/tenants"
             className="text-sm font-medium text-slate-600 underline-offset-2 hover:underline"
           >
-            ← All companies
+            ← Todas las empresas
           </Link>
         }
       />
 
       <Card>
         <CardBody>
-          <h2 className="text-sm font-semibold text-slate-900">Details</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Detalles</h2>
           <dl className="mt-4 grid max-w-lg grid-cols-[9rem_1fr] gap-y-3 text-sm">
             {fields.map((field) => (
               <div key={field.label} className="contents">
@@ -93,15 +100,37 @@ export default async function PlatformTenantDetailPage({
 
       <Card>
         <CardBody className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-slate-900">Lifecycle</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Ciclo de vida</h2>
           {action ? (
             <TenantLifecycleActions tenantId={tenant.id} tenantName={tenant.name} action={action} />
           ) : (
             <p className="text-sm text-slate-500">
-              This company is <span className="font-medium">{tenant.status}</span>. There is no
-              platform action for this state.
+              Esta empresa está <span className="font-medium">{TENANT_STATUS_LABELS[tenant.status] ?? tenant.status}</span>. No
+              hay ninguna acción de plataforma para este estado.
             </p>
           )}
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardBody className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold text-slate-900">Administrador del Tenant</h2>
+          <AdminInvitationPanel tenantId={tenant.id} invitation={invitation} />
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardBody className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold text-slate-900">Soporte</h2>
+          <p className="text-sm text-slate-500">
+            Accede temporalmente a esta empresa como administrador de plataforma, en un contexto
+            auditado y limitado a esta empresa. No se usa ni se conoce la contraseña del
+            administrador del Tenant.
+          </p>
+          <StartSupportSessionForm
+            tenantId={tenant.id}
+            existingSession={currentSession && currentSession.tenantId === tenant.id ? currentSession : null}
+          />
         </CardBody>
       </Card>
     </PageContainer>

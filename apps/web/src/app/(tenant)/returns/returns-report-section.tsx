@@ -20,16 +20,16 @@ export function ReturnsReportError({
   message: string;
   correlationId?: string | undefined;
 }): React.JSX.Element {
-  const title = status === 403 ? 'Access denied' : status >= 500 ? 'Something went wrong on our end' : 'Could not load the report';
+  const title = status === 403 ? 'Acceso denegado' : status >= 500 ? 'Algo salió mal de nuestro lado' : 'No se pudo cargar el reporte';
   return (
     <div className="flex flex-col items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
       <div>
         <p className="text-sm font-medium text-red-800">{title}</p>
         <p className="mt-0.5 text-sm text-red-700">{message}</p>
-        {correlationId && <p className="mt-1 text-xs text-red-600/80">Reference: {correlationId}</p>}
+        {correlationId && <p className="mt-1 text-xs text-red-600/80">Referencia: {correlationId}</p>}
       </div>
       <a href="#report" className="text-sm font-medium text-red-800 underline-offset-2 hover:underline">
-        Try again
+        Reintentar
       </a>
     </div>
   );
@@ -57,10 +57,10 @@ function ReturnLevelKpis({ buckets, currency }: { buckets: ReturnsSummaryBucket[
   const avgReturnValue = returnCount > 0 ? returnedValue / returnCount : 0;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <KpiTile label="Returns" value={String(returnCount)} />
-      <KpiTile label="Units returned" value={String(quantity)} />
-      <KpiTile label="Returned value" value={money(returnedValue, currency)} />
-      <KpiTile label="Avg per return" value={money(avgReturnValue, currency)} />
+      <KpiTile label="Devoluciones" value={String(returnCount)} />
+      <KpiTile label="Unidades devueltas" value={String(quantity)} />
+      <KpiTile label="Valor devuelto" value={money(returnedValue, currency)} />
+      <KpiTile label="Promedio por devolución" value={money(avgReturnValue, currency)} />
     </div>
   );
 }
@@ -73,9 +73,9 @@ function ProductLevelKpis({ buckets, currency }: { buckets: ReturnsSummaryBucket
   const returnedValue = buckets.reduce((n, b) => n + (b as { returnedValue: number }).returnedValue, 0);
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <KpiTile label="Units returned" value={String(quantity)} />
-      <KpiTile label="Returned value" value={money(returnedValue, currency)} />
-      <KpiTile label="Products" value={String(buckets.length)} />
+      <KpiTile label="Unidades devueltas" value={String(quantity)} />
+      <KpiTile label="Valor devuelto" value={money(returnedValue, currency)} />
+      <KpiTile label="Productos" value={String(buckets.length)} />
     </div>
   );
 }
@@ -89,9 +89,9 @@ function DispositionLevelKpis({ buckets, currency }: { buckets: ReturnsSummaryBu
   const returnedValue = buckets.reduce((n, b) => n + (b as { returnedValue: number }).returnedValue, 0);
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <KpiTile label="Lines" value={String(lineCount)} />
-      <KpiTile label="Units returned" value={String(quantity)} />
-      <KpiTile label="Returned value" value={money(returnedValue, currency)} />
+      <KpiTile label="Líneas" value={String(lineCount)} />
+      <KpiTile label="Unidades devueltas" value={String(quantity)} />
+      <KpiTile label="Valor devuelto" value={money(returnedValue, currency)} />
     </div>
   );
 }
@@ -151,7 +151,7 @@ function DispositionRow({ bucket, currency }: { bucket: ReturnsSummaryBucket; cu
  * table only, never the whole page. */
 export function ReturnsReportSection({ summary, currency }: { summary: ReturnsSummary; currency: string }): React.JSX.Element {
   if (summary.buckets.length === 0) {
-    return <EmptyState title="No returns in this period" description="Try a wider date range, or a different status." />;
+    return <EmptyState title="Sin devoluciones en este período" description="Prueba con un rango de fechas más amplio, o un estado distinto." />;
   }
 
   const isProduct = summary.groupBy === 'product';
@@ -172,32 +172,32 @@ export function ReturnsReportSection({ summary, currency }: { summary: ReturnsSu
         <THead>
           {isProduct ? (
             <TR>
-              <TH>Product</TH>
-              <TH>SKU</TH>
-              <TH className="text-right">Quantity</TH>
-              <TH className="text-right">Returned value</TH>
+              <TH>Producto</TH>
+              <TH>Código</TH>
+              <TH className="text-right">Cantidad</TH>
+              <TH className="text-right">Valor devuelto</TH>
             </TR>
           ) : isCustomer ? (
             <TR>
-              <TH>Customer</TH>
-              <TH className="text-right">Returns</TH>
-              <TH className="text-right">Quantity</TH>
-              <TH className="text-right">Returned value</TH>
+              <TH>Cliente</TH>
+              <TH className="text-right">Devoluciones</TH>
+              <TH className="text-right">Cantidad</TH>
+              <TH className="text-right">Valor devuelto</TH>
             </TR>
           ) : isDisposition ? (
             <TR>
-              <TH>Disposition</TH>
-              <TH className="text-right">Lines</TH>
-              <TH className="text-right">Quantity</TH>
-              <TH className="text-right">Returned value</TH>
+              <TH>Disposición</TH>
+              <TH className="text-right">Líneas</TH>
+              <TH className="text-right">Cantidad</TH>
+              <TH className="text-right">Valor devuelto</TH>
             </TR>
           ) : (
             <TR>
-              <TH>Period</TH>
-              <TH className="text-right">Returns</TH>
-              <TH className="text-right">Quantity</TH>
-              <TH className="text-right">Returned value</TH>
-              <TH className="text-right">Avg / return</TH>
+              <TH>Período</TH>
+              <TH className="text-right">Devoluciones</TH>
+              <TH className="text-right">Cantidad</TH>
+              <TH className="text-right">Valor devuelto</TH>
+              <TH className="text-right">Prom. / devolución</TH>
             </TR>
           )}
         </THead>

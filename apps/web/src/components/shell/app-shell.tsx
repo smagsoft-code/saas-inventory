@@ -6,6 +6,7 @@ import type { Session } from '../../lib/types/session';
 import { SessionProvider } from '../../lib/auth/session-context';
 import { ShellLayout } from './shell-layout';
 import { SidebarNav } from './sidebar-nav';
+import { SupportModeBanner } from './support-mode-banner';
 import { UserMenu } from './user-menu';
 import { SessionExpiryListener } from './session-expiry-listener';
 
@@ -26,8 +27,11 @@ export function AppShell({
   children: ReactNode;
 }): React.JSX.Element {
   const brand = (
-    <div className="flex h-14 items-center px-5 text-sm font-semibold text-slate-900">
-      SaaS Inventory
+    <div className="flex h-14 items-center gap-3 px-[1.125rem] text-sm font-semibold text-slate-900">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">
+        SI
+      </span>
+      <span className="nav-label whitespace-nowrap">SaaS Inventory</span>
     </div>
   );
 
@@ -39,6 +43,7 @@ export function AppShell({
         nav={<SidebarNav sections={navSections} />}
         headerLeft={<span className="hidden text-sm text-slate-500 sm:block">{tenantName}</span>}
         headerRight={<UserMenu tenantName={tenantName} />}
+        banner={session.supportSession ? <SupportModeBanner session={session.supportSession} /> : undefined}
       >
         {children}
       </ShellLayout>

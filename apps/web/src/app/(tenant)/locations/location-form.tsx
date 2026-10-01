@@ -85,15 +85,15 @@ export function LocationForm({
   function validate(): boolean {
     const next: { name?: string; code?: string; warehouseId?: string } = {};
     if (mode === 'create' && !warehouseId) {
-      next.warehouseId = 'Choose a warehouse.';
+      next.warehouseId = 'Elige una sucursal.';
     }
     const trimmedName = name.trim();
     if (trimmedName.length < 1 || trimmedName.length > 120) {
-      next.name = 'Name must be 1–120 characters.';
+      next.name = 'El nombre debe tener 1–120 caracteres.';
     }
     const trimmedCode = code.trim();
     if (trimmedCode.length < 1 || trimmedCode.length > 40 || !INVENTORY_CODE_PATTERN.test(trimmedCode)) {
-      next.code = 'Code must be uppercase letters and numbers, optionally hyphen-separated.';
+      next.code = 'El código debe tener mayúsculas y números, opcionalmente separados por guiones.';
     }
     setFieldError(next);
     return Object.keys(next).length === 0;
@@ -139,7 +139,7 @@ export function LocationForm({
       router.refresh();
     } catch (err) {
       if (isApiError(err) && err.status === 403) {
-        setError('You no longer have permission to make this change.');
+        setError('Ya no tienes permiso para hacer este cambio.');
       } else {
         setError(httpErrorMessage(err));
       }
@@ -152,7 +152,7 @@ export function LocationForm({
     <form onSubmit={handleSubmit} noValidate className="flex max-w-md flex-col gap-4">
       {mode === 'create' ? (
         <Field
-          label="Warehouse"
+          label="Sucursal"
           required
           {...(fieldError.warehouseId ? { error: fieldError.warehouseId } : {})}
         >
@@ -164,7 +164,7 @@ export function LocationForm({
               setSuccess(false);
             }}
           >
-            {warehouses.length === 0 && <option value="">No active warehouses</option>}
+            {warehouses.length === 0 && <option value="">Sin sucursales activas</option>}
             {warehouses.map((warehouse) => (
               <option key={warehouse.id} value={warehouse.id}>
                 {warehouse.name}
@@ -173,7 +173,7 @@ export function LocationForm({
           </Select>
         </Field>
       ) : (
-        <Field label="Warehouse" hint="A location cannot be moved to a different warehouse.">
+        <Field label="Sucursal" hint="Un almacén no se puede mover a otra sucursal.">
           <Input
             readOnly
             value={warehouses.find((w) => w.id === warehouseId)?.name ?? warehouseId}
@@ -181,7 +181,7 @@ export function LocationForm({
         </Field>
       )}
 
-      <Field label="Name" required {...(fieldError.name ? { error: fieldError.name } : {})}>
+      <Field label="Nombre" required {...(fieldError.name ? { error: fieldError.name } : {})}>
         <Input
           required
           minLength={1}
@@ -195,9 +195,9 @@ export function LocationForm({
       </Field>
 
       <Field
-        label="Code"
+        label="Código"
         required
-        hint="Uppercase letters and numbers, optionally hyphen-separated. Unique within the warehouse."
+        hint="Mayúsculas y números, opcionalmente separados por guiones. Único dentro de la sucursal."
         {...(fieldError.code ? { error: fieldError.code } : {})}
       >
         <Input
@@ -211,7 +211,7 @@ export function LocationForm({
         />
       </Field>
 
-      <Field label="Parent location" hint="Optional. Must be in the same warehouse.">
+      <Field label="Almacén padre" hint="Opcional. Debe estar en la misma sucursal.">
         <Select
           value={parentLocationId}
           onChange={(e) => {
@@ -219,7 +219,7 @@ export function LocationForm({
             setSuccess(false);
           }}
         >
-          <option value="">None (top level)</option>
+          <option value="">Ninguno (nivel superior)</option>
           {parentOptions.map((option) => (
             <option key={option.id} value={option.id}>
               {option.name} ({option.code})
@@ -228,7 +228,7 @@ export function LocationForm({
         </Select>
       </Field>
 
-      <Field label="Sellable" hint="Turn off for quarantine, damaged or scrap locations.">
+      <Field label="Vendible" hint="Desactívalo para almacenes de cuarentena, dañados o descarte.">
         <Select
           value={isSellable ? 'yes' : 'no'}
           onChange={(e) => {
@@ -236,13 +236,13 @@ export function LocationForm({
             setSuccess(false);
           }}
         >
-          <option value="yes">Yes — stock here is available to sell</option>
-          <option value="no">No — non-sellable</option>
+          <option value="yes">Sí — el stock aquí está disponible para vender</option>
+          <option value="no">No — no vendible</option>
         </Select>
       </Field>
 
       {mode === 'edit' && (
-        <Field label="Status">
+        <Field label="Estado">
           <Select
             value={status}
             onChange={(e) => {
@@ -250,14 +250,14 @@ export function LocationForm({
               setSuccess(false);
             }}
           >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="active">Activo</option>
+            <option value="inactive">Inactivo</option>
           </Select>
         </Field>
       )}
 
       {error && <Alert tone="error">{error}</Alert>}
-      {success && <Alert tone="success">Location saved.</Alert>}
+      {success && <Alert tone="success">Almacén guardado.</Alert>}
 
       <div className="flex gap-2">
         <Button
@@ -266,7 +266,7 @@ export function LocationForm({
           disabled={!dirty || (mode === 'create' && warehouses.length === 0)}
           className="w-fit"
         >
-          {mode === 'create' ? 'Create location' : 'Save changes'}
+          {mode === 'create' ? 'Crear almacén' : 'Guardar cambios'}
         </Button>
         <Button
           type="button"
@@ -274,7 +274,7 @@ export function LocationForm({
           className="w-fit"
           onClick={() => router.push('/locations')}
         >
-          {mode === 'create' ? 'Cancel' : 'Back to locations'}
+          {mode === 'create' ? 'Cancelar' : 'Volver a almacenes'}
         </Button>
       </div>
     </form>

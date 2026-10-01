@@ -26,7 +26,7 @@ function query(overrides: Partial<InventorySummaryQueryDto> = {}): InventorySumm
 describe('InventoryReportService.getInventorySummary', () => {
   it('defaults to groupBy=warehouse, calling summaryByWarehouse only', async () => {
     const { service, inventoryReportRepository } = buildService();
-    await service.getInventorySummary('t1', query());
+    await service.getInventorySummary('t1', query(), false);
     expect(inventoryReportRepository.summaryByWarehouse).toHaveBeenCalledTimes(1);
     expect(inventoryReportRepository.summaryByCategory).not.toHaveBeenCalled();
   });
@@ -38,22 +38,24 @@ describe('InventoryReportService.getInventorySummary', () => {
     expect(inventoryReportRepository.summaryByWarehouse).not.toHaveBeenCalled();
   });
 
-  it('passes warehouseId/categoryId filters through to the repository', async () => {
+  it('passes warehouseId/locationId/categoryId filters through to the repository', async () => {
     const { service, inventoryReportRepository } = buildService();
-    await service.getInventorySummary('t1', query({ warehouseId: 'w1', categoryId: 'c1' }));
+    await service.getInventorySummary('t1', query({ warehouseId: 'w1', locationId: 'l1', categoryId: 'c1' }));
     expect(inventoryReportRepository.summaryByWarehouse).toHaveBeenCalledWith(expect.anything(), 't1', {
       warehouseId: 'w1',
+      locationId: 'l1',
       categoryId: 'c1',
     });
     expect(inventoryReportRepository.totals).toHaveBeenCalledWith(expect.anything(), 't1', {
       warehouseId: 'w1',
+      locationId: 'l1',
       categoryId: 'c1',
     });
   });
 
   it('never sends tenantId from anywhere but the CurrentTenant-resolved argument', async () => {
     const { service, inventoryReportRepository } = buildService();
-    await service.getInventorySummary('t1', query());
+    await service.getInventorySummary('t1', query(), false);
     expect(JSON.stringify(inventoryReportRepository.summaryByWarehouse.mock.calls)).toContain('t1');
   });
 
@@ -121,5 +123,39 @@ describe('InventoryReportService.getInventorySummary', () => {
     const { service } = buildService();
     const result = await service.getInventorySummary('t1', query());
     expect(result.buckets).toEqual([]);
+  });
+
+  it('omits totalCostValue/missingCostCount entirely when the caller lacks pricing.cost.view', async () => {
+    const { service, inventoryReportRepository } = buildService();
+    inventoryReportRepository.totals.mockResolvedValue({
+      availableQuantity: '10',
+      reservedQuantity: '0',
+      outOfStockCount: '0',
+      totalCostValue: '999',
+      missingCostCount: '2',
+    });
+    const result = await service.getInventorySummary('t1', query(), false);
+    expect(result.totals).toEqual({ availableQuantity: 10, reservedQuantity: 0, outOfStockCount: 0 });
+    expect(result.totals).not.toHaveProperty('totalCostValue');
+    expect(result.totals).not.toHaveProperty('missingCostCount');
+  });
+
+  it('includes totalCostValue/missingCostCount as numbers when the caller holds pricing.cost.view', async () => {
+    const { service, inventoryReportRepository } = buildService();
+    inventoryReportRepository.totals.mockResolvedValue({
+      availableQuantity: '10',
+      reservedQuantity: '0',
+      outOfStockCount: '0',
+      totalCostValue: '1234.5',
+      missingCostCount: '2',
+    });
+    const result = await service.getInventorySummary('t1', query(), true);
+    expect(result.totals).toEqual({
+      availableQuantity: 10,
+      reservedQuantity: 0,
+      outOfStockCount: 0,
+      totalCostValue: 1234.5,
+      missingCostCount: 2,
+    });
   });
 });

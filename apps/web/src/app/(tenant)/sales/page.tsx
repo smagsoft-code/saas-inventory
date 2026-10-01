@@ -34,7 +34,7 @@ import { SalesFilters, type SalesFilterValues } from './sales-filters';
 import { SalesReportFilters, type SalesReportFilterValues } from './sales-report-filters';
 import { SalesReportError, SalesReportSection } from './sales-report-section';
 
-export const metadata = { title: 'Sales history · SaaS Inventory' };
+export const metadata = { title: 'Historial de ventas · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -79,8 +79,8 @@ export default async function SalesHistoryPage({
   if (!checker.can('sales.orders.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Sales history" />
-        <NoAccess message="You need the orders permission to view this page." />
+        <PageHeader title="Historial de ventas" />
+        <NoAccess message="Necesitas el permiso de pedidos para ver esta página." />
       </PageContainer>
     );
   }
@@ -163,11 +163,11 @@ export default async function SalesHistoryPage({
 
   return (
     <PageContainer>
-      <PageHeader title="Sales history" description="Every sales order in the company." />
+      <PageHeader title="Historial de ventas" description="Todos los pedidos de venta de la empresa." />
 
       <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
         <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
-          Sales report
+          Reporte de ventas
         </h2>
         <SalesReportFilters initial={reportFilters} />
         {summary ? (
@@ -181,15 +181,15 @@ export default async function SalesHistoryPage({
 
       <hr className="border-slate-200" />
 
-      <h2 className="text-sm font-semibold text-slate-900">Order history</h2>
+      <h2 className="text-sm font-semibold text-slate-900">Historial de pedidos</h2>
 
       <SalesFilters initial={filters} customerName={customerName} canSearchCustomers={canSearchCustomers} />
 
       {result.data.length === 0 ? (
         <EmptyState
-          title={hasFilter ? 'No orders match these filters' : 'No orders yet'}
+          title={hasFilter ? 'Ningún pedido coincide con estos filtros' : 'Aún no hay pedidos'}
           description={
-            hasFilter ? 'Try a different status, customer or date range.' : 'Orders appear here once a sale is completed.'
+            hasFilter ? 'Prueba con otro estado, cliente o rango de fechas.' : 'Los pedidos aparecen aquí una vez completada una venta.'
           }
         />
       ) : (
@@ -197,15 +197,15 @@ export default async function SalesHistoryPage({
           <Table>
             <THead>
               <TR>
-                <TH>Order</TH>
-                <TH>Created</TH>
-                <TH>Customer</TH>
-                <TH>Document</TH>
-                <TH>Location</TH>
-                <TH>Status</TH>
+                <TH>Pedido</TH>
+                <TH>Creado</TH>
+                <TH>Cliente</TH>
+                <TH>Documento</TH>
+                <TH>Almacén</TH>
+                <TH>Estado</TH>
                 <TH className="text-right">Total</TH>
                 <TH className="w-0">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">Acciones</span>
                 </TH>
               </TR>
             </THead>
@@ -245,7 +245,7 @@ export default async function SalesHistoryPage({
                       href={`/sales/${order.id}`}
                       className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                     >
-                      View
+                      Ver
                     </Link>
                   </TD>
                 </TR>

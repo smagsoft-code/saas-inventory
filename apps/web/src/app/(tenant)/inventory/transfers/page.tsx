@@ -4,7 +4,7 @@ import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
 import { listTransfers } from '../../../../lib/inventory/transfers';
 import { getTransfersSummary } from '../../../../lib/inventory/reports';
-import { buildLocationIndex, shortId } from '../../../../lib/inventory/location-index';
+import { buildLocationIndex } from '../../../../lib/inventory/location-index';
 import {
   TRANSFER_STATUSES,
   TRANSFER_STATUS_LABELS,
@@ -12,12 +12,7 @@ import {
   type Transfer,
   type TransferStatus,
 } from '../../../../lib/types/inventory';
-import {
-  TRANSFERS_SUMMARY_GROUP_BY,
-  type TransfersSummary,
-  type TransfersSummaryGroupBy,
-} from '../../../../lib/types/inventory-reports';
-import { TransfersReportFilters } from './transfers-report-filters';
+import type { TransfersSummary } from '../../../../lib/types/inventory-reports';
 import { TransfersReportError, TransfersReportSection } from './transfers-report-section';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
@@ -28,18 +23,12 @@ import { NoAccess } from '../../../../components/ui/no-access';
 import { Pagination } from '../../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
 
-export const metadata = { title: 'Transfers · SaaS Inventory' };
+export const metadata = { title: 'Transferencias · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
 
 function parseStatus(value: string | undefined): TransferStatus | undefined {
   return (TRANSFER_STATUSES as readonly string[]).includes(value ?? '') ? (value as TransferStatus) : undefined;
-}
-
-function pickReportGroupBy(value: string | undefined): TransfersSummaryGroupBy {
-  return (TRANSFERS_SUMMARY_GROUP_BY as readonly string[]).includes(value ?? '')
-    ? (value as TransfersSummaryGroupBy)
-    : 'status';
 }
 
 /**
@@ -57,7 +46,6 @@ export default async function TransfersPage({
     status?: string;
     sourceLocationId?: string;
     destinationLocationId?: string;
-    reportGroupBy?: string;
   }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -65,8 +53,8 @@ export default async function TransfersPage({
   if (!checker.can('inventory.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Transfers" />
-        <NoAccess message="You need the inventory permission to view this page." />
+        <PageHeader title="Transferencias" />
+        <NoAccess message="Necesitas el permiso de inventario para ver esta página." />
       </PageContainer>
     );
   }
@@ -78,13 +66,13 @@ export default async function TransfersPage({
   const sourceLocationId = sp.sourceLocationId || undefined;
   const destinationLocationId = sp.destinationLocationId || undefined;
 
-  // F18-08 transfer analytics — a separate section, its own `reportGroupBy` param, independent of
-  // the operational list's status/location chips below. Live snapshot: no date range.
-  const reportGroupBy = pickReportGroupBy(sp.reportGroupBy);
+  // F18-08 transfer analytics — just the two groupBy-independent KPI tiles now (the "Agrupar por"
+  // selector and its grouped breakdown table were removed per owner feedback); `groupBy` is sent
+  // because the endpoint requires one, but nothing here depends on which value it resolves to.
   let transfersSummary: TransfersSummary | undefined;
   let summaryError: { status: number; message: string; correlationId: string | undefined } | undefined;
   try {
-    transfersSummary = await getTransfersSummary({ groupBy: reportGroupBy });
+    transfersSummary = await getTransfersSummary({ groupBy: 'status' });
   } catch (error) {
     summaryError = {
       status: isApiError(error) ? error.status : 0,
@@ -118,33 +106,24 @@ export default async function TransfersPage({
     if (nextStatus) params.set('status', nextStatus);
     if (nextSource) params.set('sourceLocationId', nextSource);
     if (nextDest) params.set('destinationLocationId', nextDest);
-    // Carry the report section's own param forward — filtering / paginating the list must not
-    // silently reset the report back to its default grouping (mirrors /inventory, F18-03).
-    if (sp.reportGroupBy) params.set('reportGroupBy', sp.reportGroupBy);
     if (next.page && next.page > 1) params.set('page', String(next.page));
     return `/inventory/transfers${params.toString() ? `?${params}` : ''}`;
   }
-
-  const chip = (active: boolean) =>
-    active
-      ? 'rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-medium text-white'
-      : 'rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50';
 
   const hasFilter = Boolean(status || sourceLocationId || destinationLocationId);
 
   return (
     <PageContainer>
       <PageHeader
-        title="Transfers"
-        description="Move stock between locations: request, approve, prepare, dispatch and receive."
-        actions={canRequest ? <ButtonLink href="/inventory/transfers/new">New transfer</ButtonLink> : undefined}
+        title="Transferencias"
+        description="Mueve stock entre almacenes: solicitar, aprobar, preparar, despachar y recibir."
+        actions={canRequest ? <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink> : undefined}
       />
 
       <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
         <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
-          Transfer report
+          Reporte de transferencias
         </h2>
-        <TransfersReportFilters initial={{ groupBy: reportGroupBy }} />
         {transfersSummary ? (
           <TransfersReportSection summary={transfersSummary} />
         ) : (
@@ -160,36 +139,34 @@ export default async function TransfersPage({
 
       <hr className="border-slate-200" />
 
-      <h2 className="text-sm font-semibold text-slate-900">Transfer list</h2>
+      <h2 className="text-sm font-semibold text-slate-900">Listado de transferencias</h2>
 
-      <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Link href={buildHref({ status: undefined })} aria-current={!status ? 'true' : undefined} className={chip(!status)}>
-            All statuses
-          </Link>
-          {TRANSFER_STATUSES.map((s) => (
-            <Link
-              key={s}
-              href={buildHref({ status: s })}
-              aria-current={status === s ? 'true' : undefined}
-              className={chip(status === s)}
-            >
-              {TRANSFER_STATUS_LABELS[s]}
-            </Link>
-          ))}
-        </div>
-
+      <form method="get" className="flex flex-wrap items-end gap-3">
+        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
+          Estado
+          <select
+            name="status"
+            defaultValue={status ?? ''}
+            className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-900"
+          >
+            <option value="">Todos los estados</option>
+            {TRANSFER_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {TRANSFER_STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        </label>
         {locationOptions.length > 0 && (
-          <form method="get" className="flex flex-wrap items-end gap-3">
-            {status && <input type="hidden" name="status" value={status} />}
+          <>
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-              From location
+              Almacén de origen
               <select
                 name="sourceLocationId"
                 defaultValue={sourceLocationId ?? ''}
                 className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-900"
               >
-                <option value="">Any</option>
+                <option value="">Cualquiera</option>
                 {locationOptions.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
@@ -198,13 +175,13 @@ export default async function TransfersPage({
               </select>
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-              To location
+              Almacén de destino
               <select
                 name="destinationLocationId"
                 defaultValue={destinationLocationId ?? ''}
                 className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-900"
               >
-                <option value="">Any</option>
+                <option value="">Cualquiera</option>
                 {locationOptions.map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.name}
@@ -212,34 +189,34 @@ export default async function TransfersPage({
                 ))}
               </select>
             </label>
-            <button
-              type="submit"
-              className="h-9 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Apply
-            </button>
-            {(sourceLocationId || destinationLocationId) && (
-              <Link
-                href={buildHref({ sourceLocationId: undefined, destinationLocationId: undefined })}
-                className="h-9 rounded-md px-2 text-sm font-medium text-slate-500 hover:underline"
-              >
-                Clear locations
-              </Link>
-            )}
-          </form>
+          </>
         )}
-      </div>
+        <button
+          type="submit"
+          className="h-9 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        >
+          Aplicar
+        </button>
+        {hasFilter && (
+          <Link
+            href={buildHref({ status: undefined, sourceLocationId: undefined, destinationLocationId: undefined })}
+            className="h-9 rounded-md px-2 text-sm font-medium text-slate-500 hover:underline"
+          >
+            Quitar filtros
+          </Link>
+        )}
+      </form>
 
       {result.data.length === 0 ? (
         <EmptyState
-          title={hasFilter ? 'No transfers match these filters' : 'No transfers yet'}
+          title={hasFilter ? 'Ninguna transferencia coincide con estos filtros' : 'Aún no hay transferencias'}
           description={
             hasFilter
-              ? 'Try a different status or location.'
-              : 'Create a transfer to move stock between two locations.'
+              ? 'Prueba con otro estado o almacén.'
+              : 'Crea una transferencia para mover stock entre dos almacenes.'
           }
           {...(canRequest && !hasFilter
-            ? { action: <ButtonLink href="/inventory/transfers/new">New transfer</ButtonLink> }
+            ? { action: <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink> }
             : {})}
         />
       ) : (
@@ -247,15 +224,15 @@ export default async function TransfersPage({
           <Table>
             <THead>
               <TR>
-                <TH>Transfer</TH>
-                <TH>Status</TH>
-                <TH>From</TH>
-                <TH>To</TH>
-                <TH className="text-right">Lines</TH>
-                <TH className="text-right">In transit</TH>
-                <TH>Created</TH>
+                <TH>Transferencia</TH>
+                <TH>Estado</TH>
+                <TH>Origen</TH>
+                <TH>Destino</TH>
+                <TH className="text-right">Líneas</TH>
+                <TH className="text-right">En tránsito</TH>
+                <TH>Creada</TH>
                 <TH className="w-0">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">Acciones</span>
                 </TH>
               </TR>
             </THead>
@@ -265,7 +242,7 @@ export default async function TransfersPage({
                 return (
                   <TR key={transfer.id}>
                     <TD>
-                      <code className="text-xs text-slate-500">{shortId(transfer.id)}</code>
+                      <span className="font-mono text-xs text-slate-700">{transfer.code}</span>
                     </TD>
                     <TD>
                       <Badge tone={transferStatusTone(transfer.status)}>
@@ -284,7 +261,7 @@ export default async function TransfersPage({
                         href={`/inventory/transfers/${transfer.id}`}
                         className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                       >
-                        View
+                        Ver
                       </Link>
                     </TD>
                   </TR>

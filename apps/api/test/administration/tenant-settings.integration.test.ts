@@ -132,7 +132,13 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: tenant-set
       const admin = await registerTenant('Zeta Tenant Co', 'admin@zeta-tenant.example');
       const response = await inject({ method: 'GET', url: '/api/v1/administration/tenant-settings', headers: readHeaders(admin) });
       expect(response.statusCode).toBe(200);
-      expect(JSON.parse(response.body)).toEqual({ timezone: 'UTC', businessHours: [], updatedAt: null });
+      expect(JSON.parse(response.body)).toEqual({
+        timezone: 'UTC',
+        businessHours: [],
+        transfersRequireApproval: true,
+        transfersRequirePreparation: true,
+        updatedAt: null,
+      });
     });
   });
 
@@ -176,6 +182,38 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: tenant-set
       });
       expect(second.statusCode).toBe(200);
       expect(JSON.parse(second.body).businessHours).toEqual([{ dayOfWeek: 2, opensAt: '08:00', closesAt: '17:00' }]);
+    });
+
+    it('F17-TRANSFERS-AUDIT §1: updates transfersRequireApproval/transfersRequirePreparation independently, and a partial PATCH leaves the other one at its previously effective value', async () => {
+      const admin = await registerTenant('Kappa Tenant Co', 'admin@kappa-tenant.example');
+
+      const first = await inject({
+        method: 'PATCH',
+        url: '/api/v1/administration/tenant-settings',
+        headers: writeHeaders(admin),
+        payload: { transfersRequireApproval: false },
+      });
+      expect(first.statusCode).toBe(200);
+      expect(JSON.parse(first.body)).toEqual(
+        expect.objectContaining({ transfersRequireApproval: false, transfersRequirePreparation: true }),
+      );
+
+      const second = await inject({
+        method: 'PATCH',
+        url: '/api/v1/administration/tenant-settings',
+        headers: writeHeaders(admin),
+        payload: { transfersRequirePreparation: false },
+      });
+      expect(second.statusCode).toBe(200);
+      // transfersRequireApproval (false, set above) survives this second, unrelated PATCH.
+      expect(JSON.parse(second.body)).toEqual(
+        expect.objectContaining({ transfersRequireApproval: false, transfersRequirePreparation: false }),
+      );
+
+      const after = await inject({ method: 'GET', url: '/api/v1/administration/tenant-settings', headers: readHeaders(admin) });
+      expect(JSON.parse(after.body)).toEqual(
+        expect.objectContaining({ transfersRequireApproval: false, transfersRequirePreparation: false }),
+      );
     });
 
     it('rejects an invalid timezone (not IANA-recognized)', async () => {
@@ -252,7 +290,13 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: tenant-set
       expect(patchA.statusCode).toBe(200);
 
       const getB = await inject({ method: 'GET', url: '/api/v1/administration/tenant-settings', headers: readHeaders(tenantB) });
-      expect(JSON.parse(getB.body)).toEqual({ timezone: 'UTC', businessHours: [], updatedAt: null });
+      expect(JSON.parse(getB.body)).toEqual({
+        timezone: 'UTC',
+        businessHours: [],
+        transfersRequireApproval: true,
+        transfersRequirePreparation: true,
+        updatedAt: null,
+      });
     });
   });
 });

@@ -12,7 +12,7 @@ import { Badge, statusTone } from '../../../../components/ui/badge';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { LocationForm } from '../location-form';
 
-export const metadata = { title: 'Location · SaaS Inventory' };
+export const metadata = { title: 'Almacén · SaaS Inventory' };
 
 export default async function LocationDetailPage({
   params,
@@ -25,8 +25,8 @@ export default async function LocationDetailPage({
   if (!checker.can('locations.view')) {
     return (
       <PageContainer>
-        <PageHeader title="Location" />
-        <NoAccess message="You need the locations permission to view this page." />
+        <PageHeader title="Almacén" />
+        <NoAccess message="Necesitas el permiso de almacenes para ver esta página." />
       </PageContainer>
     );
   }
@@ -51,7 +51,7 @@ export default async function LocationDetailPage({
   ]);
   const warehouseName = warehouse?.name ?? location.warehouseId;
   const parentName = location.parentLocationId
-    ? siblings.data.find((s) => s.id === location.parentLocationId)?.name ?? 'Another location'
+    ? siblings.data.find((s) => s.id === location.parentLocationId)?.name ?? 'Otro almacén'
     : '—';
 
   return (
@@ -59,12 +59,16 @@ export default async function LocationDetailPage({
       <PageHeader
         title={location.name}
         description={`${warehouseName} · ${location.code}`}
-        actions={<Badge tone={statusTone(location.status)}>{location.status}</Badge>}
+        actions={
+          <Badge tone={statusTone(location.status)}>
+            {location.status === 'active' ? 'Activo' : location.status === 'inactive' ? 'Inactivo' : location.status}
+          </Badge>
+        }
       />
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Details</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Detalles</h2>
           {canManage ? (
             <LocationForm
               mode="edit"
@@ -79,13 +83,13 @@ export default async function LocationDetailPage({
             />
           ) : (
             <dl className="grid max-w-md grid-cols-[10rem_1fr] gap-y-2 text-sm">
-              <dt className="text-slate-500">Name</dt>
+              <dt className="text-slate-500">Nombre</dt>
               <dd className="text-slate-900">{location.name}</dd>
-              <dt className="text-slate-500">Code</dt>
+              <dt className="text-slate-500">Código</dt>
               <dd className="text-slate-900">
                 <code className="text-xs">{location.code}</code>
               </dd>
-              <dt className="text-slate-500">Warehouse</dt>
+              <dt className="text-slate-500">Sucursal</dt>
               <dd className="text-slate-900">
                 {canViewWarehouses ? (
                   <Link
@@ -98,10 +102,10 @@ export default async function LocationDetailPage({
                   warehouseName
                 )}
               </dd>
-              <dt className="text-slate-500">Parent location</dt>
+              <dt className="text-slate-500">Almacén padre</dt>
               <dd className="text-slate-900">{parentName}</dd>
-              <dt className="text-slate-500">Sellable</dt>
-              <dd className="text-slate-900">{location.isSellable ? 'Yes' : 'No — non-sellable'}</dd>
+              <dt className="text-slate-500">Vendible</dt>
+              <dd className="text-slate-900">{location.isSellable ? 'Sí' : 'No — no vendible'}</dd>
             </dl>
           )}
         </CardBody>

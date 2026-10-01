@@ -22,14 +22,14 @@ describe('SalesReportFilters', () => {
 
   it('renders the initial from/to/groupBy values', () => {
     render(<SalesReportFilters initial={initial} />);
-    expect(screen.getByLabelText('From')).toHaveValue('2026-08-01');
-    expect(screen.getByLabelText('To')).toHaveValue('2026-08-31');
-    expect(screen.getByLabelText('Group by')).toHaveValue('day');
+    expect(screen.getByLabelText('Desde')).toHaveValue('2026-08-01');
+    expect(screen.getByLabelText('Hasta')).toHaveValue('2026-08-31');
+    expect(screen.getByLabelText('Agrupar por')).toHaveValue('day');
   });
 
   it('navigates with reportGroupBy on a groupBy change, preserving the current dates', () => {
     render(<SalesReportFilters initial={initial} />);
-    fireEvent.change(screen.getByLabelText('Group by'), { target: { value: 'product' } });
+    fireEvent.change(screen.getByLabelText('Agrupar por'), { target: { value: 'product' } });
     expect(pushMock).toHaveBeenCalledWith(
       expect.stringContaining('reportGroupBy=product'),
     );
@@ -39,31 +39,31 @@ describe('SalesReportFilters', () => {
 
   it('sends `to` as the start of the NEXT day, so the picked end date is fully included ([from, to))', () => {
     render(<SalesReportFilters initial={initial} />);
-    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-09-05' } });
+    fireEvent.change(screen.getByLabelText('Hasta'), { target: { value: '2026-09-05' } });
     const url = pushMock.mock.calls[0]![0] as string;
     expect(url).toContain(`reportTo=${encodeURIComponent('2026-09-06T00:00:00.000Z')}`);
   });
 
   it('renders the exceptional-discount filter, defaulting to "all" (F18-06)', () => {
     render(<SalesReportFilters initial={initial} />);
-    expect(screen.getByLabelText('Exceptional discount')).toHaveValue('all');
+    expect(screen.getByLabelText('Descuento excepcional')).toHaveValue('all');
   });
 
   it('adds reportExceptional to the URL only when it is not "all" (F18-06)', () => {
     render(<SalesReportFilters initial={initial} />);
-    fireEvent.change(screen.getByLabelText('Exceptional discount'), { target: { value: 'only' } });
+    fireEvent.change(screen.getByLabelText('Descuento excepcional'), { target: { value: 'only' } });
     let url = pushMock.mock.calls[0]![0] as string;
     expect(url).toContain('reportExceptional=only');
 
     pushMock.mockClear();
-    fireEvent.change(screen.getByLabelText('Exceptional discount'), { target: { value: 'all' } });
+    fireEvent.change(screen.getByLabelText('Descuento excepcional'), { target: { value: 'all' } });
     url = pushMock.mock.calls[0]![0] as string;
     expect(url).not.toContain('reportExceptional');
   });
 
   it('navigates to /sales with a #report anchor, never off the sales page', () => {
     render(<SalesReportFilters initial={initial} />);
-    fireEvent.change(screen.getByLabelText('Group by'), { target: { value: 'customer' } });
+    fireEvent.change(screen.getByLabelText('Agrupar por'), { target: { value: 'customer' } });
     const url = pushMock.mock.calls[0]![0] as string;
     expect(url.startsWith('/sales?')).toBe(true);
     expect(url.endsWith('#report')).toBe(true);

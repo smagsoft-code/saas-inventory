@@ -23,7 +23,7 @@ const LOCATIONS: LocationScopeOption[] = [
 
 function fillBasics(): void {
   fireEvent.change(screen.getByLabelText(/nombre completo/i), { target: { value: 'Ana Lopez' } });
-  fireEvent.change(screen.getByLabelText(/correo/i), { target: { value: 'ana@example.com' } });
+  fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'ana@example.com' } });
   fireEvent.change(screen.getByLabelText(/contraseña temporal/i), { target: { value: 'a-very-long-password' } });
 }
 
@@ -105,5 +105,31 @@ describe('CreateUserForm — location assignment (single flow, reuses PUT /users
   it('renders no location section at all when the caller lacks core.users.locations.manage', () => {
     render(<CreateUserForm roles={ROLES} locationOptions={[]} />);
     expect(screen.queryByText(/almacén \/ alcance operativo/i)).not.toBeInTheDocument();
+  });
+
+  it('labels the identifier field "Usuario" (not "Correo") and accepts a non-email value of 10+ characters', async () => {
+    mockedFetch.mockResolvedValueOnce({ id: 'new-user-id' });
+    render(<CreateUserForm roles={[]} locationOptions={[]} />);
+
+    expect(screen.queryByLabelText(/^correo$/i)).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/nombre completo/i), { target: { value: 'Ana Lopez' } });
+    fireEvent.change(screen.getByLabelText(/^usuario$/i), { target: { value: 'vendedor01' } });
+    fireEvent.change(screen.getByLabelText(/contraseña temporal/i), { target: { value: 'a-very-long-password' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear usuario/i }));
+
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledTimes(1));
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/users', {
+      method: 'POST',
+      body: { email: 'vendedor01', fullName: 'Ana Lopez', password: 'a-very-long-password' },
+    });
+  });
+
+  it('declares the same 10-character minimum as the password field (client-side hint only — the server is the authority)', () => {
+    render(<CreateUserForm roles={[]} locationOptions={[]} />);
+    const usuario = screen.getByLabelText(/^usuario$/i) as HTMLInputElement;
+    const password = screen.getByLabelText(/contraseña temporal/i) as HTMLInputElement;
+    expect(usuario.minLength).toBe(10);
+    expect(usuario.type).toBe('text');
+    expect(password.minLength).toBe(10);
   });
 });

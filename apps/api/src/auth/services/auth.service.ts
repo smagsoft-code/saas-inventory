@@ -4,17 +4,22 @@ import { generateId } from '@saas-inventory/shared';
 import { TenantSettingsRepository } from '../../administration/tenant-settings/tenant-settings.repository';
 import { DEFAULT_TIMEZONE } from '../../administration/tenant-settings/tenant-settings.service';
 import { AUTH_CONFIG, type AuthConfig } from '../../common/config/auth-config';
+import type { SupportSessionContext } from '../../common/context/request-context';
 import { isSelectionTokenPayload, type SelectionTokenPayload } from '../../common/tokens/access-token-payload';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { CsrfTokenService } from '../csrf/csrf-token.service';
 import { PasswordService } from '../password/password.service';
 import { IdentitiesRepository } from '../repositories/identities.repository';
+import { PlatformAdminsRepository } from '../repositories/platform-admins.repository';
 import { RefreshTokensPlatformRepository } from '../repositories/refresh-tokens-platform.repository';
 import { RefreshTokensRepository } from '../repositories/refresh-tokens.repository';
 import { RolesRepository } from '../repositories/roles.repository';
+import { TenantAdminInvitationsRepository } from '../repositories/tenant-admin-invitations.repository';
 import { TenantMembershipsRepository, type ActiveMembership } from '../repositories/tenant-memberships.repository';
+import { TenantsPlatformRepository } from '../repositories/tenants-platform.repository';
 import { UsersRepository } from '../repositories/users.repository';
 import { AccessTokenService } from '../tokens/access-token.service';
+import { InvitationTokenService } from '../tokens/invitation-token.service';
 import { RefreshTokenService } from '../tokens/refresh-token.service';
 import { IdentityProvisioningService } from './identity-provisioning.service';
 import { TenantProvisioningService } from './tenant-provisioning.service';
@@ -45,6 +50,9 @@ export interface AuthenticatedUserView {
    * — F18-01, closes `GAP-TZ-VISIBILITY`: every session-issuing response now carries this, not just
    * `GET /administration/tenant-settings` (which stays gated on `administration.settings.view`). */
   timezone: string;
+  /** ADR-0036 extension — present only from `meAsSupport()`, never from `me()`: a real tenant user
+   * can never be "in a support session" over their own tenant. */
+  supportSession?: { id: string; mode: 'read' | 'write'; reason: string; expiresAt: string };
 }
 
 export interface IssuedSession {
@@ -110,6 +118,10 @@ export class AuthService {
     private readonly csrfTokenService: CsrfTokenService,
     private readonly jwtService: JwtService,
     private readonly tenantSettingsRepository: TenantSettingsRepository,
+    private readonly tenantAdminInvitationsRepository: TenantAdminInvitationsRepository,
+    private readonly invitationTokenService: InvitationTokenService,
+    private readonly tenantsPlatformRepository: TenantsPlatformRepository,
+    private readonly platformAdminsRepository: PlatformAdminsRepository,
     @Inject(AUTH_CONFIG) private readonly authConfig: AuthConfig,
   ) {}
 
@@ -355,6 +367,114 @@ export class AuthService {
         timezone,
       };
     });
+  }
+
+  /**
+   * `GET /auth/me` for a Platform Admin browsing a Tenant under an active
+   * `platform_support_sessions` row (ADR-0036 extension — resolves `GAP-SUPPORT-READ-SCOPE`'s
+   * original "curated MVP" boundary into full read-only tenant navigation). There is **no**
+   * `users`/`identities` row behind this view — `id`/`identityId` are synthetic, prefixed
+   * `support:`, precisely so nothing downstream can mistake this for a real tenant membership
+   * (e.g. a FK lookup against `users` would simply find no row, never someone else's).
+   *
+   * `permissions` is the **entire** platform-wide catalog, not the tenant's own effective set —
+   * this is a UX-only signal so the tenant frontend's own `checker.can(...)` gates render data
+   * instead of "Acceso denegado"; the actual authorization boundary is server-side
+   * (`PermissionsGuard`'s `request.supportSession` short-circuit: every GET is allowed, every
+   * mutation is refused, regardless of which codes are listed here — CLAUDE.md §7.6, "never the
+   * authorization boundary").
+   */
+  async meAsSupport(adminId: string, session: SupportSessionContext): Promise<AuthenticatedUserView> {
+    const admin = await this.platformAdminsRepository.findById(adminId);
+    if (!admin) {
+      throw invalidSession();
+    }
+    const tenant = await this.tenantsPlatformRepository.findById(session.tenantId);
+    if (!tenant || tenant.status !== 'active') {
+      throw invalidSession();
+    }
+    return withTenantTransaction(session.tenantId, async (tx) => {
+      const catalog = await this.rolesRepository.listCatalog(tx);
+      const timezone = await this.resolveTenantTimezone(tx, session.tenantId);
+      return {
+        id: `support:${session.supportSessionId}`,
+        identityId: `support:${adminId}`,
+        tenantId: session.tenantId,
+        tenantSlug: tenant.slug,
+        email: admin.email,
+        fullName: `${admin.fullName} (modo soporte)`,
+        status: 'active',
+        permissions: catalog.map((item) => item.code),
+        timezone,
+        supportSession: {
+          id: session.supportSessionId,
+          mode: session.mode,
+          reason: session.reason,
+          expiresAt: session.expiresAt.toISOString(),
+        },
+      };
+    });
+  }
+
+  /** `GET /auth/invitations/:token` (public) — ADR-0036 §5/§23 (\"invitación expirada/revocada\").
+   * Deliberately does not distinguish \"no such token\" from a syntactically-plausible-but-wrong
+   * one beyond the fixed `reason` values below — the raw token is high-entropy (32 random bytes),
+   * so this is not a brute-forceable identifier the way an email is; still rate-limited
+   * (AuthThrottlerGuard on the controller route) as defense in depth. */
+  async getInvitationInfo(rawToken: string): Promise<{ valid: boolean; reason?: string; tenantName?: string; email?: string }> {
+    const tokenHash = this.invitationTokenService.hash(rawToken);
+    const invitation = await this.tenantAdminInvitationsRepository.findByTokenHash(tokenHash);
+    if (!invitation) {
+      return { valid: false, reason: 'not_found' };
+    }
+    if (invitation.status === 'accepted') {
+      return { valid: false, reason: 'accepted' };
+    }
+    if (invitation.status === 'revoked') {
+      return { valid: false, reason: 'revoked' };
+    }
+    if (invitation.expiresAt.getTime() <= Date.now()) {
+      return { valid: false, reason: 'expired' };
+    }
+    const [tenant, identity] = await Promise.all([
+      this.tenantsPlatformRepository.findById(invitation.tenantId),
+      this.identitiesRepository.findById(invitation.identityId),
+    ]);
+    return { valid: true, ...(tenant ? { tenantName: tenant.name } : {}), ...(identity ? { email: identity.email } : {}) };
+  }
+
+  /** `POST /auth/accept-invitation` (public) — ADR-0036 §5: the admin sets their OWN password,
+   * the identity moves `pending_credential` -> `active` (a CAS, `IdentitiesRepository
+   * .activateCredential`), the invitation moves to `accepted` (a CAS, `.accept`), and — same as
+   * `register()` — a real tenant session is issued immediately so accepting flows straight into
+   * being logged in. Both CASes are checked in this order so a token that raced past
+   * `getInvitationInfo`'s own checks (expired/already-accepted between the two calls) still fails
+   * safely here rather than silently overwriting a credential. */
+  async acceptInvitation(rawToken: string, password: string, meta: SessionRequestMeta): Promise<IssuedSession> {
+    const tokenHash = this.invitationTokenService.hash(rawToken);
+    const invitation = await this.tenantAdminInvitationsRepository.findByTokenHash(tokenHash);
+    if (!invitation || invitation.expiresAt.getTime() <= Date.now() || !['pending', 'sent'].includes(invitation.status)) {
+      throw new UnauthorizedException('Invalid or expired invitation.');
+    }
+
+    const passwordHash = await this.passwordService.hash(password);
+    const activated = await this.identitiesRepository.activateCredential(invitation.identityId, passwordHash);
+    if (!activated) {
+      // Lost a race (already activated by a concurrent accept, or the identity was disabled in
+      // between) — same generic message, never distinguishing which.
+      throw new UnauthorizedException('Invalid or expired invitation.');
+    }
+    await this.tenantAdminInvitationsRepository.accept(invitation.id);
+
+    const membership = await this.tenantMembershipsRepository.findActiveForIdentityAndTenant(invitation.identityId, invitation.tenantId);
+    if (!membership) {
+      throw invalidSession();
+    }
+    const session = await this.issueTenantSession(membership, meta);
+    if (!session) {
+      throw invalidSession();
+    }
+    return session;
   }
 
   /** Enters the membership's tenant transaction, loads permissions, and mints the session. Returns

@@ -40,7 +40,7 @@ export function AttributeOptionsEditor({
   function reportError(err: unknown): void {
     setError(
       isApiError(err) && err.status === 403
-        ? 'You need the manage-attributes permission to change options.'
+        ? 'Necesitas el permiso de gestión de atributos para cambiar las opciones.'
         : httpErrorMessage(err),
     );
   }
@@ -84,13 +84,13 @@ export function AttributeOptionsEditor({
 
   if (!canManage) {
     return sorted.length === 0 ? (
-      <p className="text-sm text-slate-500">No options defined.</p>
+      <p className="text-sm text-slate-500">No hay opciones definidas.</p>
     ) : (
       <ul className="flex flex-col gap-1 text-sm">
         {sorted.map((o) => (
           <li key={o.id} className="text-slate-900">
             {o.label} <span className="text-slate-400">({o.code})</span>
-            {o.status !== 'active' && <span className="ml-2 text-xs text-slate-400">inactive</span>}
+            {o.status !== 'active' && <span className="ml-2 text-xs text-slate-400">inactiva</span>}
           </li>
         ))}
       </ul>
@@ -103,10 +103,10 @@ export function AttributeOptionsEditor({
         <Table>
           <THead>
             <TR>
-              <TH>Label</TH>
-              <TH>Code</TH>
-              <TH>Status</TH>
-              <TH className="w-0"><span className="sr-only">Actions</span></TH>
+              <TH>Etiqueta</TH>
+              <TH>Código</TH>
+              <TH>Estado</TH>
+              <TH className="w-0"><span className="sr-only">Acciones</span></TH>
             </TR>
           </THead>
           <TBody>
@@ -114,7 +114,11 @@ export function AttributeOptionsEditor({
               <TR key={o.id}>
                 <TD className="font-medium">{o.label}</TD>
                 <TD className="text-slate-500"><code className="text-xs">{o.code}</code></TD>
-                <TD><Badge tone={statusTone(o.status)}>{o.status}</Badge></TD>
+                <TD>
+                  <Badge tone={statusTone(o.status)}>
+                    {o.status === 'active' ? 'Activa' : 'Inactiva'}
+                  </Badge>
+                </TD>
                 <TD>
                   <button
                     type="button"
@@ -122,7 +126,7 @@ export function AttributeOptionsEditor({
                     disabled={busyId === o.id}
                     className="text-sm font-medium text-slate-700 hover:underline disabled:text-slate-400"
                   >
-                    {o.status === 'active' ? 'Deactivate' : 'Activate'}
+                    {o.status === 'active' ? 'Desactivar' : 'Activar'}
                   </button>
                 </TD>
               </TR>
@@ -132,14 +136,14 @@ export function AttributeOptionsEditor({
       )}
 
       <form onSubmit={addOption} noValidate className="flex flex-wrap items-end gap-3">
-        <Field label="New option code" required className="w-40">
+        <Field label="Código de la opción" required className="w-40">
           <Input required value={newCode} onChange={(e) => setNewCode(e.target.value)} />
         </Field>
-        <Field label="Label" required className="w-48">
+        <Field label="Etiqueta" required className="w-48">
           <Input required value={newLabel} onChange={(e) => setNewLabel(e.target.value)} />
         </Field>
         <Button type="submit" variant="secondary" loading={adding} disabled={!newCode.trim() || !newLabel.trim()}>
-          Add option
+          Agregar opción
         </Button>
       </form>
 

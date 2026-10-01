@@ -18,8 +18,8 @@ export interface PlatformNavItem {
 }
 
 export const PLATFORM_NAVIGATION: PlatformNavItem[] = [
-  { label: 'Home', href: '/platform', icon: 'home' },
-  { label: 'Companies', href: '/platform/tenants', icon: 'building', activePaths: ['/platform/tenants'] },
+  { label: 'Inicio', href: '/platform', icon: 'home' },
+  { label: 'Empresas', href: '/platform/tenants', icon: 'building', activePaths: ['/platform/tenants'] },
 ];
 
 /** `/platform` matches only itself; every other item matches its `href` and any `activePaths`

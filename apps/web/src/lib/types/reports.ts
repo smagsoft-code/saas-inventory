@@ -10,11 +10,11 @@ export const SALES_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'product', 'custo
 export type SalesSummaryGroupBy = (typeof SALES_SUMMARY_GROUP_BY)[number];
 
 export const SALES_SUMMARY_GROUP_BY_LABELS: Record<SalesSummaryGroupBy, string> = {
-  day: 'Day',
-  week: 'Week',
-  month: 'Month',
-  product: 'Product',
-  customer: 'Customer',
+  day: 'Día',
+  week: 'Semana',
+  month: 'Mes',
+  product: 'Producto',
+  customer: 'Cliente',
 };
 
 /** F18-06 — the `exceptional` filter (`GAP-EXCEPTIONAL-FILTER`). Mirrors
@@ -23,9 +23,9 @@ export const SALES_SUMMARY_EXCEPTIONAL = ['all', 'only', 'exclude'] as const;
 export type SalesSummaryExceptional = (typeof SALES_SUMMARY_EXCEPTIONAL)[number];
 
 export const SALES_SUMMARY_EXCEPTIONAL_LABELS: Record<SalesSummaryExceptional, string> = {
-  all: 'All sales',
-  only: 'Exceptional-discount only',
-  exclude: 'Exclude exceptional',
+  all: 'Todas las ventas',
+  only: 'Solo descuento excepcional',
+  exclude: 'Excluir excepcionales',
 };
 
 export interface SalesPeriodBucket {

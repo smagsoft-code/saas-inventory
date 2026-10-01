@@ -66,7 +66,10 @@ function buildService() {
     create: vi.fn(),
   };
   const usersRepository = { findById: vi.fn().mockResolvedValue(ACTIVE_USER_A), touchLastLogin: vi.fn() };
-  const rolesRepository = { effectivePermissionsForUser: vi.fn().mockResolvedValue(['products.view']) };
+  const rolesRepository = {
+    effectivePermissionsForUser: vi.fn().mockResolvedValue(['products.view']),
+    listCatalog: vi.fn().mockResolvedValue([{ code: 'products.view', module: 'catalog', description: '' }]),
+  };
   const refreshTokensRepository = { create: vi.fn(), revoke: vi.fn(), revokeAllForUser: vi.fn() };
   const refreshTokensPlatformRepository = { findByHash: vi.fn() };
   const passwordService = { hash: vi.fn().mockResolvedValue('hashed'), verify: vi.fn() };
@@ -86,6 +89,10 @@ function buildService() {
   // resolveTenantTimezone falls back to DEFAULT_TIMEZONE ('UTC'), matching TenantSettingsService's
   // own default for a tenant that has never written tenant_settings.
   const tenantSettingsRepository = { find: vi.fn().mockResolvedValue(undefined) };
+  const tenantAdminInvitationsRepository = { create: vi.fn(), findByTokenHash: vi.fn(), findById: vi.fn(), findLatestForTenant: vi.fn(), findLiveForUser: vi.fn(), revoke: vi.fn(), accept: vi.fn() };
+  const invitationTokenService = { generate: vi.fn(), hash: vi.fn().mockReturnValue('hashed-invitation-token') };
+  const tenantsPlatformRepository = { findById: vi.fn(), list: vi.fn(), create: vi.fn(), setStatus: vi.fn(), markSuspended: vi.fn(), reserveSlug: vi.fn() };
+  const platformAdminsRepository = { findById: vi.fn(), findByEmail: vi.fn() };
   const authConfig = { jwtSecret: 'test-secret' };
 
   const service = new AuthService(
@@ -103,6 +110,10 @@ function buildService() {
     csrfTokenService as never,
     jwtService as never,
     tenantSettingsRepository as never,
+    tenantAdminInvitationsRepository as never,
+    invitationTokenService as never,
+    tenantsPlatformRepository as never,
+    platformAdminsRepository as never,
     authConfig as never,
   );
 
@@ -122,6 +133,10 @@ function buildService() {
     csrfTokenService,
     jwtService,
     tenantSettingsRepository,
+    tenantAdminInvitationsRepository,
+    invitationTokenService,
+    tenantsPlatformRepository,
+    platformAdminsRepository,
   };
 }
 
@@ -364,6 +379,63 @@ describe('AuthService (016-C)', () => {
       const m = buildService();
       m.usersRepository.findById.mockResolvedValue(undefined);
       await expect(m.service.me('user-a', 'identity-1', 'tenant-a', 'muebles')).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('meAsSupport (ADR-0036 extension)', () => {
+    const SESSION = {
+      supportSessionId: 'session-1',
+      tenantId: 'tenant-a',
+      mode: 'read' as const,
+      reason: 'checking a ticket',
+      startedAt: new Date('2026-01-01T00:00:00Z'),
+      expiresAt: new Date('2026-01-01T00:30:00Z'),
+    };
+    const ADMIN = { id: 'admin-1', email: 'root@platform.example', passwordHash: 'x', fullName: 'Root Admin', status: 'active', createdAt: new Date() };
+    const TENANT = { id: 'tenant-a', name: 'Muebles', slug: 'muebles', status: 'active', isDemo: false, createdAt: new Date() };
+
+    it('returns a synthetic view with a support: id — never a real users/identities row', async () => {
+      const m = buildService();
+      m.platformAdminsRepository.findById.mockResolvedValue(ADMIN);
+      m.tenantsPlatformRepository.findById.mockResolvedValue(TENANT);
+      const view = await m.service.meAsSupport('admin-1', SESSION);
+      expect(view.id).toBe('support:session-1');
+      expect(view.identityId).toBe('support:admin-1');
+      expect(view.tenantId).toBe('tenant-a');
+      expect(view.tenantSlug).toBe('muebles');
+      expect(view.email).toBe('root@platform.example');
+      expect(view.fullName).toContain('modo soporte');
+      expect(view.supportSession).toEqual({
+        id: 'session-1',
+        mode: 'read',
+        reason: 'checking a ticket',
+        expiresAt: '2026-01-01T00:30:00.000Z',
+      });
+    });
+
+    it('returns the entire permission catalog, not the tenant\'s effective set — UX-only, the backend enforces GET-only separately', async () => {
+      const m = buildService();
+      m.platformAdminsRepository.findById.mockResolvedValue(ADMIN);
+      m.tenantsPlatformRepository.findById.mockResolvedValue(TENANT);
+      m.rolesRepository.listCatalog.mockResolvedValue([
+        { code: 'products.view', module: 'catalog', description: '' },
+        { code: 'products.manage', module: 'catalog', description: '' },
+      ]);
+      const view = await m.service.meAsSupport('admin-1', SESSION);
+      expect(view.permissions).toEqual(['products.view', 'products.manage']);
+    });
+
+    it('rejects when the admin no longer exists', async () => {
+      const m = buildService();
+      m.platformAdminsRepository.findById.mockResolvedValue(undefined);
+      await expect(m.service.meAsSupport('admin-1', SESSION)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('rejects when the tenant is no longer active', async () => {
+      const m = buildService();
+      m.platformAdminsRepository.findById.mockResolvedValue(ADMIN);
+      m.tenantsPlatformRepository.findById.mockResolvedValue({ ...TENANT, status: 'suspended' });
+      await expect(m.service.meAsSupport('admin-1', SESSION)).rejects.toThrow(UnauthorizedException);
     });
   });
 });

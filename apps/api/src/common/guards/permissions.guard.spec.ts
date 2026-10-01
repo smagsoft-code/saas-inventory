@@ -14,6 +14,7 @@ import { PermissionsGuard } from './permissions.guard';
 function guardFor(
   granted: string[],
   declarations: { all?: string[]; any?: string[] },
+  requestOverrides: Record<string, unknown> = {},
 ): { guard: PermissionsGuard; context: ExecutionContext } {
   const reflector = {
     getAllAndOverride: (key: string) => {
@@ -23,7 +24,7 @@ function guardFor(
     },
   } as unknown as Reflector;
   const context = {
-    switchToHttp: () => ({ getRequest: () => ({ tenantContext: { permissions: granted } }) }),
+    switchToHttp: () => ({ getRequest: () => ({ tenantContext: { permissions: granted }, ...requestOverrides }) }),
     getHandler: () => undefined,
     getClass: () => undefined,
   } as unknown as ExecutionContext;
@@ -75,5 +76,29 @@ describe('PermissionsGuard', () => {
 
     const ok = guardFor(['sales.orders.view', 'a'], { all: ['sales.orders.view'], any: ['a', 'b'] });
     expect(ok.guard.canActivate(ok.context)).toBe(true);
+  });
+
+  describe('ADR-0036 extension — a support session bypasses the permission-code check entirely', () => {
+    const supportSession = { supportSessionId: 's1', tenantId: 't1', mode: 'read', reason: 'checking a ticket' };
+
+    it('allows a GET under a support session even against a route requiring a permission the (empty) tenantContext does not grant', () => {
+      const { guard, context } = guardFor([], { all: ['products.manage'] }, { supportSession, method: 'GET' });
+      expect(guard.canActivate(context)).toBe(true);
+    });
+
+    it('allows a GET under a support session on a route with no declaration too', () => {
+      const { guard, context } = guardFor([], {}, { supportSession, method: 'GET' });
+      expect(guard.canActivate(context)).toBe(true);
+    });
+
+    it('refuses any non-GET method under a support session, regardless of declared permissions', () => {
+      const { guard, context } = guardFor([], {}, { supportSession, method: 'POST' });
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    });
+
+    it('never consults the granted-permissions set for a support session (the code is irrelevant, not merely unmet)', () => {
+      const { guard, context } = guardFor(['products.manage'], { all: ['products.manage'] }, { supportSession, method: 'PATCH' });
+      expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    });
   });
 });

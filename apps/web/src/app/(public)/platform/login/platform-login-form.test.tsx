@@ -19,12 +19,12 @@ const mockedFetch = vi.mocked(apiFetch);
 const OK = { admin: { id: 'a', email: 'root@platform.example', fullName: 'Root', status: 'active' }, accessTokenExpiresAt: 'x' };
 
 function typeCredentials(): void {
-  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'root@platform.example' } });
-  fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'a-long-password' } });
+  fireEvent.change(screen.getByLabelText(/correo/i), { target: { value: 'root@platform.example' } });
+  fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'a-long-password' } });
 }
 
 function submit(): void {
-  fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+  fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 }
 
 describe('PlatformLoginForm', () => {
@@ -36,8 +36,8 @@ describe('PlatformLoginForm', () => {
 
   it('renders an email + password form only — no workspace/tenant field', () => {
     render(<PlatformLoginForm />);
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/correo/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument();
     expect(screen.queryByText(/workspace|empresa|company|tenant/i)).not.toBeInTheDocument();
   });
 
@@ -96,7 +96,7 @@ describe('PlatformLoginForm', () => {
 
     const alert = await screen.findByRole('alert');
     expect(alert).not.toHaveTextContent(/stack trace/i);
-    expect(alert).toHaveTextContent(/something went wrong/i);
+    expect(alert).toHaveTextContent(/algo salió mal/i);
   });
 
   it('does not fire a second request on a double submit', async () => {
@@ -106,7 +106,7 @@ describe('PlatformLoginForm', () => {
     );
     render(<PlatformLoginForm />);
     typeCredentials();
-    const button = screen.getByRole('button', { name: /sign in/i });
+    const button = screen.getByRole('button', { name: /iniciar sesión/i });
     fireEvent.click(button);
     fireEvent.click(button);
 

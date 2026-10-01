@@ -10,7 +10,8 @@ vi.mock('../../../../lib/api/client', () => ({ apiFetch: vi.fn() }));
 const mockedFetch = vi.mocked(apiFetch);
 
 const TEMPLATES = [{ id: 't1', name: 'Proveedor X' }];
-const LOCATIONS = [{ id: 'loc-1', name: 'Main' }];
+const WAREHOUSES = [{ id: 'wh-1', name: 'Sucursal Central' }];
+const LOCATIONS = [{ id: 'loc-1', warehouseId: 'wh-1', name: 'Main' }];
 const CATEGORIES = [{ id: 'c1', name: 'TVs' }];
 
 function xlsx(name = 'catalog.xlsx'): File {
@@ -20,7 +21,7 @@ function xlsx(name = 'catalog.xlsx'): File {
 }
 
 function setFile(file: File): void {
-  const input = screen.getByLabelText(/excel file/i);
+  const input = screen.getByLabelText(/archivo excel/i);
   fireEvent.change(input, { target: { files: [file] } });
 }
 
@@ -29,24 +30,24 @@ describe('ImportUploadForm', () => {
   afterEach(() => cleanup());
 
   it('keeps submit disabled until a valid .xlsx file is chosen', () => {
-    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} locations={LOCATIONS} categories={CATEGORIES} />);
-    expect(screen.getByRole('button', { name: /upload and continue/i })).toBeDisabled();
+    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} warehouses={WAREHOUSES} locations={LOCATIONS} categories={CATEGORIES} />);
+    expect(screen.getByRole('button', { name: /subir y continuar/i })).toBeDisabled();
     setFile(xlsx());
-    expect(screen.getByRole('button', { name: /upload and continue/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /subir y continuar/i })).toBeEnabled();
   });
 
   it('rejects a non-xlsx file client-side without calling the API', () => {
-    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} locations={LOCATIONS} categories={CATEGORIES} />);
+    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} warehouses={WAREHOUSES} locations={LOCATIONS} categories={CATEGORIES} />);
     setFile(new File(['x'], 'catalog.csv', { type: 'text/csv' }));
-    expect(screen.getByText(/only \.xlsx files/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /upload and continue/i })).toBeDisabled();
+    expect(screen.getByText(/solo se aceptan archivos .xlsx/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /subir y continuar/i })).toBeDisabled();
   });
 
   it('POSTs multipart/form-data with the standard column mapping, no tenantId, and redirects to the job', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'job-9', status: 'mapping' });
-    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} locations={LOCATIONS} categories={CATEGORIES} />);
+    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} warehouses={WAREHOUSES} locations={LOCATIONS} categories={CATEGORIES} />);
     setFile(xlsx());
-    fireEvent.click(screen.getByRole('button', { name: /upload and continue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /subir y continuar/i }));
 
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/imports/job-9'));
     const [url, opts] = mockedFetch.mock.calls.at(-1)!;
@@ -66,9 +67,9 @@ describe('ImportUploadForm', () => {
 
   it('sends mappingTemplateId (not columnMapping) when a saved template is chosen', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'job-1', status: 'mapping' });
-    render(<ImportUploadForm canUseInventoryMode={false} templates={TEMPLATES} locations={LOCATIONS} categories={[]} />);
+    render(<ImportUploadForm canUseInventoryMode={false} templates={TEMPLATES} warehouses={WAREHOUSES} locations={LOCATIONS} categories={[]} />);
     setFile(xlsx());
-    fireEvent.click(screen.getByRole('button', { name: /upload and continue/i }));
+    fireEvent.click(screen.getByRole('button', { name: /subir y continuar/i }));
     await waitFor(() => expect(pushMock).toHaveBeenCalled());
     const body = mockedFetch.mock.calls.at(-1)![1]!.body as FormData;
     expect(body.get('mappingTemplateId')).toBe('t1');
@@ -77,25 +78,25 @@ describe('ImportUploadForm', () => {
 
   it('hides the inventory duplicate-mode option unless the user holds import.inventory', () => {
     const { rerender } = render(
-      <ImportUploadForm canUseInventoryMode={false} templates={[]} locations={LOCATIONS} categories={[]} />,
+      <ImportUploadForm canUseInventoryMode={false} templates={[]} warehouses={WAREHOUSES} locations={LOCATIONS} categories={[]} />,
     );
-    expect(screen.queryByRole('option', { name: /update catalog and inventory/i })).not.toBeInTheDocument();
-    rerender(<ImportUploadForm canUseInventoryMode templates={[]} locations={LOCATIONS} categories={[]} />);
-    expect(screen.getByRole('option', { name: /update catalog and inventory/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /actualizar catálogo e inventario/i })).not.toBeInTheDocument();
+    rerender(<ImportUploadForm canUseInventoryMode templates={[]} warehouses={WAREHOUSES} locations={LOCATIONS} categories={[]} />);
+    expect(screen.getByRole('option', { name: /actualizar catálogo e inventario/i })).toBeInTheDocument();
   });
 
   it('surfaces a 403 in place without navigating', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'nope', undefined));
-    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} locations={LOCATIONS} categories={[]} />);
+    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} warehouses={WAREHOUSES} locations={LOCATIONS} categories={[]} />);
     setFile(xlsx());
-    fireEvent.click(screen.getByRole('button', { name: /upload and continue/i }));
-    expect(await screen.findByText(/not authorized to start/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /subir y continuar/i }));
+    expect(await screen.findByText(/no tienes autorización para iniciar/i)).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('offers the template download as a plain link to the API path', () => {
-    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} locations={LOCATIONS} categories={[]} />);
-    const link = screen.getByRole('link', { name: /download template/i });
+    render(<ImportUploadForm canUseInventoryMode={false} templates={[]} warehouses={WAREHOUSES} locations={LOCATIONS} categories={[]} />);
+    const link = screen.getByRole('link', { name: /descargar plantilla/i });
     expect(link).toHaveAttribute('href', '/api/v1/imports/template');
   });
 });

@@ -40,8 +40,8 @@ function labelFor(
   orderNumbersBySaleReference: Map<string, string>,
   orderNumbersByReturnItem: Map<string, string>,
   transferIdsByReceipt: Map<string, string>,
+  transferCodesByTransferId: Map<string, string>,
 ): string {
-  const shortId = (id: string) => id.slice(0, 8);
   switch (row.movementType) {
     case 'SALE': {
       const orderNumber = row.referenceId ? orderNumbersBySaleReference.get(row.referenceId) : undefined;
@@ -51,11 +51,14 @@ function labelFor(
       const orderNumber = row.referenceId ? orderNumbersByReturnItem.get(row.referenceId) : undefined;
       return orderNumber ? `Devolución de venta #${orderNumber}` : 'Devolución de venta';
     }
-    case 'TRANSFER_OUT':
-      return row.referenceId ? `Transferencia #${shortId(row.referenceId)} (salida)` : 'Transferencia (salida)';
+    case 'TRANSFER_OUT': {
+      const code = row.referenceId ? transferCodesByTransferId.get(row.referenceId) : undefined;
+      return code ? `Transferencia #${code} (salida)` : 'Transferencia (salida)';
+    }
     case 'TRANSFER_IN': {
       const transferId = row.referenceId ? transferIdsByReceipt.get(row.referenceId) : undefined;
-      return transferId ? `Transferencia #${shortId(transferId)} (entrada)` : 'Transferencia (entrada)';
+      const code = transferId ? transferCodesByTransferId.get(transferId) : undefined;
+      return code ? `Transferencia #${code} (entrada)` : 'Transferencia (entrada)';
     }
     case 'RECEIPT':
       return row.reason ? `Ingreso de stock: ${row.reason}` : 'Ingreso de stock';
@@ -132,12 +135,19 @@ export class KardexReportService {
       const physicalRows = rangeMovements.filter((row) => isPhysicalMovementType(row.movementType));
       const saleReferenceIds = physicalRows.filter((row) => row.movementType === 'SALE' && row.referenceId).map((row) => row.referenceId!);
       const returnItemIds = physicalRows.filter((row) => row.movementType === 'RETURN' && row.referenceId).map((row) => row.referenceId!);
+      const transferOutIds = physicalRows.filter((row) => row.movementType === 'TRANSFER_OUT' && row.referenceId).map((row) => row.referenceId!);
       const receiptIds = physicalRows.filter((row) => row.movementType === 'TRANSFER_IN' && row.referenceId).map((row) => row.referenceId!);
 
       const [orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt] = await Promise.all([
         this.repository.resolveOrderNumbers(tx, tenantId, saleReferenceIds),
         this.repository.resolveReturnOrderNumbers(tx, tenantId, returnItemIds),
         this.repository.resolveReceiptTransferIds(tx, tenantId, receiptIds),
+      ]);
+      // TRANSFER_OUT's own referenceId already IS the transfer id; TRANSFER_IN's only resolves to
+      // one via the receipt lookup above — union both before the single, batched code lookup.
+      const transferCodesByTransferId = await this.repository.resolveTransferCodes(tx, tenantId, [
+        ...transferOutIds,
+        ...transferIdsByReceipt.values(),
       ]);
 
       const movementsById = new Map(physicalRows.map((row) => [row.id, row]));
@@ -147,7 +157,7 @@ export class KardexReportService {
           movementId: row.movementId,
           occurredAt: row.occurredAt.toISOString(),
           movementType: row.movementType,
-          label: labelFor(source, orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt),
+          label: labelFor(source, orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt, transferCodesByTransferId),
           entrada: row.entrada,
           salida: row.salida,
           ...(canViewCost

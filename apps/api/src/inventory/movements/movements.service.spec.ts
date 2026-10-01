@@ -38,6 +38,7 @@ function buildService() {
     listByTenant: vi.fn(),
     resolveOrderNumbers: vi.fn().mockResolvedValue(new Map()),
     resolveReceiptTransferIds: vi.fn().mockResolvedValue(new Map()),
+    resolveTransferCodes: vi.fn().mockResolvedValue(new Map()),
   };
   const productVariantsLookup = { exists: vi.fn() };
   const locationsRepository = { findById: vi.fn() };
@@ -166,31 +167,35 @@ describe('MovementsService', () => {
         expect(result.data[0]!.referenceLabel).toBeUndefined();
       });
 
-      it('labels a TRANSFER_OUT with its own short id, no lookup needed', async () => {
+      it('labels a TRANSFER_OUT with its transfer code, resolved directly from its own referenceId', async () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({
-          rows: [{ ...EXISTING_MOVEMENT, movementType: 'TRANSFER_OUT', referenceType: 'transfer', referenceId: 'transfer-12345678', reason: null }],
+          rows: [{ ...EXISTING_MOVEMENT, movementType: 'TRANSFER_OUT', referenceType: 'transfer', referenceId: 'transfer-1', reason: null }],
           total: 1,
         });
+        movementsRepository.resolveTransferCodes.mockResolvedValue(new Map([['transfer-1', 'SUC-PRIN-ALM-PRIN-005']]));
 
         const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
         expect(movementsRepository.resolveReceiptTransferIds).toHaveBeenCalledWith(expect.anything(), TENANT_ID, []);
-        expect(result.data[0]!.referenceLabel).toBe('Transferencia #transfer');
+        expect(movementsRepository.resolveTransferCodes).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['transfer-1']);
+        expect(result.data[0]!.referenceLabel).toBe('Transferencia #SUC-PRIN-ALM-PRIN-005');
       });
 
-      it('labels a TRANSFER_IN with its paired transfer id, resolved via the receipt', async () => {
+      it('labels a TRANSFER_IN with its paired transfer code, resolved via the receipt then the transfer', async () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({
           rows: [{ ...EXISTING_MOVEMENT, movementType: 'TRANSFER_IN', referenceType: 'transfer_receipt', referenceId: 'receipt-1', reason: null }],
           total: 1,
         });
-        movementsRepository.resolveReceiptTransferIds.mockResolvedValue(new Map([['receipt-1', 'transfer-87654321']]));
+        movementsRepository.resolveReceiptTransferIds.mockResolvedValue(new Map([['receipt-1', 'transfer-1']]));
+        movementsRepository.resolveTransferCodes.mockResolvedValue(new Map([['transfer-1', 'SUC-PRIN-ALM-PRIN-005']]));
 
         const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
         expect(movementsRepository.resolveReceiptTransferIds).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['receipt-1']);
-        expect(result.data[0]!.referenceLabel).toBe('Transferencia #transfer');
+        expect(movementsRepository.resolveTransferCodes).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['transfer-1']);
+        expect(result.data[0]!.referenceLabel).toBe('Transferencia #SUC-PRIN-ALM-PRIN-005');
       });
 
       it('leaves referenceLabel undefined for RECEIPT/ADJUSTMENT/etc. — those already show a plain reason', async () => {

@@ -27,9 +27,9 @@ describe('AttributeOptionsEditor', () => {
     mockedFetch.mockResolvedValueOnce({ id: 'o3', attributeDefinitionId: 'd1', code: 'red', label: 'Red', displayOrder: 2, status: 'active' });
     render(<AttributeOptionsEditor definitionId="d1" options={OPTIONS} canManage />);
 
-    fireEvent.change(screen.getByLabelText(/new option code/i), { target: { value: 'red' } });
-    fireEvent.change(screen.getByLabelText(/^label/i), { target: { value: 'Red' } });
-    fireEvent.click(screen.getByRole('button', { name: /add option/i }));
+    fireEvent.change(screen.getByLabelText(/código de la opción/i), { target: { value: 'red' } });
+    fireEvent.change(screen.getByLabelText(/^etiqueta/i), { target: { value: 'Red' } });
+    fireEvent.click(screen.getByRole('button', { name: /agregar opción/i }));
 
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/attribute-definitions/d1/options', {
@@ -42,7 +42,7 @@ describe('AttributeOptionsEditor', () => {
     mockedFetch.mockResolvedValue({});
     render(<AttributeOptionsEditor definitionId="d1" options={OPTIONS} canManage />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Deactivate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Desactivar' }));
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/attribute-definitions/d1/options/o1', {
         method: 'PATCH',
@@ -52,7 +52,7 @@ describe('AttributeOptionsEditor', () => {
 
     mockedFetch.mockClear();
     mockedFetch.mockResolvedValue({});
-    fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Activar' }));
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/attribute-definitions/d1/options/o2', {
         method: 'PATCH',

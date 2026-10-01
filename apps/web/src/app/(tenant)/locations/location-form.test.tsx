@@ -43,9 +43,9 @@ describe('LocationForm', () => {
     mockedFetch.mockResolvedValueOnce({ ...LOCATION, id: 'new-id' });
     render(<LocationForm mode="create" warehouses={WAREHOUSES} parentCandidates={PARENTS} />);
 
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Bay 7' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'bay-7' } });
-    fireEvent.click(screen.getByRole('button', { name: /create location/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Bay 7' } });
+    fireEvent.change(screen.getByLabelText(/^código/i), { target: { value: 'bay-7' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear almacén/i }));
 
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/locations/new-id'));
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/locations', {
@@ -61,7 +61,7 @@ describe('LocationForm', () => {
     expect(screen.getByRole('option', { name: /aisle a/i })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /aisle n/i })).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText(/warehouse/i), { target: { value: 'w2' } });
+    fireEvent.change(screen.getByLabelText(/sucursal/i), { target: { value: 'w2' } });
     expect(screen.getByRole('option', { name: /aisle n/i })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: /aisle a/i })).not.toBeInTheDocument();
   });
@@ -69,10 +69,10 @@ describe('LocationForm', () => {
   it('create: sends isSellable:false only when chosen', async () => {
     mockedFetch.mockResolvedValueOnce({ ...LOCATION, id: 'x' });
     render(<LocationForm mode="create" warehouses={WAREHOUSES} parentCandidates={PARENTS} />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Quarantine' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'QTN' } });
-    fireEvent.change(screen.getByLabelText(/sellable/i), { target: { value: 'no' } });
-    fireEvent.click(screen.getByRole('button', { name: /create location/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Quarantine' } });
+    fireEvent.change(screen.getByLabelText(/^código/i), { target: { value: 'QTN' } });
+    fireEvent.change(screen.getByLabelText(/vendible/i), { target: { value: 'no' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear almacén/i }));
     await waitFor(() => expect(replaceMock).toHaveBeenCalled());
     const [, opts] = mockedFetch.mock.calls.at(-1)!;
     expect((opts as { body: Record<string, unknown> }).body).toMatchObject({ isSellable: false });
@@ -83,9 +83,9 @@ describe('LocationForm', () => {
       new ApiError(409, 'CONFLICT', 'A location with this code already exists in this warehouse.', undefined),
     );
     render(<LocationForm mode="create" warehouses={WAREHOUSES} parentCandidates={PARENTS} />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Bay' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'BAY' } });
-    fireEvent.click(screen.getByRole('button', { name: /create location/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Bay' } });
+    fireEvent.change(screen.getByLabelText(/^código/i), { target: { value: 'BAY' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear almacén/i }));
     expect(await screen.findByText(/code already exists/i)).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });
@@ -100,14 +100,14 @@ describe('LocationForm', () => {
         parentCandidates={PARENTS}
       />,
     );
-    expect(screen.getByLabelText(/warehouse/i)).toHaveAttribute('readonly');
-    const save = screen.getByRole('button', { name: /save changes/i });
+    expect(screen.getByLabelText(/sucursal/i)).toHaveAttribute('readonly');
+    const save = screen.getByRole('button', { name: /guardar cambios/i });
     expect(save).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText(/sellable/i), { target: { value: 'no' } });
+    fireEvent.change(screen.getByLabelText(/vendible/i), { target: { value: 'no' } });
     expect(save).toBeEnabled();
     fireEvent.click(save);
-    await waitFor(() => expect(screen.getByText(/location saved/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/almacén guardado/i)).toBeInTheDocument());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/locations/loc1', {
       method: 'PATCH',
       body: { isSellable: false },
@@ -117,9 +117,9 @@ describe('LocationForm', () => {
   it('never writes anything to browser storage', async () => {
     mockedFetch.mockResolvedValueOnce({ ...LOCATION, id: 'x' });
     render(<LocationForm mode="create" warehouses={WAREHOUSES} parentCandidates={PARENTS} />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Bay' } });
-    fireEvent.change(screen.getByLabelText(/^code/i), { target: { value: 'BAY' } });
-    fireEvent.click(screen.getByRole('button', { name: /create location/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Bay' } });
+    fireEvent.change(screen.getByLabelText(/^código/i), { target: { value: 'BAY' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear almacén/i }));
     await waitFor(() => expect(replaceMock).toHaveBeenCalled());
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);

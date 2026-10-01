@@ -37,36 +37,36 @@ describe('PlatformTenantsTable', () => {
   it('renders every company with a link to its detail page', () => {
     render(<PlatformTenantsTable tenants={rows} />);
     expect(dataRows()).toHaveLength(3);
-    expect(screen.getAllByRole('link', { name: 'View' })).toHaveLength(3);
+    expect(screen.getAllByRole('link', { name: 'Ver' })).toHaveLength(3);
     const acmeRow = screen.getByText('Acme Corp').closest('tr')!;
-    expect(within(acmeRow).getByRole('link', { name: 'View' })).toHaveAttribute(
+    expect(within(acmeRow).getByRole('link', { name: 'Ver' })).toHaveAttribute(
       'href',
       '/platform/tenants/a',
     );
-    expect(screen.getByText(/3 of 3 companies/i)).toBeInTheDocument();
+    expect(screen.getByText(/3 de 3 empresas/i)).toBeInTheDocument();
   });
 
   it('filters by status (real filter → no-results state is distinct from empty)', () => {
     render(<PlatformTenantsTable tenants={rows} />);
-    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'suspended' } });
+    fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'suspended' } });
     expect(dataRows()).toHaveLength(1);
     expect(screen.getByText('Beta LLC')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'archived' } });
+    fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'archived' } });
     expect(screen.queryAllByRole('row').slice(1)).toHaveLength(0);
-    expect(screen.getByText(/no companies match these filters/i)).toBeInTheDocument();
+    expect(screen.getByText(/ninguna empresa coincide con estos filtros/i)).toBeInTheDocument();
   });
 
   it('filters by type (demo vs real)', () => {
     render(<PlatformTenantsTable tenants={rows} />);
-    fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'demo' } });
+    fireEvent.change(screen.getByLabelText('Tipo'), { target: { value: 'demo' } });
     expect(dataRows()).toHaveLength(1);
     expect(screen.getByText('Demo Co')).toBeInTheDocument();
   });
 
   it('searches by name and slug', () => {
     render(<PlatformTenantsTable tenants={rows} />);
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'beta' } });
+    fireEvent.change(screen.getByLabelText('Buscar'), { target: { value: 'beta' } });
     expect(dataRows()).toHaveLength(1);
     expect(screen.getByText('Beta LLC')).toBeInTheDocument();
   });
@@ -76,7 +76,7 @@ describe('PlatformTenantsTable', () => {
     let names = dataRows().map((r) => within(r).getAllByRole('cell')[0]!.textContent);
     expect(names).toEqual(['Acme Corp', 'Demo Co', 'Beta LLC']); // 2026-03, 2026-02, 2026-01
 
-    fireEvent.change(screen.getByLabelText('Sort by'), { target: { value: 'name-asc' } });
+    fireEvent.change(screen.getByLabelText('Ordenar por'), { target: { value: 'name-asc' } });
     names = dataRows().map((r) => within(r).getAllByRole('cell')[0]!.textContent);
     expect(names).toEqual(['Acme Corp', 'Beta LLC', 'Demo Co']);
   });
@@ -85,6 +85,6 @@ describe('PlatformTenantsTable', () => {
     // The component imports nothing that fetches; assert the module has no api client dependency.
     // (Compile-time guarantee; this test documents the intent.)
     render(<PlatformTenantsTable tenants={rows} />);
-    expect(screen.getByRole('status')).toHaveTextContent(/3 of 3/);
+    expect(screen.getByRole('status')).toHaveTextContent(/3 de 3/);
   });
 });

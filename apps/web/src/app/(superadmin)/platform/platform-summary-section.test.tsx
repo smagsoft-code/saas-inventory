@@ -16,19 +16,19 @@ function baseSummary(overrides: Partial<PlatformSummary> = {}): PlatformSummary 
 
 describe('PlatformSummarySection', () => {
   it('renders the four count tiles from the endpoint values', () => {
-    render(<PlatformSummarySection summary={baseSummary()} newWindowLabel="since 2026-09-01 (UTC)" />);
-    expect(screen.getByText('Companies')).toBeInTheDocument();
+    render(<PlatformSummarySection summary={baseSummary()} newWindowLabel="desde 2026-09-01 (UTC)" />);
+    expect(screen.getByText('Empresas')).toBeInTheDocument();
     expect(screen.getByText('12')).toBeInTheDocument();
-    expect(screen.getByText('Active')).toBeInTheDocument();
+    expect(screen.getByText('Activas')).toBeInTheDocument();
     expect(screen.getByText('9')).toBeInTheDocument();
-    expect(screen.getByText('2 suspended · 1 archived')).toBeInTheDocument();
+    expect(screen.getByText('2 suspendidas · 1 archivadas')).toBeInTheDocument();
     expect(screen.getByText('Demo')).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument(); // newInPeriod
-    expect(screen.getByText('since 2026-09-01 (UTC)')).toBeInTheDocument();
+    expect(screen.getByText('desde 2026-09-01 (UTC)')).toBeInTheDocument();
   });
 
   it('shows a dash for the "new" tile when the endpoint returned no period', () => {
-    render(<PlatformSummarySection summary={baseSummary({ period: null })} newWindowLabel="since 2026-09-01 (UTC)" />);
+    render(<PlatformSummarySection summary={baseSummary({ period: null })} newWindowLabel="desde 2026-09-01 (UTC)" />);
     expect(screen.getByText('—')).toBeInTheDocument();
   });
 
@@ -41,7 +41,7 @@ describe('PlatformSummarySection', () => {
 describe('PlatformSummaryError', () => {
   it('shows a plain message, no stack', () => {
     render(<PlatformSummaryError message="Something went wrong on our end." />);
-    expect(screen.getByText('Could not load platform metrics')).toBeInTheDocument();
+    expect(screen.getByText('No se pudieron cargar las métricas de la plataforma')).toBeInTheDocument();
     expect(screen.getByText('Something went wrong on our end.')).toBeInTheDocument();
   });
 });

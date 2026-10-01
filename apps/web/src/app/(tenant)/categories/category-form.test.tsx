@@ -34,10 +34,10 @@ describe('CategoryForm', () => {
     mockedFetch.mockResolvedValueOnce({ ...CATEGORY, id: 'new-id' });
     render(<CategoryForm mode="create" parentOptions={PARENTS} />);
 
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Power Tools' } });
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Power Tools' } });
     expect((screen.getByLabelText(/^slug/i) as HTMLInputElement).value).toBe('power-tools');
 
-    fireEvent.click(screen.getByRole('button', { name: /create category/i }));
+    fireEvent.click(screen.getByRole('button', { name: /crear categoría/i }));
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/categories/new-id'));
 
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/categories', {
@@ -52,10 +52,10 @@ describe('CategoryForm', () => {
 
   it('create: blocks an invalid slug client-side without calling the API', () => {
     render(<CategoryForm mode="create" parentOptions={PARENTS} />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'X' } });
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'X' } });
     fireEvent.change(screen.getByLabelText(/^slug/i), { target: { value: 'Not A Slug' } });
-    fireEvent.click(screen.getByRole('button', { name: /create category/i }));
-    expect(screen.getByText(/lowercase letters, numbers and hyphens/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /crear categoría/i }));
+    expect(screen.getByText(/minúsculas, números y guiones/i)).toBeInTheDocument();
     expect(mockedFetch).not.toHaveBeenCalled();
   });
 
@@ -63,8 +63,8 @@ describe('CategoryForm', () => {
     let resolve: (v: unknown) => void = () => {};
     mockedFetch.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
     render(<CategoryForm mode="create" parentOptions={PARENTS} />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Tools' } });
-    const btn = screen.getByRole('button', { name: /create category/i });
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Tools' } });
+    const btn = screen.getByRole('button', { name: /crear categoría/i });
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(mockedFetch.mock.calls.filter(([p]) => p === '/api/v1/categories')).toHaveLength(1);
@@ -77,8 +77,8 @@ describe('CategoryForm', () => {
       new ApiError(409, 'CONFLICT', 'A category with this slug already exists.', undefined),
     );
     render(<CategoryForm mode="create" parentOptions={PARENTS} />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Tools' } });
-    fireEvent.click(screen.getByRole('button', { name: /create category/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Tools' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear categoría/i }));
     expect(await screen.findByText(/slug already exists/i)).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });
@@ -86,14 +86,14 @@ describe('CategoryForm', () => {
   it('edit: Save stays disabled until a field changes, then PATCHes only changed fields', async () => {
     mockedFetch.mockResolvedValueOnce(CATEGORY);
     render(<CategoryForm mode="edit" category={CATEGORY} parentOptions={PARENTS} />);
-    const save = screen.getByRole('button', { name: /save changes/i });
+    const save = screen.getByRole('button', { name: /guardar cambios/i });
     expect(save).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText(/status/i), { target: { value: 'inactive' } });
+    fireEvent.change(screen.getByLabelText(/estado/i), { target: { value: 'inactive' } });
     expect(save).toBeEnabled();
     fireEvent.click(save);
 
-    await waitFor(() => expect(screen.getByText(/category saved/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/categoría guardada/i)).toBeInTheDocument());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/categories/c1', {
       method: 'PATCH',
       body: { status: 'inactive' },
@@ -103,8 +103,8 @@ describe('CategoryForm', () => {
   it('never writes anything to browser storage', async () => {
     mockedFetch.mockResolvedValueOnce({ ...CATEGORY, id: 'x' });
     render(<CategoryForm mode="create" parentOptions={PARENTS} />);
-    fireEvent.change(screen.getByLabelText(/^name/i), { target: { value: 'Tools' } });
-    fireEvent.click(screen.getByRole('button', { name: /create category/i }));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Tools' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear categoría/i }));
     await waitFor(() => expect(replaceMock).toHaveBeenCalled());
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);

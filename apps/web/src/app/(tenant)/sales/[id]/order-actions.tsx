@@ -81,7 +81,7 @@ export function OrderActions({
       router.refresh();
     } catch (err) {
       if (isApiError(err) && err.status === 403) {
-        setError('You are not authorized to perform this action on this order.');
+        setError('No tienes autorización para realizar esta acción en este pedido.');
       } else {
         setError(httpErrorMessage(err));
       }
@@ -93,7 +93,7 @@ export function OrderActions({
   async function submitRequest(orderItemId: string): Promise<void> {
     const trimmed = reason.trim();
     if (trimmed.length < 3) {
-      setError('Give a reason of at least 3 characters for the exceptional discount.');
+      setError('Da un motivo de al menos 3 caracteres para el descuento excepcional.');
       return;
     }
     await run(
@@ -102,7 +102,7 @@ export function OrderActions({
       () => {
         setRequestFor(null);
         setReason('');
-        setNotice('Price-approval request filed. A supervisor must approve it before the order can be confirmed.');
+        setNotice('Solicitud de aprobación de precio enviada. Un supervisor debe aprobarla antes de poder confirmar el pedido.');
       },
     );
   }
@@ -110,12 +110,12 @@ export function OrderActions({
   return (
     <Card>
       <CardBody className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-slate-900">Actions</h2>
+        <h2 className="text-sm font-semibold text-slate-900">Acciones</h2>
 
         {error && <Alert tone="error">{error}</Alert>}
         {notice && (
           <Alert tone="success">
-            {notice} <Link href={`/approvals?orderId=${orderId}`} className="underline">View approvals</Link>
+            {notice} <Link href={`/approvals?orderId=${orderId}`} className="underline">Ver aprobaciones</Link>
           </Alert>
         )}
 
@@ -126,19 +126,19 @@ export function OrderActions({
               disabled={busy !== null}
               onClick={() => void run('confirm', () => apiFetch(`${base}/confirm`, { method: 'POST' }))}
             >
-              Confirm order
+              Confirmar pedido
             </Button>
           )}
           {showCancel && !confirmCancel && (
             <Button variant="danger" disabled={busy !== null} onClick={() => setConfirmCancel(true)}>
-              Cancel order
+              Cancelar pedido
             </Button>
           )}
         </div>
 
         {confirmCancel && showCancel && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            <span>Cancel this order? The stock reservation is released. This cannot be undone.</span>
+            <span>¿Cancelar este pedido? Se libera la reserva de stock. Esto no se puede deshacer.</span>
             <Button
               variant="danger"
               size="sm"
@@ -148,20 +148,20 @@ export function OrderActions({
                 void run('cancel', () => apiFetch(`${base}/cancel`, { method: 'POST' }), () => setConfirmCancel(false))
               }
             >
-              Confirm cancel
+              Confirmar cancelación
             </Button>
             <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => setConfirmCancel(false)}>
-              Keep order
+              Mantener pedido
             </Button>
           </div>
         )}
 
         {showRequest && (
           <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-            <p className="text-sm font-medium text-slate-700">Below-minimum lines need a price approval</p>
+            <p className="text-sm font-medium text-slate-700">Las líneas bajo el mínimo necesitan una aprobación de precio</p>
             <p className="text-xs text-slate-500">
-              File a request for each exceptional line. A user with the approval permission resolves it; the order can
-              be confirmed once every such line is approved.
+              Presenta una solicitud por cada línea excepcional. Un usuario con el permiso de aprobación la resuelve; el
+              pedido puede confirmarse una vez que cada una de esas líneas esté aprobada.
             </p>
             <ul className="flex flex-col gap-3">
               {requestable.map((line) => (
@@ -172,7 +172,7 @@ export function OrderActions({
                   </div>
                   {requestFor === line.orderItemId ? (
                     <>
-                      <Field label="Reason" hint="3–500 characters. Why the exceptional discount is justified.">
+                      <Field label="Motivo" hint="3–500 caracteres. Por qué se justifica el descuento excepcional.">
                         <Textarea
                           maxLength={500}
                           value={reason}
@@ -186,7 +186,7 @@ export function OrderActions({
                           disabled={busy !== null}
                           onClick={() => void submitRequest(line.orderItemId)}
                         >
-                          Submit request
+                          Enviar solicitud
                         </Button>
                         <Button
                           size="sm"
@@ -197,7 +197,7 @@ export function OrderActions({
                             setReason('');
                           }}
                         >
-                          Cancel
+                          Cancelar
                         </Button>
                       </div>
                     </>
@@ -212,7 +212,7 @@ export function OrderActions({
                         setError(null);
                       }}
                     >
-                      Request approval
+                      Solicitar aprobación
                     </Button>
                   )}
                 </li>

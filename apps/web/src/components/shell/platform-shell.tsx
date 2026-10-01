@@ -7,9 +7,12 @@ import { cn } from '../../lib/cn';
 import { PLATFORM_NAVIGATION, isPlatformNavItemActive } from '../../lib/platform-navigation';
 import { usePlatformLogout } from '../../lib/auth/use-platform-logout';
 import type { PlatformSession } from '../../lib/types/platform-session';
+import type { SupportSession } from '../../lib/types/platform-tenant';
 import { AccountMenu } from './account-menu';
 import { NavIconGlyph } from './nav-icon';
+import { PlatformSessionExpiryListener } from './platform-session-expiry-listener';
 import { ShellLayout } from './shell-layout';
+import { SupportModeBanner } from './support-mode-banner';
 
 /**
  * The platform-admin application shell (F17-01 §3.C / §11 / §15–§16) — a **separate context** from
@@ -38,7 +41,7 @@ function PlatformNav(): React.JSX.Element {
             )}
           >
             <NavIconGlyph name={item.icon} className="h-5 w-5 shrink-0" />
-            {item.label}
+            <span className="nav-label whitespace-nowrap">{item.label}</span>
           </Link>
         );
       })}
@@ -52,7 +55,7 @@ function PlatformAccountMenu({ admin }: { admin: PlatformSession }): React.JSX.E
     <AccountMenu
       name={admin.fullName}
       email={admin.email}
-      contextLabel="Platform administrator"
+      contextLabel="Administrador de plataforma"
       onSignOut={logout}
       signingOut={pending}
     />
@@ -61,30 +64,43 @@ function PlatformAccountMenu({ admin }: { admin: PlatformSession }): React.JSX.E
 
 export function PlatformShell({
   admin,
+  supportSession,
   children,
 }: {
   admin: PlatformSession;
+  /** ADR-0036 — the caller's own current support session, if any. Rendered as a persistent banner
+   * on every page in this shell, not just the support screen itself. */
+  supportSession: SupportSession | null;
   children: ReactNode;
 }): React.JSX.Element {
   const brand = (
-    <div className="flex h-14 items-center gap-2 px-5 text-sm font-semibold text-slate-900">
-      SaaS Inventory
-      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-        Platform
+    <div className="flex h-14 items-center gap-2 px-[1.125rem] text-sm font-semibold text-slate-900">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">
+        SI
+      </span>
+      <span className="nav-label flex items-center gap-2 whitespace-nowrap">
+        SaaS Inventory
+        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+          Plataforma
+        </span>
       </span>
     </div>
   );
 
   return (
-    <ShellLayout
-      brand={brand}
-      nav={<PlatformNav />}
-      headerLeft={
-        <span className="hidden text-sm text-slate-500 sm:block">Platform administration</span>
-      }
-      headerRight={<PlatformAccountMenu admin={admin} />}
-    >
-      {children}
-    </ShellLayout>
+    <>
+      <PlatformSessionExpiryListener />
+      <ShellLayout
+        brand={brand}
+        nav={<PlatformNav />}
+        headerLeft={
+          <span className="hidden text-sm text-slate-500 sm:block">Administración de la plataforma</span>
+        }
+        headerRight={<PlatformAccountMenu admin={admin} />}
+        banner={supportSession && supportSession.status === 'active' ? <SupportModeBanner session={supportSession} /> : undefined}
+      >
+        {children}
+      </ShellLayout>
+    </>
   );
 }

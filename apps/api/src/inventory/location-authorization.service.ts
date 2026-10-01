@@ -46,6 +46,24 @@ export class LocationAuthorizationService {
     }
   }
 
+  /** The caller's own operating scope — same rule `assertAccess` enforces, exposed read-only so a
+   * form (e.g. `S-INV-TRANSFER-NEW`'s origin pickers) can pre-filter its own options to what the
+   * user could actually submit, instead of letting them pick a location and only finding out from a
+   * 403 after submitting (spec §6: "no basta con ocultar opciones en frontend" — this is the
+   * opposite direction, giving the frontend the *real* scope to filter by, not a frontend-only
+   * guess). `unrestricted: true` (the founding Administrador exception) means every location in the
+   * tenant is in scope; `locationIds` is only meaningful when `unrestricted` is false. */
+  async getOperatingScope(tx: TenantTransaction, tenantId: string, userId: string): Promise<{ unrestricted: boolean; locationIds: string[] }> {
+    if (await this.isFoundingAdministrador(tx, tenantId, userId)) {
+      return { unrestricted: true, locationIds: [] };
+    }
+    const rows = await tx
+      .select({ locationId: userLocationAssignments.locationId })
+      .from(userLocationAssignments)
+      .where(and(eq(userLocationAssignments.tenantId, tenantId), eq(userLocationAssignments.userId, userId)));
+    return { unrestricted: false, locationIds: rows.map((row) => row.locationId) };
+  }
+
   /** ADR-0035's bootstrap exception — checked live against `user_roles`/`roles` on every call,
    * never cached. Keyed to the fixed role name `tenant-provisioning.service.ts`'s `ADMIN_ROLE_NAME`
    * constant already uses for "the role a fresh tenant's founding user gets", combined with

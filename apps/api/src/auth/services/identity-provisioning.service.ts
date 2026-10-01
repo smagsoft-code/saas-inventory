@@ -55,4 +55,46 @@ export class IdentityProvisioningService {
     });
     return { identityId: identity.id };
   }
+
+  /** ADR-0036 (Tenant Onboarding), step 1 of 2 — the SuperAdmin-initiated counterpart to
+   * `provisionMembership` above, for the one case that method cannot express: no password is
+   * supplied yet (the person sets their own via an invitation). A NEW identity is created
+   * `pending_credential`/NULL credential (`IdentitiesRepository.findOrCreatePending`); an EXISTING
+   * identity is returned as-is, whatever its status — this method never overwrites a credential,
+   * same invariant as `provisionMembership`.
+   *
+   * Deliberately does NOT create the membership itself (unlike `provisionMembership`) — the
+   * caller MUST inspect the returned `status` first and decide, per ADR-0036 §4: `'active'` → the
+   * identity already has a working credential; create the membership via `linkMembership` below,
+   * no invitation needed. `'pending_credential'` → create the membership, then an invitation (new
+   * or reused) is how this person will ever set a credential. `'disabled'` → refuse and compensate
+   * the tenant/user already created — never call `linkMembership`, never silently provision an
+   * unreachable admin (this is exactly the risk the pre-implementation audit flagged as
+   * unmitigated in the existing `/auth/register` and `POST /users` paths; this method surfaces it
+   * instead of hiding it, but does not itself fix those two pre-existing callers — out of this
+   * block's scope). */
+  async resolveOrCreatePendingIdentity(email: string, fullName: string): Promise<{ identityId: string; status: string }> {
+    const identity = await this.identitiesRepository.findOrCreatePending({
+      id: generateId(),
+      email: normalizeEmail(email),
+      fullName,
+    });
+    return { identityId: identity.id, status: identity.status };
+  }
+
+  /** ADR-0036, step 2 of 2 — creates the `active` membership row once the caller has confirmed the
+   * identity (from `resolveOrCreatePendingIdentity`) is usable. Membership is `active` immediately
+   * regardless of the identity's own status (unchanged from `provisionMembership`) — a
+   * `pending_credential` identity's `status` alone is what blocks login
+   * (`AuthService.login` already rejects on it), so there is no second "pending membership" state
+   * to invent (§6 of the prompt: "evitando duplicarlos innecesariamente entre Invitation,
+   * Membership y Credential"). */
+  async linkMembership(input: { tenantId: string; userId: string; identityId: string }): Promise<void> {
+    await this.tenantMembershipsRepository.create({
+      id: generateId(),
+      identityId: input.identityId,
+      tenantId: input.tenantId,
+      userId: input.userId,
+    });
+  }
 }

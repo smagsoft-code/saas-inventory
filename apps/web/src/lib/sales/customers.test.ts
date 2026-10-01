@@ -18,9 +18,9 @@ describe('listCustomers', () => {
 
   it('passes the real q / status / type filters', async () => {
     mocked.mockResolvedValueOnce(emptyPage);
-    await listCustomers({ page: 3, pageSize: 50, q: 'acme', status: 'active', type: 'business' });
+    await listCustomers({ page: 3, pageSize: 50, q: 'acme', status: 'active', type: 'ruc' });
     expect(mocked).toHaveBeenCalledWith('/api/v1/customers', {
-      query: { page: 3, pageSize: 50, q: 'acme', status: 'active', type: 'business' },
+      query: { page: 3, pageSize: 50, q: 'acme', status: 'active', type: 'ruc' },
     });
   });
 });

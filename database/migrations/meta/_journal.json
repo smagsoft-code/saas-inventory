@@ -234,10 +234,38 @@
       "breakpoints": true
     },
     {
+      "idx": 33,
+      "version": "7",
+      "when": 1790043211329,
+      "tag": "0033_platform_support_onboarding",
+      "breakpoints": true
+    },
+    {
       "idx": 34,
       "version": "7",
       "when": 1790125661832,
       "tag": "0034_inventory_movements_unit_cost",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1790210297609,
+      "tag": "0035_inventory_transfers_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1790213928853,
+      "tag": "0036_tenant_settings_transfer_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1790865572647,
+      "tag": "0037_customers_redesign",
       "breakpoints": true
     }
   ]

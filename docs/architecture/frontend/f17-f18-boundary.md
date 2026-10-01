@@ -68,7 +68,9 @@
 | Super-Admin: company list + detail + suspend/activate | ✅ | | |
 | Super-Admin: platform metrics (company count / status / demo / new-in-period) | | ✅ built F18-10 (`GET /platform/summary`, `tenants` only — KPI-tile row on `(superadmin)/platform`) | |
 | Super-Admin: per-tenant usage / activity / health / billing dashboard | | | ❌ `GAP-PLATFORM-AGGREGATE` (tenant-data part) + `GAP-SA-BILLING` (future, each needs an ADR) |
-| Super-Admin: create tenant / manage admins | | | ❌ `GAP-SA-CREATE-TENANT`, `GAP-SA-ADMIN-CRUD` (future) |
+| Super-Admin: create tenant + founding admin, invitation lifecycle | ✅ ADR-0036 | | no password ever collected from the SuperAdmin |
+| Super-Admin: temporary audited access to a tenant ("Tenant Support") | ✅ ADR-0036 | | curated read/write only — `GAP-SUPPORT-READ-SCOPE` |
+| Super-Admin: manage other platform admins | | | ❌ `GAP-SA-ADMIN-CRUD` (future) |
 | Executive / analytical dashboards | | ✅ | 017-A `dashboards.md` |
 | Global search, notifications bell | | | ❌ no endpoint (PROTOTYPE ONLY) |
 | Dark mode toggle | | | ❌ deferred (017-DESIGN §24) |

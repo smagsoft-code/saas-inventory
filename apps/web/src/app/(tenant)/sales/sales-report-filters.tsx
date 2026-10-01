@@ -65,7 +65,7 @@ export function SalesReportFilters({ initial }: { initial: SalesReportFilterValu
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
-      <Field label="From" hint="Tenant-local day start">
+      <Field label="Desde" hint="Inicio del día local del tenant">
         <Input
           type="date"
           value={from}
@@ -77,7 +77,7 @@ export function SalesReportFilters({ initial }: { initial: SalesReportFilterValu
         />
       </Field>
 
-      <Field label="To" hint="Exclusive — up to, not including">
+      <Field label="Hasta" hint="Exclusivo — hasta, sin incluir">
         <Input
           type="date"
           value={to}
@@ -89,7 +89,7 @@ export function SalesReportFilters({ initial }: { initial: SalesReportFilterValu
         />
       </Field>
 
-      <Field label="Group by">
+      <Field label="Agrupar por">
         <Select
           value={groupBy}
           onChange={(e) => {
@@ -106,7 +106,7 @@ export function SalesReportFilters({ initial }: { initial: SalesReportFilterValu
         </Select>
       </Field>
 
-      <Field label="Exceptional discount" hint="Below-floor sale lines">
+      <Field label="Descuento excepcional" hint="Líneas de venta bajo el piso">
         <Select
           value={exceptional}
           onChange={(e) => {

@@ -20,7 +20,7 @@ import { NoAccess } from '../../../../components/ui/no-access';
 import { ImportPipeline } from './import-pipeline';
 import { ImportRows } from './import-rows';
 
-export const metadata = { title: 'Import · SaaS Inventory' };
+export const metadata = { title: 'Importación · SaaS Inventory' };
 
 /**
  * Import detail (`S-IMP-DETAIL` / `S-IMP-ROWS`) — `GET /api/v1/imports/:id` (`import.execute`). The
@@ -41,8 +41,8 @@ export default async function ImportDetailPage({
   if (!checker.can('import.execute')) {
     return (
       <PageContainer>
-        <PageHeader title="Import" />
-        <NoAccess message="You need the import permission to view this page." />
+        <PageHeader title="Importación" />
+        <NoAccess message="Necesitas el permiso de importación para ver esta página." />
       </PageContainer>
     );
   }
@@ -62,7 +62,7 @@ export default async function ImportDetailPage({
   return (
     <PageContainer>
       <PageHeader
-        title="Import"
+        title="Importación"
         description={job.originalFilename}
         actions={
           <Badge tone={importJobStatusTone(job.status)}>
@@ -74,42 +74,42 @@ export default async function ImportDetailPage({
       <Card>
         <CardBody className="flex flex-col gap-4">
           <dl className="grid max-w-xl grid-cols-[12rem_1fr] gap-y-2 text-sm">
-            <dt className="text-slate-500">File</dt>
+            <dt className="text-slate-500">Archivo</dt>
             <dd className="break-all text-slate-900">{job.originalFilename}</dd>
-            <dt className="text-slate-500">Duplicate handling</dt>
+            <dt className="text-slate-500">Manejo de duplicados</dt>
             <dd className="text-slate-900">
               {DUPLICATE_HANDLING_MODE_LABELS[job.duplicateHandlingMode as DuplicateHandlingMode] ??
                 job.duplicateHandlingMode}
             </dd>
             {job.defaultLocationId && (
               <>
-                <dt className="text-slate-500">Default location</dt>
+                <dt className="text-slate-500">Almacén predeterminado</dt>
                 <dd className="text-slate-900">
                   <code className="text-xs">{shortId(job.defaultLocationId)}</code>
                 </dd>
               </>
             )}
-            <dt className="text-slate-500">Mapped columns</dt>
-            <dd className="text-slate-900">{mappedColumns.length === 0 ? 'Not mapped yet' : mappedColumns.length}</dd>
-            <dt className="text-slate-500">Created</dt>
-            <dd className="text-slate-900">{new Date(job.createdAt).toLocaleString()}</dd>
+            <dt className="text-slate-500">Columnas mapeadas</dt>
+            <dd className="text-slate-900">{mappedColumns.length === 0 ? 'Aún sin mapear' : mappedColumns.length}</dd>
+            <dt className="text-slate-500">Creado</dt>
+            <dd className="text-slate-900">{new Date(job.createdAt).toLocaleString('es')}</dd>
             {job.startedAt && (
               <>
-                <dt className="text-slate-500">Started</dt>
-                <dd className="text-slate-900">{new Date(job.startedAt).toLocaleString()}</dd>
+                <dt className="text-slate-500">Iniciado</dt>
+                <dd className="text-slate-900">{new Date(job.startedAt).toLocaleString('es')}</dd>
               </>
             )}
             {job.completedAt && (
               <>
-                <dt className="text-slate-500">Completed</dt>
-                <dd className="text-slate-900">{new Date(job.completedAt).toLocaleString()}</dd>
+                <dt className="text-slate-500">Completado</dt>
+                <dd className="text-slate-900">{new Date(job.completedAt).toLocaleString('es')}</dd>
               </>
             )}
           </dl>
 
           {mappedColumns.length > 0 && (
             <details className="text-sm">
-              <summary className="cursor-pointer font-medium text-slate-700">Column mapping</summary>
+              <summary className="cursor-pointer font-medium text-slate-700">Mapeo de columnas</summary>
               <ul className="mt-2 grid gap-1 sm:grid-cols-2">
                 {mappedColumns.map(([header, target]) => (
                   <li key={header} className="text-slate-600">
@@ -130,7 +130,7 @@ export default async function ImportDetailPage({
       <ImportRows jobId={job.id} />
 
       <Link href="/imports" className="text-sm font-medium text-slate-500 hover:underline">
-        Back to imports
+        Volver a importaciones
       </Link>
     </PageContainer>
   );

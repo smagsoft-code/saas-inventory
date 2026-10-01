@@ -24,13 +24,13 @@ describe('MappingTemplates', () => {
   it('creates a template with the real DTO shape (name + columnMapping), no tenantId', async () => {
     mockedFetch.mockResolvedValueOnce({});
     render(<MappingTemplates initialTemplates={[]} categories={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: /new template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /nueva plantilla/i }));
 
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Proveedor Y' } });
-    const headers = screen.getAllByLabelText('Excel header');
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Proveedor Y' } });
+    const headers = screen.getAllByLabelText('Encabezado de Excel');
     fireEvent.change(headers[0]!, { target: { value: 'CODIGO' } }); // maps to sku (default)
 
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /crear plantilla/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
 
     const [url, opts] = mockedFetch.mock.calls.at(-1)!;
@@ -43,22 +43,22 @@ describe('MappingTemplates', () => {
 
   it('blocks create until a column maps to sku', () => {
     render(<MappingTemplates initialTemplates={[]} categories={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: /new template/i }));
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'X' } });
+    fireEvent.click(screen.getByRole('button', { name: /nueva plantilla/i }));
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'X' } });
 
-    const headers = screen.getAllByLabelText('Excel header');
+    const headers = screen.getAllByLabelText('Encabezado de Excel');
     fireEvent.change(headers[0]!, { target: { value: 'DESC' } });
-    fireEvent.change(screen.getAllByLabelText('Maps to')[0]!, { target: { value: 'name' } });
-    expect(screen.getByText(/one column must map to "sku"/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /create template/i })).toBeDisabled();
+    fireEvent.change(screen.getAllByLabelText('Se asigna a')[0]!, { target: { value: 'name' } });
+    expect(screen.getByText(/una columna debe asignarse a "sku"/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /crear plantilla/i })).toBeDisabled();
   });
 
   it('edits an existing template via PATCH', async () => {
     mockedFetch.mockResolvedValueOnce({});
     render(<MappingTemplates initialTemplates={[TEMPLATE]} categories={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: /edit/i }));
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Proveedor X (v2)' } });
-    fireEvent.click(screen.getByRole('button', { name: /save template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /editar/i }));
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Proveedor X (v2)' } });
+    fireEvent.click(screen.getByRole('button', { name: /guardar plantilla/i }));
 
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     const [url, opts] = mockedFetch.mock.calls.at(-1)!;
@@ -69,8 +69,8 @@ describe('MappingTemplates', () => {
   it('deletes a template through the real DELETE endpoint after a confirm step', async () => {
     mockedFetch.mockResolvedValueOnce(undefined);
     render(<MappingTemplates initialTemplates={[TEMPLATE]} categories={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: /^delete$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm delete/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^eliminar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar eliminación/i }));
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/import-mapping-templates/tpl-1', { method: 'DELETE' }),
     );
@@ -79,10 +79,10 @@ describe('MappingTemplates', () => {
   it('surfaces a 409 duplicate-name conflict in place', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(409, 'CONFLICT', 'A mapping template with this name already exists.', undefined));
     render(<MappingTemplates initialTemplates={[]} categories={[]} />);
-    fireEvent.click(screen.getByRole('button', { name: /new template/i }));
-    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Dup' } });
-    fireEvent.change(screen.getAllByLabelText('Excel header')[0]!, { target: { value: 'CODIGO' } });
-    fireEvent.click(screen.getByRole('button', { name: /create template/i }));
+    fireEvent.click(screen.getByRole('button', { name: /nueva plantilla/i }));
+    fireEvent.change(screen.getByLabelText('Nombre'), { target: { value: 'Dup' } });
+    fireEvent.change(screen.getAllByLabelText('Encabezado de Excel')[0]!, { target: { value: 'CODIGO' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear plantilla/i }));
     expect(await screen.findByText(/already exists/i)).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
   });

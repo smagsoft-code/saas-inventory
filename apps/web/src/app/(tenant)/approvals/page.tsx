@@ -28,7 +28,7 @@ import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
 import { ApprovalsReportFilters, type ApprovalsReportFilterValues } from './approvals-report-filters';
 import { ApprovalsReportError, ApprovalsReportSection } from './approvals-report-section';
 
-export const metadata = { title: 'Approvals · SaaS Inventory' };
+export const metadata = { title: 'Aprobaciones · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
@@ -70,8 +70,8 @@ export default async function ApprovalsPage({
   if (!checker.canAny(['pricing.discount.request', 'pricing.discount.approve'])) {
     return (
       <PageContainer>
-        <PageHeader title="Approvals" />
-        <NoAccess message="You need a pricing-discount permission to view the approval queue." />
+        <PageHeader title="Aprobaciones" />
+        <NoAccess message="Necesitas un permiso de descuentos de precio para ver la cola de aprobaciones." />
       </PageContainer>
     );
   }
@@ -148,15 +148,15 @@ export default async function ApprovalsPage({
   return (
     <PageContainer>
       <PageHeader
-        title="Approvals"
-        description="Exceptional-discount requests: below-minimum prices awaiting a decision."
+        title="Aprobaciones"
+        description="Solicitudes de descuento excepcional: precios bajo el mínimo a la espera de una decisión."
       />
 
       {canViewReport && (
         <>
           <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
             <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
-              Approvals report
+              Reporte de aprobaciones
             </h2>
             <ApprovalsReportFilters initial={reportFilters} />
             {summary ? (
@@ -174,14 +174,14 @@ export default async function ApprovalsPage({
 
           <hr className="border-slate-200" />
 
-          <h2 className="text-sm font-semibold text-slate-900">Approval queue</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Cola de aprobaciones</h2>
         </>
       )}
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-2">
           <Link href={buildHref({ status: null })} aria-current={!status ? 'true' : undefined} className={chip(!status)}>
-            All statuses
+            Todos los estados
           </Link>
           {PRICE_APPROVAL_STATUSES.map((s) => (
             <Link
@@ -197,12 +197,12 @@ export default async function ApprovalsPage({
 
         {orderId && (
           <p className="flex items-center gap-2 text-sm text-slate-600">
-            Filtered to one order
+            Filtrado a un pedido
             <Link href={`/sales/${orderId}`} className="font-medium text-slate-700 underline underline-offset-2">
               {shortId(orderId)}
             </Link>
             <Link href={buildHref({ orderId: null })} className="text-xs font-medium text-slate-500 hover:underline">
-              Clear
+              Quitar
             </Link>
           </p>
         )}
@@ -210,11 +210,11 @@ export default async function ApprovalsPage({
 
       {result.data.length === 0 ? (
         <EmptyState
-          title={hasFilter ? 'No requests match these filters' : 'No exceptional-discount requests'}
+          title={hasFilter ? 'Ninguna solicitud coincide con estos filtros' : 'No hay solicitudes de descuento excepcional'}
           description={
             hasFilter
-              ? 'Try a different status.'
-              : 'A request appears here when a vendor sells a line below its minimum price.'
+              ? 'Prueba con otro estado.'
+              : 'Una solicitud aparece aquí cuando un vendedor vende una línea bajo su precio mínimo.'
           }
         />
       ) : (
@@ -222,14 +222,14 @@ export default async function ApprovalsPage({
           <Table>
             <THead>
               <TR>
-                <TH>Order</TH>
-                <TH className="text-right">Requested price</TH>
-                <TH className="text-right">Discount</TH>
-                <TH>Reason</TH>
-                <TH>Requested</TH>
-                <TH>Status</TH>
+                <TH>Pedido</TH>
+                <TH className="text-right">Precio solicitado</TH>
+                <TH className="text-right">Descuento</TH>
+                <TH>Motivo</TH>
+                <TH>Solicitado</TH>
+                <TH>Estado</TH>
                 <TH className="w-0">
-                  <span className="sr-only">Actions</span>
+                  <span className="sr-only">Acciones</span>
                 </TH>
               </TR>
             </THead>
@@ -262,7 +262,7 @@ export default async function ApprovalsPage({
                       href={`/approvals/${approval.id}`}
                       className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                     >
-                      View
+                      Ver
                     </Link>
                   </TD>
                 </TR>

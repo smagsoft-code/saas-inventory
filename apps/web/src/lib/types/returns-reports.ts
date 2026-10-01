@@ -9,12 +9,12 @@ export const RETURNS_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'product', 'cus
 export type ReturnsSummaryGroupBy = (typeof RETURNS_SUMMARY_GROUP_BY)[number];
 
 export const RETURNS_SUMMARY_GROUP_BY_LABELS: Record<ReturnsSummaryGroupBy, string> = {
-  day: 'Day',
-  week: 'Week',
-  month: 'Month',
-  product: 'Product',
-  customer: 'Customer',
-  disposition: 'Disposition',
+  day: 'Día',
+  week: 'Semana',
+  month: 'Mes',
+  product: 'Producto',
+  customer: 'Cliente',
+  disposition: 'Disposición',
 };
 
 export interface ReturnsPeriodBucket {

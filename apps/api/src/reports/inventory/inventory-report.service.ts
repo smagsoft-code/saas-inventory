@@ -16,12 +16,20 @@ function toNumber(value: string): number {
   return Number(value);
 }
 
-function toTotals(row: InventoryTotalsRow): InventorySummaryResponseDto['totals'] {
-  return {
+/** `canViewCost` decides field presence, not field masking (ADR-0028's existing precedent on
+ * `VariantResponseDto` — built by inclusion, never a `{...row}` spread then stripped). A caller
+ * without `pricing.cost.view` gets no `totalCostValue`/`missingCostCount` key at all. */
+function toTotals(row: InventoryTotalsRow, canViewCost: boolean): InventorySummaryResponseDto['totals'] {
+  const totals: InventorySummaryResponseDto['totals'] = {
     availableQuantity: toNumber(row.availableQuantity),
     reservedQuantity: toNumber(row.reservedQuantity),
     outOfStockCount: toNumber(row.outOfStockCount),
   };
+  if (canViewCost) {
+    totals.totalCostValue = toNumber(row.totalCostValue);
+    totals.missingCostCount = toNumber(row.missingCostCount);
+  }
+  return totals;
 }
 
 /**
@@ -34,8 +42,12 @@ function toTotals(row: InventoryTotalsRow): InventorySummaryResponseDto['totals'
 export class InventoryReportService {
   constructor(private readonly inventoryReportRepository: InventoryReportRepository) {}
 
-  async getInventorySummary(tenantId: string, query: InventorySummaryQueryDto): Promise<InventorySummaryResponseDto> {
-    const filters = { warehouseId: query.warehouseId, categoryId: query.categoryId };
+  async getInventorySummary(
+    tenantId: string,
+    query: InventorySummaryQueryDto,
+    canViewCost = false,
+  ): Promise<InventorySummaryResponseDto> {
+    const filters = { warehouseId: query.warehouseId, locationId: query.locationId, categoryId: query.categoryId };
 
     return withTenantTransaction(tenantId, async (tx) => {
       const [totalsRow, buckets] = await Promise.all([
@@ -52,7 +64,7 @@ export class InventoryReportService {
       return {
         generatedAt: new Date().toISOString(),
         groupBy: query.groupBy,
-        totals: toTotals(totalsRow),
+        totals: toTotals(totalsRow, canViewCost),
         buckets,
       };
     });

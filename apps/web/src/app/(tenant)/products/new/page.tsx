@@ -1,6 +1,7 @@
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { serverApiFetch } from '../../../../lib/api/server';
+import { apiPublicUrl } from '../../../../lib/api/public-url';
 import { listCategories } from '../../../../lib/catalog/categories';
 import { listAttributeDefinitions } from '../../../../lib/catalog/attributes';
 import { loadCategoryAttributeFieldSets } from '../../../../lib/catalog/product-attributes';
@@ -9,7 +10,7 @@ import { PageHeader } from '../../../../components/ui/page-header';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { ProductForm } from '../product-form';
 
-export const metadata = { title: 'New product · SaaS Inventory' };
+export const metadata = { title: 'Nuevo producto · SaaS Inventory' };
 
 export default async function NewProductPage(): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -17,8 +18,8 @@ export default async function NewProductPage(): Promise<React.JSX.Element> {
   if (!checker.can('products.manage')) {
     return (
       <PageContainer>
-        <PageHeader title="New product" />
-        <NoAccess message="You need the manage-products permission to create products." />
+        <PageHeader title="Nuevo producto" />
+        <NoAccess message="Necesitas el permiso de gestión de productos para crear productos." />
       </PageContainer>
     );
   }
@@ -37,14 +38,16 @@ export default async function NewProductPage(): Promise<React.JSX.Element> {
   return (
     <PageContainer>
       <PageHeader
-        title="New product"
-        description="Add a product and its first variant. Category attributes appear once you pick a category."
+        title="Nuevo producto"
+        description="Agrega un producto y su primera variante. Al crearlo puedes subir una imagen y se genera un código QR automáticamente."
       />
       <ProductForm
         mode="create"
         categories={categories.data.map((c) => ({ id: c.id, name: c.name }))}
         definitions={definitions}
         initialFieldSets={initialFieldSets}
+        apiPublicUrl={apiPublicUrl()}
+        canAddStock={checker.can('inventory.adjust')}
       />
     </PageContainer>
   );

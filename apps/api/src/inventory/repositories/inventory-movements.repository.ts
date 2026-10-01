@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, gte, inArray, lt } from 'drizzle-orm';
-import { inventoryMovements, inventoryTransferReceipts, orders } from '../../database/schema';
+import { inventoryMovements, inventoryTransferReceipts, inventoryTransfers, orders } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
 export interface InventoryMovementRow {
@@ -160,5 +160,18 @@ export class InventoryMovementsRepository {
       .from(inventoryTransferReceipts)
       .where(and(eq(inventoryTransferReceipts.tenantId, tenantId), inArray(inventoryTransferReceipts.id, receiptIds)));
     return new Map(rows.map((row) => [row.receiptId, row.transferId]));
+  }
+
+  /** `inventory_transfers.id` → its human-readable `code` (e.g. "SUC-PRIN-ALM-PRIN-005",
+   * F17-TRANSFERS-AUDIT) — same lookup `reports/kardex/kardex-report.repository.ts` duplicates for
+   * its own ledger label, per this module's "reporting never reaches into this repository, so this
+   * repository doesn't reach into it either" convention. */
+  async resolveTransferCodes(tx: TenantTransaction, tenantId: string, transferIds: string[]): Promise<Map<string, string>> {
+    if (transferIds.length === 0) return new Map();
+    const rows = await tx
+      .select({ id: inventoryTransfers.id, code: inventoryTransfers.code })
+      .from(inventoryTransfers)
+      .where(and(eq(inventoryTransfers.tenantId, tenantId), inArray(inventoryTransfers.id, transferIds)));
+    return new Map(rows.map((row) => [row.id, row.code]));
   }
 }

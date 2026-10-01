@@ -164,14 +164,14 @@ export interface MeasurementUnit {
 
 /** Human label for a data type, for tables/selects. */
 export const ATTRIBUTE_DATA_TYPE_LABELS: Record<string, string> = {
-  text: 'Text',
-  number: 'Number',
+  text: 'Texto',
+  number: 'Número',
   decimal: 'Decimal',
-  boolean: 'Yes / No',
-  date: 'Date',
-  datetime: 'Date & time',
-  select: 'Single select',
-  multi_select: 'Multi select',
+  boolean: 'Sí / No',
+  date: 'Fecha',
+  datetime: 'Fecha y hora',
+  select: 'Selección única',
+  multi_select: 'Selección múltiple',
 };
 
 /** The slug format the backend enforces (`create-category.dto.ts`). */

@@ -34,6 +34,14 @@ describe('middleware — route protection (UX only)', () => {
     it('lets an authenticated tenant route through when access_token is present', () => {
       expect(isPassThrough(middleware(req('/users', { access_token: 'x' })))).toBe(true);
     });
+
+    it('lets /accept-invitation/:token through unauthenticated (ADR-0036 — the invitee has no session yet)', () => {
+      expect(isPassThrough(middleware(req('/accept-invitation/some-token-value')))).toBe(true);
+    });
+
+    it('lets a tenant route through for a Platform Admin carrying only platform_access_token (ADR-0036 Tenant Support)', () => {
+      expect(isPassThrough(middleware(req('/products', { platform_access_token: 'x' })))).toBe(true);
+    });
   });
 
   describe('platform context', () => {
@@ -66,10 +74,8 @@ describe('middleware — route protection (UX only)', () => {
       expect(new URL(res.headers.get('location')!).pathname).toBe('/platform/login');
     });
 
-    it('does not accept a platform_access_token for a tenant route', () => {
-      const res = middleware(req('/users', { platform_access_token: 'x' }));
-      expect(res.status).toBe(307);
-      expect(new URL(res.headers.get('location')!).pathname).toBe('/login');
+    it('accepts a platform_access_token for a tenant route (ADR-0036 Tenant Support — superseded by the tenant-context test above)', () => {
+      expect(isPassThrough(middleware(req('/users', { platform_access_token: 'x' })))).toBe(true);
     });
   });
 });

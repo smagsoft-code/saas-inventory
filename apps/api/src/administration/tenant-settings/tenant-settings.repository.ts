@@ -8,6 +8,8 @@ export interface TenantSettingsRow {
   tenantId: string;
   timezone: string;
   businessHours: unknown;
+  transfersRequireApproval: boolean;
+  transfersRequirePreparation: boolean;
   updatedAt: Date;
 }
 
@@ -32,14 +34,25 @@ export class TenantSettingsRepository {
   async upsert(
     tx: TenantTransaction,
     tenantId: string,
-    values: { timezone: string; businessHours: unknown },
+    values: { timezone: string; businessHours: unknown; transfersRequireApproval: boolean; transfersRequirePreparation: boolean },
   ): Promise<TenantSettingsRow> {
     const [row] = await tx
       .insert(tenantSettings)
-      .values({ tenantId, timezone: values.timezone, businessHours: values.businessHours })
+      .values({
+        tenantId,
+        timezone: values.timezone,
+        businessHours: values.businessHours,
+        transfersRequireApproval: values.transfersRequireApproval,
+        transfersRequirePreparation: values.transfersRequirePreparation,
+      })
       .onConflictDoUpdate({
         target: tenantSettings.tenantId,
-        set: { timezone: values.timezone, businessHours: values.businessHours },
+        set: {
+          timezone: values.timezone,
+          businessHours: values.businessHours,
+          transfersRequireApproval: values.transfersRequireApproval,
+          transfersRequirePreparation: values.transfersRequirePreparation,
+        },
       })
       .returning();
     if (!row) {

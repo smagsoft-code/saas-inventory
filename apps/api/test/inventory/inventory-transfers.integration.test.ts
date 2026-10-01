@@ -158,7 +158,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
     const sourceLocationId = await createLocation(admin, warehouseId, 'Source', `SRC-${Date.now()}`);
     const destinationLocationId = await createLocation(admin, warehouseId, 'Destination', `DST-${Date.now()}`);
     const productVariantId = await createProductVariant(admin, `${companyName} Product`, `SKU-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-    const receipt = await adjust(admin, { productVariantId, locationId: sourceLocationId, movementType: 'RECEIPT', quantity: initialStock, reason: 'Seed' });
+    const receipt = await adjust(admin, { productVariantId, locationId: sourceLocationId, movementType: 'RECEIPT', quantity: initialStock, reason: 'Seed', unitCost: 10 });
     expect(receipt.statusCode).toBe(201);
     return { admin, warehouseId, sourceLocationId, destinationLocationId, productVariantId };
   }
@@ -184,6 +184,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
     const response = await inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${productVariantId}&locationId=${locationId}`, headers: readHeaders(session) });
     expect(response.statusCode).toBe(200);
     return (JSON.parse(response.body) as { data: { quantityPhysical: number; quantityReserved: number; quantityAvailable: number }[] }).data[0];
+  }
+
+  /** F17-TRANSFERS-AUDIT §1 — `PATCH /administration/tenant-settings` (`administration.settings.manage`). */
+  async function setTransferWorkflow(session: Session, values: { transfersRequireApproval?: boolean; transfersRequirePreparation?: boolean }): Promise<void> {
+    const response = await inject({ method: 'PATCH', url: '/api/v1/administration/tenant-settings', headers: writeHeaders(session), payload: values });
+    expect(response.statusCode).toBe(200);
   }
 
   describe('full lifecycle (§17-§19, ADR-0020)', () => {
@@ -409,6 +415,9 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
       const unrelatedWarehouse = await createWarehouse(admin, 'Unrelated WH Prime', `UWHP-${Date.now()}`);
       const unrelatedLocation = await createLocation(admin, unrelatedWarehouse, 'Unrelated Prime', `UNRP-${Date.now()}`);
       await inject({ method: 'PUT', url: `/api/v1/users/${bodega.user.id}/locations`, headers: writeHeaders(admin), payload: { locationIds: [unrelatedLocation] } });
+      // §4's create-time stock check needs real stock at the source for the "allowed" case below —
+      // this scenario is about location authorization, not stock availability.
+      await adjust(admin, { productVariantId, locationId: unrelatedLocation, movementType: 'RECEIPT', quantity: 20, reason: 'Seed unrelated location', unitCost: 10 });
 
       const createForbidden = await inject({
         method: 'POST',
@@ -541,7 +550,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
     it('a dispatch rejected mid-way (one item overshoots quantityRequested) rolls back completely — no partial movements, status unchanged', async () => {
       const { admin, sourceLocationId, destinationLocationId, productVariantId } = await seedTenant('Transfer Nu Co', 'admin@transfer-nu.example', 100);
       const secondVariantId = await createProductVariant(admin, 'Transfer Nu Second Product', `SKU-2-${Date.now()}`);
-      await adjust(admin, { productVariantId: secondVariantId, locationId: sourceLocationId, movementType: 'RECEIPT', quantity: 100, reason: 'Seed second variant' });
+      await adjust(admin, { productVariantId: secondVariantId, locationId: sourceLocationId, movementType: 'RECEIPT', quantity: 100, reason: 'Seed second variant', unitCost: 10 });
 
       const createResponse = await inject({
         method: 'POST',
@@ -584,6 +593,179 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
       const source = await balanceOf(admin, productVariantId, sourceLocationId);
       // The reservation from `prepare` is untouched — the failed dispatch never committed anything.
       expect(source).toEqual(expect.objectContaining({ quantityPhysical: 100, quantityReserved: validItem.quantityRequested }));
+    });
+  });
+
+  describe('configurable workflow stages (F17-TRANSFERS-AUDIT §1, PATCH /administration/tenant-settings)', () => {
+    it('both gates disabled: create() lands directly in "preparing", with the reservation already applied — dispatch/receive complete normally', async () => {
+      const { admin, sourceLocationId, destinationLocationId, productVariantId } = await seedTenant('Transfer Skip-Both Co', 'admin@transfer-skip-both.example', 100);
+      await setTransferWorkflow(admin, { transfersRequireApproval: false, transfersRequirePreparation: false });
+
+      const create = await inject({
+        method: 'POST',
+        url: '/api/v1/inventory/transfers',
+        headers: writeHeaders(admin),
+        payload: { sourceLocationId, destinationLocationId, items: [{ productVariantId, quantityRequested: 10 }] },
+      });
+      expect(create.statusCode).toBe(201);
+      const created = JSON.parse(create.body) as { id: string; status: string };
+      expect(created.status).toBe('preparing');
+
+      const reserved = await balanceOf(admin, productVariantId, sourceLocationId);
+      expect(reserved).toEqual(expect.objectContaining({ quantityPhysical: 100, quantityReserved: 10, quantityAvailable: 90 }));
+
+      // "Aprobar"/"Preparar" have nothing left to do — the manual endpoints correctly refuse (the
+      // transfer is not in draft/approved any more), never a silent double-reservation.
+      const approveAttempt = await inject({ method: 'POST', url: `/api/v1/inventory/transfers/${created.id}/approve`, headers: writeHeaders(admin) });
+      expect(approveAttempt.statusCode).toBe(409);
+      const prepareAttempt = await inject({ method: 'POST', url: `/api/v1/inventory/transfers/${created.id}/prepare`, headers: writeHeaders(admin) });
+      expect(prepareAttempt.statusCode).toBe(409);
+
+      const dispatch = await inject({ method: 'POST', url: `/api/v1/inventory/transfers/${created.id}/dispatch`, headers: writeHeaders(admin) });
+      expect(dispatch.statusCode).toBe(200);
+      expect((JSON.parse(dispatch.body) as { status: string }).status).toBe('dispatched');
+
+      const receive = await inject({
+        method: 'POST',
+        url: `/api/v1/inventory/transfers/${created.id}/receive`,
+        headers: writeHeaders(admin, { 'idempotency-key': 'skip-both-receive-1' }),
+        payload: { items: [{ transferItemId: (await getTransfer(admin, created.id)).items[0]!.id, quantityReceived: 10 }] },
+      });
+      expect(receive.statusCode).toBe(200);
+      expect((JSON.parse(receive.body) as { status: string }).status).toBe('received');
+
+      const destBalance = await balanceOf(admin, productVariantId, destinationLocationId);
+      expect(destBalance?.quantityPhysical).toBe(10);
+    });
+
+    it('only approval disabled: create() lands in "approved"; preparing is still a required manual step', async () => {
+      const { admin, sourceLocationId, destinationLocationId, productVariantId } = await seedTenant('Transfer Skip-Approval Co', 'admin@transfer-skip-approval.example', 100);
+      await setTransferWorkflow(admin, { transfersRequireApproval: false, transfersRequirePreparation: true });
+
+      const create = await inject({
+        method: 'POST',
+        url: '/api/v1/inventory/transfers',
+        headers: writeHeaders(admin),
+        payload: { sourceLocationId, destinationLocationId, items: [{ productVariantId, quantityRequested: 5 }] },
+      });
+      expect(create.statusCode).toBe(201);
+      const created = JSON.parse(create.body) as { id: string; status: string };
+      expect(created.status).toBe('approved');
+
+      // No reservation yet — preparing is still a real, required, manual step for this tenant.
+      const beforePrepare = await balanceOf(admin, productVariantId, sourceLocationId);
+      expect(beforePrepare?.quantityReserved).toBe(0);
+
+      const prepare = await inject({ method: 'POST', url: `/api/v1/inventory/transfers/${created.id}/prepare`, headers: writeHeaders(admin) });
+      expect(prepare.statusCode).toBe(200);
+      expect((JSON.parse(prepare.body) as { status: string }).status).toBe('preparing');
+
+      const afterPrepare = await balanceOf(admin, productVariantId, sourceLocationId);
+      expect(afterPrepare?.quantityReserved).toBe(5);
+    });
+
+    it('only preparation disabled: create() stays "draft"; a manual approve() auto-advances straight to "preparing" (reservation applied)', async () => {
+      const { admin, sourceLocationId, destinationLocationId, productVariantId } = await seedTenant('Transfer Skip-Prep Co', 'admin@transfer-skip-prep.example', 100);
+      await setTransferWorkflow(admin, { transfersRequireApproval: true, transfersRequirePreparation: false });
+
+      const create = await inject({
+        method: 'POST',
+        url: '/api/v1/inventory/transfers',
+        headers: writeHeaders(admin),
+        payload: { sourceLocationId, destinationLocationId, items: [{ productVariantId, quantityRequested: 7 }] },
+      });
+      expect(create.statusCode).toBe(201);
+      const created = JSON.parse(create.body) as { id: string; status: string };
+      expect(created.status).toBe('draft');
+
+      const approve = await inject({ method: 'POST', url: `/api/v1/inventory/transfers/${created.id}/approve`, headers: writeHeaders(admin) });
+      expect(approve.statusCode).toBe(200);
+      expect((JSON.parse(approve.body) as { status: string }).status).toBe('preparing');
+
+      const reserved = await balanceOf(admin, productVariantId, sourceLocationId);
+      expect(reserved?.quantityReserved).toBe(7);
+    });
+
+    it('default tenant (no PATCH ever sent) keeps the full manual flow — draft after create, approved after approve, never auto-advances', async () => {
+      const { admin, sourceLocationId, destinationLocationId, productVariantId } = await seedTenant('Transfer Default Workflow Co', 'admin@transfer-default-workflow.example', 100);
+
+      const create = await inject({
+        method: 'POST',
+        url: '/api/v1/inventory/transfers',
+        headers: writeHeaders(admin),
+        payload: { sourceLocationId, destinationLocationId, items: [{ productVariantId, quantityRequested: 1 }] },
+      });
+      expect((JSON.parse(create.body) as { status: string }).status).toBe('draft');
+
+      const created = JSON.parse(create.body) as { id: string };
+      const approve = await inject({ method: 'POST', url: `/api/v1/inventory/transfers/${created.id}/approve`, headers: writeHeaders(admin) });
+      expect((JSON.parse(approve.body) as { status: string }).status).toBe('approved');
+    });
+  });
+
+  describe('GET /inventory/products-in-stock (F17-TRANSFERS-AUDIT — "Producto" origin filter)', () => {
+    async function createProduct(admin: Session, name: string, sku: string): Promise<{ productId: string; productVariantId: string }> {
+      const created = await inject({
+        method: 'POST',
+        url: '/api/v1/products',
+        headers: writeHeaders(admin),
+        payload: { name, defaultVariant: { sku, maxPrice: 100, basePrice: 90, minPrice: 80 } },
+      });
+      expect(created.statusCode).toBe(201);
+      const productId = (JSON.parse(created.body) as { id: string }).id;
+      const variants = await inject({ method: 'GET', url: `/api/v1/products/${productId}/variants`, headers: readHeaders(admin) });
+      return { productId, productVariantId: (JSON.parse(variants.body) as { id: string }[])[0]!.id };
+    }
+
+    it('only lists products with quantity_available > 0 at the given location, not the whole catalog or a zero-stock/other-location product', async () => {
+      const { admin, sourceLocationId, destinationLocationId } = await seedTenant('Products In Stock Co', 'admin@products-in-stock.example');
+      const inStock = await createProduct(admin, 'In-Stock Widget', `INSTOCK-${Date.now()}`);
+      await adjust(admin, { productVariantId: inStock.productVariantId, locationId: sourceLocationId, movementType: 'RECEIPT', quantity: 5, reason: 'Seed', unitCost: 10 });
+      const zeroStock = await createProduct(admin, 'Zero-Stock Widget', `ZERO-${Date.now()}`);
+      const otherLocationOnly = await createProduct(admin, 'Other-Location Widget', `OTHERLOC-${Date.now()}`);
+      await adjust(admin, { productVariantId: otherLocationOnly.productVariantId, locationId: destinationLocationId, movementType: 'RECEIPT', quantity: 5, reason: 'Seed', unitCost: 10 });
+
+      const response = await inject({ method: 'GET', url: `/api/v1/inventory/products-in-stock?locationId=${sourceLocationId}`, headers: readHeaders(admin) });
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body) as { id: string; name: string }[];
+      const ids = body.map((p) => p.id);
+      expect(ids).toContain(inStock.productId);
+      expect(ids).not.toContain(zeroStock.productId);
+      expect(ids).not.toContain(otherLocationOnly.productId);
+    });
+
+    it('an unreceipted balance-less location returns an empty list, never every product', async () => {
+      const { admin, destinationLocationId } = await seedTenant('Products In Stock Empty Co', 'admin@products-in-stock-empty.example', 100);
+      const response = await inject({ method: 'GET', url: `/api/v1/inventory/products-in-stock?locationId=${destinationLocationId}`, headers: readHeaders(admin) });
+      expect(response.statusCode).toBe(200);
+      expect(JSON.parse(response.body)).toEqual([]);
+    });
+
+    it('requires inventory.view (401 anonymous, 403 without it, 200 with it)', async () => {
+      const { admin, sourceLocationId } = await seedTenant('Products In Stock RBAC Co', 'admin@products-in-stock-rbac.example', 100);
+
+      const anonymous = await inject({ method: 'GET', url: `/api/v1/inventory/products-in-stock?locationId=${sourceLocationId}` });
+      expect(anonymous.statusCode).toBe(401);
+
+      const vendedor = await createAndLoginAs(admin, 'vendedor@products-in-stock-rbac.example', 'Vendedor');
+      const forbidden = await inject({ method: 'GET', url: `/api/v1/inventory/products-in-stock?locationId=${sourceLocationId}`, headers: readHeaders(vendedor) });
+      expect(forbidden.statusCode).toBe(403);
+
+      const allowed = await inject({ method: 'GET', url: `/api/v1/inventory/products-in-stock?locationId=${sourceLocationId}`, headers: readHeaders(admin) });
+      expect(allowed.statusCode).toBe(200);
+    });
+
+    it('tenant A cannot see tenant B stock through this endpoint (a foreign locationId simply matches nothing)', async () => {
+      const tenantA = await seedTenant('Products In Stock Tenant A', 'admin@products-in-stock-a.example', 100);
+      const tenantB = await seedTenant('Products In Stock Tenant B', 'admin@products-in-stock-b.example', 100);
+
+      const crossTenant = await inject({
+        method: 'GET',
+        url: `/api/v1/inventory/products-in-stock?locationId=${tenantB.sourceLocationId}`,
+        headers: readHeaders(tenantA.admin),
+      });
+      expect(crossTenant.statusCode).toBe(200);
+      expect(JSON.parse(crossTenant.body)).toEqual([]);
     });
   });
 });

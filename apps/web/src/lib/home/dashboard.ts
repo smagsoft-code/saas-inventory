@@ -1,281 +1,229 @@
 import { isApiError } from '../api/errors';
 import type { PermissionChecker } from '../auth/permissions';
-import type { PermissionCode } from '../auth/permission-codes';
-import { listOrders } from '../sales/orders';
-import { listPriceApprovals } from '../sales/price-approvals';
-import { listReturns } from '../sales/returns';
-import { listTransfers } from '../inventory/transfers';
-import { listImportJobs } from '../imports/imports';
-import { listProducts } from '../catalog/products';
-import type { Paginated } from '../types/pagination';
+import { getSalesSummary } from '../sales/reports';
+import { getInventorySummary, getTransfersSummary } from '../inventory/reports';
+import { listLocations } from '../inventory/locations';
+import { isTransferDestinationBucket, type TransfersSummary } from '../types/inventory-reports';
+import type { SalesPeriodBucket, SalesProductBucket } from '../types/reports';
 import { tenantStartOfDayUtc } from './tenant-day';
 
 /**
- * Data layer for the operational Home (F17-12 — `S-HOME`). Every number here comes from a **real,
- * audited** list endpoint's `meta.total`; nothing is computed from a downloaded list, no endpoint
- * is invented, no metric that the backend cannot answer is faked (`GAP-INV-AGGREGATE` low-stock,
- * revenue → deliberately absent; see `f17-gaps.md`).
+ * Data layer for the operational Home (OUI-002 — replaces the F17-12 queue-based dashboard with
+ * the five cards the owner asked for: today's sales, available stock, inventory value, transfers
+ * in transit, and today's top-10 sellers). Every number still comes from a **real, audited**
+ * report endpoint; nothing is folded from a downloaded list, no endpoint is invented, no metric
+ * the backend cannot answer is faked. A single failing endpoint degrades **that tile** to
+ * `unavailable` ("No disponible", never `0`); the rest of the Home still renders. No chart —
+ * every card is the same plain KPI-card shape the page already used.
  *
- * Fetching is separated from rendering (the page passes the resolved `HomeDashboard` to pure
- * components). Each tile is fetched **only** when the caller's permissions allow the underlying
- * request — a tile the user cannot see is `no-access` and the page omits it; it is never rendered
- * disabled and a 403 never becomes a page-level error. A single failing endpoint degrades **that
- * tile** to `unavailable` ("No disponible", never `0`); the rest of the Home still renders.
- *
- * Requests are independent and run with `Promise.all` — no N+1, no polling, no waterfall.
+ * The Almacén filter at the top (`locationId`) narrows every card at once:
+ *  - Sales day/top-10 — `orders.location_id` equality filter (OUI-002 backend addition).
+ *  - Available stock / inventory value — `inventory_balances.location_id` equality filter
+ *    (OUI-002 backend addition, the finer-grained sibling of the existing `warehouseId` filter).
+ *  - Transfers in transit — no backend filter exists for this snapshot; narrowed **client-side**
+ *    by matching the `groupBy=destination` bucket whose key is the selected location, which the
+ *    endpoint already resolves server-side (F18-08) — no new endpoint, no fabricated number.
  */
 
 export type TileState = 'ready' | 'unavailable' | 'no-access';
-
-export interface HomeQueueItem {
-  id: string;
-  href: string;
-  primary: string;
-  secondary?: string;
-}
+export type TileFormat = 'currency' | 'count';
 
 export interface HomeTile {
   key: string;
   label: string;
-  /** "View all" target for this queue/metric. */
+  /** "View all" target for this metric. */
   href: string;
-  /** Permission the underlying endpoint requires — for the quick-actions/legend, not gating. */
   state: TileState;
   /** Meaningful only when `state === 'ready'`. */
-  count: number;
-  /** Whether a non-zero count is something to act on (styles the number). */
-  actionable: boolean;
-  /** Top few rows for the "Needs attention" section. Empty for count-only tiles. */
-  items: HomeQueueItem[];
-  /** Short honest note for a degraded tile (e.g. the timezone limitation). */
+  value: number;
+  format: TileFormat;
+  /** Only ever set alongside `format: 'currency'`, and only when a real currency code was
+   * available (sales-summary) — never guessed. `undefined` renders the plain number. */
+  currency?: string;
+  /** Short honest note for a degraded or partial tile (e.g. costs missing on some variants). */
   note?: string;
+}
+
+export interface HomeTopProduct {
+  variantId: string;
+  sku: string;
+  productName: string;
+  quantity: number;
+}
+
+export interface HomeTopProductsCard {
+  state: TileState;
+  items: HomeTopProduct[];
+}
+
+export interface HomeLocationOption {
+  id: string;
+  name: string;
 }
 
 export interface HomeDashboard {
   tiles: HomeTile[];
+  topProducts: HomeTopProductsCard;
+  /** Active locations (Almacenes) for the filter selector — empty when the caller cannot list
+   * them or the tenant has none; the page hides the filter in that case. */
+  locationOptions: HomeLocationOption[];
+  /** The filter actually applied — `undefined` when omitted, or when the requested id matched no
+   * real location (never silently "applied" against a bogus id). */
+  selectedLocationId?: string;
 }
 
-const QUEUE_PREVIEW = 5;
+const TOP_PRODUCTS_LIMIT = 10;
 
 interface Fetched<T> {
   state: TileState;
-  count: number;
-  items: T[];
+  value: T | null;
 }
 
-/** Run a list read, mapping the outcome to a tile state. `can` short-circuits to `no-access` so we
- * never fire a request that is guaranteed to 403. */
-async function fetchList<T>(
-  can: boolean,
-  fetcher: () => Promise<Paginated<T>>,
-): Promise<Fetched<T>> {
+/** Run one report read, mapping the outcome to a tile state. `can` short-circuits to `no-access`
+ * so we never fire a request that is guaranteed to 403. */
+async function fetchValue<T>(can: boolean, fetcher: () => Promise<T>): Promise<Fetched<T>> {
   if (!can) {
-    return { state: 'no-access', count: 0, items: [] };
+    return { state: 'no-access', value: null };
   }
   try {
-    const result = await fetcher();
-    return { state: 'ready', count: result.meta.total, items: result.data };
+    return { state: 'ready', value: await fetcher() };
   } catch (error) {
     if (isApiError(error) && error.status === 403) {
-      return { state: 'no-access', count: 0, items: [] };
+      return { state: 'no-access', value: null };
     }
     // 401/404/409/5xx/network — "could not be determined", distinct from a real zero.
-    return { state: 'unavailable', count: 0, items: [] };
+    return { state: 'unavailable', value: null };
   }
 }
 
-function shortId(id: string): string {
-  return id.length > 8 ? `${id.slice(0, 8)}…` : id;
-}
-
-/** Loads every Home tile the caller may see. `timezone` is the active tenant's IANA zone (F18-01,
- * `session.timezone` from `GET /auth/me` — every role can read it now, closing `GAP-TZ-VISIBILITY`
- * for this tile); `now`/`checker` are the other inputs — pure enough to unit test with the module
- * helpers mocked. */
+/** Loads every Home card the caller may see, narrowed to `locationId` when given. `timezone` is
+ * the active tenant's IANA zone (F18-01, `session.timezone`); `now`/`checker` are the other
+ * inputs — pure enough to unit test with the module helpers mocked. */
 export async function loadHomeDashboard(
   checker: PermissionChecker,
   timezone: string,
+  locationId?: string,
   now: Date = new Date(),
 ): Promise<HomeDashboard> {
-  const can = (code: PermissionCode): boolean => checker.can(code);
-  const canApprovals = checker.canAny(['pricing.discount.request', 'pricing.discount.approve']);
-  const canOrders = can('sales.orders.view');
-  const canReturns = can('sales.returns.view');
-  const canTransfers = can('inventory.view');
-  const canImports = can('import.execute');
-  const canProducts = can('products.view');
+  const canSales = checker.can('sales.orders.view');
+  const canInventory = checker.can('inventory.view');
+  const canViewCost = checker.can('pricing.cost.view');
+  const canLocations = checker.can('locations.view');
 
-  // "Orders today" needs the tenant timezone to resolve local midnight (F17-12, `GAP-HOME-DATE-TZ`)
-  // — converted to a UTC `createdFrom` for GET /orders, a `>=` lower bound so the `createdTo`
-  // inclusive/exclusive ambiguity never bites (`GAP-DATE-SEMANTICS`).
-  const ordersTodayPromise: Promise<Fetched<unknown>> = fetchList(canOrders, () =>
-    listOrders({ status: 'confirmed', createdFrom: tenantStartOfDayUtc(timezone, now), page: 1, pageSize: 1 }),
-  );
+  const from = tenantStartOfDayUtc(timezone, now);
+  const to = now.toISOString();
 
-  const [
-    pendingOrders,
-    ordersToday,
-    pendingApprovals,
-    returnsRequested,
-    returnsInspecting,
-    transfersDispatched,
-    transfersPartial,
-    importsFailed,
-    importsWithErrors,
-    draftProducts,
-  ] = await Promise.all([
-    fetchList(canOrders, () => listOrders({ status: 'pending', page: 1, pageSize: QUEUE_PREVIEW })),
-    ordersTodayPromise,
-    fetchList(canApprovals, () =>
-      listPriceApprovals({ status: 'pending', page: 1, pageSize: QUEUE_PREVIEW }),
-    ),
-    fetchList(canReturns, () =>
-      listReturns({ status: 'requested', page: 1, pageSize: QUEUE_PREVIEW }),
-    ),
-    fetchList(canReturns, () => listReturns({ status: 'inspecting', page: 1, pageSize: 1 })),
-    fetchList(canTransfers, () =>
-      listTransfers({ status: 'dispatched', page: 1, pageSize: QUEUE_PREVIEW }),
-    ),
-    fetchList(canTransfers, () =>
-      listTransfers({ status: 'partially_received', page: 1, pageSize: 1 }),
-    ),
-    fetchList(canImports, () => listImportJobs({ status: 'failed', page: 1, pageSize: 1 })),
-    fetchList(canImports, () =>
-      listImportJobs({ status: 'completed_with_errors', page: 1, pageSize: QUEUE_PREVIEW }),
-    ),
-    fetchList(canProducts, () => listProducts({ status: 'draft', page: 1, pageSize: 1 })),
+  // Locations resolve first (a small, bounded list) so a bogus/stale `locationId` can be caught
+  // *before* it is ever sent to a report endpoint — never a wasted request against an id that
+  // matches nothing, and never a filter that silently "applies" against garbage.
+  const locationsPage = await fetchValue(canLocations, () => listLocations({ status: 'active', pageSize: 100 }));
+  const locationOptions: HomeLocationOption[] = (locationsPage.value?.data ?? []).map((l) => ({
+    id: l.id,
+    name: l.name,
+  }));
+  const selectedLocationId =
+    locationId && locationOptions.some((l) => l.id === locationId) ? locationId : undefined;
+
+  const [salesDay, salesByProduct, inventorySummary, transfersSummary] = await Promise.all([
+    fetchValue(canSales, () => getSalesSummary({ from, to, groupBy: 'day', ...(selectedLocationId ? { locationId: selectedLocationId } : {}) })),
+    fetchValue(canSales, () => getSalesSummary({ from, to, groupBy: 'product', ...(selectedLocationId ? { locationId: selectedLocationId } : {}) })),
+    fetchValue(canInventory, () => getInventorySummary({ groupBy: 'warehouse', ...(selectedLocationId ? { locationId: selectedLocationId } : {}) })),
+    fetchValue(canInventory, () => getTransfersSummary({ groupBy: 'destination' })),
   ]);
 
-  /** Combine a primary (list) status with a secondary count-only status — `GAP-MULTI-STATUS`: the
-   * list DTOs take one `status`, so two parallel reads, never an invented `status=a,b`. If the
-   * secondary read failed we still show the primary count (a documented possible undercount) rather
-   * than blanking the whole tile. */
-  function combined(
-    primary: Fetched<{ id: string }>,
-    secondary: Fetched<unknown>,
-  ): { state: TileState; count: number; items: Fetched<{ id: string }>['items'] } {
-    if (primary.state !== 'ready') {
-      return { state: primary.state, count: 0, items: [] };
-    }
-    const extra = secondary.state === 'ready' ? secondary.count : 0;
-    return { state: 'ready', count: primary.count + extra, items: primary.items };
-  }
+  // A single-currency-per-tenant app (FASE 12 default) — the code itself always comes from a real
+  // response (sales-summary), never assumed; the inventory-value tile borrows it only when it is
+  // actually known, otherwise it renders a plain number rather than guessing a currency.
+  const currency = salesDay.value?.currency;
 
-  const returns = combined(returnsRequested as Fetched<{ id: string }>, returnsInspecting);
-  const transfers = combined(transfersDispatched as Fetched<{ id: string }>, transfersPartial);
+  const salesTotal = (salesDay.value?.buckets[0] as SalesPeriodBucket | undefined)?.total ?? 0;
+
+  const missingCostCount = inventorySummary.value?.totals.missingCostCount ?? 0;
+  const inventoryValueState: TileState = !canViewCost ? 'no-access' : inventorySummary.state;
+
+  const transfers = resolveTransfersTile(transfersSummary, selectedLocationId);
 
   const tiles: HomeTile[] = [
     {
-      key: 'pending-orders',
-      label: 'Pending orders',
-      href: '/sales?status=pending',
-      state: pendingOrders.state,
-      count: pendingOrders.count,
-      actionable: true,
-      items: (pendingOrders.items as { id: string; orderNumber: string; customer: { name: string } }[]).map(
-        (o) => ({
-          id: o.id,
-          href: `/sales/${o.id}`,
-          primary: o.orderNumber,
-          secondary: o.customer?.name,
-        }),
-      ),
+      key: 'sales-today',
+      label: 'Ventas del día',
+      href: '/sales',
+      state: salesDay.state,
+      value: salesTotal,
+      format: 'currency',
+      ...(currency ? { currency } : {}),
     },
     {
-      key: 'orders-today',
-      label: 'Orders confirmed today',
-      href: '/sales?status=confirmed',
-      state: ordersToday.state,
-      count: ordersToday.count,
-      actionable: false,
-      items: [],
+      key: 'available-products',
+      label: 'Productos disponibles',
+      href: '/inventory',
+      state: inventorySummary.state,
+      value: inventorySummary.value?.totals.availableQuantity ?? 0,
+      format: 'count',
     },
     {
-      key: 'pending-approvals',
-      label: 'Price approvals pending',
-      href: '/approvals?status=pending',
-      state: pendingApprovals.state,
-      count: pendingApprovals.count,
-      actionable: true,
-      items: (pendingApprovals.items as { id: string; reason: string }[]).map((a) => ({
-        id: a.id,
-        href: `/approvals/${a.id}`,
-        primary: `Approval ${shortId(a.id)}`,
-        secondary: a.reason,
-      })),
+      key: 'inventory-value',
+      label: 'Valor total de inventario',
+      href: '/inventory',
+      state: inventoryValueState,
+      value: inventorySummary.value?.totals.totalCostValue ?? 0,
+      format: 'currency',
+      ...(currency ? { currency } : {}),
+      ...(inventoryValueState === 'ready' && missingCostCount > 0
+        ? { note: `${missingCostCount} variante(s) sin costo cargado, excluida(s) del total.` }
+        : {}),
     },
     {
-      key: 'returns',
-      label: 'Returns to process',
-      href: '/returns',
-      state: returns.state,
-      count: returns.count,
-      actionable: true,
-      items: (returns.items as { id: string; reason: string }[]).map((r) => ({
-        id: r.id,
-        href: `/returns/${r.id}`,
-        primary: `Return ${shortId(r.id)}`,
-        secondary: r.reason,
-      })),
-    },
-    {
-      key: 'transfers',
-      label: 'Transfers to receive',
+      key: 'transfers-in-transit',
+      label: 'Transferencias en tránsito',
       href: '/inventory/transfers?status=dispatched',
       state: transfers.state,
-      count: transfers.count,
-      actionable: true,
-      items: (transfers.items as { id: string }[]).map((t) => ({
-        id: t.id,
-        href: `/inventory/transfers/${t.id}`,
-        primary: `Transfer ${shortId(t.id)}`,
-      })),
-    },
-    {
-      key: 'imports',
-      label: 'Imports needing attention',
-      href: '/imports',
-      // A failed read of either sub-status degrades the tile; both must be usable for a real count.
-      state:
-        importsFailed.state === 'ready' && importsWithErrors.state === 'ready'
-          ? 'ready'
-          : importsFailed.state === 'no-access'
-            ? 'no-access'
-            : 'unavailable',
-      count: importsFailed.count + importsWithErrors.count,
-      actionable: true,
-      items: (importsWithErrors.items as { id: string; originalFilename: string }[]).map((j) => ({
-        id: j.id,
-        href: `/imports/${j.id}`,
-        primary: j.originalFilename,
-        secondary: 'Completed with errors',
-      })),
-    },
-    {
-      key: 'draft-products',
-      label: 'Draft products',
-      href: '/products?status=draft',
-      state: draftProducts.state,
-      count: draftProducts.count,
-      actionable: false,
-      items: [],
+      value: transfers.count,
+      format: 'count',
+      ...(transfers.note ? { note: transfers.note } : {}),
     },
   ];
 
-  return { tiles };
+  const topProducts: HomeTopProductsCard = {
+    state: salesByProduct.state,
+    items: [...(salesByProduct.value?.buckets ?? [])]
+      .map((b) => b as SalesProductBucket)
+      .sort((a, b) => b.quantity - a.quantity)
+      .slice(0, TOP_PRODUCTS_LIMIT)
+      .map((b) => ({ variantId: b.key, sku: b.sku, productName: b.productName, quantity: b.quantity })),
+  };
+
+  return { tiles, topProducts, locationOptions, ...(selectedLocationId ? { selectedLocationId } : {}) };
 }
 
-/** Permission-gated shortcuts shown under the tiles. Pure — the page filters by the checker. */
-export interface QuickAction {
-  label: string;
-  href: string;
-  permission: PermissionCode;
+/** `transfers-summary` has no location filter of its own (F18-08 is a tenant-wide snapshot) — this
+ * narrows client-side to the one `groupBy=destination` bucket the endpoint already resolved for
+ * the selected Almacén. No bucket for that location is a real, honest zero ("nothing currently
+ * heading there"), never treated as `unavailable`. */
+function resolveTransfersTile(
+  transfersSummary: Fetched<TransfersSummary>,
+  selectedLocationId: string | undefined,
+): { state: TileState; count: number; note?: string } {
+  if (transfersSummary.state !== 'ready' || !transfersSummary.value) {
+    return { state: transfersSummary.state, count: 0 };
+  }
+  if (!selectedLocationId) {
+    const { openTransferCount, inTransitQuantity } = transfersSummary.value.totals;
+    return {
+      state: 'ready',
+      count: openTransferCount,
+      ...(inTransitQuantity > 0 ? { note: `${inTransitQuantity} unidad(es) en tránsito.` } : {}),
+    };
+  }
+  const bucket = transfersSummary.value.buckets
+    .filter(isTransferDestinationBucket)
+    .find((b) => b.key === selectedLocationId);
+  if (!bucket) {
+    return { state: 'ready', count: 0 };
+  }
+  return {
+    state: 'ready',
+    count: bucket.openTransferCount,
+    ...(bucket.inTransitQuantity > 0 ? { note: `${bucket.inTransitQuantity} unidad(es) en tránsito.` } : {}),
+  };
 }
-
-export const HOME_QUICK_ACTIONS: readonly QuickAction[] = [
-  { label: 'New sale', href: '/sales/new', permission: 'sales.orders.create' },
-  { label: 'Adjust stock', href: '/inventory/adjust', permission: 'inventory.adjust' },
-  { label: 'New transfer', href: '/inventory/transfers/new', permission: 'inventory.transfers.request' },
-  { label: 'New product', href: '/products/new', permission: 'products.manage' },
-  { label: 'Import catalog', href: '/imports/new', permission: 'import.execute' },
-];

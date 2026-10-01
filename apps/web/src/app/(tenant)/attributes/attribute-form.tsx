@@ -86,14 +86,14 @@ export function AttributeForm({
     if (mode === 'create') {
       const c = code.trim();
       if (c.length < 1 || c.length > 60) {
-        next['code'] = 'Code is required (1–60 characters).';
+        next['code'] = 'El código es obligatorio (1–60 caracteres).';
       }
     }
     if (name.trim().length < 1 || name.trim().length > 120) {
-      next['name'] = 'Name is required (max 120 characters).';
+      next['name'] = 'El nombre es obligatorio (máx. 120 caracteres).';
     }
     if (numeric && minValue.trim() && maxValue.trim() && Number(minValue) > Number(maxValue)) {
-      next['maxValue'] = 'Minimum must be less than or equal to the maximum.';
+      next['maxValue'] = 'El mínimo debe ser menor o igual que el máximo.';
     }
     setFieldError(next);
     return Object.keys(next).length === 0;
@@ -146,7 +146,7 @@ export function AttributeForm({
     } catch (err) {
       setError(
         isApiError(err) && err.status === 403
-          ? 'You no longer have permission to make this change.'
+          ? 'Ya no tienes permiso para hacer este cambio.'
           : httpErrorMessage(err),
       );
     } finally {
@@ -157,9 +157,9 @@ export function AttributeForm({
   return (
     <form onSubmit={handleSubmit} noValidate className="flex max-w-lg flex-col gap-4">
       <Field
-        label="Code"
+        label="Código"
         required
-        hint="A stable key used in data. Cannot be changed later."
+        hint="Una clave estable usada en los datos. No se puede cambiar después."
         {...(fieldError['code'] ? { error: fieldError['code'] } : {})}
       >
         <Input
@@ -173,7 +173,7 @@ export function AttributeForm({
         />
       </Field>
 
-      <Field label="Name" required {...(fieldError['name'] ? { error: fieldError['name'] } : {})}>
+      <Field label="Nombre" required {...(fieldError['name'] ? { error: fieldError['name'] } : {})}>
         <Input
           required
           maxLength={120}
@@ -185,7 +185,7 @@ export function AttributeForm({
         />
       </Field>
 
-      <Field label="Description">
+      <Field label="Descripción">
         <Textarea
           rows={2}
           value={description}
@@ -197,7 +197,7 @@ export function AttributeForm({
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={'Type'} required {...(mode === 'edit' ? { hint: 'Cannot be changed.' } : {})}>
+        <Field label={'Tipo'} required {...(mode === 'edit' ? { hint: 'No se puede cambiar.' } : {})}>
           <Select
             value={dataType}
             disabled={mode === 'edit'}
@@ -214,7 +214,7 @@ export function AttributeForm({
           </Select>
         </Field>
 
-        <Field label={'Applies to'} required {...(mode === 'edit' ? { hint: 'Cannot be changed.' } : {})}>
+        <Field label={'Aplica a'} required {...(mode === 'edit' ? { hint: 'No se puede cambiar.' } : {})}>
           <Select
             value={appliesTo}
             disabled={mode === 'edit'}
@@ -225,7 +225,7 @@ export function AttributeForm({
           >
             {ATTRIBUTE_SCOPES.map((s) => (
               <option key={s} value={s}>
-                {s === 'variant' ? 'Variant' : 'Product'}
+                {s === 'variant' ? 'Variante' : 'Producto'}
               </option>
             ))}
           </Select>
@@ -234,7 +234,7 @@ export function AttributeForm({
 
       {numeric && (
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label={'Unit'} hint={mode === 'edit' ? 'Cannot be changed.' : 'Optional.'}>
+          <Field label={'Unidad'} hint={mode === 'edit' ? 'No se puede cambiar.' : 'Opcional.'}>
             <Select
               value={unitId}
               disabled={mode === 'edit'}
@@ -243,7 +243,7 @@ export function AttributeForm({
                 setSuccess(false);
               }}
             >
-              <option value="">None</option>
+              <option value="">Ninguna</option>
               {units.map((u) => (
                 <option key={u.id} value={u.id}>
                   {u.label} ({u.code})
@@ -251,7 +251,7 @@ export function AttributeForm({
               ))}
             </Select>
           </Field>
-          <Field label="Minimum">
+          <Field label="Mínimo">
             <Input
               type="number"
               value={minValue}
@@ -262,7 +262,7 @@ export function AttributeForm({
             />
           </Field>
           <Field
-            label="Maximum"
+            label="Máximo"
             {...(fieldError['maxValue'] ? { error: fieldError['maxValue'] } : {})}
           >
             <Input
@@ -287,11 +287,11 @@ export function AttributeForm({
           }}
           className="h-4 w-4 rounded border-slate-300"
         />
-        Required by default (a category can override this per assignment)
+        Obligatorio por defecto (una categoría puede anular esto por asignación)
       </label>
 
       {mode === 'edit' && (
-        <Field label="Status">
+        <Field label="Estado">
           <Select
             value={status}
             onChange={(e) => {
@@ -299,8 +299,8 @@ export function AttributeForm({
               setSuccess(false);
             }}
           >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="active">Activo</option>
+            <option value="inactive">Inactivo</option>
           </Select>
         </Field>
       )}
@@ -308,17 +308,17 @@ export function AttributeForm({
       {mode === 'create' && !numeric && (
         <p className="text-xs text-slate-500">
           {dataType === 'select' || dataType === 'multi_select'
-            ? 'After creating, add the selectable options on the attribute page.'
+            ? 'Después de crearlo, agrega las opciones seleccionables en la página del atributo.'
             : null}
         </p>
       )}
 
       {error && <Alert tone="error">{error}</Alert>}
-      {success && <Alert tone="success">Attribute saved.</Alert>}
+      {success && <Alert tone="success">Atributo guardado.</Alert>}
 
       <div className="flex gap-2">
         <Button type="submit" loading={submitting} disabled={!dirty} className="w-fit">
-          {mode === 'create' ? 'Create attribute' : 'Save changes'}
+          {mode === 'create' ? 'Crear atributo' : 'Guardar cambios'}
         </Button>
         <Button
           type="button"
@@ -326,7 +326,7 @@ export function AttributeForm({
           className="w-fit"
           onClick={() => router.push('/attributes')}
         >
-          {mode === 'create' ? 'Cancel' : 'Back to attributes'}
+          {mode === 'create' ? 'Cancelar' : 'Volver a atributos'}
         </Button>
       </div>
     </form>

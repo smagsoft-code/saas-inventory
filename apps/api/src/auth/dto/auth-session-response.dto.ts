@@ -1,5 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/** ADR-0036 extension — present on `GET /auth/me` only when the caller is a Platform Admin
+ * browsing this tenant under an active support session (never for a real tenant user). This is
+ * what lets the tenant frontend render the same "MODO SOPORTE" banner `PlatformShell` already
+ * shows, without a second request. */
+export class TenantSupportSessionDto {
+  @ApiProperty({ type: String })
+  id!: string;
+
+  @ApiProperty({ enum: ['read', 'write'] })
+  mode!: 'read' | 'write';
+
+  @ApiProperty({ type: String })
+  reason!: string;
+
+  @ApiProperty({ type: String })
+  expiresAt!: string;
+}
+
 /** GET /auth/me and every session-issuing response's user shape — never the password hash, never
  * a token (tokens live only in httpOnly cookies, not the JSON body — security.md/CLAUDE.md §7.4). */
 export class CurrentUserResponseDto {
@@ -37,6 +55,9 @@ export class CurrentUserResponseDto {
       "('today', 'this month') without administration.settings.view.",
   })
   timezone!: string;
+
+  @ApiPropertyOptional({ type: TenantSupportSessionDto })
+  supportSession?: TenantSupportSessionDto;
 }
 
 export class AuthSessionResponseDto {

@@ -3,6 +3,7 @@ import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm';
 import {
   inventoryBalances,
   inventoryTransferReceipts,
+  inventoryTransfers,
   inventoryMovements,
   locations,
   orders,
@@ -139,6 +140,18 @@ export class KardexReportRepository {
       .from(inventoryTransferReceipts)
       .where(and(eq(inventoryTransferReceipts.tenantId, tenantId), inArray(inventoryTransferReceipts.id, receiptIds)));
     return new Map(rows.map((row) => [row.receiptId, row.transferId]));
+  }
+
+  /** `inventory_transfers.id` → its human-readable `code` (e.g. "SUC-PRIN-ALM-PRIN-005",
+   * F17-TRANSFERS-AUDIT) — the Kardex label for TRANSFER_OUT/TRANSFER_IN shows this instead of a
+   * truncated id. */
+  async resolveTransferCodes(tx: TenantTransaction, tenantId: string, transferIds: string[]): Promise<Map<string, string>> {
+    if (transferIds.length === 0) return new Map();
+    const rows = await tx
+      .select({ id: inventoryTransfers.id, code: inventoryTransfers.code })
+      .from(inventoryTransfers)
+      .where(and(eq(inventoryTransfers.tenantId, tenantId), inArray(inventoryTransfers.id, transferIds)));
+    return new Map(rows.map((row) => [row.id, row.code]));
   }
 
   /** "Stock por sucursal" — current balance for this variant at every location it has one,

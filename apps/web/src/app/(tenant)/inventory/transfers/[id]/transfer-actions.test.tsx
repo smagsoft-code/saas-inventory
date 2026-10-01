@@ -29,6 +29,21 @@ describe('TransferActions', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it('explains why no action is available instead of rendering nothing, when a non-terminal status has no permitted action', () => {
+    render(
+      <TransferActions transferId={T} status="draft" items={[]} canApprove={false} canDispatch={false} canReceive={false} />,
+    );
+    expect(screen.getByText(/no tiene ese permiso/i)).toBeInTheDocument();
+    expect(screen.getByText(/aprobarla/i)).toBeInTheDocument();
+  });
+
+  it('shows a blue success message after a successful transition', async () => {
+    mockedFetch.mockResolvedValueOnce({});
+    render(<TransferActions transferId={T} status="draft" items={[]} canApprove canDispatch canReceive />);
+    fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
+    expect(await screen.findByText(/transferencia aprobada correctamente/i)).toBeInTheDocument();
+  });
+
   it('only shows actions the status AND permission allow', () => {
     render(
       <TransferActions
@@ -40,15 +55,15 @@ describe('TransferActions', () => {
         canReceive={false}
       />,
     );
-    expect(screen.getByRole('button', { name: /^approve$/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /cancel transfer/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /dispatch/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^aprobar$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancelar transferencia/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /despachar/i })).not.toBeInTheDocument();
   });
 
   it('approve POSTs .../approve with no body and no tenantId', async () => {
     mockedFetch.mockResolvedValueOnce({});
     render(<TransferActions transferId={T} status="draft" items={[]} canApprove canDispatch canReceive />);
-    fireEvent.click(screen.getByRole('button', { name: /^approve$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/inventory/transfers/transfer-1/approve', { method: 'POST' });
     expect(JSON.stringify(mockedFetch.mock.calls)).not.toMatch(/tenantId/i);
@@ -58,7 +73,7 @@ describe('TransferActions', () => {
     let resolve: (v: unknown) => void = () => {};
     mockedFetch.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
     render(<TransferActions transferId={T} status="draft" items={[]} canApprove canDispatch canReceive />);
-    const btn = screen.getByRole('button', { name: /^approve$/i });
+    const btn = screen.getByRole('button', { name: /^aprobar$/i });
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(mockedFetch).toHaveBeenCalledTimes(1);
@@ -69,24 +84,24 @@ describe('TransferActions', () => {
   it('shows a location-authorization message on a 403 and does not redirect', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'nope', undefined));
     render(<TransferActions transferId={T} status="approved" items={[]} canApprove canDispatch canReceive />);
-    fireEvent.click(screen.getByRole('button', { name: /^prepare$/i }));
-    expect(await screen.findByText(/not authorized to operate/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^preparar$/i }));
+    expect(await screen.findByText(/no tienes autorización para operar/i)).toBeInTheDocument();
   });
 
   it('cancel is a two-step confirm', async () => {
     mockedFetch.mockResolvedValueOnce({});
     render(<TransferActions transferId={T} status="draft" items={[]} canApprove canDispatch canReceive />);
-    fireEvent.click(screen.getByRole('button', { name: /cancel transfer/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cancelar transferencia/i }));
     expect(mockedFetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /confirm cancel/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar cancelación/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/inventory/transfers/transfer-1/cancel', { method: 'POST' });
   });
 
   describe('receive — idempotency', () => {
     function openAndSubmitReceive() {
-      fireEvent.click(screen.getByRole('button', { name: /receive…/i }));
-      fireEvent.click(screen.getByRole('button', { name: /confirm receipt/i }));
+      fireEvent.click(screen.getByRole('button', { name: /recibir…/i }));
+      fireEvent.click(screen.getByRole('button', { name: /confirmar recepción/i }));
     }
 
     it('sends a non-empty Idempotency-Key header with the receive body', async () => {
@@ -110,7 +125,7 @@ describe('TransferActions', () => {
       await screen.findByText(/temporary|conflict/i);
 
       mockedFetch.mockResolvedValueOnce({});
-      fireEvent.click(screen.getByRole('button', { name: /confirm receipt/i }));
+      fireEvent.click(screen.getByRole('button', { name: /confirmar recepción/i }));
       await waitFor(() => expect(refreshMock).toHaveBeenCalled());
 
       const receiveCalls = mockedFetch.mock.calls.filter(([p]) => String(p).endsWith('/receive'));
@@ -147,8 +162,8 @@ describe('TransferActions', () => {
       let resolve: (v: unknown) => void = () => {};
       mockedFetch.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
       render(<TransferActions transferId={T} status="dispatched" items={RECEIVABLE_ITEMS} canApprove canDispatch canReceive />);
-      fireEvent.click(screen.getByRole('button', { name: /receive…/i }));
-      const btn = screen.getByRole('button', { name: /confirm receipt/i });
+      fireEvent.click(screen.getByRole('button', { name: /recibir…/i }));
+      const btn = screen.getByRole('button', { name: /confirmar recepción/i });
       fireEvent.click(btn);
       fireEvent.click(btn);
       expect(mockedFetch.mock.calls.filter(([p]) => String(p).endsWith('/receive'))).toHaveLength(1);

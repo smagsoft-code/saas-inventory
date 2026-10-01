@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
 import type { Order, Return } from '../../../../lib/types/sales';
@@ -17,8 +17,13 @@ export interface OrderOption {
   orderNumber: string;
   customerName: string;
 }
+export interface WarehouseOption {
+  id: string;
+  name: string;
+}
 export interface LocationOption {
   id: string;
+  warehouseId: string;
   name: string;
 }
 
@@ -50,10 +55,12 @@ function newIdempotencyKey(): string {
  */
 export function ReturnForm({
   orders,
+  warehouses,
   locations,
   preselectOrderId,
 }: {
   orders: OrderOption[];
+  warehouses: WarehouseOption[];
   locations: LocationOption[];
   preselectOrderId?: string;
 }): React.JSX.Element {
@@ -61,7 +68,19 @@ export function ReturnForm({
   const initialOrder = preselectOrderId && orders.some((o) => o.id === preselectOrderId) ? preselectOrderId : '';
 
   const [orderId, setOrderId] = useState(initialOrder);
-  const [locationId, setLocationId] = useState(locations[0]?.id ?? '');
+  const [warehouseId, setWarehouseId] = useState(warehouses[0]?.id ?? '');
+  const [locationId, setLocationId] = useState(
+    () => locations.find((l) => l.warehouseId === (warehouses[0]?.id ?? ''))?.id ?? '',
+  );
+  const locationsInWarehouse = useMemo(
+    () => locations.filter((l) => l.warehouseId === warehouseId),
+    [locations, warehouseId],
+  );
+
+  function onWarehouseChange(nextWarehouseId: string): void {
+    setWarehouseId(nextWarehouseId);
+    setLocationId(locations.find((l) => l.warehouseId === nextWarehouseId)?.id ?? '');
+  }
   const [reason, setReason] = useState('');
   const [lines, setLines] = useState<LineState[]>([]);
   const [linesLoading, setLinesLoading] = useState(false);
@@ -164,7 +183,7 @@ export function ReturnForm({
       router.push(`/returns/${created.id}`);
     } catch (err) {
       if (isApiError(err) && err.status === 403) {
-        setError('You are not authorized to file a return for this order.');
+        setError('No tienes autorización para presentar una devolución de este pedido.');
       } else {
         setError(httpErrorMessage(err));
       }
@@ -178,9 +197,9 @@ export function ReturnForm({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <Field label="Order" required hint="Only confirmed orders can be returned.">
+          <Field label="Pedido" required hint="Solo se pueden devolver pedidos confirmados.">
             <Select value={orderId} disabled={busy} onChange={(e) => void loadLines(e.target.value)}>
-              <option value="">Choose an order…</option>
+              <option value="">Elige un pedido…</option>
               {orders.map((order) => (
                 <option key={order.id} value={order.id}>
                   {order.orderNumber} — {order.customerName}
@@ -189,9 +208,19 @@ export function ReturnForm({
             </Select>
           </Field>
 
-          <Field label="Receiving location" required hint="Where the returned goods are physically received.">
-            <Select value={locationId} disabled={busy} onChange={(e) => setLocationId(e.target.value)}>
-              {locations.map((location) => (
+          <Field label="Sucursal de recepción" required>
+            <Select value={warehouseId} disabled={busy} onChange={(e) => onWarehouseChange(e.target.value)}>
+              {warehouses.map((warehouse) => (
+                <option key={warehouse.id} value={warehouse.id}>
+                  {warehouse.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Almacén de recepción" required hint="Dónde se recibe físicamente la mercancía devuelta.">
+            <Select value={locationId} disabled={busy || !warehouseId} onChange={(e) => setLocationId(e.target.value)}>
+              {locationsInWarehouse.map((location) => (
                 <option key={location.id} value={location.id}>
                   {location.name}
                 </option>
@@ -199,7 +228,7 @@ export function ReturnForm({
             </Select>
           </Field>
 
-          <Field label="Reason" required hint="3–500 characters.">
+          <Field label="Motivo" required hint="3–500 caracteres.">
             <Textarea maxLength={500} value={reason} disabled={busy} onChange={(e) => setReason(e.target.value)} />
           </Field>
         </CardBody>
@@ -207,25 +236,25 @@ export function ReturnForm({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Lines to return</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Líneas a devolver</h2>
           {linesError && <Alert tone="error">{linesError}</Alert>}
           {!orderId ? (
-            <p className="text-sm text-slate-500">Choose an order to see its lines.</p>
+            <p className="text-sm text-slate-500">Elige un pedido para ver sus líneas.</p>
           ) : linesLoading ? (
-            <p className="text-sm text-slate-500">Loading lines…</p>
+            <p className="text-sm text-slate-500">Cargando líneas…</p>
           ) : lines.length === 0 ? (
-            <p className="text-sm text-slate-500">This order has no returnable lines.</p>
+            <p className="text-sm text-slate-500">Este pedido no tiene líneas devolvibles.</p>
           ) : (
             <Table>
               <THead>
                 <TR>
                   <TH className="w-0">
-                    <span className="sr-only">Include</span>
+                    <span className="sr-only">Incluir</span>
                   </TH>
-                  <TH>Item</TH>
-                  <TH className="text-right">Sold</TH>
-                  <TH className="text-right">Returnable</TH>
-                  <TH className="text-right">Return qty</TH>
+                  <TH>Artículo</TH>
+                  <TH className="text-right">Vendido</TH>
+                  <TH className="text-right">Devolvible</TH>
+                  <TH className="text-right">Cant. a devolver</TH>
                 </TR>
               </THead>
               <TBody>
@@ -234,7 +263,7 @@ export function ReturnForm({
                     <TD>
                       <input
                         type="checkbox"
-                        aria-label={`Include ${line.sku}`}
+                        aria-label={`Incluir ${line.sku}`}
                         checked={line.include}
                         disabled={busy || line.returnable <= 0}
                         onChange={(e) => updateLine(line.orderItemId, { include: e.target.checked })}
@@ -245,14 +274,14 @@ export function ReturnForm({
                       <span className="font-medium">{line.sku}</span>
                       <span className="text-slate-500"> · {line.productName}</span>
                       {line.returnable <= 0 && (
-                        <span className="ml-2 text-xs text-slate-500">fully returned</span>
+                        <span className="ml-2 text-xs text-slate-500">devuelto por completo</span>
                       )}
                     </TD>
                     <TD className="text-right text-slate-500">{line.sold}</TD>
                     <TD className="text-right text-slate-500">{line.returnable}</TD>
                     <TD className="text-right">
                       <label className="sr-only" htmlFor={`qty-${line.orderItemId}`}>
-                        Return quantity for {line.sku}
+                        Cantidad a devolver de {line.sku}
                       </label>
                       <Input
                         id={`qty-${line.orderItemId}`}
@@ -276,7 +305,7 @@ export function ReturnForm({
 
       <div className="flex gap-2">
         <Button type="submit" loading={busy} disabled={!canSubmit}>
-          File return
+          Presentar devolución
         </Button>
       </div>
     </form>

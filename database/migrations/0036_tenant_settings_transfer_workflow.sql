@@ -1,0 +1,2 @@
+ALTER TABLE "tenant_settings" ADD COLUMN "transfers_require_approval" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+ALTER TABLE "tenant_settings" ADD COLUMN "transfers_require_preparation" boolean DEFAULT true NOT NULL;

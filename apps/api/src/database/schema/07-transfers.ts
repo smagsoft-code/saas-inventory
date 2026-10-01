@@ -16,6 +16,14 @@ import { users } from './02-core';
 export const inventoryTransfers = pgTable('inventory_transfers', {
   id: id(),
   tenantId: tenantId(),
+  /** Human-readable sequence — `${sourceWarehouse.code}-${sourceLocation.code}-NNN`, e.g.
+   * `MATR-ALM-001`. Computed once at create() (InventoryTransfersRepository.nextTransferCode) from
+   * the SAME source-location scope the numbering is keyed to; never recomputed from other fields.
+   * Sequence scope is per (tenant, source_location) — see nextTransferCode's advisory-lock key,
+   * same `pg_advisory_xact_lock(hashtext(...))` + `count(*)` pattern orders.repository.ts's
+   * nextOrderNumber() already established. Continuous, never resets by year (no such requirement
+   * was given — see the Transferencias implementation report's numbering section). */
+  code: text('code').notNull(),
   sourceLocationId: uuid('source_location_id').notNull(),
   destinationLocationId: uuid('destination_location_id').notNull(),
   status: text('status').notNull().default('draft'),
@@ -56,6 +64,7 @@ export const inventoryTransfers = pgTable('inventory_transfers', {
     foreignColumns: [users.tenantId, users.id],
   }).onDelete('restrict'),
   unique('inventory_transfers_tenant_id_id_key').on(t.tenantId, t.id),
+  unique('inventory_transfers_tenant_id_code_key').on(t.tenantId, t.code),
   check(
     'inventory_transfers_status_check',
     sql`${t.status} IN ('draft', 'approved', 'preparing', 'dispatched', 'partially_received', 'received', 'cancelled')`,

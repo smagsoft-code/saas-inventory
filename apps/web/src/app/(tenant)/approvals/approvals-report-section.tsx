@@ -20,16 +20,16 @@ export function ApprovalsReportError({
   message: string;
   correlationId?: string | undefined;
 }): React.JSX.Element {
-  const title = status === 403 ? 'Access denied' : status >= 500 ? 'Something went wrong on our end' : 'Could not load the report';
+  const title = status === 403 ? 'Acceso denegado' : status >= 500 ? 'Algo salió mal de nuestro lado' : 'No se pudo cargar el reporte';
   return (
     <div className="flex flex-col items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
       <div>
         <p className="text-sm font-medium text-red-800">{title}</p>
         <p className="mt-0.5 text-sm text-red-700">{message}</p>
-        {correlationId && <p className="mt-1 text-xs text-red-600/80">Reference: {correlationId}</p>}
+        {correlationId && <p className="mt-1 text-xs text-red-600/80">Referencia: {correlationId}</p>}
       </div>
       <a href="#report" className="text-sm font-medium text-red-800 underline-offset-2 hover:underline">
-        Try again
+        Reintentar
       </a>
     </div>
   );
@@ -65,10 +65,10 @@ function PeriodKpis({ buckets, currency }: { buckets: ApprovalsPeriodBucket[]; c
   const overallRate = approved + rejected > 0 ? approved / (approved + rejected) : null;
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <KpiTile label="Requests" value={String(requestCount)} />
-      <KpiTile label="Approval rate" value={rate(overallRate)} />
-      <KpiTile label="Pending" value={String(pending)} />
-      <KpiTile label="Approved discount" value={money(discountValue, currency)} />
+      <KpiTile label="Solicitudes" value={String(requestCount)} />
+      <KpiTile label="Tasa de aprobación" value={rate(overallRate)} />
+      <KpiTile label="Pendientes" value={String(pending)} />
+      <KpiTile label="Descuento aprobado" value={money(discountValue, currency)} />
     </div>
   );
 }
@@ -81,9 +81,9 @@ function StatusKpis({ buckets, currency }: { buckets: ApprovalsStatusBucket[]; c
   const discountValue = buckets.reduce((n, b) => n + b.discountValue, 0);
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-      <KpiTile label="Requests" value={String(requestCount)} />
-      <KpiTile label="Statuses" value={String(buckets.length)} />
-      <KpiTile label="Total discount" value={money(discountValue, currency)} />
+      <KpiTile label="Solicitudes" value={String(requestCount)} />
+      <KpiTile label="Estados" value={String(buckets.length)} />
+      <KpiTile label="Descuento total" value={money(discountValue, currency)} />
     </div>
   );
 }
@@ -120,7 +120,7 @@ function StatusRow({ bucket, currency }: { bucket: ApprovalsStatusBucket; curren
  */
 export function ApprovalsReportSection({ summary, currency }: { summary: ApprovalsSummary; currency: string }): React.JSX.Element {
   if (summary.buckets.length === 0) {
-    return <EmptyState title="No approval requests in this period" description="Try a wider date range, or a different status." />;
+    return <EmptyState title="Sin solicitudes de aprobación en este período" description="Prueba con un rango de fechas más amplio, o un estado distinto." />;
   }
 
   const isStatus = summary.groupBy === 'status';
@@ -138,19 +138,19 @@ export function ApprovalsReportSection({ summary, currency }: { summary: Approva
         <THead>
           {isStatus ? (
             <TR>
-              <TH>Status</TH>
-              <TH className="text-right">Requests</TH>
-              <TH className="text-right">Discount value</TH>
+              <TH>Estado</TH>
+              <TH className="text-right">Solicitudes</TH>
+              <TH className="text-right">Valor del descuento</TH>
             </TR>
           ) : (
             <TR>
-              <TH>Period</TH>
-              <TH className="text-right">Requests</TH>
-              <TH className="text-right">Approved</TH>
-              <TH className="text-right">Rejected</TH>
-              <TH className="text-right">Pending</TH>
-              <TH className="text-right">Approval rate</TH>
-              <TH className="text-right">Approved discount</TH>
+              <TH>Período</TH>
+              <TH className="text-right">Solicitudes</TH>
+              <TH className="text-right">Aprobadas</TH>
+              <TH className="text-right">Rechazadas</TH>
+              <TH className="text-right">Pendientes</TH>
+              <TH className="text-right">Tasa de aprobación</TH>
+              <TH className="text-right">Descuento aprobado</TH>
             </TR>
           )}
         </THead>

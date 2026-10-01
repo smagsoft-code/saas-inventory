@@ -18,6 +18,10 @@ interface FieldProps {
   error?: string | null;
   required?: boolean;
   className?: string;
+  /** Extra classes on the visible label text only (e.g. `sm:sr-only` to keep it screen-reader-only
+   * from a breakpoint up, for a repeated table-like row whose column header already labeled the
+   * first row — the accessible name is never lost, only the redundant visual repeat). */
+  labelClassName?: string;
 }
 
 export function Field({
@@ -27,6 +31,7 @@ export function Field({
   error,
   required,
   className,
+  labelClassName,
 }: FieldProps): React.JSX.Element {
   const id = useId();
   const hintId = `${id}-hint`;
@@ -44,7 +49,7 @@ export function Field({
 
   return (
     <div className={cn('flex flex-col gap-1', className)}>
-      <span className="flex items-baseline gap-0.5">
+      <span className={cn('flex items-baseline gap-0.5', labelClassName)}>
         <label htmlFor={id} className="text-sm font-medium text-slate-700">
           {label}
         </label>

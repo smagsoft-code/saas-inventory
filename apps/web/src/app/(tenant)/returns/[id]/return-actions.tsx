@@ -103,7 +103,7 @@ export function ReturnActions({
 
   function friendlyError(err: unknown): string {
     if (isApiError(err) && err.status === 403) {
-      return 'You are not authorized to operate on this return’s location.';
+      return 'No tienes autorización para operar sobre el almacén de esta devolución.';
     }
     return httpErrorMessage(err);
   }
@@ -170,7 +170,7 @@ export function ReturnActions({
       };
     });
     if (items.some((item) => !item.dispositionLocationId)) {
-      setError('Choose a disposition location for every line.');
+      setError('Elige un almacén de disposición para cada línea.');
       return;
     }
     await run('inspect', () => apiFetch(`${base}/inspect`, { method: 'POST', body: { items } }), () =>
@@ -196,50 +196,50 @@ export function ReturnActions({
   return (
     <Card>
       <CardBody className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-slate-900">Actions</h2>
+        <h2 className="text-sm font-semibold text-slate-900">Acciones</h2>
 
         {error && <Alert tone="error">{error}</Alert>}
 
         <div className="flex flex-wrap gap-2">
           {showInspect && !inspectOpen && (
             <Button variant="secondary" disabled={busy !== null} onClick={openInspect}>
-              {status === 'requested' ? 'Inspect…' : 'Re-inspect…'}
+              {status === 'requested' ? 'Inspeccionar…' : 'Reinspeccionar…'}
             </Button>
           )}
           {showResolve && !confirmResolve && (
             <Button disabled={busy !== null || !allInspected} onClick={() => setConfirmResolve(true)}>
-              Resolve return
+              Resolver devolución
             </Button>
           )}
           {showCancel && !confirmCancel && (
             <Button variant="danger" disabled={busy !== null} onClick={() => setConfirmCancel(true)}>
-              Cancel return
+              Cancelar devolución
             </Button>
           )}
         </div>
 
         {showResolve && !allInspected && !inspectOpen && (
-          <p className="text-xs text-slate-500">Every line must be inspected before the return can be resolved.</p>
+          <p className="text-xs text-slate-500">Cada línea debe inspeccionarse antes de que la devolución pueda resolverse.</p>
         )}
 
         {confirmResolve && showResolve && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
             <span>
-              Resolve this return? One inventory movement is written per line at its disposition location. This
-              cannot be undone.
+              ¿Resolver esta devolución? Se registra un movimiento de inventario por línea en su almacén de
+              disposición. Esto no se puede deshacer.
             </span>
             <Button loading={busy === 'resolve'} disabled={busy !== null} size="sm" onClick={() => void submitResolve()}>
-              Confirm resolve
+              Confirmar resolución
             </Button>
             <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => setConfirmResolve(false)}>
-              Cancel
+              Cancelar
             </Button>
           </div>
         )}
 
         {confirmCancel && showCancel && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            <span>Cancel this return? It frees the returned quantity back to the order. This cannot be undone.</span>
+            <span>¿Cancelar esta devolución? Libera la cantidad devuelta de vuelta al pedido. Esto no se puede deshacer.</span>
             <Button
               variant="danger"
               size="sm"
@@ -249,19 +249,20 @@ export function ReturnActions({
                 void run('cancel', () => apiFetch(`${base}/cancel`, { method: 'POST' }), () => setConfirmCancel(false))
               }
             >
-              Confirm cancel
+              Confirmar cancelación
             </Button>
             <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => setConfirmCancel(false)}>
-              Keep return
+              Mantener devolución
             </Button>
           </div>
         )}
 
         {showInspect && inspectOpen && (
           <div className="flex flex-col gap-4 rounded-md border border-slate-200 p-3">
-            <p className="text-sm font-medium text-slate-700">Disposition per line</p>
+            <p className="text-sm font-medium text-slate-700">Disposición por línea</p>
             <p className="text-xs text-slate-500">
-              Restock re-enters a sellable location; quarantine, damaged and scrap re-enter a non-sellable location.
+              Reingreso a stock reingresa en un almacén vendible; cuarentena, dañado y desecho reingresan en un
+              almacén no vendible.
             </p>
             {lines.map((line) => {
               const row = inspectRows[line.returnItemId]!;
@@ -273,10 +274,10 @@ export function ReturnActions({
                 >
                   <p className="text-sm">
                     <span className="font-medium">{line.label}</span>
-                    <span className="text-slate-500"> · qty {line.quantityReturned}</span>
+                    <span className="text-slate-500"> · cant. {line.quantityReturned}</span>
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
-                    <Field label="Disposition">
+                    <Field label="Disposición">
                       <Select
                         value={row.disposition}
                         onChange={(e) => setRow(line.returnItemId, { disposition: e.target.value as Disposition })}
@@ -289,9 +290,9 @@ export function ReturnActions({
                       </Select>
                     </Field>
                     <Field
-                      label="Disposition location"
+                      label="Almacén de disposición"
                       {...(pool.length === 0
-                        ? { error: `No active ${row.disposition === 'restock' ? 'sellable' : 'non-sellable'} location` }
+                        ? { error: `No hay ningún almacén ${row.disposition === 'restock' ? 'vendible' : 'no vendible'} activo` }
                         : {})}
                     >
                       <Select
@@ -299,7 +300,7 @@ export function ReturnActions({
                         disabled={pool.length === 0}
                         onChange={(e) => setRow(line.returnItemId, { dispositionLocationId: e.target.value })}
                       >
-                        <option value="">Choose…</option>
+                        <option value="">Elige…</option>
                         {pool.map((location) => (
                           <option key={location.id} value={location.id}>
                             {location.name}
@@ -308,7 +309,7 @@ export function ReturnActions({
                       </Select>
                     </Field>
                   </div>
-                  <Field label="Notes" hint="Optional.">
+                  <Field label="Notas" hint="Opcional.">
                     <Input
                       maxLength={500}
                       value={row.notes}
@@ -320,10 +321,10 @@ export function ReturnActions({
             })}
             <div className="flex gap-2">
               <Button loading={busy === 'inspect'} disabled={busy !== null} onClick={() => void submitInspect()}>
-                Save inspection
+                Guardar inspección
               </Button>
               <Button variant="ghost" disabled={busy !== null} onClick={() => setInspectOpen(false)}>
-                Cancel
+                Cancelar
               </Button>
             </div>
           </div>

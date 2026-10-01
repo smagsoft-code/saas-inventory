@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiFetch } from './client';
 import { ApiError } from './errors';
-import { SESSION_EXPIRED_EVENT } from '../auth/session-events';
+import { PLATFORM_SESSION_EXPIRED_EVENT, SESSION_EXPIRED_EVENT } from '../auth/session-events';
 
 function jsonResponse(status: number, body: unknown): Response {
   return {
@@ -148,6 +148,52 @@ describe('apiFetch', () => {
       const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { message: 'no' }));
       global.fetch = fetchMock as typeof fetch;
       await expect(apiFetch(REFRESH, { method: 'POST' })).rejects.toMatchObject({ status: 401 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('GAP-SA-PLATFORM-401: a platform-scoped 401 refreshes against /platform/auth/refresh, never the tenant endpoint', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(401, { message: 'expired' })) // original
+        .mockResolvedValueOnce(jsonResponse(200, {})) // platform refresh
+        .mockResolvedValueOnce(jsonResponse(200, { ok: true })); // retry
+      global.fetch = fetchMock as typeof fetch;
+
+      await expect(apiFetch('/api/v1/platform/tenants/t1/activate', { method: 'POST' })).resolves.toEqual({
+        ok: true,
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const refreshUrl = (fetchMock.mock.calls[1] as [string])[0];
+      expect(refreshUrl).toContain('/api/v1/platform/auth/refresh');
+      expect(refreshUrl).not.toBe(REFRESH);
+    });
+
+    it('GAP-SA-PLATFORM-401: emits platform-session-expired (not the tenant event) when the platform refresh also fails', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse(401, { message: 'expired' }))
+        .mockResolvedValueOnce(jsonResponse(401, { message: 'no refresh' }));
+      global.fetch = fetchMock as typeof fetch;
+
+      const platformSpy = vi.fn();
+      const tenantSpy = vi.fn();
+      window.addEventListener(PLATFORM_SESSION_EXPIRED_EVENT, platformSpy);
+      window.addEventListener(SESSION_EXPIRED_EVENT, tenantSpy);
+      await expect(apiFetch('/api/v1/platform/tenants/t1/suspend', { method: 'POST' })).rejects.toBeInstanceOf(
+        ApiError,
+      );
+      window.removeEventListener(PLATFORM_SESSION_EXPIRED_EVENT, platformSpy);
+      window.removeEventListener(SESSION_EXPIRED_EVENT, tenantSpy);
+      expect(platformSpy).toHaveBeenCalledTimes(1);
+      expect(tenantSpy).not.toHaveBeenCalled();
+    });
+
+    it('never refreshes the platform refresh call itself', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(401, { message: 'no' }));
+      global.fetch = fetchMock as typeof fetch;
+      await expect(
+        apiFetch('/api/v1/platform/auth/refresh', { method: 'POST' }),
+      ).rejects.toMatchObject({ status: 401 });
       expect(fetchMock).toHaveBeenCalledTimes(1);
     });
 

@@ -27,6 +27,7 @@ interface QueryOverrides {
   groupBy?: SalesSummaryQueryDto['groupBy'] | undefined;
   status?: SalesSummaryQueryDto['status'] | undefined;
   exceptional?: SalesSummaryQueryDto['exceptional'] | undefined;
+  locationId?: string | undefined;
 }
 
 function query(overrides: QueryOverrides = {}): SalesSummaryQueryDto {
@@ -106,6 +107,22 @@ describe('SalesReportService.getSalesSummary', () => {
         );
         expect((result as { exceptional: string }).exceptional).toBe(exceptional);
       }
+    }
+  });
+
+  it('passes a locationId filter through to every grouping (OUI-002/S-HOME)', async () => {
+    for (const [groupBy, method] of [
+      ['day', 'summaryByPeriod'],
+      ['customer', 'summaryByCustomer'],
+      ['product', 'summaryByProduct'],
+    ] as const) {
+      const { service, salesReportRepository } = buildService();
+      await service.getSalesSummary('t1', query({ groupBy, locationId: 'loc-1' }));
+      expect(salesReportRepository[method]).toHaveBeenCalledWith(
+        expect.anything(),
+        't1',
+        expect.objectContaining({ locationId: 'loc-1' }),
+      );
     }
   });
 

@@ -24,7 +24,7 @@ export class KardexRowDto {
   @ApiProperty({ type: String })
   movementType!: string;
 
-  @ApiProperty({ type: String, description: 'Human-readable label, e.g. "Venta #ORD-000123", "Transferencia #a1b2c3d4", "Ajuste: conteo físico".' })
+  @ApiProperty({ type: String, description: 'Human-readable label, e.g. "Venta #ORD-000123", "Transferencia #SUC-PRIN-ALM-PRIN-005 (salida)", "Ajuste: conteo físico".' })
   label!: string;
 
   @ApiProperty({ type: Number })

@@ -45,11 +45,11 @@ export function RegionalSettingsForm({
   if (!canManage) {
     return (
       <div className="flex flex-col gap-1 text-sm">
-        <span className="font-medium text-slate-700">Timezone</span>
+        <span className="font-medium text-slate-700">Zona horaria</span>
         <span className="text-slate-900">{timezone}</span>
-        {usingDefaults && <span className="text-xs text-slate-500">Using the system default.</span>}
+        {usingDefaults && <span className="text-xs text-slate-500">Usando el valor predeterminado del sistema.</span>}
         <span className="text-xs text-slate-500">
-          You don&apos;t have permission to change this.
+          No tienes permiso para cambiar esto.
         </span>
       </div>
     );
@@ -74,7 +74,7 @@ export function RegionalSettingsForm({
     } catch (err) {
       setError(
         isApiError(err) && err.status === 403
-          ? 'You no longer have permission to change this.'
+          ? 'Ya no tienes permiso para cambiar esto.'
           : httpErrorMessage(err),
       );
     } finally {
@@ -83,12 +83,12 @@ export function RegionalSettingsForm({
   }
 
   const hint = usingDefaults
-    ? 'Currently using the system default (UTC). Choose your timezone and save.'
+    ? 'Actualmente usando el valor predeterminado del sistema (UTC). Elige tu zona horaria y guarda.'
     : undefined;
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex max-w-md flex-col gap-4">
-      <Field label="Timezone" error={error} {...(hint ? { hint } : {})}>
+      <Field label="Zona horaria" error={error} {...(hint ? { hint } : {})}>
         <Select
           value={value}
           onChange={(event) => {
@@ -104,10 +104,10 @@ export function RegionalSettingsForm({
         </Select>
       </Field>
       {success && (
-        <Alert tone="success">Timezone saved.</Alert>
+        <Alert tone="success">Zona horaria guardada.</Alert>
       )}
       <Button type="submit" loading={submitting} disabled={!dirty} className="w-fit">
-        Save timezone
+        Guardar zona horaria
       </Button>
     </form>
   );

@@ -52,7 +52,7 @@ describe('ImportRows', () => {
     render(<ImportRows jobId="job-1" />);
     await waitFor(() => expect(screen.getByText('A-1', { exact: false })).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText(/status/i), { target: { value: 'invalid' } });
+    fireEvent.change(screen.getByLabelText(/estado/i), { target: { value: 'invalid' } });
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenLastCalledWith('/api/v1/imports/job-1/rows', {
         query: { page: 1, pageSize: 25, status: 'invalid' },
@@ -63,6 +63,6 @@ describe('ImportRows', () => {
   it('shows an empty message when a filter matches nothing', async () => {
     mockedFetch.mockResolvedValue(page([]));
     render(<ImportRows jobId="job-1" />);
-    await waitFor(() => expect(screen.getByText(/no rows staged yet/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText(/aún no hay filas registradas/i)).toBeInTheDocument());
   });
 });

@@ -71,14 +71,20 @@ export type ExceptionalFilter = 'all' | 'only' | 'exclude';
 export class SalesReportRepository {
   private dateRangeConditions(
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string },
+    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined },
   ): SQL[] {
-    return [
+    const conditions = [
       eq(orders.tenantId, tenantId),
       eq(orders.status, range.status),
       gte(orders.createdAt, range.gte),
       lt(orders.createdAt, range.lt),
     ];
+    // OUI-002/S-HOME redesign — plain equality filter on the real, NOT NULL orders.location_id;
+    // never a groupBy dimension (GAP-ORDERS-LOCATION stays open for that). See the DTO's own comment.
+    if (range.locationId) {
+      conditions.push(eq(orders.locationId, range.locationId));
+    }
+    return conditions;
   }
 
   /**
@@ -112,6 +118,7 @@ export class SalesReportRepository {
       unit: DateTruncUnit;
       timezone: string;
       exceptional: ExceptionalFilter;
+      locationId?: string | undefined;
     },
   ): Promise<PeriodBucketRow[]> {
     // Bucket boundary is computed in the tenant's own IANA zone (never UTC/server-local), then
@@ -149,7 +156,7 @@ export class SalesReportRepository {
   async summaryByCustomer(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; exceptional: ExceptionalFilter },
+    range: { gte: Date; lt: Date; status: string; exceptional: ExceptionalFilter; locationId?: string | undefined },
   ): Promise<CustomerBucketRow[]> {
     const rows = await tx
       .select({
@@ -183,7 +190,7 @@ export class SalesReportRepository {
   async summaryByProduct(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; exceptional: ExceptionalFilter },
+    range: { gte: Date; lt: Date; status: string; exceptional: ExceptionalFilter; locationId?: string | undefined },
   ): Promise<ProductBucketRow[]> {
     const rows = await tx
       .select({

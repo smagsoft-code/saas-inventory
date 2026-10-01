@@ -13,14 +13,15 @@ const META = { correlationId: undefined, ipAddress: undefined };
 const EXISTING = {
   id: 'customer-1',
   tenantId: TENANT_ID,
-  type: 'individual',
+  type: 'cedula',
+  firstName: 'Ada',
+  lastName: 'Lovelace',
   displayName: 'Ada Lovelace',
   taxId: '0102030405',
   email: 'ada@example.com',
   phone: '+593999999999',
-  address: { city: 'Quito' },
+  address: 'Av. Amazonas, Quito',
   status: 'active',
-  notes: null,
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'),
   deletedAt: null,
@@ -46,27 +47,28 @@ describe('CustomersService', () => {
     const { service, customersRepository } = buildService();
     customersRepository.create.mockRejectedValueOnce({ code: '23505' });
     await expect(
-      service.create(TENANT_ID, ACTOR_ID, { type: 'individual', displayName: 'X', taxId: '0102030405' }, META),
+      service.create(TENANT_ID, ACTOR_ID, { type: 'cedula', firstName: 'Ada', lastName: 'X', taxId: '0102030405' }, META),
     ).rejects.toThrow(ConflictException);
 
     customersRepository.create.mockRejectedValueOnce(new Error('Failed query', { cause: { code: '23505' } }));
     await expect(
-      service.create(TENANT_ID, ACTOR_ID, { type: 'individual', displayName: 'X', taxId: '0102030405' }, META),
+      service.create(TENANT_ID, ACTOR_ID, { type: 'cedula', firstName: 'Ada', lastName: 'X', taxId: '0102030405' }, META),
     ).rejects.toThrow(ConflictException);
   });
 
-  it('create drops empty address fields and passes tenant + status server-side only', async () => {
+  it('create passes firstName/lastName/address through and tenant + status server-side only', async () => {
     const { service, customersRepository, auditLogService } = buildService();
     customersRepository.create.mockResolvedValue(EXISTING);
     await service.create(
       TENANT_ID,
       ACTOR_ID,
-      { type: 'individual', displayName: 'Ada', address: { city: 'Quito', state: '', country: undefined } as never },
+      { type: 'cedula', firstName: 'Ada', lastName: 'Lovelace', taxId: '0102030405', address: 'Av. Amazonas, Quito' },
       META,
     );
-    const values = customersRepository.create.mock.calls[0]![1] as { tenantId: string; address: unknown };
+    const values = customersRepository.create.mock.calls[0]![1] as { tenantId: string; firstName: string; address: unknown };
     expect(values.tenantId).toBe(TENANT_ID);
-    expect(values.address).toEqual({ city: 'Quito' });
+    expect(values.firstName).toBe('Ada');
+    expect(values.address).toBe('Av. Amazonas, Quito');
     expect(auditLogService.record).toHaveBeenCalled();
   });
 

@@ -372,6 +372,18 @@ not needed yet at current scale.
   (**B → A**), registers `GAP-IMPORT-ROWS-PERIOD` (RESOLVED) + the still-open
   `GAP-IMPORT-ERROR-RATE-PERIOD` (no defined period ratio). Never `ImportJobsRepository`.
   See [reporting/reports.md#rep-imp-summary--imports-summary-job--row-throughput-by-period-or-outcome](../reporting/reports.md#rep-imp-summary--imports-summary-job--row-throughput-by-period-or-outcome).
+- **`products/` (OUI-004 — `S-CAT-PRODUCTS` redesign):** `GET /reports/product-catalog`
+  (`products.view`) — the operational product list, **variant-grain** (`product_variants` joined to
+  `products` for name/category; SKU/prices/status all live on the variant, not the product), with a
+  live `LEFT JOIN` stock rollup over `inventory_balances` (`Σ quantity_available` per variant,
+  tenant-wide). Filters: `q` (substring `ILIKE` on `products.name` OR `product_variants.sku` — the
+  same convention `CustomersRepository`'s `q` already uses, never a full-name match), `categoryId`,
+  `status` (the variant's own `active`/`discontinued`), `stock` (`with` = available > 1, `without` =
+  exactly 0). Not a KPI dashboard — `apps/web`'s `/products` page is its only consumer; it lives
+  under REPORTS rather than CATALOG purely because the stock rollup needs `inventory_balances`, and
+  CATALOG's dependency edge is deliberately `Catalog -> Core` alone (this section, above) — the same
+  reasoning `inventory/` already established for its own product/category name enrichment.
+  `maxPrice`/`basePrice` are never permission-gated (ADR-0028 only gates `minPrice`/`cost`).
 
 The APPROVALS report reuses `pricing.discount.approve` rather than a `*.view` code (there is none
 for `price_approvals`) — it is the exact permission `metrics.md`'s `APPR-RATE` /

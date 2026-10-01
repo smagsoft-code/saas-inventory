@@ -30,13 +30,13 @@ describe('Pagination', () => {
     expect(screen.getByText(/21/)).toBeInTheDocument();
     expect(screen.getByText(/40/)).toBeInTheDocument();
     expect(screen.getByText(/45/)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /previous/i })).toHaveAttribute('href', '/x?page=1');
-    expect(screen.getByRole('link', { name: /next/i })).toHaveAttribute('href', '/x?page=3');
+    expect(screen.getByRole('link', { name: /anterior/i })).toHaveAttribute('href', '/x?page=1');
+    expect(screen.getByRole('link', { name: /siguiente/i })).toHaveAttribute('href', '/x?page=3');
   });
 
   it('disables Previous on the first page and Next on the last', () => {
     render(<Pagination page={1} pageSize={20} total={45} totalPages={3} buildHref={href} />);
-    expect(screen.queryByRole('link', { name: /previous/i })).not.toBeInTheDocument();
-    expect(screen.getByText('Previous')).toHaveAttribute('aria-disabled');
+    expect(screen.queryByRole('link', { name: /anterior/i })).not.toBeInTheDocument();
+    expect(screen.getByText('Anterior')).toHaveAttribute('aria-disabled');
   });
 });

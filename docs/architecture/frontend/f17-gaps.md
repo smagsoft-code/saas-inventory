@@ -36,7 +36,7 @@
 | 14 | [`GAP-REORDER`](#gap-reorder) | future (ADR) | Inventory "low stock" tab/tile |
 | 15 | [`GAP-INV-LOCATION-SCOPE`](#gap-inv-location-scope) | decision → F17-additive | Inventory list, Movements |
 | 16 | [`GAP-ROLE-CRUD`](#gap-role-crud) | CLOSED (ROLES/PERMISSIONS block) | Roles screen |
-| 17 | [`GAP-USER-FILTERS`](#gap-user-filters) | F17-additive | Users list |
+| 17 | [`GAP-USER-FILTERS`](#gap-user-filters) | F17-additive — **PARTIALLY RESOLVED** (name search, LOGIN + USUARIOS UI/UX block) | Users list |
 | 18 | [`GAP-CUSTOMER-HISTORY`](#gap-customer-history) | F18 | Customer detail |
 | 19 | [`GAP-PRICE-HISTORY-READ`](#gap-price-history-read) | F18-additive | Product detail |
 | 20 | [`GAP-ORDER-MARGIN`](#gap-order-margin) | F18-additive | Order detail |
@@ -532,6 +532,13 @@ endpoint returning the code image. Discovered in F17-14.
 `GET /users` filters by `status` only — no role filter, no `?q=` name/email search, no
 `lastLoginAt` date filter. **F17-additive** (small) or accept client-side over the paged list for
 `KPI-USR-DORMANT` / role distribution.
+
+**PARTIALLY RESOLVED (LOGIN + USUARIOS UI/UX block).** `GET /users` gained `?q=` — free-text,
+case-insensitive, partial match against `fullName` only (deliberately never `email`, per the
+block's explicit scope), resolved server-side (`ListUsersQueryDto.q` → `UsersRepository
+.findManyByTenant`'s `ILIKE '%q%'`, same convention `CustomersRepository.listByTenant` already
+established) and surfaced on `/users` via a debounced `users-filters.tsx` (the same live-search
+convention `ProductsFilters` established). **Still open:** role filter, `lastLoginAt` date filter.
 
 ### `GAP-CUSTOMER-HISTORY`
 No per-customer order rollup / LTV / "customers with no orders". `GET /orders?customerId=` gives

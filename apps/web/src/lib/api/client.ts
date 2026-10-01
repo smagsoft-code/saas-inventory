@@ -20,9 +20,11 @@
  */
 
 import { ApiError, type ApiErrorShape } from './errors';
-import { emitSessionExpired } from '../auth/session-events';
+import { emitPlatformSessionExpired, emitSessionExpired } from '../auth/session-events';
 
 const AUTH_REFRESH_PATH = '/api/v1/auth/refresh';
+const PLATFORM_AUTH_REFRESH_PATH = '/api/v1/platform/auth/refresh';
+const PLATFORM_PATH_PREFIX = '/api/v1/platform/';
 
 export interface ApiFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -124,34 +126,50 @@ function toApiError(status: number, data: unknown): ApiError {
 
 // --- single-flight refresh ------------------------------------------------------------------
 
-let inFlightRefresh: Promise<boolean> | null = null;
+let inFlightTenantRefresh: Promise<boolean> | null = null;
+let inFlightPlatformRefresh: Promise<boolean> | null = null;
 
-/** POST /auth/refresh at most once even if several requests 401 at the same time. Resolves to
- * whether a new session was issued. Never throws. */
-async function refreshSession(): Promise<boolean> {
-  if (inFlightRefresh) {
-    return inFlightRefresh;
+/** POST /auth/refresh (tenant) or /platform/auth/refresh at most once even if several requests
+ * 401 at the same time — the two sessions (ADR-0032) are structurally distinct, so a platform 401
+ * must never attempt the tenant refresh endpoint (`GAP-SA-PLATFORM-401`) and vice versa. Resolves
+ * to whether a new session was issued. Never throws. */
+async function refreshSession(platform: boolean): Promise<boolean> {
+  const inFlight = platform ? inFlightPlatformRefresh : inFlightTenantRefresh;
+  if (inFlight) {
+    return inFlight;
   }
-  inFlightRefresh = (async () => {
+  const promise = (async () => {
     try {
       const csrfToken = readCsrfTokenCookie();
-      const response = await fetch(resolveUrl(AUTH_REFRESH_PATH, undefined), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+      const response = await fetch(
+        resolveUrl(platform ? PLATFORM_AUTH_REFRESH_PATH : AUTH_REFRESH_PATH, undefined),
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(csrfToken ? { 'X-CSRF-Token': csrfToken } : {}),
+          },
+          credentials: 'include',
+          cache: 'no-store',
         },
-        credentials: 'include',
-        cache: 'no-store',
-      });
+      );
       return response.ok;
     } catch {
       return false;
     } finally {
-      inFlightRefresh = null;
+      if (platform) {
+        inFlightPlatformRefresh = null;
+      } else {
+        inFlightTenantRefresh = null;
+      }
     }
   })();
-  return inFlightRefresh;
+  if (platform) {
+    inFlightPlatformRefresh = promise;
+  } else {
+    inFlightTenantRefresh = promise;
+  }
+  return promise;
 }
 
 // --- main entry point ----------------------------------------------------------------------
@@ -203,13 +221,21 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
     return data as T;
   }
 
-  // 401: try exactly one refresh + retry, browser only, and never for the refresh endpoint.
-  if (response.status === 401 && !isServer && !options._retried && path !== AUTH_REFRESH_PATH) {
-    const refreshed = await refreshSession();
+  // 401: try exactly one refresh + retry, browser only, and never for either refresh endpoint
+  // itself. Platform-scoped paths (ADR-0032 — a structurally separate session) refresh against
+  // their own endpoint and signal their own listener — never the tenant one (`GAP-SA-PLATFORM-401`).
+  const isPlatform = path.startsWith(PLATFORM_PATH_PREFIX);
+  const ownRefreshPath = isPlatform ? PLATFORM_AUTH_REFRESH_PATH : AUTH_REFRESH_PATH;
+  if (response.status === 401 && !isServer && !options._retried && path !== ownRefreshPath) {
+    const refreshed = await refreshSession(isPlatform);
     if (refreshed) {
       return apiFetch<T>(path, { ...options, _retried: true });
     }
-    emitSessionExpired();
+    if (isPlatform) {
+      emitPlatformSessionExpired();
+    } else {
+      emitSessionExpired();
+    }
   }
 
   throw toApiError(response.status, data);

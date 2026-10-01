@@ -192,6 +192,8 @@ These apply to every table unless a section below states an explicit exception.
 | `platform_admin_refresh_tokens` | Platform | ADMINISTRATION (see [ADR-0032](../decisions/0032-platform-admin-authentication.md)) | no | no |
 | `identities` | Platform | CORE (016-B, see [ADR-0033](../decisions/0033-global-identity-tenant-memberships.md) and [§Global identity](#global-identity-and-tenant-memberships)) | no | no |
 | `tenant_memberships` | Platform (carries `tenant_id` only as a FK, never as an RLS key) | CORE (016-B, [ADR-0033](../decisions/0033-global-identity-tenant-memberships.md)) | yes (FK only) | no |
+| `tenant_admin_invitations` | Platform (carries `tenant_id` only as a FK, never as an RLS key) | ADMINISTRATION ([ADR-0036](../decisions/0036-tenant-onboarding-and-support.md)) | yes (FK only) | no |
+| `platform_support_sessions` | Platform (carries `tenant_id` only as a FK, never as an RLS key) | ADMINISTRATION ([ADR-0036](../decisions/0036-tenant-onboarding-and-support.md)) | yes (FK only) | no |
 
 **Notes on the "mixed" rows:** `audit_log` and `event_outbox` carry `tenant_id` for almost every row
 (a tenant action, an `INVENTORY_ADJUSTED` event, ...) but must also hold platform-only rows with no
@@ -217,6 +219,11 @@ exists to preserve — see [§Dynamic attributes](#dynamic-attributes-governance
 [ADR-0032](../decisions/0032-platform-admin-authentication.md)) — the server-side session store for
 platform-admin logins, with no tenant dimension of its own, access restricted to `app_platform`
 (and `app_migrator` for schema) exactly like `platform_admins` itself.
+
+**ADR-0036 adds `tenant_admin_invitations` and `platform_support_sessions` to the same group** — the
+Tenant Onboarding invitation store and the Tenant Support session store, both platform-scoped, no
+tenant dimension of their own beyond `tenant_id` as an ordinary FK, access restricted to
+`app_platform` (`SELECT/INSERT/UPDATE`, migration 0033) exactly like `platform_admin_refresh_tokens`.
 
 **016-B adds `identities` and `tenant_memberships` to the same group** (see
 [ADR-0033](../decisions/0033-global-identity-tenant-memberships.md) and

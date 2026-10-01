@@ -18,7 +18,7 @@ function baseSummary(overrides: Partial<ReturnsSummary> = {}): ReturnsSummary {
 describe('ReturnsReportSection', () => {
   it('shows an empty state when there are no buckets — never a fake zero table', () => {
     render(<ReturnsReportSection summary={baseSummary()} currency="USD" />);
-    expect(screen.getByText('No returns in this period')).toBeInTheDocument();
+    expect(screen.getByText('Sin devoluciones en este período')).toBeInTheDocument();
   });
 
   it('renders period rows with real Returns/Units returned/Returned value/Avg per return KPI tiles', () => {
@@ -44,8 +44,8 @@ describe('ReturnsReportSection', () => {
     render(<ReturnsReportSection summary={summary} currency="USD" />);
     expect(screen.getByText('Widget')).toBeInTheDocument();
     expect(screen.getByText('SKU-1')).toBeInTheDocument();
-    expect(screen.getByText('Products')).toBeInTheDocument();
-    expect(screen.queryByText('Avg per return')).not.toBeInTheDocument();
+    expect(screen.getByText('Productos')).toBeInTheDocument();
+    expect(screen.queryByText('Prom. / devolución')).not.toBeInTheDocument();
   });
 
   it('renders customer buckets with the frozen customer name', () => {
@@ -65,29 +65,29 @@ describe('ReturnsReportSection', () => {
       buckets: [{ key: 'restock', lineCount: 3, quantity: 6, returnedValue: 300 }],
     });
     render(<ReturnsReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('Restock (sellable)')).toBeInTheDocument();
-    expect(screen.getAllByText('Lines').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Returns')).not.toBeInTheDocument();
-    expect(screen.queryByText('Avg per return')).not.toBeInTheDocument();
+    expect(screen.getByText('Reingreso a stock (vendible)')).toBeInTheDocument();
+    expect(screen.getAllByText('Líneas').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Devoluciones')).not.toBeInTheDocument();
+    expect(screen.queryByText('Prom. / devolución')).not.toBeInTheDocument();
   });
 });
 
 describe('ReturnsReportError', () => {
   it('shows an access-denied title for a 403 — never a redirect to login', () => {
-    render(<ReturnsReportError status={403} message="You don't have permission to do that." />);
-    expect(screen.getByText('Access denied')).toBeInTheDocument();
-    expect(screen.getByText("You don't have permission to do that.")).toBeInTheDocument();
+    render(<ReturnsReportError status={403} message="No tienes permiso para hacer esto." />);
+    expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
+    expect(screen.getByText("No tienes permiso para hacer esto.")).toBeInTheDocument();
   });
 
   it('shows a friendly title and the correlation id for a 5xx', () => {
     render(<ReturnsReportError status={500} message="Something went wrong on our end. Please try again." correlationId="corr-123" />);
-    expect(screen.getByText('Something went wrong on our end')).toBeInTheDocument();
+    expect(screen.getByText('Algo salió mal de nuestro lado')).toBeInTheDocument();
     expect(screen.getByText(/corr-123/)).toBeInTheDocument();
   });
 
   it('offers a retry link back to #report', () => {
     render(<ReturnsReportError status={400} message="Some of the information provided is invalid." />);
-    const retry = screen.getByRole('link', { name: 'Try again' });
+    const retry = screen.getByRole('link', { name: 'Reintentar' });
     expect(retry).toHaveAttribute('href', '#report');
   });
 });

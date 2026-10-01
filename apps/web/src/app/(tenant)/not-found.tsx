@@ -8,10 +8,10 @@ export default function TenantNotFound(): React.JSX.Element {
   return (
     <PageContainer>
       <div className="flex flex-col items-start gap-3 py-12">
-        <h1 className="text-xl font-semibold text-slate-900">Not found</h1>
-        <p className="text-sm text-slate-500">We couldn&apos;t find what you were looking for.</p>
+        <h1 className="text-xl font-semibold text-slate-900">No encontrado</h1>
+        <p className="text-sm text-slate-500">No pudimos encontrar lo que buscabas.</p>
         <Link href="/" className="text-sm font-medium text-slate-900 underline">
-          Back to dashboard
+          Volver al inicio
         </Link>
       </div>
     </PageContainer>

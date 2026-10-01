@@ -14,23 +14,28 @@ import type { CreateAdjustmentDto } from './dto/create-adjustment.dto';
 import type { ListMovementsQueryDto } from './dto/list-movements-query.dto';
 import type { MovementResponseDto } from './dto/movement-response.dto';
 
-const shortId = (id: string) => id.slice(0, 8);
-
-/** SALE → the order's number; TRANSFER_OUT/TRANSFER_IN → the transfer's own id (there is no human
- * transfer number in the schema yet — `GAP-TRANSFER-CODE` — so this uses the same short-id
- * convention `reports/kardex` already established for the exact same gap). Every other movement
- * type already has a plain `reason` and needs no resolved label. */
-function referenceLabelFor(movement: InventoryMovementRow, orderNumbersBySaleReference: Map<string, string>, transferIdsByReceipt: Map<string, string>): string | undefined {
+/** SALE → the order's number; TRANSFER_OUT/TRANSFER_IN → the transfer's own human-readable `code`
+ * (e.g. "SUC-PRIN-ALM-PRIN-005", F17-TRANSFERS-AUDIT — `GAP-TRANSFER-CODE` resolved). Every other
+ * movement type already has a plain `reason` and needs no resolved label. */
+function referenceLabelFor(
+  movement: InventoryMovementRow,
+  orderNumbersBySaleReference: Map<string, string>,
+  transferIdsByReceipt: Map<string, string>,
+  transferCodesByTransferId: Map<string, string>,
+): string | undefined {
   switch (movement.movementType) {
     case 'SALE': {
       const orderNumber = movement.referenceId ? orderNumbersBySaleReference.get(movement.referenceId) : undefined;
       return orderNumber ? `Venta #${orderNumber}` : undefined;
     }
-    case 'TRANSFER_OUT':
-      return movement.referenceId ? `Transferencia #${shortId(movement.referenceId)}` : undefined;
+    case 'TRANSFER_OUT': {
+      const code = movement.referenceId ? transferCodesByTransferId.get(movement.referenceId) : undefined;
+      return code ? `Transferencia #${code}` : undefined;
+    }
     case 'TRANSFER_IN': {
       const transferId = movement.referenceId ? transferIdsByReceipt.get(movement.referenceId) : undefined;
-      return transferId ? `Transferencia #${shortId(transferId)}` : undefined;
+      const code = transferId ? transferCodesByTransferId.get(transferId) : undefined;
+      return code ? `Transferencia #${code}` : undefined;
     }
     default:
       return undefined;
@@ -97,14 +102,21 @@ export class MovementsService {
       // Batched, page-sized (never per-row) — the same N+1-avoidance `reports/kardex` uses for its
       // own label resolution.
       const saleReferenceIds = rows.filter((row) => row.movementType === 'SALE' && row.referenceId).map((row) => row.referenceId!);
+      const transferOutIds = rows.filter((row) => row.movementType === 'TRANSFER_OUT' && row.referenceId).map((row) => row.referenceId!);
       const receiptIds = rows.filter((row) => row.movementType === 'TRANSFER_IN' && row.referenceId).map((row) => row.referenceId!);
       const [orderNumbersBySaleReference, transferIdsByReceipt] = await Promise.all([
         this.movementsRepository.resolveOrderNumbers(tx, tenantId, saleReferenceIds),
         this.movementsRepository.resolveReceiptTransferIds(tx, tenantId, receiptIds),
       ]);
+      // TRANSFER_OUT's own referenceId already IS the transfer id; TRANSFER_IN's only resolves to
+      // one via the receipt lookup above — union both before the single, batched code lookup.
+      const transferCodesByTransferId = await this.movementsRepository.resolveTransferCodes(tx, tenantId, [
+        ...transferOutIds,
+        ...transferIdsByReceipt.values(),
+      ]);
 
       return {
-        data: rows.map((row) => toResponse(row, canViewCost, referenceLabelFor(row, orderNumbersBySaleReference, transferIdsByReceipt))),
+        data: rows.map((row) => toResponse(row, canViewCost, referenceLabelFor(row, orderNumbersBySaleReference, transferIdsByReceipt, transferCodesByTransferId))),
         meta: {
           page: query.page,
           pageSize: query.pageSize,

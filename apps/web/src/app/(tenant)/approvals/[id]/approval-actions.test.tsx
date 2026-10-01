@@ -29,16 +29,16 @@ describe('ApprovalActions', () => {
 
   it('hides approve/reject for the requester’s own request', () => {
     render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest />);
-    expect(screen.queryByRole('button', { name: /approve/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/another user with the approval permission/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /aprobar/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/otro usuario con el permiso de aprobación/i)).toBeInTheDocument();
   });
 
   it('approve confirms then POSTs /approve with no body', async () => {
     mockedFetch.mockResolvedValueOnce({});
     render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /^approve$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
     expect(mockedFetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /confirm approve/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar aprobación/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/price-approvals/a-1/approve', { method: 'POST' });
   });
@@ -46,8 +46,8 @@ describe('ApprovalActions', () => {
   it('reject POSTs /reject', async () => {
     mockedFetch.mockResolvedValueOnce({});
     render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /^reject$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm reject/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^rechazar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar rechazo/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/price-approvals/a-1/reject', { method: 'POST' });
   });
@@ -55,9 +55,9 @@ describe('ApprovalActions', () => {
   it('surfaces a 403 in place and does not refresh', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'nope', undefined));
     render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /^approve$/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm approve/i }));
-    expect(await screen.findByText(/not authorized to resolve/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar aprobación/i }));
+    expect(await screen.findByText(/no tienes autorización para resolver/i)).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
   });
 });

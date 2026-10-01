@@ -36,16 +36,16 @@ describe('ImportPipeline', () => {
 
   it('shows real counters and never a progress bar or percentage', () => {
     render(<ImportPipeline job={job({ status: 'mapping' })} canUseInventoryMode={false} />);
-    expect(screen.getByText('Total rows')).toBeInTheDocument();
+    expect(screen.getByText('Filas totales')).toBeInTheDocument();
     expect(screen.getByText('8')).toBeInTheDocument(); // valid count
     expect(document.querySelector('progress')).toBeNull();
     expect(document.body.textContent).not.toMatch(/%/);
-    expect(screen.getByRole('button', { name: /validate rows/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /validar filas/i })).toBeInTheDocument();
   });
 
   it('POSTs /validate from a mapping job with no body', async () => {
     render(<ImportPipeline job={job({ status: 'mapping' })} canUseInventoryMode={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /validate rows/i }));
+    fireEvent.click(screen.getByRole('button', { name: /validar filas/i }));
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/imports/job-1/validate', { method: 'POST' }),
     );
@@ -59,10 +59,10 @@ describe('ImportPipeline', () => {
       return job({ status: 'ready' });
     });
     render(<ImportPipeline job={job({ status: 'ready' })} canUseInventoryMode={false} />);
-    await waitFor(() => expect(screen.getByText('New products')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Productos nuevos')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /import 9 rows/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm import/i }));
+    fireEvent.click(screen.getByRole('button', { name: /importar 9 filas/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar importación/i }));
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/imports/job-1/confirm', { method: 'POST' }),
     );
@@ -75,7 +75,7 @@ describe('ImportPipeline', () => {
         canUseInventoryMode={false}
       />,
     );
-    expect(screen.getByText(/needs the import-inventory permission/i)).toBeInTheDocument();
+    expect(screen.getByText(/requiere el permiso import-inventory/i)).toBeInTheDocument();
   });
 
   it('shows a safe 403 message in place when a step is rejected', async () => {
@@ -92,27 +92,27 @@ describe('ImportPipeline', () => {
         canUseInventoryMode
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: /import 9 rows/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm import/i }));
-    expect(await screen.findByText(/not authorized for this step/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /importar 9 filas/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar importación/i }));
+    expect(await screen.findByText(/no tienes autorización para este paso/i)).toBeInTheDocument();
   });
 
   it('offers the error-report download as a plain link when there are invalid rows', () => {
     render(<ImportPipeline job={job({ status: 'completed_with_errors' })} canUseInventoryMode={false} />);
-    const link = screen.getByRole('link', { name: /download error report/i });
+    const link = screen.getByRole('link', { name: /descargar reporte de errores/i });
     expect(link).toHaveAttribute('href', '/api/v1/imports/job-1/errors');
   });
 
   it('renders an honest processing state (no percentage) for a validating job', () => {
     render(<ImportPipeline job={job({ status: 'validating' })} canUseInventoryMode={false} />);
-    expect(screen.getByRole('status')).toHaveTextContent(/validating rows/i);
+    expect(screen.getByRole('status')).toHaveTextContent(/validando filas/i);
     expect(document.body.textContent).not.toMatch(/%/);
   });
 
   it('cancels via /cancel after confirming', async () => {
     render(<ImportPipeline job={job({ status: 'mapping' })} canUseInventoryMode={false} />);
-    fireEvent.click(screen.getByRole('button', { name: /cancel import/i }));
-    fireEvent.click(screen.getByRole('button', { name: /confirm cancel/i }));
+    fireEvent.click(screen.getByRole('button', { name: /cancelar importación/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar cancelación/i }));
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/imports/job-1/cancel', { method: 'POST' }),
     );

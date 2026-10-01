@@ -11,8 +11,9 @@ import { Badge, statusTone } from '../../../components/ui/badge';
 import { TenantSettingsForm } from './tenant-settings-form';
 import { RegionalSettingsForm } from './regional-settings-form';
 import { BusinessHoursForm } from './business-hours-form';
+import { TransferWorkflowForm } from './transfer-workflow-form';
 
-export const metadata = { title: 'Company settings · SaaS Inventory' };
+export const metadata = { title: 'Configuración · SaaS Inventory' };
 
 /**
  * Tenant administration (F17-02 / `S-SETTINGS`): the company record + the tenant's operational
@@ -67,42 +68,42 @@ export default async function TenantSettingsPage(): Promise<React.JSX.Element> {
   return (
     <PageContainer>
       <PageHeader
-        title="Company settings"
-        description="Configuration for this company. These settings apply to your workspace only."
+        title="Configuración"
+        description="Configuración de esta empresa. Estos ajustes aplican solo a tu espacio de trabajo."
       />
 
-      <SettingsSection title="Company">
+      <SettingsSection title="Empresa">
         <dl className="grid max-w-md grid-cols-[9rem_1fr] gap-y-2 text-sm">
-          <dt className="text-slate-500">Workspace</dt>
+          <dt className="text-slate-500">Espacio de trabajo</dt>
           <dd className="text-slate-900">{tenant.slug}</dd>
-          <dt className="text-slate-500">Status</dt>
+          <dt className="text-slate-500">Estado</dt>
           <dd>
             <Badge tone={statusTone(tenant.status)}>{tenant.status}</Badge>
           </dd>
           {tenant.isDemo && (
             <>
-              <dt className="text-slate-500">Type</dt>
+              <dt className="text-slate-500">Tipo</dt>
               <dd>
                 <Badge tone="warning">Demo</Badge>
               </dd>
             </>
           )}
-          <dt className="text-slate-500">Created</dt>
-          <dd className="text-slate-900">{new Date(tenant.createdAt).toLocaleDateString()}</dd>
+          <dt className="text-slate-500">Creado</dt>
+          <dd className="text-slate-900">{new Date(tenant.createdAt).toLocaleDateString('es')}</dd>
         </dl>
         {canEditCompany ? (
           <TenantSettingsForm tenant={tenant} />
         ) : (
           <p className="max-w-md text-sm text-slate-500">
-            Company name: <span className="text-slate-900">{tenant.name}</span> — you don&apos;t
-            have permission to change it.
+            Nombre de la empresa: <span className="text-slate-900">{tenant.name}</span> — no
+            tienes permiso para cambiarlo.
           </p>
         )}
       </SettingsSection>
 
       <SettingsSection
         title="Regional"
-        description="The timezone in which this company's operational dates are interpreted. Later screens use it to decide what counts as “today” or “this month”."
+        description="La zona horaria en la que se interpretan las fechas operativas de esta empresa. Pantallas posteriores la usan para decidir qué cuenta como «hoy» o «este mes»."
       >
         {canViewSettings ? (
           <RegionalSettingsForm
@@ -112,14 +113,14 @@ export default async function TenantSettingsPage(): Promise<React.JSX.Element> {
           />
         ) : (
           <p className="max-w-md text-sm text-slate-500">
-            You don&apos;t have permission to view regional settings.
+            No tienes permiso para ver la configuración regional.
           </p>
         )}
       </SettingsSection>
 
       <SettingsSection
-        title="Business hours"
-        description="Optional. When left empty, no hours are configured — nothing in the system enforces them yet."
+        title="Horario comercial"
+        description="Opcional. Si se deja vacío, no se configura ningún horario — el sistema aún no lo hace cumplir en ninguna parte."
       >
         {canViewSettings ? (
           <BusinessHoursForm
@@ -128,7 +129,25 @@ export default async function TenantSettingsPage(): Promise<React.JSX.Element> {
           />
         ) : (
           <p className="max-w-md text-sm text-slate-500">
-            You don&apos;t have permission to view business hours.
+            No tienes permiso para ver el horario comercial.
+          </p>
+        )}
+      </SettingsSection>
+
+      <SettingsSection
+        title="Flujo de transferencias"
+        description="Qué etapas de una transferencia entre almacenes requieren una confirmación manual. No todas las empresas tienen personal para cada etapa — desactiva las que no apliquen a tu operación."
+      >
+        {canViewSettings ? (
+          <TransferWorkflowForm
+            requireApproval={settings?.transfersRequireApproval ?? true}
+            requirePreparation={settings?.transfersRequirePreparation ?? true}
+            usingDefaults={settings === null || settings.updatedAt === null}
+            canManage={canManageSettings}
+          />
+        ) : (
+          <p className="max-w-md text-sm text-slate-500">
+            No tienes permiso para ver el flujo de transferencias.
           </p>
         )}
       </SettingsSection>

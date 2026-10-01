@@ -127,7 +127,7 @@ export function MappingTemplates({
   function reportError(err: unknown): void {
     setError(
       isApiError(err) && err.status === 403
-        ? 'You need the import permission to manage templates.'
+        ? 'Necesitas el permiso de importación para administrar plantillas.'
         : httpErrorMessage(err),
     );
   }
@@ -188,12 +188,12 @@ export function MappingTemplates({
         <Table>
           <THead>
             <TR>
-              <TH>Name</TH>
-              <TH>Category</TH>
-              <TH className="text-right">Columns</TH>
-              <TH>Created</TH>
+              <TH>Nombre</TH>
+              <TH>Categoría</TH>
+              <TH className="text-right">Columnas</TH>
+              <TH>Creada</TH>
               <TH className="w-0">
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">Acciones</span>
               </TH>
             </TR>
           </THead>
@@ -204,7 +204,7 @@ export function MappingTemplates({
                 <TD className="text-slate-500">{categoryName(template.categoryId)}</TD>
                 <TD className="text-right text-slate-500">{Object.keys(template.columnMapping).length}</TD>
                 <TD className="whitespace-nowrap text-slate-500">
-                  {new Date(template.createdAt).toLocaleDateString()}
+                  {new Date(template.createdAt).toLocaleDateString('es')}
                 </TD>
                 <TD>
                   <div className="flex items-center gap-3">
@@ -214,7 +214,7 @@ export function MappingTemplates({
                       disabled={busy}
                       onClick={() => startEdit(template)}
                     >
-                      Edit
+                      Editar
                     </button>
                     {confirmDeleteId === template.id ? (
                       <>
@@ -224,7 +224,7 @@ export function MappingTemplates({
                           disabled={busy}
                           onClick={() => void remove(template.id)}
                         >
-                          Confirm delete
+                          Confirmar eliminación
                         </button>
                         <button
                           type="button"
@@ -232,7 +232,7 @@ export function MappingTemplates({
                           disabled={busy}
                           onClick={() => setConfirmDeleteId(null)}
                         >
-                          Keep
+                          Mantener
                         </button>
                       </>
                     ) : (
@@ -242,7 +242,7 @@ export function MappingTemplates({
                         disabled={busy}
                         onClick={() => setConfirmDeleteId(template.id)}
                       >
-                        Delete
+                        Eliminar
                       </button>
                     )}
                   </div>
@@ -256,7 +256,7 @@ export function MappingTemplates({
       {!showForm && (
         <div>
           <Button variant="secondary" onClick={startCreate}>
-            New template
+            Nueva plantilla
           </Button>
         </div>
       )}
@@ -266,11 +266,11 @@ export function MappingTemplates({
           <CardBody>
             <form onSubmit={submit} noValidate className="flex flex-col gap-4">
               <h2 className="text-sm font-semibold text-slate-900">
-                {editingId ? 'Edit template' : 'New template'}
+                {editingId ? 'Editar plantilla' : 'Nueva plantilla'}
               </h2>
               {error && <Alert tone="error">{error}</Alert>}
 
-              <Field label="Name" required className="max-w-sm">
+              <Field label="Nombre" required className="max-w-sm">
                 <Input
                   required
                   maxLength={200}
@@ -281,9 +281,9 @@ export function MappingTemplates({
               </Field>
 
               {categories.length > 0 && (
-                <Field label="Category" hint="Ties the template to one category's attribute set. Optional." className="max-w-sm">
+                <Field label="Categoría" hint="Vincula la plantilla al conjunto de atributos de una categoría. Opcional." className="max-w-sm">
                   <Select value={categoryId} disabled={busy} onChange={(e) => setCategoryId(e.target.value)}>
-                    <option value="">None</option>
+                    <option value="">Ninguna</option>
                     {categories.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.name}
@@ -294,20 +294,20 @@ export function MappingTemplates({
               )}
 
               <fieldset className="flex flex-col gap-2">
-                <legend className="text-sm font-medium text-slate-700">Columns</legend>
+                <legend className="text-sm font-medium text-slate-700">Columnas</legend>
                 <p className="text-xs text-slate-500">
-                  Map each header from your spreadsheet to a product field. One column must map to “sku”.
+                  Asigna cada encabezado de tu hoja de cálculo a un campo del producto. Una columna debe asignarse a «sku».
                 </p>
                 {rows.map((row) => (
                   <div key={row.key} className="flex flex-wrap items-end gap-2">
-                    <Field label="Excel header" className="w-48">
+                    <Field label="Encabezado de Excel" className="w-48">
                       <Input
                         value={row.header}
                         disabled={busy}
                         onChange={(e) => setRow(row.key, { header: e.target.value })}
                       />
                     </Field>
-                    <Field label="Maps to" className="w-44">
+                    <Field label="Se asigna a" className="w-44">
                       <Select
                         value={row.target}
                         disabled={busy}
@@ -318,11 +318,11 @@ export function MappingTemplates({
                             {f}
                           </option>
                         ))}
-                        <option value={ATTR_TARGET}>attribute (attr:…)</option>
+                        <option value={ATTR_TARGET}>atributo (attr:…)</option>
                       </Select>
                     </Field>
                     {row.target === ATTR_TARGET && (
-                      <Field label="Attribute code" className="w-40">
+                      <Field label="Código de atributo" className="w-40">
                         <Input
                           value={row.attrCode}
                           disabled={busy}
@@ -336,7 +336,7 @@ export function MappingTemplates({
                       disabled={busy || rows.length === 1}
                       onClick={() => setRows((cur) => cur.filter((r) => r.key !== row.key))}
                     >
-                      Remove
+                      Quitar
                     </button>
                   </div>
                 ))}
@@ -348,7 +348,7 @@ export function MappingTemplates({
                     disabled={busy}
                     onClick={() => setRows((cur) => [...cur, newRow()])}
                   >
-                    Add column
+                    Agregar columna
                   </Button>
                 </div>
                 {problem && <p className="text-xs text-red-600">{problem}</p>}
@@ -356,10 +356,10 @@ export function MappingTemplates({
 
               <div className="flex gap-2">
                 <Button type="submit" loading={busy} disabled={!canSubmit}>
-                  {editingId ? 'Save template' : 'Create template'}
+                  {editingId ? 'Guardar plantilla' : 'Crear plantilla'}
                 </Button>
                 <Button type="button" variant="ghost" disabled={busy} onClick={cancelForm}>
-                  Cancel
+                  Cancelar
                 </Button>
               </div>
             </form>
@@ -368,7 +368,7 @@ export function MappingTemplates({
       )}
 
       {initialTemplates.length === 0 && !showForm && (
-        <p className="text-sm text-slate-500">No templates yet.</p>
+        <p className="text-sm text-slate-500">Aún no hay plantillas.</p>
       )}
     </div>
   );

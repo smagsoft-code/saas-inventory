@@ -1,7 +1,9 @@
 import { ForbiddenException, Injectable, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
+import { PlatformSupportSessionsRepository } from '../../auth/repositories/platform-support-sessions.repository';
 import { TenantMembershipsRepository } from '../../auth/repositories/tenant-memberships.repository';
+import { TenantsPlatformRepository } from '../../auth/repositories/tenants-platform.repository';
 import { withTenantTransaction } from '../../database/tenant-context';
 import { IS_PLATFORM_ONLY_KEY } from '../decorators/platform-only.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
@@ -60,6 +62,8 @@ export class TenantGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly tenantMembershipsRepository: TenantMembershipsRepository,
+    private readonly platformSupportSessionsRepository: PlatformSupportSessionsRepository,
+    private readonly tenantsPlatformRepository: TenantsPlatformRepository,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -86,6 +90,46 @@ export class TenantGuard implements CanActivate {
 
     const principal = request.authPrincipal;
     if (!principal?.tenantId || !principal.identityId) {
+      // ADR-0036 extension: no tenant JWT, but this may be a Platform Admin browsing an ordinary
+      // tenant route under an active support session (`extractAccessToken` already falls back to
+      // `platform_access_token`, so JwtAuthGuard has already verified them and set
+      // `platformPrincipal`). Deliberately GET-only — a support session never gets tenant-scoped
+      // write access through the general tenant API; the curated `PlatformSupportController`
+      // (its own separate `SupportSessionGuard`) is the only write surface (ADR-0036 §9/§20: never
+      // gate support via tenant RBAC, never let SUPPORT_WRITE default to full tenant access).
+      if (request.platformPrincipal && request.method === 'GET') {
+        const session = await this.platformSupportSessionsRepository.findActiveForAdmin(
+          request.platformPrincipal.adminId,
+        );
+        if (session) {
+          const tenant = await this.tenantsPlatformRepository.findById(session.tenantId);
+          if (tenant && tenant.status === 'active') {
+            request.supportSession = {
+              supportSessionId: session.id,
+              tenantId: session.tenantId,
+              mode: session.mode as 'read' | 'write',
+              reason: session.reason,
+              startedAt: session.startedAt,
+              expiresAt: session.expiresAt,
+            };
+            request.tenantContext = {
+              // Sentinels, never a real `users`/`identities` row — a support session has neither.
+              // Nothing reads these for a GET-only request except `@CurrentTenant()` (tenantId
+              // only); `@CurrentUser()` reads `authPrincipal`, which is never set here, so any
+              // route still depending on it correctly 401s instead of silently using a fake user.
+              userId: request.platformPrincipal.adminId,
+              identityId: request.platformPrincipal.adminId,
+              tenantId: session.tenantId,
+              tenantSlug: tenant.slug,
+              // Unused by PermissionsGuard for a support principal (it short-circuits on
+              // `request.supportSession` before ever reading this) — left empty rather than
+              // duplicating the full catalog computation TenantGuard has no other reason to do.
+              permissions: [],
+            };
+            return true;
+          }
+        }
+      }
       throw new ForbiddenException('No resolvable tenant context.');
     }
 

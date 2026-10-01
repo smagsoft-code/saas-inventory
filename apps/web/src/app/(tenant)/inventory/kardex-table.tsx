@@ -9,10 +9,6 @@ function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString('es');
 }
 
-// The system's actual predominant color (Button's primary variant, active nav/location chips) is
-// dark slate, not blue — there is no blue anywhere else in this app's design system.
-const HEADER_CLASS = 'bg-slate-900 !text-white';
-
 /**
  * The Kardex ledger table itself — UI-UX-SPEC-001 §6's columns (renamed per owner feedback: "Stock
  * U" → "Stock", "Stock S" → "V.Total"), in this order: Fecha del movimiento | Movimiento | Entrada
@@ -71,7 +67,7 @@ export function KardexTable({
       <Table>
         <THead>
           <TR>
-            <TH className={HEADER_CLASS}>
+            <TH>
               <span className="flex items-center gap-1.5">
                 Fecha del movimiento
                 {onToggleSort && (
@@ -87,15 +83,15 @@ export function KardexTable({
                 )}
               </span>
             </TH>
-            <TH className={HEADER_CLASS}>Movimiento</TH>
-            {productoByMovementId && <TH className={HEADER_CLASS}>Producto</TH>}
-            {almacenByMovementId && <TH className={HEADER_CLASS}>Almacén</TH>}
-            <TH className={`text-right ${HEADER_CLASS}`}>Entrada</TH>
-            {showCost && <TH className={`text-right ${HEADER_CLASS}`}>Costo U</TH>}
-            <TH className={`text-right ${HEADER_CLASS}`}>Salida</TH>
-            {showCost && <TH className={`text-right ${HEADER_CLASS}`}>Costo K</TH>}
-            <TH className={`text-right ${HEADER_CLASS}`}>Stock</TH>
-            {showCost && <TH className={`text-right ${HEADER_CLASS}`}>V.Total</TH>}
+            <TH>Movimiento</TH>
+            {productoByMovementId && <TH>Producto</TH>}
+            {almacenByMovementId && <TH>Almacén</TH>}
+            <TH className="text-right">Entrada</TH>
+            {showCost && <TH className="text-right">Costo U</TH>}
+            <TH className="text-right">Salida</TH>
+            {showCost && <TH className="text-right">Costo K</TH>}
+            <TH className="text-right">Stock</TH>
+            {showCost && <TH className="text-right">V.Total</TH>}
           </TR>
         </THead>
         <TBody className="!divide-slate-200">

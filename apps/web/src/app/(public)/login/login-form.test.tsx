@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../lib/api/errors';
 import { apiFetch } from '../../../lib/api/client';
@@ -38,12 +38,12 @@ const SESSION_USER = {
 async function renderForm(): Promise<void> {
   render(<LoginForm />);
   // The silent-restore attempt on mount resolves first; wait for the form to appear.
-  await screen.findByRole('button', { name: /sign in/i });
+  await screen.findByRole('button', { name: /iniciar sesión/i });
 }
 
 function typeCredentials(): void {
-  fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'admin@acme.com' } });
-  fireEvent.change(screen.getByLabelText(/password/i), { target: { value: 'a-long-password' } });
+  fireEvent.change(screen.getByLabelText(/correo/i), { target: { value: 'admin@acme.com' } });
+  fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'a-long-password' } });
 }
 
 describe('LoginForm', () => {
@@ -58,11 +58,38 @@ describe('LoginForm', () => {
 
   it('shows an email + password form only — no workspace/tenant field', async () => {
     await renderForm();
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
-    expect(screen.getByLabelText(/password/i)).toBeInTheDocument();
-    expect(screen.queryByText(/workspace/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/empresa|organi[sz]ation/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('textbox', { name: /company|workspace/i })).not.toBeInTheDocument();
+    const form = screen.getByRole('button', { name: /iniciar sesión/i }).closest('form')!;
+    expect(screen.getByLabelText(/correo/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/contraseña/i)).toBeInTheDocument();
+    expect(within(form).queryByText(/workspace/i)).not.toBeInTheDocument();
+    expect(within(form).queryByText(/empresa|organi[sz]ation/i)).not.toBeInTheDocument();
+    expect(within(form).queryByRole('textbox', { name: /company|workspace|empresa/i })).not.toBeInTheDocument();
+  });
+
+  it('shows no "crear empresa" / register CTA — tenant creation is invitation-only now', async () => {
+    await renderForm();
+    expect(screen.queryByRole('link', { name: /crea tu empresa|crear empresa|crear cuenta|registrarse/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/¿aún no tienes cuenta\?/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('accepts a non-email identifier in the credential field (backend now allows a 10+ char username, not just an email)', async () => {
+    await renderForm();
+    mockedFetch.mockResolvedValueOnce({
+      status: 'authenticated',
+      user: SESSION_USER,
+      accessTokenExpiresAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    fireEvent.change(screen.getByLabelText(/correo/i), { target: { value: 'vendedor01' } });
+    fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'a-long-password' } });
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
+
+    await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/'));
+    expect(mockedFetch).toHaveBeenLastCalledWith('/api/v1/auth/login', {
+      method: 'POST',
+      body: { email: 'vendedor01', password: 'a-long-password' },
+    });
   });
 
   it('submits only { email, password } and redirects on a single-tenant login', async () => {
@@ -74,7 +101,7 @@ describe('LoginForm', () => {
     });
 
     typeCredentials();
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/'));
     expect(mockedFetch).toHaveBeenLastCalledWith('/api/v1/auth/login', {
@@ -98,13 +125,13 @@ describe('LoginForm', () => {
     });
 
     typeCredentials();
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     expect(await screen.findByText('Acme Corp')).toBeInTheDocument();
     expect(screen.getByText('Beta Inc')).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
     // Still no session; the picker is not shown before credentials succeed.
-    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/contraseña/i)).not.toBeInTheDocument();
   });
 
   it('calls POST /auth/select-tenant with only the chosen tenantId, then redirects', async () => {
@@ -118,7 +145,7 @@ describe('LoginForm', () => {
       selectionTokenExpiresAt: '2026-01-01T00:00:00.000Z',
     });
     typeCredentials();
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
     await screen.findByText('Beta Inc');
 
     mockedFetch.mockResolvedValueOnce({ user: SESSION_USER, accessTokenExpiresAt: 'x' });
@@ -139,7 +166,7 @@ describe('LoginForm', () => {
     );
 
     typeCredentials();
-    const button = screen.getByRole('button', { name: /sign in/i });
+    const button = screen.getByRole('button', { name: /iniciar sesión/i });
     fireEvent.click(button);
     fireEvent.click(button);
 
@@ -156,7 +183,7 @@ describe('LoginForm', () => {
     );
 
     typeCredentials();
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.');
     expect(replaceMock).not.toHaveBeenCalled();
@@ -169,11 +196,11 @@ describe('LoginForm', () => {
     );
 
     typeCredentials();
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
     const alert = await screen.findByRole('alert');
     expect(alert).not.toHaveTextContent(/stack trace/i);
-    expect(alert).toHaveTextContent(/something went wrong/i);
+    expect(alert).toHaveTextContent(/algo salió mal/i);
   });
 
   it('lets the user return to sign in after an expired tenant selection', async () => {
@@ -184,7 +211,7 @@ describe('LoginForm', () => {
       selectionTokenExpiresAt: '2026-01-01T00:00:00.000Z',
     });
     typeCredentials();
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
     await screen.findByText('Acme Corp');
 
     mockedFetch.mockRejectedValueOnce(
@@ -192,9 +219,9 @@ describe('LoginForm', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /acme corp/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/sign in again/i);
-    fireEvent.click(screen.getByRole('button', { name: /back to sign in/i }));
-    expect(await screen.findByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent(/inicia sesión de nuevo/i);
+    fireEvent.click(screen.getByRole('button', { name: /volver a iniciar sesión/i }));
+    expect(await screen.findByRole('button', { name: /^iniciar sesión$/i })).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
   });
 
@@ -206,7 +233,7 @@ describe('LoginForm', () => {
       selectionTokenExpiresAt: '2026-01-01T00:00:00.000Z',
     });
     typeCredentials();
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
     await screen.findByText('Acme Corp');
 
     mockedFetch.mockResolvedValueOnce({ user: SESSION_USER, accessTokenExpiresAt: 'x' });
@@ -222,7 +249,7 @@ describe('LoginForm', () => {
     mockedFetch.mockResolvedValueOnce(undefined);
     render(<LoginForm />);
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/users'));
-    expect(screen.queryByRole('button', { name: /sign in/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /iniciar sesión/i })).not.toBeInTheDocument();
   });
 
   it('ignores an off-site returnTo and falls back to /', async () => {
@@ -234,7 +261,7 @@ describe('LoginForm', () => {
       accessTokenExpiresAt: 'x',
     });
     typeCredentials();
-    fireEvent.click(screen.getByRole('button', { name: /sign in/i }));
+    fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
     await waitFor(() => expect(replaceMock).toHaveBeenCalledWith('/'));
   });
 });

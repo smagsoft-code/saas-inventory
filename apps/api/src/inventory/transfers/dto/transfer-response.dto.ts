@@ -7,6 +7,15 @@ export class TransferItemResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   productVariantId!: string;
 
+  /** Resolved server-side (`ProductVariantsLookupRepository.findByIds`) — `GAP-VARIANT-LIST`
+   * resolved for this one narrow case. Falls back to omission only if the variant row is somehow
+   * unresolvable (should not happen — FK restrict prevents hard deletion). */
+  @ApiPropertyOptional({ type: String })
+  productName?: string;
+
+  @ApiPropertyOptional({ type: String })
+  sku?: string;
+
   @ApiProperty({ type: Number })
   quantityRequested!: number;
 
@@ -25,6 +34,10 @@ export class TransferItemResponseDto {
 export class TransferResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
+
+  /** Human-readable sequence — `${sourceWarehouse.code}-${sourceLocation.code}-NNN`. */
+  @ApiProperty({ type: String })
+  code!: string;
 
   @ApiProperty({ type: String, format: 'uuid' })
   sourceLocationId!: string;

@@ -31,6 +31,21 @@ export interface PlatformPrincipal {
   adminId: string;
 }
 
+/** ADR-0036 — set by `SupportSessionGuard` once a live `platform_support_sessions` row is
+ * confirmed for the caller on the route's `:tenantId`. Absent on every route not marked
+ * `@RequireSupportSession()`. This is what every support-scoped controller/audit write reads to
+ * know "which session, which mode" — never re-derived from client input. */
+export interface SupportSessionContext {
+  supportSessionId: string;
+  tenantId: string;
+  mode: 'read' | 'write';
+  reason: string;
+  /** ADR-0036 extension — carried so `AuthService.meAsSupport()` can surface the "MODO SOPORTE"
+   * banner's countdown on the tenant frontend without a second DB read. */
+  startedAt: Date;
+  expiresAt: Date;
+}
+
 declare module 'fastify' {
   interface FastifyRequest {
     /** Set by JwtAuthGuard once a tenant-scoped access token is verified. Absent on public routes
@@ -42,6 +57,8 @@ declare module 'fastify' {
     /** Set by TenantGuard once the tenant scope + permissions are resolved. Absent on public
      * routes, @PlatformOnly() routes, and on any route JwtAuthGuard already rejected. */
     tenantContext?: TenantRequestContext;
+    /** Set by SupportSessionGuard — see SupportSessionContext. */
+    supportSession?: SupportSessionContext;
     /** Set by the correlation-id hook (main.ts) on every request, including public ones. */
     correlationId: string;
   }

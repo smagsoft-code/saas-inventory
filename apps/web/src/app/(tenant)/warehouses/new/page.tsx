@@ -5,7 +5,7 @@ import { PageHeader } from '../../../../components/ui/page-header';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { WarehouseForm } from '../warehouse-form';
 
-export const metadata = { title: 'New warehouse · SaaS Inventory' };
+export const metadata = { title: 'Nueva sucursal · SaaS Inventory' };
 
 export default async function NewWarehousePage(): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -13,8 +13,8 @@ export default async function NewWarehousePage(): Promise<React.JSX.Element> {
   if (!checker.can('warehouses.manage')) {
     return (
       <PageContainer>
-        <PageHeader title="New warehouse" />
-        <NoAccess message="You need the manage-warehouses permission to create warehouses." />
+        <PageHeader title="Nueva sucursal" />
+        <NoAccess message="Necesitas el permiso de gestión de sucursales para crear sucursales." />
       </PageContainer>
     );
   }
@@ -22,8 +22,8 @@ export default async function NewWarehousePage(): Promise<React.JSX.Element> {
   return (
     <PageContainer>
       <PageHeader
-        title="New warehouse"
-        description="Add a site. Its default “General” location is created automatically."
+        title="Nueva sucursal"
+        description="Agrega un sitio. Su almacén «General» se crea automáticamente."
       />
       <WarehouseForm mode="create" />
     </PageContainer>

@@ -20,14 +20,27 @@ export interface AuditMeta {
  * potentially-drifting `'UTC'` literal. */
 export const DEFAULT_TIMEZONE = 'UTC';
 const DEFAULT_BUSINESS_HOURS: BusinessHoursEntryDto[] = [];
+/** F17-TRANSFERS-AUDIT §1 — `true`/`true` (every gate required) matches the schema column
+ * defaults exactly, so a tenant with no row and a tenant that has never touched these two fields
+ * behave identically: today's full draft→approved→preparing→dispatched→received flow. */
+export const DEFAULT_TRANSFERS_REQUIRE_APPROVAL = true;
+export const DEFAULT_TRANSFERS_REQUIRE_PREPARATION = true;
 
 function toResponse(row: TenantSettingsRow | undefined): TenantSettingsResponseDto {
   if (!row) {
-    return { timezone: DEFAULT_TIMEZONE, businessHours: DEFAULT_BUSINESS_HOURS, updatedAt: null };
+    return {
+      timezone: DEFAULT_TIMEZONE,
+      businessHours: DEFAULT_BUSINESS_HOURS,
+      transfersRequireApproval: DEFAULT_TRANSFERS_REQUIRE_APPROVAL,
+      transfersRequirePreparation: DEFAULT_TRANSFERS_REQUIRE_PREPARATION,
+      updatedAt: null,
+    };
   }
   return {
     timezone: row.timezone,
     businessHours: row.businessHours as BusinessHoursEntryDto[],
+    transfersRequireApproval: row.transfersRequireApproval,
+    transfersRequirePreparation: row.transfersRequirePreparation,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -84,10 +97,14 @@ export class TenantSettingsService {
 
       const nextTimezone = dto.timezone ?? before.timezone;
       const nextBusinessHours = dto.businessHours ?? before.businessHours;
+      const nextTransfersRequireApproval = dto.transfersRequireApproval ?? before.transfersRequireApproval;
+      const nextTransfersRequirePreparation = dto.transfersRequirePreparation ?? before.transfersRequirePreparation;
 
       const updated = await this.tenantSettingsRepository.upsert(tx, tenantId, {
         timezone: nextTimezone,
         businessHours: nextBusinessHours,
+        transfersRequireApproval: nextTransfersRequireApproval,
+        transfersRequirePreparation: nextTransfersRequirePreparation,
       });
 
       try {
@@ -97,8 +114,18 @@ export class TenantSettingsService {
           actionCode: 'tenant_settings.updated',
           entityType: 'tenant_settings',
           entityId: updated.id,
-          beforeState: { timezone: before.timezone, businessHours: before.businessHours },
-          afterState: { timezone: nextTimezone, businessHours: nextBusinessHours },
+          beforeState: {
+            timezone: before.timezone,
+            businessHours: before.businessHours,
+            transfersRequireApproval: before.transfersRequireApproval,
+            transfersRequirePreparation: before.transfersRequirePreparation,
+          },
+          afterState: {
+            timezone: nextTimezone,
+            businessHours: nextBusinessHours,
+            transfersRequireApproval: nextTransfersRequireApproval,
+            transfersRequirePreparation: nextTransfersRequirePreparation,
+          },
           correlationId: meta.correlationId,
           ipAddress: meta.ipAddress,
         });

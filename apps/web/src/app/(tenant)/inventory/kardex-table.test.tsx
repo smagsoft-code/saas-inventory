@@ -38,15 +38,17 @@ describe('KardexTable', () => {
     expect(screen.getByText('Sin movimientos en este rango')).toBeInTheDocument();
   });
 
-  it('renders every column, renamed per owner feedback (Stock U → Stock, Stock S → V.Total), with a blue header and white text', () => {
+  it('renders every column, renamed per owner feedback (Stock U → Stock, Stock S → V.Total), with a dark header and white text', () => {
     const data: KardexResponse = { ...BASE, rows: [RECEIPT_ROW], closing: { stockUnits: 10, averageCost: 5, stockValue: 50, estimated: false } };
     render(<KardexTable data={data} />);
     const headers = screen.getAllByRole('columnheader');
     expect(headers.map((h) => h.textContent)).toEqual(['Fecha del movimiento', 'Movimiento', 'Entrada', 'Costo U', 'Salida', 'Costo K', 'Stock', 'V.Total']);
+    // The dark background is the shared `THead` default (`components/ui/table.tsx`) now, not a
+    // per-page override — the system's actual predominant color is dark slate (Button's primary
+    // variant), replicated to every table in the app, not just Kardex.
+    expect(headers[0]?.closest('thead')?.className).toContain('bg-slate-900');
     for (const header of headers) {
-      // The system's actual predominant color is dark slate (Button's primary variant), not blue.
-      expect(header.className).toContain('bg-slate-900');
-      expect(header.className).toContain('!text-white');
+      expect(header.className).toContain('text-white');
     }
     expect(screen.getByText('Ingreso de stock: Restock')).toBeInTheDocument();
     expect(screen.getAllByText('5.00').length).toBeGreaterThan(0); // Costo U y Costo K coinciden aquí

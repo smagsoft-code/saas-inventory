@@ -22,8 +22,11 @@ export function safeReturnTo(value: string | null | undefined, fallback = '/'): 
   if (UNSAFE_CHARS.test(candidate)) {
     return fallback;
   }
-  // Never bounce back to an auth route — that just loops the user.
-  const path = candidate.split(/[?#]/)[0] ?? candidate;
+  // Never bounce back to an auth route — that just loops the user. Case-insensitive: Next's router
+  // is case-sensitive (no page matches "/LOGIN"), so a same-origin but differently-cased request —
+  // a stale browser-autocomplete suggestion is the common real case — would otherwise slip past
+  // this guard as "not /login" and round-trip straight into a 404 after a successful login.
+  const path = (candidate.split(/[?#]/)[0] ?? candidate).toLowerCase();
   if (path === '/login' || path === '/register' || path === '/platform/login') {
     return fallback;
   }

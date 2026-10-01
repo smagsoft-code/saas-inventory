@@ -1,6 +1,7 @@
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { listProducts } from '../../../../lib/catalog/products';
+import { listWarehouses } from '../../../../lib/inventory/warehouses';
 import { listLocations } from '../../../../lib/inventory/locations';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
@@ -8,7 +9,7 @@ import { Alert } from '../../../../components/ui/alert';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { AdjustmentForm } from './adjustment-form';
 
-export const metadata = { title: 'Adjust stock · SaaS Inventory' };
+export const metadata = { title: 'Ajustar existencias · SaaS Inventory' };
 
 export default async function AdjustStockPage({
   searchParams,
@@ -20,39 +21,47 @@ export default async function AdjustStockPage({
   if (!checker.can('inventory.adjust')) {
     return (
       <PageContainer>
-        <PageHeader title="Adjust stock" />
-        <NoAccess message="You need the inventory-adjust permission to record stock adjustments." />
+        <PageHeader title="Ajustar existencias" />
+        <NoAccess message="Necesitas el permiso de ajuste de inventario para registrar ajustes de existencias." />
       </PageContainer>
     );
   }
   const canViewProducts = checker.can('products.view');
+  const canViewWarehouses = checker.can('warehouses.view');
   const canViewLocations = checker.can('locations.view');
 
   const sp = await searchParams;
   const fixedProductVariantId = sp.productVariantId || undefined;
 
-  const [products, locations] = await Promise.all([
+  const [products, warehouses, locations] = await Promise.all([
     !fixedProductVariantId && canViewProducts
       ? listProducts({ pageSize: 100 }).catch(() => null)
       : Promise.resolve(null),
+    canViewWarehouses ? listWarehouses({ pageSize: 100, status: 'active' }).catch(() => null) : Promise.resolve(null),
     canViewLocations ? listLocations({ pageSize: 100, status: 'active' }).catch(() => null) : Promise.resolve(null),
   ]);
 
   return (
     <PageContainer>
       <PageHeader
-        title="Adjust stock"
-        description="Record a receipt or a correction. Transfers and sales use their own flows."
+        title="Ajustar existencias"
+        description="Registra una recepción o una corrección. Las transferencias y ventas usan sus propios flujos."
       />
+      {!canViewWarehouses && (
+        <Alert tone="warning">
+          No puedes listar sucursales, por eso el selector de sucursal está vacío. Pide a un
+          administrador el permiso de sucursales.
+        </Alert>
+      )}
       {!canViewLocations && (
         <Alert tone="warning">
-          You cannot list locations, so the location selector is empty. Ask an administrator for the
-          locations permission.
+          No puedes listar almacenes, por eso el selector de almacén está vacío. Pide a un
+          administrador el permiso de almacenes.
         </Alert>
       )}
       {!fixedProductVariantId && !canViewProducts && (
         <Alert tone="warning">
-          You cannot list products. Open a variant from the catalogue and use “Adjust stock” there.
+          No puedes listar productos. Abre una variante desde el catálogo y usa «Ajustar existencias» ahí.
         </Alert>
       )}
       <AdjustmentForm
@@ -60,7 +69,8 @@ export default async function AdjustStockPage({
         {...(fixedProductVariantId && sp.sku ? { fixedVariantLabel: sp.sku } : {})}
         {...(sp.locationId ? { fixedLocationId: sp.locationId } : {})}
         products={(products?.data ?? []).map((p) => ({ id: p.id, name: p.name }))}
-        locations={(locations?.data ?? []).map((l) => ({ id: l.id, name: l.name }))}
+        warehouses={(warehouses?.data ?? []).map((w) => ({ id: w.id, name: w.name }))}
+        locations={(locations?.data ?? []).map((l) => ({ id: l.id, warehouseId: l.warehouseId, name: l.name }))}
       />
     </PageContainer>
   );

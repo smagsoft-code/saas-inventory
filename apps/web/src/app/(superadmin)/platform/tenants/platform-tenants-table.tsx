@@ -55,58 +55,58 @@ export function PlatformTenantsTable({ tenants }: { tenants: PlatformTenant[] })
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Search">
+        <Field label="Buscar">
           <Input
             type="search"
-            placeholder="Name or slug"
+            placeholder="Nombre o slug"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
         </Field>
-        <Field label="Status">
+        <Field label="Estado">
           <Select value={status} onChange={(event) => setStatus(event.target.value as StatusFilter)}>
-            <option value="all">All statuses</option>
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-            <option value="archived">Archived</option>
+            <option value="all">Todos los estados</option>
+            <option value="active">Activa</option>
+            <option value="suspended">Suspendida</option>
+            <option value="archived">Archivada</option>
           </Select>
         </Field>
-        <Field label="Type">
+        <Field label="Tipo">
           <Select value={kind} onChange={(event) => setKind(event.target.value as KindFilter)}>
-            <option value="all">All types</option>
+            <option value="all">Todos los tipos</option>
             <option value="real">Real</option>
             <option value="demo">Demo</option>
           </Select>
         </Field>
-        <Field label="Sort by">
+        <Field label="Ordenar por">
           <Select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-            <option value="created-desc">Newest first</option>
-            <option value="created-asc">Oldest first</option>
-            <option value="name-asc">Name (A–Z)</option>
+            <option value="created-desc">Más recientes primero</option>
+            <option value="created-asc">Más antiguas primero</option>
+            <option value="name-asc">Nombre (A–Z)</option>
           </Select>
         </Field>
       </div>
 
       <p className="text-xs text-slate-500" role="status">
-        {filtered.length} of {tenants.length} {tenants.length === 1 ? 'company' : 'companies'}
+        {filtered.length} de {tenants.length} {tenants.length === 1 ? 'empresa' : 'empresas'}
       </p>
 
       {filtered.length === 0 ? (
         <EmptyState
-          title="No companies match these filters"
-          description="Try a different status, type or search term."
+          title="Ninguna empresa coincide con estos filtros"
+          description="Prueba con otro estado, tipo o término de búsqueda."
         />
       ) : (
         <Table>
           <THead>
             <TR>
-              <TH>Company</TH>
+              <TH>Empresa</TH>
               <TH>Slug</TH>
-              <TH>Status</TH>
-              <TH>Type</TH>
-              <TH>Created</TH>
+              <TH>Estado</TH>
+              <TH>Tipo</TH>
+              <TH>Creada</TH>
               <TH className="w-0">
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">Acciones</span>
               </TH>
             </TR>
           </THead>
@@ -124,14 +124,14 @@ export function PlatformTenantsTable({ tenants }: { tenants: PlatformTenant[] })
                 </TD>
                 <TD className="text-slate-500">{tenant.isDemo ? 'Demo' : 'Real'}</TD>
                 <TD className="whitespace-nowrap text-slate-500">
-                  {new Date(tenant.createdAt).toLocaleDateString()}
+                  {new Date(tenant.createdAt).toLocaleDateString('es')}
                 </TD>
                 <TD>
                   <Link
                     href={`/platform/tenants/${tenant.id}`}
                     className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                   >
-                    View
+                    Ver
                   </Link>
                 </TD>
               </TR>

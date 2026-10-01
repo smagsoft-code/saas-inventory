@@ -11,6 +11,7 @@ import { PlatformRefreshTokensRepository } from './repositories/platform-refresh
 import { RefreshTokensPlatformRepository } from './repositories/refresh-tokens-platform.repository';
 import { RefreshTokensRepository } from './repositories/refresh-tokens.repository';
 import { RolesRepository } from './repositories/roles.repository';
+import { TenantAdminInvitationsRepository } from './repositories/tenant-admin-invitations.repository';
 import { TenantMembershipsRepository } from './repositories/tenant-memberships.repository';
 import { TenantsPlatformRepository } from './repositories/tenants-platform.repository';
 import { UsersRepository } from './repositories/users.repository';
@@ -20,6 +21,7 @@ import { IdentityProvisioningService } from './services/identity-provisioning.se
 import { PlatformAuthService } from './services/platform-auth.service';
 import { TenantProvisioningService } from './services/tenant-provisioning.service';
 import { AccessTokenService } from './tokens/access-token.service';
+import { InvitationTokenService } from './tokens/invitation-token.service';
 import { RefreshTokenService } from './tokens/refresh-token.service';
 
 const authConfig = getAuthConfig();
@@ -39,11 +41,13 @@ const authConfig = getAuthConfig();
     PasswordService,
     AccessTokenService,
     RefreshTokenService,
+    InvitationTokenService,
     CsrfTokenService,
     UsersRepository,
     RolesRepository,
     IdentitiesRepository,
     TenantMembershipsRepository,
+    TenantAdminInvitationsRepository,
     RefreshTokensRepository,
     RefreshTokensPlatformRepository,
     TenantsPlatformRepository,

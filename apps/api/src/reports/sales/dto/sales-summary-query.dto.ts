@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional } from 'class-validator';
+import { IsIn, IsOptional, IsUUID } from 'class-validator';
 import { ORDER_STATUSES } from '../../../sales/orders/dto/list-orders-query.dto';
 import { ReportDateRangeQueryDto } from '../../../common/reporting/report-date-range.dto';
 
@@ -31,8 +31,15 @@ export type SalesSummaryExceptional = (typeof SALES_SUMMARY_EXCEPTIONAL)[number]
  * is missing), not by this DTO's type — the frontend still offers a sensible pre-filled default
  * (last 30 days) in the filter UI so a normal user never hits that 400.
  *
- * `groupBy` has no `location` value yet — `GAP-ORDERS-LOCATION` is still an open product decision
- * (F18-01), so `REP-SALES-BY-LOCATION` stays out of scope for this endpoint.
+ * `groupBy` has no `location` value yet — a per-location *breakdown* stays out of scope
+ * (`GAP-ORDERS-LOCATION`, F18-01). `locationId` (this DTO, OUI-002/`S-HOME` redesign) is a plain
+ * equality *filter* on the real, `NOT NULL` `orders.location_id` FK — every order has exactly one —
+ * composing with every `groupBy` value the same way `warehouseId` composes with `inventory-summary`
+ * and `locationId` composes with `movements-summary`. It narrows the aggregate to one location; it
+ * does not add a location dimension to the grouping itself, so `REP-SALES-BY-LOCATION` (a bucket
+ * *per* location) stays the still-open part of `GAP-ORDERS-LOCATION`. Does not validate existence
+ * (same posture as every other id filter in this report family) — an id matching no order yields an
+ * empty result, never a 404.
  *
  * `status` reuses the real `orders.status` enum (`ORDER_STATUSES`, not redefined). Default when
  * omitted is `'confirmed'` (applied in the service, not here) — `metrics.md`'s `SALES-REVENUE`
@@ -62,4 +69,9 @@ export class SalesSummaryQueryDto extends ReportDateRangeQueryDto {
   @IsOptional()
   @IsIn(SALES_SUMMARY_EXCEPTIONAL)
   exceptional: SalesSummaryExceptional = 'all';
+
+  @ApiPropertyOptional({ type: String, format: 'uuid', description: 'orders.location_id — narrows to one location.' })
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 }

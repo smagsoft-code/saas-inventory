@@ -18,7 +18,7 @@ import { Badge } from '../../../../components/ui/badge';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { ApprovalActions } from './approval-actions';
 
-export const metadata = { title: 'Approval · SaaS Inventory' };
+export const metadata = { title: 'Aprobación · SaaS Inventory' };
 
 /**
  * Price-approval detail (`S-APPROVAL-DETAIL`) — `GET /api/v1/price-approvals/:id`
@@ -37,8 +37,8 @@ export default async function ApprovalDetailPage({
   if (!checker.canAny(['pricing.discount.request', 'pricing.discount.approve'])) {
     return (
       <PageContainer>
-        <PageHeader title="Approval" />
-        <NoAccess message="You need a pricing-discount permission to view this request." />
+        <PageHeader title="Aprobación" />
+        <NoAccess message="Necesitas un permiso de descuentos de precio para ver esta solicitud." />
       </PageContainer>
     );
   }
@@ -63,8 +63,8 @@ export default async function ApprovalDetailPage({
   return (
     <PageContainer>
       <PageHeader
-        title={`Approval ${shortId(approval.id)}`}
-        description="Exceptional-discount request"
+        title={`Aprobación ${shortId(approval.id)}`}
+        description="Solicitud de descuento excepcional"
         actions={
           <Badge tone={priceApprovalStatusTone(approval.status)}>
             {PRICE_APPROVAL_STATUS_LABELS[approval.status as PriceApprovalStatus] ?? approval.status}
@@ -75,48 +75,48 @@ export default async function ApprovalDetailPage({
       <Card>
         <CardBody className="flex flex-col gap-4">
           <dl className="grid max-w-lg grid-cols-[10rem_1fr] gap-y-2 text-sm">
-            <dt className="text-slate-500">Order</dt>
+            <dt className="text-slate-500">Pedido</dt>
             <dd className="text-slate-900">
               <Link href={`/sales/${approval.orderId}`} className="font-medium underline underline-offset-2">
                 {order ? order.orderNumber : shortId(approval.orderId)}
               </Link>
             </dd>
-            <dt className="text-slate-500">Line</dt>
+            <dt className="text-slate-500">Línea</dt>
             <dd className="text-slate-900">
               {line ? (
                 <>
                   <span className="font-medium">{line.sku}</span>
                   <span className="text-slate-500"> · {line.productName}</span>
-                  <span className="text-slate-500"> · qty {line.quantity}</span>
+                  <span className="text-slate-500"> · cant. {line.quantity}</span>
                 </>
               ) : (
                 <code className="text-xs text-slate-500">{shortId(approval.orderItemId)}</code>
               )}
             </dd>
-            <dt className="text-slate-500">Requested price</dt>
+            <dt className="text-slate-500">Precio solicitado</dt>
             <dd className="text-slate-900">{approval.requestedPrice.toFixed(2)}</dd>
-            <dt className="text-slate-500">Reference (max) price</dt>
+            <dt className="text-slate-500">Precio de referencia (máx.)</dt>
             <dd className="text-slate-900">{approval.maxPriceAtRequest.toFixed(2)}</dd>
             {approval.minPriceAtRequest !== undefined && (
               <>
-                <dt className="text-slate-500">Floor (min) price</dt>
+                <dt className="text-slate-500">Precio mínimo (piso)</dt>
                 <dd className="text-slate-900">{approval.minPriceAtRequest.toFixed(2)}</dd>
               </>
             )}
-            <dt className="text-slate-500">Discount amount</dt>
+            <dt className="text-slate-500">Monto del descuento</dt>
             <dd className="text-slate-900">{approval.discountAmount.toFixed(2)}</dd>
-            <dt className="text-slate-500">Reason</dt>
+            <dt className="text-slate-500">Motivo</dt>
             <dd className="whitespace-pre-wrap text-slate-900">{approval.reason}</dd>
-            <dt className="text-slate-500">Requested by</dt>
+            <dt className="text-slate-500">Solicitado por</dt>
             <dd className="text-slate-900">
               <code className="text-xs">{shortId(approval.requestedBy)}</code>
-              {isOwnRequest && <span className="text-slate-500"> · you</span>}
+              {isOwnRequest && <span className="text-slate-500"> · tú</span>}
             </dd>
-            <dt className="text-slate-500">Requested at</dt>
-            <dd className="text-slate-900">{new Date(approval.requestedAt).toLocaleString()}</dd>
+            <dt className="text-slate-500">Solicitado el</dt>
+            <dd className="text-slate-900">{new Date(approval.requestedAt).toLocaleString('es')}</dd>
             {approval.approvedBy && (
               <>
-                <dt className="text-slate-500">Resolved by</dt>
+                <dt className="text-slate-500">Resuelto por</dt>
                 <dd className="text-slate-900">
                   <code className="text-xs">{shortId(approval.approvedBy)}</code>
                 </dd>
@@ -124,8 +124,8 @@ export default async function ApprovalDetailPage({
             )}
             {approval.resolvedAt && (
               <>
-                <dt className="text-slate-500">Resolved at</dt>
-                <dd className="text-slate-900">{new Date(approval.resolvedAt).toLocaleString()}</dd>
+                <dt className="text-slate-500">Resuelto el</dt>
+                <dd className="text-slate-900">{new Date(approval.resolvedAt).toLocaleString('es')}</dd>
               </>
             )}
           </dl>
@@ -141,10 +141,10 @@ export default async function ApprovalDetailPage({
 
       <div className="flex gap-4 text-sm">
         <Link href="/approvals" className="font-medium text-slate-500 hover:underline">
-          All approvals
+          Todas las aprobaciones
         </Link>
         <Link href={`/sales/${approval.orderId}`} className="font-medium text-slate-500 hover:underline">
-          Order {order ? order.orderNumber : shortId(approval.orderId)}
+          Pedido {order ? order.orderNumber : shortId(approval.orderId)}
         </Link>
       </div>
     </PageContainer>

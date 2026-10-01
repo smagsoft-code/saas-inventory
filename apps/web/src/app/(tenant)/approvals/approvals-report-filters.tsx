@@ -58,7 +58,7 @@ export function ApprovalsReportFilters({ initial }: { initial: ApprovalsReportFi
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <Field label="From" hint="Tenant-local day start">
+      <Field label="Desde" hint="Inicio de día en la zona horaria del tenant">
         <Input
           type="date"
           value={from}
@@ -70,7 +70,7 @@ export function ApprovalsReportFilters({ initial }: { initial: ApprovalsReportFi
         />
       </Field>
 
-      <Field label="To" hint="Exclusive — up to, not including">
+      <Field label="Hasta" hint="Exclusivo — hasta, sin incluir">
         <Input
           type="date"
           value={to}
@@ -82,7 +82,7 @@ export function ApprovalsReportFilters({ initial }: { initial: ApprovalsReportFi
         />
       </Field>
 
-      <Field label="Group by">
+      <Field label="Agrupar por">
         <Select
           value={groupBy}
           onChange={(e) => {
@@ -99,7 +99,7 @@ export function ApprovalsReportFilters({ initial }: { initial: ApprovalsReportFi
         </Select>
       </Field>
 
-      <Field label="Status">
+      <Field label="Estado">
         <Select
           value={status}
           onChange={(e) => {
@@ -107,7 +107,7 @@ export function ApprovalsReportFilters({ initial }: { initial: ApprovalsReportFi
             apply({ status: e.target.value });
           }}
         >
-          <option value="">All statuses</option>
+          <option value="">Todos los estados</option>
           {APPROVALS_SUMMARY_STATUSES.map((s) => (
             <option key={s} value={s}>
               {PRICE_APPROVAL_STATUS_LABELS[s as PriceApprovalStatus] ?? s}

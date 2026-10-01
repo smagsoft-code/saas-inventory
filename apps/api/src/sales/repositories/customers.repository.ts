@@ -7,13 +7,14 @@ export interface CustomerRow {
   id: string;
   tenantId: string;
   type: string;
+  firstName: string;
+  lastName: string | null;
   displayName: string;
   taxId: string | null;
   email: string | null;
   phone: string | null;
-  address: unknown;
+  address: string | null;
   status: string;
-  notes: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -58,7 +59,8 @@ export class CustomersRepository {
     if (params.q) {
       const pattern = `%${params.q}%`;
       const search = or(
-        ilike(customers.displayName, pattern),
+        ilike(customers.firstName, pattern),
+        ilike(customers.lastName, pattern),
         ilike(customers.taxId, pattern),
         ilike(customers.email, pattern),
         ilike(customers.phone, pattern),
@@ -87,12 +89,12 @@ export class CustomersRepository {
       id: string;
       tenantId: string;
       type: string;
-      displayName: string;
+      firstName: string;
+      lastName: string;
       taxId?: string | null | undefined;
       email?: string | null | undefined;
       phone?: string | null | undefined;
-      address?: Record<string, unknown> | null | undefined;
-      notes?: string | null | undefined;
+      address?: string | null | undefined;
     },
   ): Promise<CustomerRow> {
     const [row] = await tx.insert(customers).values(values).returning();
@@ -108,13 +110,13 @@ export class CustomersRepository {
     id: string,
     values: {
       type?: string;
-      displayName?: string;
+      firstName?: string;
+      lastName?: string | null;
       taxId?: string | null;
       email?: string | null;
       phone?: string | null;
-      address?: Record<string, unknown> | null;
+      address?: string | null;
       status?: string;
-      notes?: string | null;
     },
   ): Promise<CustomerRow | undefined> {
     if (Object.keys(values).length === 0) {

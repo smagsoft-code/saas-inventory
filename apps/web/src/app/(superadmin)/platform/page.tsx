@@ -9,7 +9,7 @@ import { getPlatformSummary } from '../../../lib/platform/summary';
 import type { PlatformSummary } from '../../../lib/types/platform-summary';
 import { PlatformSummaryError, PlatformSummarySection } from './platform-summary-section';
 
-export const metadata = { title: 'Platform · SaaS Inventory' };
+export const metadata = { title: 'Plataforma · SaaS Inventory' };
 
 /** First instant of the current UTC month, and now — the `[from, to)` window for the "new
  * companies" count. Computed in **UTC**: a platform metric spans every tenant, so there is no
@@ -17,7 +17,7 @@ export const metadata = { title: 'Platform · SaaS Inventory' };
  * The tile label says "(UTC)" so the boundary is honest. */
 function currentUtcMonthWindow(now = new Date()): { from: string; to: string; label: string } {
   const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const label = `since ${from.toLocaleDateString('en-CA', { timeZone: 'UTC' })} (UTC)`;
+  const label = `desde ${from.toLocaleDateString('en-CA', { timeZone: 'UTC' })} (UTC)`;
   return { from: from.toISOString(), to: now.toISOString(), label };
 }
 
@@ -49,8 +49,8 @@ export default async function PlatformHomePage(): Promise<React.JSX.Element> {
   return (
     <PageContainer>
       <PageHeader
-        title="Platform administration"
-        description={`Signed in as ${admin.fullName}.`}
+        title="Administración de la plataforma"
+        description={`Sesión iniciada como ${admin.fullName}.`}
       />
 
       {summary ? (
@@ -61,22 +61,22 @@ export default async function PlatformHomePage(): Promise<React.JSX.Element> {
 
       <Card>
         <CardBody className="flex flex-col gap-2">
-          <p className="text-sm font-medium text-slate-900">Companies</p>
+          <p className="text-sm font-medium text-slate-900">Empresas</p>
           <p className="text-sm text-slate-500">
-            List every company on the platform, and suspend or activate one.
+            Lista todas las empresas de la plataforma, y suspende o activa una.
           </p>
           <div className="mt-2">
             <Link
               href="/platform/tenants"
               className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
             >
-              Manage companies
+              Administrar empresas
             </Link>
           </div>
         </CardBody>
       </Card>
       <p className="text-xs text-slate-400">
-        Per-tenant usage, activity and billing metrics are not available yet.
+        Las métricas de uso, actividad y facturación por empresa aún no están disponibles.
       </p>
     </PageContainer>
   );

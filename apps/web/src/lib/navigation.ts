@@ -51,30 +51,35 @@ export interface NavSection {
   items: NavItem[];
 }
 
+// OUI-001 (UI-UX-SPEC-001 §11): labels en español. Glosario: "Warehouse" (tabla `warehouses`,
+// superior) -> "Sucursal"; "Location" (tabla `locations`, hija de warehouse) -> "Almacén" — es una
+// inversión deliberada respecto al nombre en inglés, decidida por el owner (GL-1). El item
+// "Existencias"/`/inventory` se llama "Inventario" por decisión del owner (GL-2); coincide con el
+// título de la sección del mismo nombre — redundancia conocida, registrada en el spec.
 export const NAVIGATION: NavSection[] = [
   {
     title: null,
-    items: [{ label: 'Dashboard', href: '/', icon: 'home' }],
+    items: [{ label: 'Inicio', href: '/', icon: 'home' }],
   },
   {
-    title: 'Catalog',
+    title: 'Catálogo',
     items: [
       {
-        label: 'Products',
+        label: 'Productos',
         href: '/products',
         icon: 'box',
         permission: 'products.view',
         activePaths: ['/products'],
       },
       {
-        label: 'Categories',
+        label: 'Categorías',
         href: '/categories',
         icon: 'categories',
         permission: 'categories.view',
         activePaths: ['/categories'],
       },
       {
-        label: 'Attributes',
+        label: 'Atributos',
         href: '/attributes',
         icon: 'attributes',
         // Reads ride on `products.view` (attributes.controller.ts), not a dedicated attributes-view code.
@@ -84,7 +89,7 @@ export const NAVIGATION: NavSection[] = [
       {
         // All `/qr-codes*` management routes are gated by the single `catalog.qr.manage` code
         // (qr-codes.controller.ts — database.md's RBAC table: "generar/revocar qr_codes").
-        label: 'QR codes',
+        label: 'Códigos QR',
         href: '/qr',
         icon: 'qr',
         permission: 'catalog.qr.manage',
@@ -93,7 +98,7 @@ export const NAVIGATION: NavSection[] = [
       {
         // Whole pipeline (list/upload/detail/rows/templates) is gated by the single `import.execute`
         // code (database.md's RBAC table — "una permission para todo el flujo").
-        label: 'Imports',
+        label: 'Importación',
         href: '/imports',
         icon: 'upload',
         permission: 'import.execute',
@@ -102,10 +107,10 @@ export const NAVIGATION: NavSection[] = [
     ],
   },
   {
-    title: 'Inventory',
+    title: 'Inventario',
     items: [
       {
-        label: 'Stock on hand',
+        label: 'Inventario',
         href: '/inventory',
         icon: 'layers',
         permission: 'inventory.view',
@@ -113,28 +118,30 @@ export const NAVIGATION: NavSection[] = [
         activePaths: ['/inventory'],
       },
       {
-        label: 'Movements',
+        label: 'Movimientos',
         href: '/inventory/movements',
         icon: 'activity',
         permission: 'inventory.view',
         activePaths: ['/inventory/movements'],
       },
       {
-        label: 'Transfers',
+        label: 'Transferencias',
         href: '/inventory/transfers',
         icon: 'transfer',
         permission: 'inventory.view',
         activePaths: ['/inventory/transfers'],
       },
       {
-        label: 'Warehouses',
+        // GL-1: "warehouses" (tabla superior) = "Sucursal" en español, no "Almacén".
+        label: 'Sucursales',
         href: '/warehouses',
         icon: 'warehouse',
         permission: 'warehouses.view',
         activePaths: ['/warehouses'],
       },
       {
-        label: 'Locations',
+        // GL-1: "locations" (tabla hija de warehouse) = "Almacén" en español, no "Ubicación".
+        label: 'Almacenes',
         href: '/locations',
         icon: 'map-pin',
         permission: 'locations.view',
@@ -143,24 +150,24 @@ export const NAVIGATION: NavSection[] = [
     ],
   },
   {
-    title: 'Sales',
+    title: 'Ventas',
     items: [
       {
-        label: 'New sale',
+        label: 'Nueva venta',
         href: '/sales/new',
         icon: 'cart',
         permission: 'sales.orders.create',
         activePaths: ['/sales/new'],
       },
       {
-        label: 'Sales history',
+        label: 'Historial de ventas',
         href: '/sales',
         icon: 'receipt',
         permission: 'sales.orders.view',
         activePaths: ['/sales'],
       },
       {
-        label: 'Customers',
+        label: 'Clientes',
         href: '/customers',
         icon: 'contact',
         permission: 'sales.customers.view',
@@ -168,14 +175,14 @@ export const NAVIGATION: NavSection[] = [
       },
       {
         // `GET /price-approvals` requires request OR approve (`@RequireAnyPermission`) — mirror that.
-        label: 'Approvals',
+        label: 'Aprobaciones',
         href: '/approvals',
         icon: 'approval',
         anyPermission: ['pricing.discount.approve', 'pricing.discount.request'],
         activePaths: ['/approvals'],
       },
       {
-        label: 'Returns',
+        label: 'Devoluciones',
         href: '/returns',
         icon: 'undo',
         permission: 'sales.returns.view',
@@ -184,10 +191,10 @@ export const NAVIGATION: NavSection[] = [
     ],
   },
   {
-    title: 'Administration',
+    title: 'Administración',
     items: [
       {
-        label: 'Users',
+        label: 'Usuarios',
         href: '/users',
         icon: 'users',
         permission: 'core.users.read',
@@ -203,7 +210,7 @@ export const NAVIGATION: NavSection[] = [
         activePaths: ['/roles'],
       },
       {
-        label: 'Company settings',
+        label: 'Configuración',
         href: '/settings',
         icon: 'settings',
         activePaths: ['/settings'],
