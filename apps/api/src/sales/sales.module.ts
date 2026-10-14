@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { UsersRepository } from '../auth/repositories/users.repository';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { DomainEventPublisher } from '../common/events/domain-event-publisher.service';
 import { OutboxRepository } from '../common/events/outbox.repository';
@@ -17,6 +18,7 @@ import { CartsRepository } from './repositories/carts.repository';
 import { CustomersRepository } from './repositories/customers.repository';
 import { OrderItemsRepository } from './repositories/order-items.repository';
 import { OrderNotificationsRepository } from './repositories/order-notifications.repository';
+import { OrderPaymentsRepository } from './repositories/order-payments.repository';
 import { OrdersRepository } from './repositories/orders.repository';
 import { PriceApprovalsRepository } from './repositories/price-approvals.repository';
 import { SalesCatalogLookupRepository } from './repositories/sales-catalog-lookup.repository';
@@ -72,12 +74,16 @@ import { ReturnsService } from './returns/returns.service';
     OrdersRepository,
     OrderItemsRepository,
     OrderNotificationsRepository,
+    OrderPaymentsRepository,
     PriceApprovalsRepository,
     SalesReturnsRepository,
     SalesReturnItemsRepository,
     TenantPricePoliciesRepository,
     SalesCatalogLookupRepository,
     SalesIdempotencyRepository,
+    // price-approvals' response resolves the requester/approver's display name — reused rather
+    // than duplicated, same precedent InventoryModule already set for location-assignments.
+    UsersRepository,
   ],
 })
 export class SalesModule {}

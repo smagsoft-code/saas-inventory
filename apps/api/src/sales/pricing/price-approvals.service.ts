@@ -11,16 +11,30 @@ import { AuditLogService } from '../../common/audit/audit-log.service';
 import { DomainEventPublisher } from '../../common/events/domain-event-publisher.service';
 import type { PriceApprovalRequestedData, PriceApprovalResolvedData } from '../../common/events/domain-event.contracts';
 import { EVENT_TYPES } from '../../common/events/event-types';
+import { UsersRepository } from '../../auth/repositories/users.repository';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
+import type { OrderItemRow } from '../repositories/order-items.repository';
 import { OrderItemsRepository } from '../repositories/order-items.repository';
 import { OrdersRepository } from '../repositories/orders.repository';
 import type { PriceApprovalRow } from '../repositories/price-approvals.repository';
 import { PriceApprovalsRepository } from '../repositories/price-approvals.repository';
+import type { EffectivePricePolicy } from '../repositories/tenant-price-policies.repository';
+import { TenantPricePoliciesRepository } from '../repositories/tenant-price-policies.repository';
 import type { AuditMeta } from '../sales-audit-meta';
 import { moneyString, roundMoney } from '../sales-money';
+import { SalesPricingService } from './sales-pricing.service';
 import type { CreatePriceApprovalDto } from './dto/create-price-approval.dto';
 import type { ListPriceApprovalsQueryDto } from './dto/list-price-approvals-query.dto';
 import type { PriceApprovalResponseDto } from './dto/price-approval-response.dto';
+
+/** The arithmetic result of editing a line's price — computed up front (no I/O), so a caller can
+ * validate and compute everything before deciding whether/when to actually write it. */
+interface PriceEditPlan {
+  unitPrice: number;
+  lineTotal: number;
+  discountAmount: number;
+  isExceptional: boolean;
+}
 
 interface UniqueViolation {
   code: string;
@@ -36,7 +50,7 @@ function isUniqueViolation(error: unknown): boolean {
 
 /**
  * Exceptional-discount approval workflow (FASE 13 Part B, ADR-0022 / database.md#pricing). The
- * approval is **order-first**: the below-`min_price` line already exists on a `pending` order with
+ * approval is **order-first**: the below-`base_price` line already exists on a `pending` order with
  * `is_exceptional_discount = true`; this service files, approves, and rejects the `price_approvals`
  * row bound to that line. `OrdersService.confirm` consumes it (`assertExceptionalDiscountsApproved`).
  *
@@ -65,6 +79,9 @@ export class PriceApprovalsService {
     private readonly priceApprovalsRepository: PriceApprovalsRepository,
     private readonly ordersRepository: OrdersRepository,
     private readonly orderItemsRepository: OrderItemsRepository,
+    private readonly usersRepository: UsersRepository,
+    private readonly pricePoliciesRepository: TenantPricePoliciesRepository,
+    private readonly pricingService: SalesPricingService,
     private readonly auditLogService: AuditLogService,
     private readonly domainEventPublisher: DomainEventPublisher,
   ) {}
@@ -109,7 +126,7 @@ export class PriceApprovalsService {
     meta: AuditMeta,
   ): Promise<PriceApprovalResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
-      const orderItem = await this.orderItemsRepository.findById(tx, tenantId, dto.orderItemId);
+      let orderItem = await this.orderItemsRepository.findById(tx, tenantId, dto.orderItemId);
       if (!orderItem) {
         throw new NotFoundException('Order line not found.');
       }
@@ -124,6 +141,17 @@ export class PriceApprovalsService {
           `An exceptional-discount request can only be filed while the order is "pending" (currently "${order.status}").`,
         );
       }
+
+      // Owner redesign: resubmitting after a rejection may propose a different price for the line
+      // before filing this new request. Applied before the exceptional-discount check below so a
+      // vendor raising the price to (or above) base_price correctly lands on "no approval needed"
+      // rather than filing a request against a price that's no longer exceptional.
+      if (dto.newPrice !== undefined && roundMoney(dto.newPrice) !== Number(orderItem.unitPriceSnapshot)) {
+        const pricePolicy = await this.pricePoliciesRepository.getEffective(tx, tenantId);
+        const plan = this.computePriceEdit(orderItem, dto.newPrice, pricePolicy);
+        orderItem = await this.applyPriceEdit(tx, tenantId, orderItem, plan);
+      }
+
       if (!orderItem.isExceptionalDiscount) {
         throw new UnprocessableEntityException(
           "This order line's price is within the authorized range — no exceptional-discount approval is needed.",
@@ -142,6 +170,7 @@ export class PriceApprovalsService {
       }
 
       const minPrice = Number(orderItem.minPriceSnapshot);
+      const basePrice = Number(orderItem.basePriceSnapshot);
       const maxPrice = Number(orderItem.maxPriceSnapshot);
       const quantity = Number(orderItem.quantity);
       const discountAmount = roundMoney(Math.max(0, (maxPrice - requestedPrice) * quantity));
@@ -155,6 +184,7 @@ export class PriceApprovalsService {
           orderItemId: orderItem.id,
           requestedPrice: moneyString(requestedPrice),
           minPriceAtRequest: moneyString(minPrice),
+          basePriceAtRequest: moneyString(basePrice),
           maxPriceAtRequest: moneyString(maxPrice),
           discountAmount: moneyString(discountAmount),
           reason: dto.reason,
@@ -212,8 +242,9 @@ export class PriceApprovalsService {
     permissions: string[],
     id: string,
     meta: AuditMeta,
+    price?: number,
   ): Promise<PriceApprovalResponseDto> {
-    return this.resolve(tenantId, actorId, permissions, id, 'approved', meta);
+    return this.resolve(tenantId, actorId, permissions, id, 'approved', meta, price);
   }
 
   async reject(
@@ -233,6 +264,7 @@ export class PriceApprovalsService {
     id: string,
     status: 'approved' | 'rejected',
     meta: AuditMeta,
+    price?: number,
   ): Promise<PriceApprovalResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const existing = await this.priceApprovalsRepository.lockById(tx, tenantId, id);
@@ -251,9 +283,32 @@ export class PriceApprovalsService {
         throw new ConflictException(`This request is already resolved (status "${existing.status}").`);
       }
 
-      const updated = await this.priceApprovalsRepository.resolveIfPending(tx, tenantId, id, { status, approvedBy: actorId });
+      // Owner redesign: an administrator approving this request may edit the price instead of
+      // just accepting the amount the seller asked for — validated and COMPUTED here, before the
+      // CAS below, but only actually WRITTEN to `order_items`/`orders` once that CAS has won (so a
+      // lost race never leaves the line's price changed for an approval that didn't actually go
+      // through).
+      let plan: PriceEditPlan | undefined;
+      let orderItem: OrderItemRow | undefined;
+      if (status === 'approved' && price !== undefined) {
+        orderItem = await this.orderItemsRepository.findById(tx, tenantId, existing.orderItemId);
+        if (!orderItem) {
+          throw new NotFoundException('Order line not found.');
+        }
+        if (roundMoney(price) !== Number(orderItem.unitPriceSnapshot)) {
+          const pricePolicy = await this.pricePoliciesRepository.getEffective(tx, tenantId);
+          plan = this.computePriceEdit(orderItem, price, pricePolicy);
+        }
+      }
+
+      const updated = await this.priceApprovalsRepository.resolveIfPending(tx, tenantId, id, {
+        status,
+        approvedBy: actorId,
+        ...(plan ? { requestedPrice: moneyString(plan.unitPrice), discountAmount: moneyString(plan.discountAmount) } : {}),
+      });
       if (!updated) {
-        // Lost the race — re-read and reflect the terminal state.
+        // Lost the race — re-read and reflect the terminal state. The computed `plan` above is
+        // simply discarded: nothing was ever written from it.
         const current = await this.priceApprovalsRepository.findById(tx, tenantId, id);
         if (current && current.status === status) {
           return this.toResponse(tx, tenantId, current, permissions);
@@ -261,13 +316,21 @@ export class PriceApprovalsService {
         throw new ConflictException('This request was concurrently resolved.');
       }
 
+      if (plan && orderItem) {
+        await this.applyPriceEdit(tx, tenantId, orderItem, plan);
+      }
+
       await this.writeAudit(tx, {
         tenantId,
         actorId,
         actionCode: status === 'approved' ? 'price_approval.approved' : 'price_approval.rejected',
         entityId: id,
-        beforeState: { status: 'pending' },
-        afterState: { status, approvedBy: actorId },
+        beforeState: { status: 'pending', requestedPrice: existing.requestedPrice },
+        afterState: {
+          status,
+          approvedBy: actorId,
+          ...(plan ? { editedPrice: moneyString(plan.unitPrice) } : {}),
+        },
         meta,
       });
       // Domain event — only when the conditional `WHERE status = 'pending'` CAS actually won
@@ -294,30 +357,98 @@ export class PriceApprovalsService {
     });
   }
 
+  /** Pure computation, no I/O — validated the same way `OrdersService.resolveLines` validates a
+   * negotiated price at checkout (max price ceiling via `resolveUnitPrice`, tenant hard floor via
+   * `assertWithinHardFloor`). Callers decide separately whether/when to actually persist the
+   * result (see `applyPriceEdit` and the lost-race handling in `resolve`). */
+  private computePriceEdit(orderItem: OrderItemRow, newPrice: number, pricePolicy: EffectivePricePolicy): PriceEditPlan {
+    const maxPrice = Number(orderItem.maxPriceSnapshot);
+    const basePrice = Number(orderItem.basePriceSnapshot);
+    const minPrice = Number(orderItem.minPriceSnapshot);
+    const { unitPrice, classification } = this.pricingService.resolveUnitPrice(
+      newPrice,
+      { maxPrice, basePrice, minPrice },
+      orderItem.skuSnapshot,
+    );
+    const isExceptional = classification === 'below_base';
+    if (isExceptional) {
+      this.pricingService.assertWithinHardFloor(unitPrice, minPrice, pricePolicy.maxDiscountBelowMinPercent, orderItem.skuSnapshot);
+    }
+    const quantity = Number(orderItem.quantity);
+    return {
+      unitPrice,
+      lineTotal: roundMoney(unitPrice * quantity),
+      discountAmount: roundMoney(Math.max(0, (maxPrice - unitPrice) * quantity)),
+      isExceptional,
+    };
+  }
+
+  /** Writes a previously-computed price edit onto `order_items` and recomputes the parent order's
+   * totals from every one of its lines — never just the edited one, since a multi-line order's
+   * other lines are untouched but still need to be summed. Only ever called while the order is
+   * `pending` (both call sites hold a lock that guarantees this — `request`'s own `orders` lock,
+   * `resolve`'s `price_approvals` CAS which cannot win against anything but a `pending` order). */
+  private async applyPriceEdit(
+    tx: TenantTransaction,
+    tenantId: string,
+    orderItem: OrderItemRow,
+    plan: PriceEditPlan,
+  ): Promise<OrderItemRow> {
+    const updated = await this.orderItemsRepository.updatePriceWhilePending(tx, tenantId, orderItem.id, {
+      unitPriceSnapshot: moneyString(plan.unitPrice),
+      lineTotal: moneyString(plan.lineTotal),
+      discountAmount: moneyString(plan.discountAmount),
+      isExceptionalDiscount: plan.isExceptional,
+    });
+    const allItems = await this.orderItemsRepository.listByOrder(tx, tenantId, orderItem.orderId);
+    const subtotal = roundMoney(allItems.reduce((sum, item) => sum + Number(item.lineTotal), 0));
+    const discountTotal = roundMoney(allItems.reduce((sum, item) => sum + Number(item.discountAmount), 0));
+    await this.ordersRepository.updateTotals(tx, tenantId, orderItem.orderId, {
+      subtotal: moneyString(subtotal),
+      discountTotal: moneyString(discountTotal),
+      // No tax engine in this phase (§31) — total is always exactly the subtotal.
+      total: moneyString(subtotal),
+    });
+    return updated;
+  }
+
   private assertCanView(permissions: string[]): void {
     if (!permissions.includes('pricing.discount.request') && !permissions.includes('pricing.discount.approve')) {
       throw new ForbiddenException('Missing required permission.');
     }
   }
 
+  /** Resolves the parent order's number and the requester/approver's display names server-side —
+   * a list/detail response never makes the caller show a raw id on screen. Best-effort: a missing
+   * order/user (never expected — `ON DELETE RESTRICT` everywhere these point) falls back to a
+   * placeholder rather than failing the whole response. */
   private async toResponse(
-    _tx: TenantTransaction,
-    _tenantId: string,
+    tx: TenantTransaction,
+    tenantId: string,
     row: PriceApprovalRow,
     permissions: string[],
   ): Promise<PriceApprovalResponseDto> {
     const canViewFloor = permissions.includes('pricing.floor.view');
+    const [order, requester, approver] = await Promise.all([
+      this.ordersRepository.findById(tx, tenantId, row.orderId),
+      this.usersRepository.findById(tx, tenantId, row.requestedBy),
+      row.approvedBy ? this.usersRepository.findById(tx, tenantId, row.approvedBy) : Promise.resolve(undefined),
+    ]);
     return {
       id: row.id,
       orderId: row.orderId,
+      orderNumber: order?.orderNumber ?? row.orderId,
       orderItemId: row.orderItemId,
       requestedPrice: Number(row.requestedPrice),
       maxPriceAtRequest: Number(row.maxPriceAtRequest),
+      basePriceAtRequest: Number(row.basePriceAtRequest),
       ...(canViewFloor ? { minPriceAtRequest: Number(row.minPriceAtRequest) } : {}),
       discountAmount: Number(row.discountAmount),
       reason: row.reason,
       requestedBy: row.requestedBy,
+      requestedByName: requester?.fullName ?? row.requestedBy,
       ...(row.approvedBy ? { approvedBy: row.approvedBy } : {}),
+      ...(row.approvedBy ? { approvedByName: approver?.fullName ?? row.approvedBy } : {}),
       status: row.status,
       requestedAt: row.requestedAt.toISOString(),
       ...(row.resolvedAt ? { resolvedAt: row.resolvedAt.toISOString() } : {}),

@@ -181,8 +181,11 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
 
   const headers: Record<string, string> = {
     // A multipart body needs the browser-generated `multipart/form-data; boundary=…` header — never
-    // a hand-set `Content-Type`.
-    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    // a hand-set `Content-Type`. A bodyless mutation (e.g. `POST /orders/:id/confirm`) must not
+    // claim one either: Fastify's JSON body parser rejects `Content-Type: application/json` paired
+    // with a zero-length body as a 500, so the header is only set when there is an actual body to
+    // describe.
+    ...(isFormData || options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
     'Correlation-Id': randomCorrelationId(),
     ...(options.headers ?? {}),
   };

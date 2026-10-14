@@ -25,6 +25,7 @@ import { EmptyState } from '../../../components/ui/empty-state';
 import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
+import { ApprovalsQueueStatusFilter } from './approvals-queue-status-filter';
 import { ApprovalsReportFilters, type ApprovalsReportFilterValues } from './approvals-report-filters';
 import { ApprovalsReportError, ApprovalsReportSection } from './approvals-report-section';
 
@@ -138,11 +139,6 @@ export default async function ApprovalsPage({
     return `/approvals${params.toString() ? `?${params}` : ''}`;
   }
 
-  const chip = (active: boolean) =>
-    active
-      ? 'rounded-full border border-slate-900 bg-slate-900 px-3 py-1 text-xs font-medium text-white'
-      : 'rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50';
-
   const hasFilter = Boolean(status || orderId);
 
   return (
@@ -179,21 +175,16 @@ export default async function ApprovalsPage({
       )}
 
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Link href={buildHref({ status: null })} aria-current={!status ? 'true' : undefined} className={chip(!status)}>
-            Todos los estados
-          </Link>
-          {PRICE_APPROVAL_STATUSES.map((s) => (
-            <Link
-              key={s}
-              href={buildHref({ status: s })}
-              aria-current={status === s ? 'true' : undefined}
-              className={chip(status === s)}
-            >
-              {PRICE_APPROVAL_STATUS_LABELS[s]}
-            </Link>
-          ))}
-        </div>
+        <ApprovalsQueueStatusFilter
+          {...(status ? { status } : {})}
+          {...(orderId ? { orderId } : {})}
+          reportParams={{
+            ...(sp.reportFrom ? { reportFrom: sp.reportFrom } : {}),
+            ...(sp.reportTo ? { reportTo: sp.reportTo } : {}),
+            ...(sp.reportGroupBy ? { reportGroupBy: sp.reportGroupBy } : {}),
+            ...(sp.reportStatus ? { reportStatus: sp.reportStatus } : {}),
+          }}
+        />
 
         {orderId && (
           <p className="flex items-center gap-2 text-sm text-slate-600">
@@ -241,7 +232,7 @@ export default async function ApprovalsPage({
                       href={`/sales/${approval.orderId}`}
                       className="font-medium text-slate-700 underline-offset-2 hover:underline"
                     >
-                      {shortId(approval.orderId)}
+                      {approval.orderNumber}
                     </Link>
                   </TD>
                   <TD className="text-right text-slate-700">{approval.requestedPrice.toFixed(2)}</TD>

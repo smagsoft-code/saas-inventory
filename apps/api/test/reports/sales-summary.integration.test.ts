@@ -90,6 +90,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary (in
       payload: { productVariantId: variantId, quantity },
     });
     expect(added.statusCode, added.body).toBe(200);
+    const subtotal = (JSON.parse(added.body) as { subtotal: number }).subtotal;
 
     const checkedOut = await c.inject({
       method: 'POST',
@@ -105,6 +106,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary (in
         method: 'POST',
         url: `/api/v1/orders/${order.id}/confirm`,
         headers: c.writeHeaders(f.admin),
+        payload: { payments: [{ paymentMethod: 'cash', amount: subtotal }] },
       });
       expect(confirmed.statusCode, confirmed.body).toBe(200);
       order = JSON.parse(confirmed.body);

@@ -10,6 +10,7 @@ export interface PriceApprovalRow {
   orderItemId: string;
   requestedPrice: string;
   minPriceAtRequest: string;
+  basePriceAtRequest: string;
   maxPriceAtRequest: string;
   discountAmount: string;
   reason: string;
@@ -27,6 +28,7 @@ export interface CreatePriceApprovalValues {
   orderItemId: string;
   requestedPrice: string;
   minPriceAtRequest: string;
+  basePriceAtRequest: string;
   maxPriceAtRequest: string;
   discountAmount: string;
   reason: string;
@@ -134,6 +136,8 @@ export class PriceApprovalsRepository {
     const where = and(...conditions);
 
     const [totalRow] = await tx.select({ total: count() }).from(priceApprovals).where(where);
+    // Newest-first — the owner's explicit call after trying the opposite: the queue should
+    // surface the most recent activity first, not the oldest-filed request.
     const rows = await tx
       .select()
       .from(priceApprovals)
@@ -145,16 +149,25 @@ export class PriceApprovalsRepository {
   }
 
   /** Conditional resolution — only a still-`pending` row is transitioned. Returns `undefined` when
-   * the row was already resolved (0 rows updated), which the caller maps to a 409. */
+   * the row was already resolved (0 rows updated), which the caller maps to a 409.
+   * `requestedPrice`/`discountAmount` are optional — owner redesign: an administrator approving
+   * with an edited price passes the recomputed pair so this row stays in sync with the
+   * `order_items` snapshot `OrdersService.confirm`'s gate compares it against. */
   async resolveIfPending(
     tx: TenantTransaction,
     tenantId: string,
     id: string,
-    values: { status: 'approved' | 'rejected'; approvedBy: string },
+    values: { status: 'approved' | 'rejected'; approvedBy: string; requestedPrice?: string; discountAmount?: string },
   ): Promise<PriceApprovalRow | undefined> {
     const [row] = await tx
       .update(priceApprovals)
-      .set({ status: values.status, approvedBy: values.approvedBy, resolvedAt: sql`now()` })
+      .set({
+        status: values.status,
+        approvedBy: values.approvedBy,
+        resolvedAt: sql`now()`,
+        ...(values.requestedPrice !== undefined ? { requestedPrice: values.requestedPrice } : {}),
+        ...(values.discountAmount !== undefined ? { discountAmount: values.discountAmount } : {}),
+      })
       .where(
         and(
           eq(priceApprovals.tenantId, tenantId),

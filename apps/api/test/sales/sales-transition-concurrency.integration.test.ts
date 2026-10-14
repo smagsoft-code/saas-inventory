@@ -177,10 +177,21 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
         const added = await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(f.admin), payload: { productVariantId: v, quantity: qty + 5 } });
         expect(added.statusCode, added.body).toBe(200);
       }
-      const order = await c.inject({ method: 'POST', url: '/api/v1/orders', headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }), payload: { cartId, documentType: 'sales_note' } });
+      const total = variantIds.length * (qty + 5) * 100;
+      const order = await c.inject({
+        method: 'POST',
+        url: '/api/v1/orders',
+        headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }),
+        payload: { cartId, documentType: 'sales_note' },
+      });
       const body = JSON.parse(order.body) as { id: string; items: { id: string }[] };
       for (const it of body.items) orderItemIds.push(it.id);
-      const confirmed = await c.inject({ method: 'POST', url: `/api/v1/orders/${body.id}/confirm`, headers: c.writeHeaders(f.admin) });
+      const confirmed = await c.inject({
+        method: 'POST',
+        url: `/api/v1/orders/${body.id}/confirm`,
+        headers: c.writeHeaders(f.admin),
+        payload: { payments: [{ paymentMethod: 'cash', amount: total }] },
+      });
       expect(confirmed.statusCode, confirmed.body).toBe(200);
 
       const ret = await c.inject({
@@ -436,7 +447,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
       const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(f.seller), payload: { locationId: f.locationId, customerId: f.customerId } });
       const cartId = (JSON.parse(created.body) as { id: string }).id;
       await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(f.seller), payload: { productVariantId: f.variantId, quantity: 1, negotiatedUnitPrice: 70 } });
-      const order = await c.inject({ method: 'POST', url: '/api/v1/orders', headers: c.writeHeaders(f.seller, { 'idempotency-key': randomUUID() }), payload: { cartId, documentType: 'sales_note' } });
+      const order = await c.inject({
+        method: 'POST',
+        url: '/api/v1/orders',
+        headers: c.writeHeaders(f.seller, { 'idempotency-key': randomUUID() }),
+        payload: { cartId, documentType: 'sales_note' },
+      });
       const body = JSON.parse(order.body) as { id: string; items: { id: string; isExceptionalDiscount: boolean }[] };
       expect(body.items[0]!.isExceptionalDiscount).toBe(true);
       const req = await c.inject({ method: 'POST', url: '/api/v1/price-approvals', headers: c.writeHeaders(f.seller), payload: { orderItemId: body.items[0]!.id, reason: 'concurrency test' } });
@@ -448,8 +464,15 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
       c.inject({ method: 'POST', url: `/api/v1/price-approvals/${id}/approve`, headers: c.writeHeaders(session) });
     const reject = (session: Session, id: string) =>
       c.inject({ method: 'POST', url: `/api/v1/price-approvals/${id}/reject`, headers: c.writeHeaders(session) });
+    // Owner redesign: the payment method is now picked at confirm — `pendingApproval()`'s fixture
+    // line is always 1 unit @ negotiatedUnitPrice 70, so the total is always 70.
     const confirm = (session: Session, orderId: string) =>
-      c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/confirm`, headers: c.writeHeaders(session) });
+      c.inject({
+        method: 'POST',
+        url: `/api/v1/orders/${orderId}/confirm`,
+        headers: c.writeHeaders(session),
+        payload: { payments: [{ paymentMethod: 'cash', amount: 70 }] },
+      });
 
     async function approvalStatus(f: Fixture, id: string): Promise<string> {
       const r = await c.inject({ method: 'GET', url: `/api/v1/price-approvals/${id}`, headers: c.readHeaders(f.admin) });
@@ -571,7 +594,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
       const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(f.admin), payload: { locationId: f.locationId, customerId: f.customerId } });
       const cartId = (JSON.parse(created.body) as { id: string }).id;
       await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(f.admin), payload: { productVariantId: f.variantId, quantity: 1, negotiatedUnitPrice: 70 } });
-      const order = await c.inject({ method: 'POST', url: '/api/v1/orders', headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }), payload: { cartId, documentType: 'sales_note' } });
+      const order = await c.inject({
+        method: 'POST',
+        url: '/api/v1/orders',
+        headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }),
+        payload: { cartId, documentType: 'sales_note' },
+      });
       const body = JSON.parse(order.body) as { items: { id: string }[] };
       const req = await c.inject({ method: 'POST', url: '/api/v1/price-approvals', headers: c.writeHeaders(f.admin), payload: { orderItemId: body.items[0]!.id, reason: 'self' } });
       const approvalId = (JSON.parse(req.body) as { id: string }).id;

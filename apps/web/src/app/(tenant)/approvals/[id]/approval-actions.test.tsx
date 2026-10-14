@@ -60,4 +60,53 @@ describe('ApprovalActions', () => {
     expect(await screen.findByText(/no tienes autorización para resolver/i)).toBeInTheDocument();
     expect(refreshMock).not.toHaveBeenCalled();
   });
+
+  it('does not offer "Editar precio" without requestedPrice/maxPriceAtRequest', () => {
+    render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
+    expect(screen.queryByRole('button', { name: /editar precio/i })).not.toBeInTheDocument();
+  });
+
+  it('owner redesign: editing the price sends it in the approve body (editing = approving with that price)', async () => {
+    mockedFetch.mockResolvedValueOnce({});
+    render(
+      <ApprovalActions
+        approvalId="a-1"
+        status="pending"
+        canResolve
+        isOwnRequest={false}
+        requestedPrice={70}
+        maxPriceAtRequest={120}
+        minPriceAtRequest={80}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /editar precio/i }));
+    const input = screen.getByRole('spinbutton');
+    fireEvent.change(input, { target: { value: '90' } });
+    fireEvent.click(screen.getByRole('button', { name: /confirmar aprobación/i }));
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/price-approvals/a-1/approve', {
+      method: 'POST',
+      body: { price: 90 },
+    });
+  });
+
+  it('approving without touching "Editar precio" still sends no body, even when the price could be edited', async () => {
+    mockedFetch.mockResolvedValueOnce({});
+    render(
+      <ApprovalActions
+        approvalId="a-1"
+        status="pending"
+        canResolve
+        isOwnRequest={false}
+        requestedPrice={70}
+        maxPriceAtRequest={120}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /confirmar aprobación/i }));
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/price-approvals/a-1/approve', { method: 'POST' });
+  });
 });

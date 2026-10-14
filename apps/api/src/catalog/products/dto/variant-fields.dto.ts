@@ -29,12 +29,12 @@ export class VariantFieldsDto {
   @Min(0)
   maxPrice!: number;
 
-  @ApiProperty({ type: Number, minimum: 0, description: 'Default suggested selling price.' })
+  @ApiProperty({ type: Number, minimum: 0, description: 'Default suggested selling price — also the exceptional-discount approval trigger: a sale below this requires an approved price_approvals request.' })
   @IsNumber()
   @Min(0)
   basePrice!: number;
 
-  @ApiProperty({ type: Number, minimum: 0, description: 'Floor before an exceptional-discount approval is required.' })
+  @ApiProperty({ type: Number, minimum: 0, description: 'The tenant hard floor: a sale below this can be rejected outright, never just approved (see max_discount_below_min_percent).' })
   @IsNumber()
   @Min(0)
   minPrice!: number;

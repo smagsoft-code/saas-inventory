@@ -106,6 +106,28 @@ describe('CustomerForm', () => {
     await waitFor(() => expect(pushMock).toHaveBeenCalled());
   });
 
+  it('calls onCreated instead of navigating when provided (embedded in the sale-flow modal)', async () => {
+    mockedFetch.mockResolvedValueOnce({ id: 'new-1', displayName: 'Jane Doe' });
+    const onCreated = vi.fn();
+    render(<CustomerForm mode="create" onCreated={onCreated} />);
+    fireEvent.change(screen.getByLabelText(/^nombres$/i), { target: { value: 'Jane' } });
+    fireEvent.change(screen.getByLabelText(/^apellidos$/i), { target: { value: 'Doe' } });
+    fireEvent.change(screen.getByLabelText(/^cédula$/i), { target: { value: '0102030405' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear cliente/i }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith({ id: 'new-1', displayName: 'Jane Doe' }));
+    expect(pushMock).not.toHaveBeenCalled();
+    expect(refreshMock).not.toHaveBeenCalled();
+  });
+
+  it('uses onCancel instead of navigating to /customers when provided', () => {
+    const onCancel = vi.fn();
+    render(<CustomerForm mode="create" onCancel={onCancel} />);
+    fireEvent.click(screen.getByRole('button', { name: /^cancelar$/i }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
   it('never writes to browser storage', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'new-1' });
     render(<CustomerForm mode="create" />);

@@ -151,18 +151,21 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
   describe('checkout -> confirm -> inventory commit (§41, §144, §145)', () => {
     it('reserves at checkout (pending), commits at confirm (SALE), leaving a consistent ledger', async () => {
       const f = await seed('Order Flow Co', 'admin@order-flow.example', { stock: 10, basePrice: 100, maxPrice: 120, minPrice: 80 });
-      const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 3, negotiatedUnitPrice: 95 }]);
+      // 110 is >= base_price (100) — a normal, non-exceptional negotiation under the owner's
+      // policy change (the trigger moved from min_price to base_price), so confirm below needs
+      // no approval.
+      const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 3, negotiatedUnitPrice: 110 }]);
 
       const created = await checkout(f.admin, cartId, 'sales_note');
       expect(created.statusCode, created.body).toBe(201);
       const order = JSON.parse(created.body) as { id: string; status: string; orderNumber: string; total: number; subtotal: number; discountTotal: number; taxTotal: number; items: { unitPrice: number; lineTotal: number }[] };
       expect(order.status).toBe('pending');
       expect(order.orderNumber).toMatch(/^ORD-\d{6}$/);
-      expect(order.subtotal).toBe(285);
-      expect(order.total).toBe(285);
-      expect(order.discountTotal).toBe(75); // (120-95)*3
+      expect(order.subtotal).toBe(330);
+      expect(order.total).toBe(330);
+      expect(order.discountTotal).toBe(30); // (120-110)*3
       expect(order.taxTotal).toBe(0);
-      expect(order.items[0]!.unitPrice).toBe(95);
+      expect(order.items[0]!.unitPrice).toBe(110);
 
       // reservation held: available dropped, physical unchanged
       let bal = await balance(f.admin, f.variantId);
@@ -170,7 +173,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
       expect(bal.quantityReserved).toBe(3);
       expect(bal.quantityAvailable).toBe(7);
 
-      const confirmed = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin) });
+      const confirmed = await c.inject({
+        method: 'POST',
+        url: `/api/v1/orders/${order.id}/confirm`,
+        headers: c.writeHeaders(f.admin),
+        payload: { payments: [{ paymentMethod: 'cash', amount: order.total }] },
+      });
       expect(confirmed.statusCode, confirmed.body).toBe(200);
       expect((JSON.parse(confirmed.body) as { status: string }).status).toBe('confirmed');
 
@@ -192,9 +200,10 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
       const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
       const order = JSON.parse((await checkout(f.admin, cartId, 'sales_note')).body) as { id: string };
 
-      const first = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin) });
+      const confirmPayload = { payments: [{ paymentMethod: 'cash' as const, amount: 100 }] };
+      const first = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin), payload: confirmPayload });
       expect(first.statusCode).toBe(200);
-      const second = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin) });
+      const second = await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin), payload: confirmPayload });
       expect(second.statusCode).toBe(200);
       expect((JSON.parse(second.body) as { status: string }).status).toBe('confirmed');
 
@@ -427,7 +436,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
 
       const readCross = await c.inject({ method: 'GET', url: `/api/v1/orders/${bOrder.id}`, headers: c.readHeaders(a.admin) });
       expect(readCross.statusCode).toBe(404);
-      const confirmCross = await c.inject({ method: 'POST', url: `/api/v1/orders/${bOrder.id}/confirm`, headers: c.writeHeaders(a.admin) });
+      const confirmCross = await c.inject({
+        method: 'POST',
+        url: `/api/v1/orders/${bOrder.id}/confirm`,
+        headers: c.writeHeaders(a.admin),
+        payload: { payments: [{ paymentMethod: 'cash', amount: 1 }] },
+      });
       expect(confirmCross.statusCode).toBe(404);
       const checkoutCross = await checkout(a.admin, bCartId, 'sales_note');
       expect(checkoutCross.statusCode).toBe(404);
@@ -461,7 +475,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
       const f = await seed('Audit Co', 'admin@audit-sales.example', { stock: 5 });
       const cartId = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
       const order = JSON.parse((await checkout(f.admin, cartId, 'sales_note')).body) as { id: string };
-      await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin) });
+      await c.inject({
+        method: 'POST',
+        url: `/api/v1/orders/${order.id}/confirm`,
+        headers: c.writeHeaders(f.admin),
+        payload: { payments: [{ paymentMethod: 'cash', amount: 100 }] },
+      });
 
       const { client, db } = getMigratorDb();
       try {

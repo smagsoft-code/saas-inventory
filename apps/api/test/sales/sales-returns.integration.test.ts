@@ -65,7 +65,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: returns + dispositi
     });
     expect(order.statusCode, order.body).toBe(201);
     const body = JSON.parse(order.body) as { id: string; items: { id: string }[] };
-    const confirmed = await c.inject({ method: 'POST', url: `/api/v1/orders/${body.id}/confirm`, headers: c.writeHeaders(f.admin) });
+    const confirmed = await c.inject({
+      method: 'POST',
+      url: `/api/v1/orders/${body.id}/confirm`,
+      headers: c.writeHeaders(f.admin),
+      payload: { payments: [{ paymentMethod: 'cash', amount: quantity * 100 }] },
+    });
     expect(confirmed.statusCode, confirmed.body).toBe(200);
     return { orderId: body.id, orderItemId: body.items[0]!.id };
   }
@@ -157,7 +162,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: returns + dispositi
     const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(f.admin), payload: { locationId: f.sellLocationId, customerId: f.customerId } });
     const cartId = (JSON.parse(created.body) as { id: string }).id;
     await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(f.admin), payload: { productVariantId: f.variantId, quantity: 2 } });
-    const order = await c.inject({ method: 'POST', url: '/api/v1/orders', headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }), payload: { cartId, documentType: 'sales_note' } });
+    const order = await c.inject({
+      method: 'POST',
+      url: '/api/v1/orders',
+      headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }),
+      payload: { cartId, documentType: 'sales_note' },
+    });
     const body = JSON.parse(order.body) as { id: string; items: { id: string }[] };
     const r = await createReturn(f.admin, { orderId: body.id, locationId: f.sellLocationId, reason: 'too soon', items: [{ orderItemId: body.items[0]!.id, quantity: 1 }] });
     expect(r.statusCode).toBe(409);

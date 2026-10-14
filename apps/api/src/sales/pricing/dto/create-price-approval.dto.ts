@@ -1,8 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsNumber, IsOptional, IsUUID, Length, Min } from 'class-validator';
+import { IsNumber, IsOptional, IsPositive, IsUUID, Length, Min } from 'class-validator';
 
 /**
- * Files an exceptional-discount approval request against a below-`min_price` order line (§47,
+ * Files an exceptional-discount approval request against a below-`base_price` order line (§47,
  * §50). Order-first: the line already exists (`order_items.is_exceptional_discount = true`), frozen
  * at checkout — the server derives `requestedPrice`/`minPriceAtRequest`/`maxPriceAtRequest` from
  * that row, never from the client (§50). `reason` is the one legitimately client-supplied field.
@@ -25,4 +25,15 @@ export class CreatePriceApprovalDto {
   @IsNumber()
   @Min(0)
   requestedPrice?: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    minimum: 0,
+    description:
+      'Owner redesign: resubmitting after a rejection may propose a different price for the line before filing this new request — validated the same way checkout validates a negotiated price (max price ceiling, tenant hard floor). Omit to file against the price already on the line.',
+  })
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  newPrice?: number;
 }

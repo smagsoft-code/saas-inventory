@@ -8,14 +8,16 @@ import { IsOptional, IsString, IsUUID, Length } from 'class-validator';
  *
  * `email` is the login identifier (UI label "Usuario") — despite the property name, kept
  * unchanged for wire-contract stability, it is not required to be a real email address. Nothing
- * downstream depends on email *format*: `identities.email` (ADR-0033) is a plain, globally
+ * downstream depends on email *format*: `identities.email` (ADR-0033) is a plain,
  * case-insensitive-unique text column with no format CHECK, matched by exact string equality
- * (`IdentitiesRepository`), and `LoginDto.email` accepts the same free-form identifier — only the
- * 10-character minimum is enforced, matching the existing password minimum. */
+ * (`IdentitiesRepository`), and `LoginDto.email` accepts the same free-form identifier. No
+ * minimum length beyond non-empty — only the password keeps the 10-character floor. Uniqueness
+ * is enforced globally across the whole platform (`identities_email_lower_key`), not just within
+ * the creating tenant — the creating admin still only ever sees a plain 409 on conflict. */
 export class CreateUserDto {
-  @ApiProperty({ type: String, minLength: 10, maxLength: 128, description: 'Login identifier ("Usuario"). Minimum 10 characters — does not need to be a valid email address.' })
+  @ApiProperty({ type: String, minLength: 1, maxLength: 128, description: 'Login identifier ("Usuario") — does not need to be a valid email address.' })
   @IsString()
-  @Length(10, 128)
+  @Length(1, 128)
   email!: string;
 
   @ApiProperty({ type: String, minLength: 2, maxLength: 120 })

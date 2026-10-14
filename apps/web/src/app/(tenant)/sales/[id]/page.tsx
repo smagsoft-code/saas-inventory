@@ -32,6 +32,7 @@ import { Card, CardBody } from '../../../../components/ui/card';
 import { Alert } from '../../../../components/ui/alert';
 import { Badge } from '../../../../components/ui/badge';
 import { NoAccess } from '../../../../components/ui/no-access';
+import { PrintButton } from '../../../../components/ui/print-button';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
 
 export const metadata = { title: 'Pedido · SaaS Inventory' };
@@ -93,16 +94,30 @@ export default async function OrderDetailPage({
       : Promise.resolve([]),
   ]);
 
-  const approvalByItem = new Map(approvals.map((a) => [a.orderItemId, a]));
+  // The most recent `price_approvals` row per line (by `requestedAt`) — a line can have several
+  // historical rows (a rejected request reopens the form for a new one), so "latest" is what
+  // `OrderActions` needs, never mere existence.
+  const latestApprovalByItem = new Map<string, (typeof approvals)[number]>();
+  for (const approval of approvals) {
+    const current = latestApprovalByItem.get(approval.orderItemId);
+    if (!current || new Date(approval.requestedAt) > new Date(current.requestedAt)) {
+      latestApprovalByItem.set(approval.orderItemId, approval);
+    }
+  }
   const hasExceptional = order.items.some((item) => item.isExceptionalDiscount);
   const exceptionalLines: ExceptionalLine[] = order.items
     .filter((item) => item.isExceptionalDiscount)
-    .map((item) => ({
-      orderItemId: item.id,
-      sku: item.sku,
-      productName: item.productName,
-      hasApproval: approvalByItem.has(item.id),
-    }));
+    .map((item) => {
+      const base = {
+        orderItemId: item.id,
+        sku: item.sku,
+        productName: item.productName,
+        unitPrice: item.unitPrice,
+        maxPrice: item.maxPrice,
+      };
+      const latest = latestApprovalByItem.get(item.id);
+      return latest ? { ...base, latestStatus: latest.status as NonNullable<ExceptionalLine['latestStatus']> } : base;
+    });
   const pendingApprovalCount = approvals.filter((a) => a.status === 'pending').length;
   const addressEntries = Object.entries((order.customer.address ?? {}) as Record<string, unknown>).filter(
     ([, v]) => typeof v === 'string' && v !== '',
@@ -116,10 +131,11 @@ export default async function OrderDetailPage({
         actions={
           <div className="flex items-center gap-2">
             {order.status === 'confirmed' && canCreateReturn && (
-              <ButtonLink href={`/returns/new?orderId=${order.id}`} size="sm" variant="secondary">
+              <ButtonLink href={`/returns/new?orderId=${order.id}`} size="sm" variant="secondary" className="print:hidden">
                 Iniciar devolución
               </ButtonLink>
             )}
+            <PrintButton className="print:hidden" />
             <Badge tone={orderStatusTone(order.status)}>
               {ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status}
             </Badge>
@@ -153,7 +169,7 @@ export default async function OrderDetailPage({
             </dd>
             {order.customer.taxId && (
               <>
-                <dt className="text-slate-500">Identificación tributaria</dt>
+                <dt className="text-slate-500">Identificación</dt>
                 <dd className="text-slate-900">{order.customer.taxId}</dd>
               </>
             )}
@@ -249,14 +265,18 @@ export default async function OrderDetailPage({
         </CardBody>
       </Card>
 
-      <OrderActions
-        orderId={order.id}
-        status={order.status}
-        canConfirm={canConfirm}
-        canCancel={canCancel}
-        canRequestApproval={canRequestApproval}
-        exceptionalLines={exceptionalLines}
-      />
+      <div className="print:hidden">
+        <OrderActions
+          orderId={order.id}
+          status={order.status}
+          total={order.total}
+          canConfirm={canConfirm}
+          canCancel={canCancel}
+          canRequestApproval={canRequestApproval}
+          exceptionalLines={exceptionalLines}
+          requesterName={session?.fullName ?? ''}
+        />
+      </div>
 
       {canViewApprovals && approvals.length > 0 && (
         <Card>
@@ -393,7 +413,7 @@ export default async function OrderDetailPage({
         </Card>
       )}
 
-      <div className="flex gap-4 text-sm">
+      <div className="flex gap-4 text-sm print:hidden">
         <Link href="/sales" className="font-medium text-slate-500 hover:underline">
           Historial de ventas
         </Link>
@@ -407,7 +427,7 @@ export default async function OrderDetailPage({
         </Link>
         {order.customerId && canViewCustomer && (
           <Link href={`/customers/${order.customerId}`} className="font-medium text-slate-500 hover:underline">
-            Cliente {shortId(order.customerId)}
+            Ver cliente
           </Link>
         )}
       </div>

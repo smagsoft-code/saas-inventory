@@ -7,6 +7,7 @@ import { CurrentPermissions } from '../../common/decorators/current-permissions.
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { ConfirmOrderDto } from './dto/confirm-order.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
 import { OrderNotificationsResponseDto } from './dto/order-notifications-response.dto';
@@ -86,9 +87,10 @@ export class OrdersController {
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Param('id') id: string,
+    @Body() dto: ConfirmOrderDto,
     @Req() request: FastifyRequest,
   ): Promise<OrderResponseDto> {
-    return this.ordersService.confirm(tenantId, principal.userId, permissions, id, {
+    return this.ordersService.confirm(tenantId, principal.userId, permissions, id, dto, {
       correlationId: request.correlationId,
       ipAddress: request.ip,
     });

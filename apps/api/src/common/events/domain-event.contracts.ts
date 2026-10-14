@@ -78,7 +78,7 @@ export interface OrderConfirmedData {
   total: number;
   locationId: string;
   placedByUserId: string | null;
-  /** Whether any line used a below-min_price exceptional discount (an approved request gated the
+  /** Whether any line used a below-base_price exceptional discount (an approved request gated the
    * confirm). The floor/approval detail is not in the payload — ADR-0028. */
   hasExceptionalDiscount: boolean;
   /** Frozen buyer snapshot from the order (PII — the minimum a notification consumer needs). */

@@ -74,11 +74,19 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('events: SALES producers (i
 
   async function confirmedOrder(f: Fixture, quantity: number): Promise<{ orderId: string; orderItemId: string }> {
     const { orderId, orderItemId } = await pendingOrder(f, { quantity });
-    expect((await c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/confirm`, headers: c.writeHeaders(f.admin) })).statusCode).toBe(200);
+    expect((await confirm(f, orderId, quantity * 100)).statusCode).toBe(200);
     return { orderId, orderItemId };
   }
 
-  const confirm = (f: Fixture, orderId: string) => c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/confirm`, headers: c.writeHeaders(f.admin) });
+  // Owner redesign: the payment method is now picked at confirm, not at order creation —
+  // `amount` defaults to 200 (the default `pendingOrder()` fixture: 2 units @ basePrice 100).
+  const confirm = (f: Fixture, orderId: string, amount = 200) =>
+    c.inject({
+      method: 'POST',
+      url: `/api/v1/orders/${orderId}/confirm`,
+      headers: c.writeHeaders(f.admin),
+      payload: { payments: [{ paymentMethod: 'cash', amount }] },
+    });
   const cancel = (f: Fixture, orderId: string) => c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/cancel`, headers: c.writeHeaders(f.admin) });
 
   interface OutboxRow {
@@ -108,18 +116,20 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('events: SALES producers (i
   // ---------------------------------------------------------------------------
   it('order.confirmed: one event on pending -> confirmed, autosufficient payload, NO min/cost fields (§16/§30/§32)', async () => {
     const f = await seed('EV Confirm Co', `ev-confirm-${uniq()}@ex.com`);
-    const { orderId } = await pendingOrder(f, { quantity: 3, unitPrice: 95 });
-    expect((await confirm(f, orderId)).statusCode).toBe(200);
+    // 110 is >= base_price (100) — a normal, non-exceptional line under the owner's policy
+    // change, so confirm below needs no approval.
+    const { orderId } = await pendingOrder(f, { quantity: 3, unitPrice: 110 });
+    expect((await confirm(f, orderId, 330)).statusCode).toBe(200);
 
     const rows = await events(f.tenantId, orderId);
     expect(types(rows)).toEqual(['sales.order.confirmed']);
     const data = rows[0]!.payload['data'] as Record<string, unknown>;
     expect(data['orderId']).toBe(orderId);
-    expect(data['total']).toBe(285);
+    expect(data['total']).toBe(330);
     expect(data['currency']).toBe('USD');
     expect((data['customer'] as Record<string, unknown>)['name']).toContain('Customer');
     const line = (data['lines'] as Record<string, unknown>[])[0]!;
-    expect(line).toHaveProperty('unitPrice', 95);
+    expect(line).toHaveProperty('unitPrice', 110);
     expect(line).not.toHaveProperty('minPrice');
     expect(line).not.toHaveProperty('unitCost');
     expect(line).not.toHaveProperty('basePrice');

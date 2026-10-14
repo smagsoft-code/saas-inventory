@@ -86,6 +86,17 @@ describe('apiFetch', () => {
     expect(headers['Correlation-Id']).toBeTruthy();
   });
 
+  it('omits Content-Type on a bodyless mutation (e.g. POST /orders/:id/confirm) — Fastify 500s on JSON content-type with an empty body', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
+    global.fetch = fetchMock as typeof fetch;
+
+    await apiFetch('/api/v1/orders/o1/confirm', { method: 'POST' });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(init).not.toHaveProperty('body');
+    expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    expect((init.headers as Record<string, string>)['Correlation-Id']).toBeTruthy();
+  });
+
   it('sends a FormData body as-is and lets the browser set the multipart Content-Type', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, { id: 'job-1' }));
     global.fetch = fetchMock as typeof fetch;

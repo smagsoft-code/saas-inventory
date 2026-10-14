@@ -8,16 +8,16 @@ describe('SalesPricingService', () => {
   const service = new SalesPricingService();
 
   describe('classify', () => {
-    it('within range for min, base, max and anything between', () => {
-      expect(service.classify(80, CTX)).toBe('within_range');
+    it('within range only at base and above (owner policy change: trigger moved from min to base)', () => {
       expect(service.classify(100, CTX)).toBe('within_range');
       expect(service.classify(120, CTX)).toBe('within_range');
-      expect(service.classify(95, CTX)).toBe('within_range');
     });
 
-    it('below_min strictly under the floor', () => {
-      expect(service.classify(79.99, CTX)).toBe('below_min');
-      expect(service.classify(0, CTX)).toBe('below_min');
+    it('below_base for anything under base, including the old [min, base) "normal" band', () => {
+      expect(service.classify(95, CTX)).toBe('below_base');
+      expect(service.classify(80, CTX)).toBe('below_base');
+      expect(service.classify(79.99, CTX)).toBe('below_base');
+      expect(service.classify(0, CTX)).toBe('below_base');
     });
 
     it('above_max strictly over the ceiling', () => {
@@ -31,12 +31,12 @@ describe('SalesPricingService', () => {
       expect(service.resolveUnitPrice(null, CTX, 'SKU-1')).toEqual({ unitPrice: 100, classification: 'within_range' });
     });
 
-    it('returns a valid negotiated price unchanged', () => {
-      expect(service.resolveUnitPrice(90, CTX, 'SKU-1')).toEqual({ unitPrice: 90, classification: 'within_range' });
+    it('classifies a price between min and base as exceptional too (owner policy change)', () => {
+      expect(service.resolveUnitPrice(90, CTX, 'SKU-1')).toEqual({ unitPrice: 90, classification: 'below_base' });
     });
 
     it('permits a below-minimum price, classified as exceptional (FASE 13 — no longer a 409 here)', () => {
-      expect(service.resolveUnitPrice(50, CTX, 'SKU-1')).toEqual({ unitPrice: 50, classification: 'below_min' });
+      expect(service.resolveUnitPrice(50, CTX, 'SKU-1')).toEqual({ unitPrice: 50, classification: 'below_base' });
     });
 
     it('rejects a price above the maximum (400)', () => {
@@ -70,7 +70,7 @@ describe('SalesPricingService', () => {
   });
 
   describe('assertNotAboveMax (cart soft validation)', () => {
-    it('permits a below-min price (cart may stage an exceptional line)', () => {
+    it('permits a below-base price (cart may stage an exceptional line)', () => {
       expect(() => service.assertNotAboveMax(50, CTX, 'SKU-1')).not.toThrow();
     });
 

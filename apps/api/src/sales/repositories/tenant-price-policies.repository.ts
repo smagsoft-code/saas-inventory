@@ -7,7 +7,7 @@ import type { TenantTransaction } from '../../database/tenant-context';
  * `tenant_price_policies` (one row per tenant, ADR-0022 point 2 / database.md#pricing) — the
  * discount-governance knobs FASE 13's exceptional-pricing workflow reads:
  *
- *   - `exceptional_discount_requires_approval` (default `true`) — whether a below-`min_price` line
+ *   - `exceptional_discount_requires_approval` (default `true`) — whether a below-`base_price` line
  *     needs a resolved `price_approvals` row before its order can be confirmed.
  *   - `max_discount_below_min_percent` (default `NULL` = no extra floor) — the hard floor below
  *     which even an approval request is rejected outright (database.md#pricing: "a request below

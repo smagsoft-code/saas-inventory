@@ -281,7 +281,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('core: tenant/users/roles R
     });
   });
 
-  describe('LOGIN + USUARIOS UI/UX block: "Usuario" identifier (10+ chars, not required to be an email)', () => {
+  describe('LOGIN + USUARIOS UI/UX block: "Usuario" identifier (no minimum length, not required to be an email)', () => {
     it('creates a user with a non-email identifier of exactly 10 characters, and that user can log in with it', async () => {
       const admin = await registerTenant('Kappa Tenant Co', 'admin@kappa-tenant.example');
 
@@ -299,14 +299,29 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('core: tenant/users/roles R
       expect(session.user.tenantId).toBe(admin.user.tenantId);
     });
 
-    it('rejects an identifier shorter than 10 characters (400) — never a partial creation', async () => {
+    it('accepts a short, non-email identifier (well under the old 10-character floor) and logs in with it', async () => {
       const admin = await registerTenant('Lambda Tenant Co', 'admin@lambda-tenant.example');
+
+      const created = await inject({
+        method: 'POST',
+        url: '/api/v1/users',
+        headers: writeHeaders(admin),
+        payload: { email: 'vend1', fullName: 'Short Id User', password: 'a-very-long-password' },
+      });
+      expect(created.statusCode).toBe(201);
+
+      const session = await loginAs('vend1', 'a-very-long-password');
+      expect(session.user.tenantId).toBe(admin.user.tenantId);
+    });
+
+    it('still rejects an empty identifier (400) — never a partial creation', async () => {
+      const admin = await registerTenant('Lambda Two Tenant Co', 'admin@lambda-two-tenant.example');
 
       const response = await inject({
         method: 'POST',
         url: '/api/v1/users',
         headers: writeHeaders(admin),
-        payload: { email: 'short', fullName: 'Too Short', password: 'a-very-long-password' },
+        payload: { email: '', fullName: 'Empty Id', password: 'a-very-long-password' },
       });
       expect(response.statusCode).toBe(400);
     });

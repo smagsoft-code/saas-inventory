@@ -51,12 +51,20 @@ export class OrderItemResponseDto {
   @ApiProperty({
     type: Boolean,
     description:
-      'true when unitPrice is below the variant min_price at the moment of sale — the order cannot be confirmed until a price_approvals request for this line is approved (FASE 13).',
+      'true when unitPrice is below the variant base_price at the moment of sale — the order cannot be confirmed until a price_approvals request for this line is approved (FASE 13).',
   })
   isExceptionalDiscount!: boolean;
 
   @ApiProperty({ type: Number, description: 'unitPrice * quantity.' })
   lineTotal!: number;
+}
+
+export class OrderPaymentResponseDto {
+  @ApiProperty({ enum: ['cash', 'transfer', 'card', 'other'] })
+  paymentMethod!: string;
+
+  @ApiProperty({ type: Number })
+  amount!: number;
 }
 
 export class OrderResponseDto {
@@ -86,6 +94,9 @@ export class OrderResponseDto {
 
   @ApiProperty({ type: [OrderItemResponseDto] })
   items!: OrderItemResponseDto[];
+
+  @ApiProperty({ type: [OrderPaymentResponseDto] })
+  payments!: OrderPaymentResponseDto[];
 
   @ApiProperty({ type: Number })
   subtotal!: number;

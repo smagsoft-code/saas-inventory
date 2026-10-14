@@ -109,7 +109,7 @@ export default async function ApprovalDetailPage({
             <dd className="whitespace-pre-wrap text-slate-900">{approval.reason}</dd>
             <dt className="text-slate-500">Solicitado por</dt>
             <dd className="text-slate-900">
-              <code className="text-xs">{shortId(approval.requestedBy)}</code>
+              {approval.requestedByName}
               {isOwnRequest && <span className="text-slate-500"> · tú</span>}
             </dd>
             <dt className="text-slate-500">Solicitado el</dt>
@@ -117,9 +117,7 @@ export default async function ApprovalDetailPage({
             {approval.approvedBy && (
               <>
                 <dt className="text-slate-500">Resuelto por</dt>
-                <dd className="text-slate-900">
-                  <code className="text-xs">{shortId(approval.approvedBy)}</code>
-                </dd>
+                <dd className="text-slate-900">{approval.approvedByName}</dd>
               </>
             )}
             {approval.resolvedAt && (
@@ -135,6 +133,9 @@ export default async function ApprovalDetailPage({
             status={approval.status}
             canResolve={canResolve}
             isOwnRequest={isOwnRequest}
+            requestedPrice={approval.requestedPrice}
+            maxPriceAtRequest={approval.maxPriceAtRequest}
+            minPriceAtRequest={approval.minPriceAtRequest}
           />
         </CardBody>
       </Card>

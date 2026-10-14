@@ -66,16 +66,27 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: returns summary (
     f: Pick<Fixture, 'admin' | 'sellLocationId' | 'customerId'>,
     variantId: string,
     quantity: number,
+    unitPrice = 100,
   ): Promise<{ orderId: string; orderItemId: string }> {
     const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(f.admin), payload: { locationId: f.sellLocationId, customerId: f.customerId } });
     expect(created.statusCode, created.body).toBe(201);
     const cartId = (JSON.parse(created.body) as { id: string }).id;
     const added = await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(f.admin), payload: { productVariantId: variantId, quantity } });
     expect(added.statusCode, added.body).toBe(200);
-    const order = await c.inject({ method: 'POST', url: '/api/v1/orders', headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }), payload: { cartId, documentType: 'sales_note' } });
+    const order = await c.inject({
+      method: 'POST',
+      url: '/api/v1/orders',
+      headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }),
+      payload: { cartId, documentType: 'sales_note' },
+    });
     expect(order.statusCode, order.body).toBe(201);
     const body = JSON.parse(order.body) as { id: string; items: { id: string }[] };
-    const confirmed = await c.inject({ method: 'POST', url: `/api/v1/orders/${body.id}/confirm`, headers: c.writeHeaders(f.admin) });
+    const confirmed = await c.inject({
+      method: 'POST',
+      url: `/api/v1/orders/${body.id}/confirm`,
+      headers: c.writeHeaders(f.admin),
+      payload: { payments: [{ paymentMethod: 'cash', amount: quantity * unitPrice }] },
+    });
     expect(confirmed.statusCode, confirmed.body).toBe(200);
     return { orderId: body.id, orderItemId: body.items[0]!.id };
   }
@@ -337,10 +348,21 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: returns summary (
       const cartId = (JSON.parse(cart.body) as { id: string }).id;
       await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(f.admin), payload: { productVariantId: f.variantId, quantity: 4 } });
       await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(f.admin), payload: { productVariantId: variant2, quantity: 4 } });
-      const orderRes = await c.inject({ method: 'POST', url: '/api/v1/orders', headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }), payload: { cartId, documentType: 'sales_note' } });
+      const orderRes = await c.inject({
+        method: 'POST',
+        url: '/api/v1/orders',
+        headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }),
+        payload: { cartId, documentType: 'sales_note' },
+      });
       expect(orderRes.statusCode, orderRes.body).toBe(201);
       const order = JSON.parse(orderRes.body) as { id: string; items: { id: string; productVariantId: string }[] };
-      await c.inject({ method: 'POST', url: `/api/v1/orders/${order.id}/confirm`, headers: c.writeHeaders(f.admin) });
+      const confirmed = await c.inject({
+        method: 'POST',
+        url: `/api/v1/orders/${order.id}/confirm`,
+        headers: c.writeHeaders(f.admin),
+        payload: { payments: [{ paymentMethod: 'cash', amount: 400 }] },
+      });
+      expect(confirmed.statusCode, confirmed.body).toBe(200);
 
       const ret = await resolvedReturn(f, order.id, [
         { orderItemId: order.items[0]!.id, quantity: 2, disposition: 'restock' },
@@ -363,8 +385,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: returns summary (
     it('groups by variant with frozen sku/productName, sums correctly across two products', async () => {
       const f = await seed('Returns Product Co', `admin@returns-product-${uniq()}.example`, 20);
       const variant2 = await addAnotherVariant(f, 40);
-      const { orderId: order1, orderItemId: item1 } = await confirmedOrder(f, f.variantId, 10);
-      const { orderId: order2, orderItemId: item2 } = await confirmedOrder(f, variant2, 10);
+      const { orderId: order1, orderItemId: item1 } = await confirmedOrder(f, f.variantId, 10, 20);
+      const { orderId: order2, orderItemId: item2 } = await confirmedOrder(f, variant2, 10, 40);
       await resolvedReturn(f, order1, [{ orderItemId: item1, quantity: 5, disposition: 'restock' }]);
       await resolvedReturn(f, order2, [{ orderItemId: item2, quantity: 2, disposition: 'damaged' }]);
 
@@ -385,8 +407,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: returns summary (
     it('groups by customer with frozen customerName, sums correctly across two customers', async () => {
       const f = await seed('Returns Customer Co', `admin@returns-customer-${uniq()}.example`, 30);
       const customer2 = await c.createCustomer(f.admin, c.fullCustomer(`second-${uniq()}`));
-      const { orderId: order1, orderItemId: item1 } = await confirmedOrder(f, f.variantId, 10);
-      const { orderId: order2, orderItemId: item2 } = await confirmedOrder({ admin: f.admin, sellLocationId: f.sellLocationId, customerId: customer2 }, f.variantId, 10);
+      const { orderId: order1, orderItemId: item1 } = await confirmedOrder(f, f.variantId, 10, 30);
+      const { orderId: order2, orderItemId: item2 } = await confirmedOrder({ admin: f.admin, sellLocationId: f.sellLocationId, customerId: customer2 }, f.variantId, 10, 30);
       await resolvedReturn(f, order1, [{ orderItemId: item1, quantity: 3, disposition: 'restock' }]);
       await resolvedReturn(f, order2, [{ orderItemId: item2, quantity: 4, disposition: 'restock' }]);
 
@@ -403,14 +425,14 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: returns summary (
   describe('groupBy=disposition', () => {
     it('groups by disposition; a line with no disposition (never inspected) is excluded, never invented into a bucket', async () => {
       const f = await seed('Returns Disposition Co', `admin@returns-disposition-${uniq()}.example`, 25);
-      const { orderId, orderItemId } = await confirmedOrder(f, f.variantId, 20);
+      const { orderId, orderItemId } = await confirmedOrder(f, f.variantId, 20, 25);
       await resolvedReturn(f, orderId, [{ orderItemId, quantity: 3, disposition: 'restock' }]);
 
-      const { orderId: order2, orderItemId: item2 } = await confirmedOrder(f, f.variantId, 20);
+      const { orderId: order2, orderItemId: item2 } = await confirmedOrder(f, f.variantId, 20, 25);
       await resolvedReturn(f, order2, [{ orderItemId: item2, quantity: 2, disposition: 'damaged' }]);
 
       // A requested-but-not-yet-inspected return has disposition = NULL on its line.
-      const { orderId: order3, orderItemId: item3 } = await confirmedOrder(f, f.variantId, 20);
+      const { orderId: order3, orderItemId: item3 } = await confirmedOrder(f, f.variantId, 20, 25);
       await createReturn(f.admin, { orderId: order3, locationId: f.sellLocationId, reason: 'not inspected yet', items: [{ orderItemId: item3, quantity: 1 }] });
 
       const res = await summary(f.admin, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy: 'disposition', status: 'requested' });
@@ -431,12 +453,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: returns summary (
 
     it('two returns with different dispositions contribute to both buckets without inflating quantity', async () => {
       const f = await seed('Returns MultiDisposition Co', `admin@returns-multidisposition-${uniq()}.example`, 10);
-      const { orderId: order1, orderItemId: item1 } = await confirmedOrder(f, f.variantId, 10);
+      const { orderId: order1, orderItemId: item1 } = await confirmedOrder(f, f.variantId, 10, 10);
       await resolvedReturn(f, order1, [{ orderItemId: item1, quantity: 6, disposition: 'restock' }]);
 
       // A second order/return so we get a second, distinct disposition without violating the
       // "one disposition per line" schema simplification (ADR-0021).
-      const { orderId: order2, orderItemId: item2 } = await confirmedOrder(f, f.variantId, 10);
+      const { orderId: order2, orderItemId: item2 } = await confirmedOrder(f, f.variantId, 10, 10);
       await resolvedReturn(f, order2, [{ orderItemId: item2, quantity: 4, disposition: 'scrap' }]);
 
       const res = await summary(f.admin, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy: 'disposition' });

@@ -76,7 +76,16 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: order notification 
   it('after confirm, the sales.order.confirmed event is listed (pending — nothing delivers it in tests)', async () => {
     const f = await seed('NOTIF confirmed', `notif-ok-${uniq()}@ex.com`);
     const orderId = await pendingOrder(f, f.admin);
-    expect((await c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/confirm`, headers: c.writeHeaders(f.admin) })).statusCode).toBe(200);
+    expect(
+      (
+        await c.inject({
+          method: 'POST',
+          url: `/api/v1/orders/${orderId}/confirm`,
+          headers: c.writeHeaders(f.admin),
+          payload: { payments: [{ paymentMethod: 'cash', amount: 100 }] },
+        })
+      ).statusCode,
+    ).toBe(200);
 
     const body = JSON.parse((await notifications(f.admin, orderId)).body) as {
       overallStatus: string;

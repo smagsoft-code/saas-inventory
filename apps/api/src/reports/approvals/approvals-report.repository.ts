@@ -45,7 +45,7 @@ interface RangeParams {
  * No dedicated `(tenant_id, requested_at)` index exists today — `price_approvals` carries only the
  * partial `(tenant_id, status, requested_at) WHERE status = 'pending'` queue index and
  * `(tenant_id, order_id)`. This matches F18-04's already-accepted decision for `sales_returns`
- * (no index added): `price_approvals` is a naturally small table (one row per escalated below-min
+ * (no index added): `price_approvals` is a naturally small table (one row per escalated below-base
  * line), and there is no evidence of a query path that needs the index at scale yet. If a
  * high-volume tenant emerges, `(tenant_id, requested_at)` is the additive index to add then — not
  * speculatively here (CLAUDE.md §7.7, prompt §18).

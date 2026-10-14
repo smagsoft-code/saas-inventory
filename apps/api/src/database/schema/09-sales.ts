@@ -245,6 +245,7 @@ export const priceApprovals = pgTable('price_approvals', {
   orderItemId: uuid('order_item_id').notNull(),
   requestedPrice: numeric('requested_price').notNull(),
   minPriceAtRequest: numeric('min_price_at_request').notNull(),
+  basePriceAtRequest: numeric('base_price_at_request').notNull(),
   maxPriceAtRequest: numeric('max_price_at_request').notNull(),
   discountAmount: numeric('discount_amount').notNull(),
   reason: text('reason').notNull(),
@@ -284,6 +285,31 @@ export const priceApprovals = pgTable('price_approvals', {
   index('price_approvals_tenant_pending_queue_idx').on(t.tenantId, t.status, t.requestedAt).where(sql`${t.status} = 'pending'`),
   index('price_approvals_tenant_order_idx').on(t.tenantId, t.orderId),
   tenantIsolationPolicy('price_approvals'),
+]).enableRLS();
+
+/** One row per payment method applied to an order (owner redesign — split payment at checkout).
+ * Written once, in the same transaction as the order itself (`OrdersService.checkout`); never
+ * updated afterward — same immutable-record posture as `order_items`. The sum of `amount` across
+ * an order's rows must equal `orders.total` (checked in application code, §39-style invariant —
+ * no CHECK constraint can reach across rows). */
+export const orderPayments = pgTable('order_payments', {
+  id: id(),
+  tenantId: tenantId(),
+  orderId: uuid('order_id').notNull(),
+  paymentMethod: text('payment_method').notNull(),
+  amount: numeric('amount').notNull(),
+  createdAt: createdAt(),
+}, (t) => [
+  foreignKey({
+    name: 'order_payments_order_fk',
+    columns: [t.tenantId, t.orderId],
+    foreignColumns: [orders.tenantId, orders.id],
+  }).onDelete('restrict'),
+  unique('order_payments_tenant_id_id_key').on(t.tenantId, t.id),
+  check('order_payments_method_check', sql`${t.paymentMethod} IN ('cash', 'transfer', 'card', 'other')`),
+  check('order_payments_amount_check', sql`${t.amount} > 0`),
+  index('order_payments_tenant_order_idx').on(t.tenantId, t.orderId),
+  tenantIsolationPolicy('order_payments'),
 ]).enableRLS();
 
 export const salesReturns = pgTable('sales_returns', {

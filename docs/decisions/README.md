@@ -71,6 +71,7 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0035](0035-location-scope-deny-by-default.md) | Location-Scoped Authorization Defaults to Deny, with a Founding-Administrador Exception | Accepted |
 | [0036](0036-tenant-onboarding-and-support.md) | Tenant Onboarding (No SuperAdmin-Set Password) and Tenant Support (Audited, Non-Impersonating Access) | Accepted |
 | [0037](0037-inventory-moving-average-cost.md) | Inventory Costing — Weighted-Average, Computed Never Stored | Accepted |
+| [0038](0038-order-pdf-export.md) | Order PDF Export — Browser Print Now, Server-Side Generation Deferred | Accepted |
 
 ADRs 0001–0015 were produced in Prompt 01 (architecture phase) alongside
 [docs/architecture/](../architecture/) and [docs/security/threat-model.md](../security/threat-model.md).

@@ -72,7 +72,7 @@ export function ShellLayout({
           collapsed width via lg:pl-16. */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-30 hidden w-16 flex-col overflow-hidden',
+          'fixed inset-y-0 left-0 z-30 hidden w-16 flex-col overflow-hidden print:hidden',
           'border-r border-slate-200 bg-white shadow-none transition-[width] duration-200 ease-in-out',
           'hover:w-64 hover:shadow-xl lg:flex',
           // Only this rail's own `.nav-label` descendants fade in on hover — the identical `nav`/
@@ -137,7 +137,7 @@ export function ShellLayout({
       )}
 
       <div className="flex min-w-0 flex-col lg:pl-16">
-        <div className="sticky top-0 z-20 flex flex-col">
+        <div className="sticky top-0 z-20 flex flex-col print:hidden">
           {banner}
           <header className="flex h-14 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
             <div className="flex items-center gap-2">

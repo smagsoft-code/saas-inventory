@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PriceApprovalsService } from './price-approvals.service';
+import { SalesPricingService } from './sales-pricing.service';
 
 vi.mock('../../database/tenant-context', () => ({
   withTenantTransaction: vi.fn(async (_tenantId: string, fn: (tx: unknown) => unknown) => fn({ execute: vi.fn() })),
@@ -39,6 +40,7 @@ const PENDING_ROW = {
   orderItemId: 'oi-1',
   requestedPrice: '70.00',
   minPriceAtRequest: '80.00',
+  basePriceAtRequest: '100.00',
   maxPriceAtRequest: '120.00',
   discountAmount: '100.00',
   reason: 'loyal customer',
@@ -60,18 +62,47 @@ function build() {
     cancelPendingByOrder: vi.fn(),
     resolveIfPending: vi.fn(),
   };
-  const ordersRepository = { lockById: vi.fn().mockResolvedValue({ id: 'order-1', status: 'pending', tenantId: TENANT }) };
-  const orderItemsRepository = { findById: vi.fn().mockResolvedValue(ORDER_ITEM) };
+  const ordersRepository = {
+    lockById: vi.fn().mockResolvedValue({ id: 'order-1', status: 'pending', tenantId: TENANT }),
+    findById: vi.fn().mockResolvedValue({ id: 'order-1', orderNumber: 'ORD-000001', tenantId: TENANT }),
+    updateTotals: vi.fn().mockResolvedValue(undefined),
+  };
+  const orderItemsRepository = {
+    findById: vi.fn().mockResolvedValue(ORDER_ITEM),
+    updatePriceWhilePending: vi.fn((_tx: unknown, _tenantId: string, _id: string, values: Record<string, unknown>) =>
+      Promise.resolve({ ...ORDER_ITEM, ...values }),
+    ),
+    listByOrder: vi.fn().mockResolvedValue([ORDER_ITEM]),
+  };
+  const usersRepository = {
+    findById: vi.fn((_tx: unknown, _tenantId: string, userId: string) =>
+      Promise.resolve(userId === REQUESTER ? { id: REQUESTER, fullName: 'Jane Requester' } : { id: APPROVER, fullName: 'Alex Approver' }),
+    ),
+  };
+  const pricePoliciesRepository = {
+    getEffective: vi.fn().mockResolvedValue({ exceptionalDiscountRequiresApproval: true, maxDiscountBelowMinPercent: null }),
+  };
   const auditLogService = { record: vi.fn() };
   const domainEventPublisher = { append: vi.fn() };
   const service = new PriceApprovalsService(
     priceApprovalsRepository as never,
     ordersRepository as never,
     orderItemsRepository as never,
+    usersRepository as never,
+    pricePoliciesRepository as never,
+    new SalesPricingService(),
     auditLogService as never,
     domainEventPublisher as never,
   );
-  return { service, priceApprovalsRepository, ordersRepository, orderItemsRepository, domainEventPublisher };
+  return {
+    service,
+    priceApprovalsRepository,
+    ordersRepository,
+    orderItemsRepository,
+    usersRepository,
+    pricePoliciesRepository,
+    domainEventPublisher,
+  };
 }
 
 describe('PriceApprovalsService.request', () => {
@@ -83,6 +114,7 @@ describe('PriceApprovalsService.request', () => {
     const values = priceApprovalsRepository.create.mock.calls[0]![1] as Record<string, unknown>;
     expect(values.requestedPrice).toBe('70.00');
     expect(values.minPriceAtRequest).toBe('80.00');
+    expect(values.basePriceAtRequest).toBe('100.00');
     expect(values.maxPriceAtRequest).toBe('120.00');
     // discountAmount is computed against max_price, not min_price (does not leak the floor).
     expect(values.discountAmount).toBe('100.00');
@@ -118,6 +150,39 @@ describe('PriceApprovalsService.request', () => {
     await expect(
       service.request(TENANT, REQUESTER, REQUEST_PERMS, { orderItemId: 'oi-1', reason: 'x reason' }, META),
     ).rejects.toThrow(ConflictException);
+  });
+
+  it('owner redesign: a resubmission can propose a new price for the line before filing', async () => {
+    const { service, orderItemsRepository, ordersRepository, priceApprovalsRepository } = build();
+    await service.request(TENANT, REQUESTER, REQUEST_PERMS, { orderItemId: 'oi-1', reason: 'new price', newPrice: 85 }, META);
+    expect(orderItemsRepository.updatePriceWhilePending).toHaveBeenCalledWith(expect.anything(), TENANT, 'oi-1', {
+      unitPriceSnapshot: '85.00',
+      lineTotal: '170.00',
+      discountAmount: '70.00',
+      isExceptionalDiscount: true,
+    });
+    expect(ordersRepository.updateTotals).toHaveBeenCalled();
+    const values = priceApprovalsRepository.create.mock.calls[0]![1] as Record<string, unknown>;
+    expect(values.requestedPrice).toBe('85.00');
+  });
+
+  it('a resubmission price that clears the exceptional-discount band needs no approval (422), after mutating the line', async () => {
+    const { service, orderItemsRepository } = build();
+    await expect(
+      service.request(TENANT, REQUESTER, REQUEST_PERMS, { orderItemId: 'oi-1', reason: 'raised price', newPrice: 100 }, META),
+    ).rejects.toThrow(UnprocessableEntityException);
+    expect(orderItemsRepository.updatePriceWhilePending).toHaveBeenCalledWith(expect.anything(), TENANT, 'oi-1', {
+      unitPriceSnapshot: '100.00',
+      lineTotal: '200.00',
+      discountAmount: '40.00',
+      isExceptionalDiscount: false,
+    });
+  });
+
+  it('leaves the line untouched when newPrice equals the price already on it', async () => {
+    const { service, orderItemsRepository } = build();
+    await service.request(TENANT, REQUESTER, REQUEST_PERMS, { orderItemId: 'oi-1', reason: 'same price', newPrice: 70 }, META);
+    expect(orderItemsRepository.updatePriceWhilePending).not.toHaveBeenCalled();
   });
 });
 
@@ -161,6 +226,53 @@ describe('PriceApprovalsService.approve / reject', () => {
     priceApprovalsRepository.lockById.mockResolvedValue(undefined);
     await expect(service.reject(TENANT, APPROVER, APPROVE_PERMS, 'missing', META)).rejects.toThrow(NotFoundException);
   });
+
+  it('owner redesign: editing = approving with that new price, atomically', async () => {
+    const { service, priceApprovalsRepository, orderItemsRepository, ordersRepository } = build();
+    priceApprovalsRepository.lockById.mockResolvedValue(PENDING_ROW);
+    priceApprovalsRepository.resolveIfPending.mockResolvedValue({
+      ...PENDING_ROW,
+      status: 'approved',
+      approvedBy: APPROVER,
+      requestedPrice: '90.00',
+      discountAmount: '60.00',
+    });
+    const result = await service.approve(TENANT, APPROVER, APPROVE_PERMS, 'pa-1', META, 90);
+    expect(result.status).toBe('approved');
+    expect(priceApprovalsRepository.resolveIfPending).toHaveBeenCalledWith(expect.anything(), TENANT, 'pa-1', {
+      status: 'approved',
+      approvedBy: APPROVER,
+      requestedPrice: '90.00',
+      discountAmount: '60.00',
+    });
+    expect(orderItemsRepository.updatePriceWhilePending).toHaveBeenCalledWith(expect.anything(), TENANT, 'oi-1', {
+      unitPriceSnapshot: '90.00',
+      lineTotal: '180.00',
+      discountAmount: '60.00',
+      isExceptionalDiscount: true,
+    });
+    expect(ordersRepository.updateTotals).toHaveBeenCalled();
+  });
+
+  it('rejects an admin price edit that violates the tenant hard floor, writing nothing', async () => {
+    const { service, priceApprovalsRepository, orderItemsRepository, ordersRepository, pricePoliciesRepository } = build();
+    pricePoliciesRepository.getEffective.mockResolvedValue({ exceptionalDiscountRequiresApproval: true, maxDiscountBelowMinPercent: 10 });
+    priceApprovalsRepository.lockById.mockResolvedValue(PENDING_ROW);
+    await expect(service.approve(TENANT, APPROVER, APPROVE_PERMS, 'pa-1', META, 50)).rejects.toThrow(UnprocessableEntityException);
+    expect(priceApprovalsRepository.resolveIfPending).not.toHaveBeenCalled();
+    expect(orderItemsRepository.updatePriceWhilePending).not.toHaveBeenCalled();
+    expect(ordersRepository.updateTotals).not.toHaveBeenCalled();
+  });
+
+  it('discards a computed price edit when the approval CAS loses the race', async () => {
+    const { service, priceApprovalsRepository, orderItemsRepository, ordersRepository } = build();
+    priceApprovalsRepository.lockById.mockResolvedValue(PENDING_ROW);
+    priceApprovalsRepository.resolveIfPending.mockResolvedValue(undefined);
+    priceApprovalsRepository.findById.mockResolvedValue({ ...PENDING_ROW, status: 'rejected', approvedBy: APPROVER });
+    await expect(service.approve(TENANT, APPROVER, APPROVE_PERMS, 'pa-1', META, 90)).rejects.toThrow(ConflictException);
+    expect(orderItemsRepository.updatePriceWhilePending).not.toHaveBeenCalled();
+    expect(ordersRepository.updateTotals).not.toHaveBeenCalled();
+  });
 });
 
 describe('PriceApprovalsService — visibility & permissions', () => {
@@ -172,6 +284,7 @@ describe('PriceApprovalsService — visibility & permissions', () => {
     const withoutFloor = await service.getById(TENANT, ['pricing.discount.approve'], 'pa-1');
     expect(withoutFloor.minPriceAtRequest).toBeUndefined();
     expect(withoutFloor.maxPriceAtRequest).toBe(120);
+    expect(withoutFloor.basePriceAtRequest).toBe(100); // never gated — it's the trigger itself
     const withFloor = await service.getById(TENANT, ['pricing.discount.approve', 'pricing.floor.view'], 'pa-1');
     expect(withFloor.minPriceAtRequest).toBe(80);
   });
@@ -179,5 +292,21 @@ describe('PriceApprovalsService — visibility & permissions', () => {
   it('403s a caller with neither request nor approve permission', async () => {
     const { service } = build();
     await expect(service.getById(TENANT, ['sales.orders.view'], 'pa-1')).rejects.toThrow(ForbiddenException);
+  });
+
+  it('resolves orderNumber + requestedByName server-side, never a raw id', async () => {
+    const { service, priceApprovalsRepository } = build();
+    priceApprovalsRepository.findById.mockResolvedValue(PENDING_ROW);
+    const result = await service.getById(TENANT, APPROVE_PERMS, 'pa-1');
+    expect(result.orderNumber).toBe('ORD-000001');
+    expect(result.requestedByName).toBe('Jane Requester');
+    expect(result.approvedByName).toBeUndefined();
+  });
+
+  it('resolves approvedByName once a request is resolved', async () => {
+    const { service, priceApprovalsRepository } = build();
+    priceApprovalsRepository.findById.mockResolvedValue({ ...PENDING_ROW, status: 'approved', approvedBy: APPROVER });
+    const result = await service.getById(TENANT, APPROVE_PERMS, 'pa-1');
+    expect(result.approvedByName).toBe('Alex Approver');
   });
 });

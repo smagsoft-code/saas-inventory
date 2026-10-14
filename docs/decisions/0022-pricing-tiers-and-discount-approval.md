@@ -75,3 +75,26 @@ Full schema:
 - The cross-table check ("is this request below the tenant's hard floor") is application logic, not a
   database `CHECK` — a `CHECK` constraint cannot reference another table without a trigger, and this is
   a business-rule guard, not a tenant-isolation-critical invariant that would justify one.
+
+## Amendment (2026-10-05): exceptional-discount trigger moved from `min_price` to `base_price`
+
+Owner policy change. The original decision (above) treated `[min_price, max_price]` as one
+undifferentiated "normal negotiation" band and reserved the `price_approvals` workflow for anything
+below `min_price`. The owner now requires any price **below `base_price`** to go through the same
+approval workflow — `base_price` is no longer just a suggested starting point, it is the real
+exceptional-discount trigger. `min_price` keeps exactly its prior, narrower role: the tenant's hard
+floor (`max_discount_below_min_percent`), below which no approval can authorize a sale at all. A price
+in `[min_price, base_price)` is now exceptional but never subject to the hard-floor rejection — only a
+price actually below `min_price` is.
+
+Mechanically: `SalesPricingService.classify()`'s `below_min` result was renamed `below_base` and its
+comparison changed from `unitPrice < minPrice` to `unitPrice < basePrice`; `assertWithinHardFloor` is
+unchanged (still keyed to `minPrice`). `price_approvals` gained a `base_price_at_request` column
+(migration `0038`, backfilled from each request's `order_items.base_price_snapshot`) so an approver
+can see what threshold actually triggered a given request — `minPriceAtRequest` alone no longer
+explains it, since a request can now exist for a price still above `min_price`.
+
+No schema change to `product_variants`/`tenant_price_policies` — `base_price` already existed as a
+live value read on every hot path; only its *role* changed. Existing `pending` orders created before
+this change keep whatever `is_exceptional_discount` value they were frozen with (no backfill on
+`order_items` — frozen history is never rewritten, per this ADR's own §1).

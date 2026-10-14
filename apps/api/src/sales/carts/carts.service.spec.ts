@@ -95,6 +95,31 @@ describe('CartsService', () => {
     await expect(service.createOrGetActive(TENANT_ID, USER_ID, PERMS, { locationId: 'loc-1' }, META)).rejects.toThrow(ConflictException);
   });
 
+  describe('discard', () => {
+    it('abandons the caller\'s open cart — status -> abandoned, never a hard delete', async () => {
+      const { service, cartsRepository } = buildService();
+      cartsRepository.findOpenByUser.mockResolvedValue(OPEN_CART);
+      cartsRepository.lockById.mockResolvedValue(OPEN_CART);
+      await service.discard(TENANT_ID, USER_ID, META);
+      expect(cartsRepository.update).toHaveBeenCalledWith(expect.anything(), TENANT_ID, OPEN_CART.id, { status: 'abandoned' });
+    });
+
+    it('is a no-op (not a 404) when the caller has no open cart', async () => {
+      const { service, cartsRepository } = buildService();
+      cartsRepository.findOpenByUser.mockResolvedValue(undefined);
+      await expect(service.discard(TENANT_ID, USER_ID, META)).resolves.toBeUndefined();
+      expect(cartsRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op if the cart was concurrently checked out/abandoned between the lookup and the lock', async () => {
+      const { service, cartsRepository } = buildService();
+      cartsRepository.findOpenByUser.mockResolvedValue(OPEN_CART);
+      cartsRepository.lockById.mockResolvedValue({ ...OPEN_CART, status: 'checked_out' });
+      await service.discard(TENANT_ID, USER_ID, META);
+      expect(cartsRepository.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('addItem', () => {
     beforeEach(() => {});
 

@@ -52,6 +52,20 @@ export class CartsController {
     });
   }
 
+  @Delete()
+  @HttpCode(204)
+  @RequirePermissions('sales.carts.manage')
+  async discard(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Req() request: FastifyRequest,
+  ): Promise<void> {
+    return this.cartsService.discard(tenantId, principal.userId, {
+      correlationId: request.correlationId,
+      ipAddress: request.ip,
+    });
+  }
+
   @Patch()
   @RequirePermissions('sales.carts.manage')
   @ApiOkResponse({ type: CartResponseDto })

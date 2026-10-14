@@ -149,4 +149,21 @@ export class OrdersRepository {
       .returning();
     return row;
   }
+
+  /** Owner redesign — the recomputed totals after `PriceApprovalsService` edits a line's price
+   * while the order is still `pending` (`order_items.updatePriceWhilePending`). `orders` already
+   * has full UPDATE (unlike `order_items`), so this needs no new grant. */
+  async updateTotals(
+    tx: TenantTransaction,
+    tenantId: string,
+    id: string,
+    values: { subtotal: string; discountTotal: string; total: string },
+  ): Promise<OrderRow | undefined> {
+    const [row] = await tx
+      .update(orders)
+      .set(values)
+      .where(and(eq(orders.tenantId, tenantId), eq(orders.id, id)))
+      .returning();
+    return row;
+  }
 }

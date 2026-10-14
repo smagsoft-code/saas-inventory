@@ -105,7 +105,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
   }
 
   /** cart -> checkout. Returns the pending order. */
-  async function checkout(f: Fixture, session: Session, lines: Line[], customerId = f.customerId): Promise<{ id: string; items: { id: string; isExceptionalDiscount: boolean }[] }> {
+  async function checkout(f: Fixture, session: Session, lines: Line[], customerId = f.customerId): Promise<{ id: string; items: { id: string; isExceptionalDiscount: boolean }[]; total: number }> {
     const cart = await c.inject({
       method: 'POST',
       url: '/api/v1/cart',
@@ -127,6 +127,9 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
       });
       expect(added.statusCode, added.body).toBe(200);
     }
+    // Every fixture variant is max=120/base=100/min=80 (seed's own doc comment) — an unpriced line
+    // defaults to basePrice (100) at checkout, same as `SalesPricingService.resolveUnitPrice`.
+    const total = lines.reduce((sum, line) => sum + line.quantity * (line.negotiatedUnitPrice ?? 100), 0);
     const order = await c.inject({
       method: 'POST',
       url: '/api/v1/orders',
@@ -134,11 +137,16 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
       payload: { cartId, documentType: 'sales_note' },
     });
     expect(order.statusCode, order.body).toBe(201);
-    return JSON.parse(order.body) as { id: string; items: { id: string; isExceptionalDiscount: boolean }[] };
+    return { ...(JSON.parse(order.body) as { id: string; items: { id: string; isExceptionalDiscount: boolean }[] }), total };
   }
 
-  async function confirm(session: Session, orderId: string): Promise<void> {
-    const res = await c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/confirm`, headers: c.writeHeaders(session) });
+  async function confirm(session: Session, orderId: string, amount: number): Promise<void> {
+    const res = await c.inject({
+      method: 'POST',
+      url: `/api/v1/orders/${orderId}/confirm`,
+      headers: c.writeHeaders(session),
+      payload: { payments: [{ paymentMethod: 'cash', amount }] },
+    });
     expect(res.statusCode, res.body).toBe(200);
   }
 
@@ -161,10 +169,10 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
     await dropApprovalRequirement(f.tenantId);
 
     const normal = await checkout(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]); // 100, within range
-    await confirm(f.admin, normal.id);
+    await confirm(f.admin, normal.id, normal.total);
     const exceptional = await checkout(f, f.admin, [{ variantId: f.variantId, quantity: 1, negotiatedUnitPrice: 70 }]);
     expect(exceptional.items[0]!.isExceptionalDiscount).toBe(true);
-    await confirm(f.admin, exceptional.id);
+    await confirm(f.admin, exceptional.id, exceptional.total);
 
     // Prove there is genuinely no approval row — the filter cannot be relying on a join.
     expect(await countApprovals(f.tenantId, exceptional.id)).toBe(0);
@@ -202,7 +210,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
     const approvalId = (JSON.parse(filed.body) as { id: string }).id;
     const approved = await c.inject({ method: 'POST', url: `/api/v1/price-approvals/${approvalId}/approve`, headers: c.writeHeaders(supervisor) });
     expect(approved.statusCode, approved.body).toBe(200);
-    await confirm(f.admin, order.id);
+    await confirm(f.admin, order.id, order.total);
 
     expect(await countApprovals(f.tenantId, order.id)).toBe(1);
     const only = await summary(f.admin, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy: 'day', exceptional: 'only' });
@@ -216,9 +224,9 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
     const f = await seed('F1806 Default Co', `admin@f1806-default-${uniq()}.example`);
     await dropApprovalRequirement(f.tenantId);
     const a = await checkout(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
-    await confirm(f.admin, a.id);
+    await confirm(f.admin, a.id, a.total);
     const b = await checkout(f, f.admin, [{ variantId: f.variantId, quantity: 1, negotiatedUnitPrice: 70 }]);
-    await confirm(f.admin, b.id);
+    await confirm(f.admin, b.id, b.total);
 
     const omitted = await summary(f.admin, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy: 'day' });
     const explicitAll = await summary(f.admin, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy: 'day', exceptional: 'all' });
@@ -255,9 +263,9 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
     await dropApprovalRequirement(a.tenantId);
     await dropApprovalRequirement(b.tenantId);
     const oa = await checkout(a, a.admin, [{ variantId: a.variantId, quantity: 1, negotiatedUnitPrice: 70 }]);
-    await confirm(a.admin, oa.id);
+    await confirm(a.admin, oa.id, oa.total);
     const ob = await checkout(b, b.admin, [{ variantId: b.variantId, quantity: 1, negotiatedUnitPrice: 70 }]);
-    await confirm(b.admin, ob.id);
+    await confirm(b.admin, ob.id, ob.total);
 
     const resA = await summary(a.admin, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy: 'day', exceptional: 'only' });
     expect(orderTotal(parse(resA))).toBe(1);
@@ -291,7 +299,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
       { variantId: other.variantId, quantity: 1 }, // normal line, total 100
     ]);
     expect(mixed.items.find((i) => i.isExceptionalDiscount)).toBeTruthy();
-    await confirm(f.admin, mixed.id);
+    await confirm(f.admin, mixed.id, mixed.total);
 
     // period: the WHOLE order (170) is counted once under exceptional=only, and NOT at all under exclude.
     const only = await summary(f.admin, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy: 'day', exceptional: 'only' });
@@ -321,9 +329,9 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
     const f = await seed('F1806 Grouping Co', `admin@f1806-grouping-${uniq()}.example`);
     await dropApprovalRequirement(f.tenantId);
     const normal = await checkout(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
-    await confirm(f.admin, normal.id);
+    await confirm(f.admin, normal.id, normal.total);
     const exc = await checkout(f, f.admin, [{ variantId: f.variantId, quantity: 1, negotiatedUnitPrice: 70 }]);
-    await confirm(f.admin, exc.id);
+    await confirm(f.admin, exc.id, exc.total);
 
     for (const groupBy of ['week', 'month', 'customer'] as const) {
       const only = await summary(f.admin, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy, exceptional: 'only' });
@@ -338,7 +346,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: sales summary exc
   it('exceptional=only with no exceptional orders in range returns an empty buckets array (not an error)', async () => {
     const f = await seed('F1806 Empty Co', `admin@f1806-empty-${uniq()}.example`);
     const normal = await checkout(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
-    await confirm(f.admin, normal.id);
+    await confirm(f.admin, normal.id, normal.total);
 
     const res = await summary(f.admin, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy: 'day', exceptional: 'only' });
     expect(res.statusCode).toBe(200);

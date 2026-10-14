@@ -1,0 +1,14 @@
+-- Owner redesign: an administrator reviewing an exceptional-discount request (or a vendor
+-- resubmitting after a rejection) can now edit the line's price — `PriceApprovalsService` writes
+-- the new unit price/line total/discount amount/exceptional flag onto `order_items`, and the
+-- recomputed subtotal/discount total/total onto `orders`, in the same transaction that resolves
+-- or files the `price_approvals` row. Scoped tightly: only ever while the order is still
+-- `pending` (never a confirmed order's frozen history — the `order_items` repository's own
+-- "never updated" posture stands for every row once the order leaves `pending`).
+--
+-- `order_items` previously had no UPDATE grant at all (migration 0009: "every *_snapshot column
+-- is written once at creation and never updated by design") — this is the narrow, column-level
+-- exception that design now needs, same column-level-grant precedent as migration 0033's
+-- `GRANT UPDATE (status) ON warehouses`. `orders` already has full UPDATE (migration 0009, used
+-- by `updateStatus`), so no change is needed there.
+GRANT UPDATE (unit_price_snapshot, line_total, discount_amount, is_exceptional_discount) ON order_items TO app_tenant;

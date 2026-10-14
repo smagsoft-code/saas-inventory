@@ -63,6 +63,19 @@ export interface CreateQrCodeInput {
   expiresAt?: string;
 }
 
+/** `GET /qr-codes/resolve/:code` — `QrResolveIdentityResponseDto`. Authenticated, no permission
+ * beyond login — identity-only, deliberately never pricing/stock (mobile.md#qr-on-mobile): the
+ * caller still goes through the normal, permission-gated product/variant lookup for anything
+ * else. For `targetType: 'location'` only `locationId` is present. */
+export interface QrResolveIdentity {
+  qrCodeId: string;
+  targetType: QrTargetType;
+  productVariantId?: string;
+  productId?: string;
+  locationId?: string;
+  status: string;
+}
+
 /** Whether a QR code is past its `expiresAt` (display hint only — the backend enforces expiry at
  * resolve time). */
 export function isQrExpired(qr: Pick<QrCode, 'expiresAt'>, now: Date = new Date()): boolean {

@@ -63,7 +63,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: approvals summary
     const cartId = (JSON.parse(created.body) as { id: string }).id;
     const added = await c.inject({ method: 'POST', url: '/api/v1/cart/items', headers: c.writeHeaders(f.admin), payload: { productVariantId: f.variantId, quantity, negotiatedUnitPrice: 60 } });
     expect(added.statusCode, added.body).toBe(200);
-    const order = await c.inject({ method: 'POST', url: '/api/v1/orders', headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }), payload: { cartId, documentType: 'sales_note' } });
+    const order = await c.inject({
+      method: 'POST',
+      url: '/api/v1/orders',
+      headers: c.writeHeaders(f.admin, { 'idempotency-key': randomUUID() }),
+      payload: { cartId, documentType: 'sales_note' },
+    });
     expect(order.statusCode, order.body).toBe(201);
     const body = JSON.parse(order.body) as { id: string; items: { id: string; isExceptionalDiscount: boolean }[] };
     expect(body.items[0]!.isExceptionalDiscount).toBe(true);

@@ -88,6 +88,7 @@ function build() {
     cancelPendingByOrder: vi.fn().mockResolvedValue(0),
   };
   const orderNotificationsRepository = { listByOrder: vi.fn().mockResolvedValue([]) };
+  const orderPaymentsRepository = { listByOrder: vi.fn().mockResolvedValue([]), createMany: vi.fn().mockResolvedValue([]) };
   const auditLogService = { record: vi.fn() };
   const domainEventPublisher = { append: vi.fn() };
 
@@ -132,6 +133,7 @@ function build() {
     pricePoliciesRepository as never,
     priceApprovalsRepository as never,
     orderNotificationsRepository as never,
+    orderPaymentsRepository as never,
     auditLogService as never,
     domainEventPublisher as never,
   );
@@ -148,8 +150,15 @@ function build() {
     idempotencyRepository,
     pricePoliciesRepository,
     priceApprovalsRepository,
+    orderPaymentsRepository,
     createdOrder,
   };
+}
+
+/** Shorthand for a single-method `ConfirmOrderDto` payment that exactly covers `total` — most
+ * confirm tests don't care about the split-payment shape itself, only that the sum check passes. */
+function cashPayment(total: number): { payments: { paymentMethod: 'cash'; amount: number }[] } {
+  return { payments: [{ paymentMethod: 'cash', amount: total }] };
 }
 
 describe('OrdersService.checkout', () => {
@@ -157,9 +166,9 @@ describe('OrdersService.checkout', () => {
 
   it('requires an Idempotency-Key header (§57)', async () => {
     const { service } = build();
-    await expect(service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, undefined)).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'sales_note' }, META, undefined),
+    ).rejects.toThrow(BadRequestException);
   });
 
   it('returns the cached result when the same key + same request is replayed (§60)', async () => {
@@ -269,8 +278,8 @@ describe('OrdersService.checkout', () => {
     ).rejects.toThrow(UnprocessableEntityException);
   });
 
-  it('freezes the customer snapshot from the validated row and computes totals server-side (§13, §27, §30)', async () => {
-    const { service, ordersRepository, orderItemsRepository, stockLedgerService, cartsRepository, idempotencyRepository } = build();
+  it('freezes the customer snapshot from the validated row and computes totals server-side (§13, §27, §30) — never asks for a payment method here', async () => {
+    const { service, ordersRepository, orderItemsRepository, stockLedgerService, cartsRepository, idempotencyRepository, orderPaymentsRepository } = build();
     await service.checkout(TENANT_ID, ACTOR_ID, PERMS, { cartId: 'cart-1', documentType: 'invoice' }, META, KEY);
 
     const orderValues = ordersRepository.create.mock.calls[0]![1] as Record<string, unknown>;
@@ -290,7 +299,9 @@ describe('OrdersService.checkout', () => {
     expect(itemValues.unitPriceSnapshot).toBe('95.00');
     expect(itemValues.minPriceSnapshot).toBe('80.00');
     expect(itemValues.lineTotal).toBe('190.00');
-    expect(itemValues.isExceptionalDiscount).toBe(false);
+    // 95 < basePrice (100) — exceptional under the owner's policy change (trigger moved from
+    // min_price to base_price), even though 95 is still above min_price (80).
+    expect(itemValues.isExceptionalDiscount).toBe(true);
 
     expect(stockLedgerService.applyMovement).toHaveBeenCalledWith(
       expect.anything(),
@@ -301,6 +312,8 @@ describe('OrdersService.checkout', () => {
       expect.anything(),
       expect.objectContaining({ scope: 'orders.create', responseStatus: 201 }),
     );
+    // Owner redesign: the payment method is picked at confirm, not here.
+    expect(orderPaymentsRepository.createMany).not.toHaveBeenCalled();
   });
 
   it('maps an insufficient-stock reservation failure to 409 (§44)', async () => {
@@ -317,7 +330,7 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
 
   it('confirm on a pending order releases the reservation and writes a SALE (commit boundary)', async () => {
     const { service, ordersRepository, orderItemsRepository, stockLedgerService } = build();
-    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID });
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00' });
     orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2', skuSnapshot: 'SKU-1' }]);
     ordersRepository.updateStatus.mockResolvedValue({
       id: 'order-1',
@@ -335,13 +348,53 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    await service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', META);
+    await service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', cashPayment(190), META);
     const types = stockLedgerService.applyMovement.mock.calls.map((call) => (call[1] as { movementType: string }).movementType);
     expect(types).toEqual(['RESERVATION_RELEASE', 'SALE']);
   });
 
-  it('confirm is idempotent — an already-confirmed order returns without touching stock', async () => {
-    const { service, ordersRepository, stockLedgerService } = build();
+  it('rejects confirm when the sum of payments does not match the order total', async () => {
+    const { service, ordersRepository, orderPaymentsRepository } = build();
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00' });
+    await expect(service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', cashPayment(100), META)).rejects.toThrow(BadRequestException);
+    expect(orderPaymentsRepository.createMany).not.toHaveBeenCalled();
+  });
+
+  it('accepts a split payment across multiple methods summing to the total, and persists every row', async () => {
+    const { service, ordersRepository, orderItemsRepository, orderPaymentsRepository } = build();
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00' });
+    orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2', skuSnapshot: 'SKU-1' }]);
+    ordersRepository.updateStatus.mockResolvedValue({
+      id: 'order-1',
+      status: 'confirmed',
+      locationId: 'loc-1',
+      documentType: 'invoice',
+      invoiceStatus: 'pending',
+      orderNumber: 'ORD-000001',
+      customerNameSnapshot: 'Contoso SA',
+      subtotal: '190.00',
+      discountTotal: '0.00',
+      taxTotal: '0.00',
+      total: '190.00',
+      currency: 'USD',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const payments = {
+      payments: [
+        { paymentMethod: 'cash' as const, amount: 100 },
+        { paymentMethod: 'card' as const, amount: 90 },
+      ],
+    };
+    await service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', payments, META);
+    const values = orderPaymentsRepository.createMany.mock.calls[0]![1] as Record<string, unknown>[];
+    expect(values).toHaveLength(2);
+    expect(values[0]).toMatchObject({ paymentMethod: 'cash', amount: '100.00' });
+    expect(values[1]).toMatchObject({ paymentMethod: 'card', amount: '90.00' });
+  });
+
+  it('confirm is idempotent — an already-confirmed order returns without touching stock or re-writing payments', async () => {
+    const { service, ordersRepository, stockLedgerService, orderPaymentsRepository } = build();
     ordersRepository.lockById.mockResolvedValue({
       id: 'order-1',
       status: 'confirmed',
@@ -358,8 +411,9 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-    await service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', META);
+    await service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', cashPayment(190), META);
     expect(stockLedgerService.applyMovement).not.toHaveBeenCalled();
+    expect(orderPaymentsRepository.createMany).not.toHaveBeenCalled();
   });
 
   it('cancel of a confirmed order is rejected — that needs a sales return (FASE 13, §54)', async () => {

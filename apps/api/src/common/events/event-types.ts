@@ -13,7 +13,7 @@ export const EVENT_TYPES = {
   ORDER_CONFIRMED: 'sales.order.confirmed',
   /** order draft/pending -> cancelled (a still-pending reservation released). */
   ORDER_CANCELLED: 'sales.order.cancelled',
-  /** a below-min_price order line's exceptional-discount request was filed (new `pending` row). */
+  /** a below-base_price order line's exceptional-discount request was filed (new `pending` row). */
   PRICE_APPROVAL_REQUESTED: 'sales.price_approval.requested',
   /** price_approvals pending -> approved (the CAS transition won). */
   PRICE_APPROVAL_APPROVED: 'sales.price_approval.approved',

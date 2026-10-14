@@ -106,11 +106,11 @@ export function CreateUserForm({
             autoComplete="name"
           />
         </Field>
-        <Field label="Usuario" required hint="Mínimo 10 caracteres. No necesita tener formato de correo.">
+        <Field label="Usuario" required hint="No necesita tener formato de correo.">
           <Input
             type="text"
             required
-            minLength={10}
+            minLength={1}
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="username"

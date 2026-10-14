@@ -267,6 +267,27 @@
       "when": 1790865572647,
       "tag": "0037_customers_redesign",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1791253729731,
+      "tag": "0038_price_approvals_base_price_at_request",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1791427838098,
+      "tag": "0039_order_payments",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1791490045742,
+      "tag": "0040_order_items_price_edit_grant",
+      "breakpoints": true
     }
   ]
 }

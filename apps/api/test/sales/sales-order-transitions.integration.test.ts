@@ -75,8 +75,16 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: order transition co
     return (JSON.parse(order.body) as { id: string }).id;
   }
 
-  const confirm = (f: Fixture, orderId: string) =>
-    c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/confirm`, headers: c.writeHeaders(f.admin) });
+  // Owner redesign: the payment method is now picked at confirm — `amount` defaults to 200 (the
+  // common `pendingOrder(f, 2)` fixture: 1 line, 2 units @ basePrice 100), overridden by callers
+  // whose fixture has a different line count or quantity.
+  const confirm = (f: Fixture, orderId: string, amount = 200) =>
+    c.inject({
+      method: 'POST',
+      url: `/api/v1/orders/${orderId}/confirm`,
+      headers: c.writeHeaders(f.admin),
+      payload: { payments: [{ paymentMethod: 'cash', amount }] },
+    });
   const cancel = (f: Fixture, orderId: string) =>
     c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/cancel`, headers: c.writeHeaders(f.admin) });
 
@@ -153,7 +161,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: order transition co
       const f = await seed('T1 Co', 'admin@t1.example', { stock: 50 });
       const orderId = await pendingOrder(f, 3);
 
-      const [a, b] = await Promise.all([confirm(f, orderId), confirm(f, orderId)]);
+      const [a, b] = await Promise.all([confirm(f, orderId, 300), confirm(f, orderId, 300)]);
       expect([a.statusCode, b.statusCode].sort()).toEqual([200, 200]);
       expect((JSON.parse(a.body) as { status: string }).status).toBe('confirmed');
       expect((JSON.parse(b.body) as { status: string }).status).toBe('confirmed');
@@ -253,7 +261,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: order transition co
     it('T9 — confirm vs confirm on a 3-line order: every line gets exactly one RESERVATION_RELEASE and one SALE', async () => {
       const f = await seed('T9 Co', 'admin@t9.example', { stock: 40, lines: 3 });
       const orderId = await pendingOrder(f, 2);
-      const [a, b] = await Promise.all([confirm(f, orderId), confirm(f, orderId)]);
+      const [a, b] = await Promise.all([confirm(f, orderId, 600), confirm(f, orderId, 600)]);
       expect([a.statusCode, b.statusCode].sort()).toEqual([200, 200]);
       const counts = await movementCounts(f.tenantId, orderId);
       for (const variantId of f.variantIds) {
@@ -266,7 +274,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: order transition co
       for (let attempt = 0; attempt < 3; attempt += 1) {
         const f = await seed(`T10 Co ${attempt}`, `admin@t10-${attempt}.example`, { stock: 40, lines: 2 });
         const orderId = await pendingOrder(f, 2);
-        const [confirmRes, cancelRes] = await Promise.all([confirm(f, orderId), cancel(f, orderId)]);
+        const [confirmRes, cancelRes] = await Promise.all([confirm(f, orderId, 400), cancel(f, orderId)]);
         expect([confirmRes.statusCode, cancelRes.statusCode].sort()).toEqual([200, 409]);
         const finalStatus = await orderStatus(f, orderId);
         const counts = await movementCounts(f.tenantId, orderId);
@@ -300,7 +308,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: order transition co
 
       const orderId = await pendingOrder(f, 3); // reserved by the admin at f.locationId
       const before = await movementCounts(f.tenantId, orderId);
-      const blocked = await c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/confirm`, headers: c.writeHeaders(vendedor) });
+      const blocked = await c.inject({
+        method: 'POST',
+        url: `/api/v1/orders/${orderId}/confirm`,
+        headers: c.writeHeaders(vendedor),
+        payload: { payments: [{ paymentMethod: 'cash', amount: 1 }] },
+      });
       expect(blocked.statusCode).toBe(403);
 
       expect(await movementCounts(f.tenantId, orderId)).toEqual(before);

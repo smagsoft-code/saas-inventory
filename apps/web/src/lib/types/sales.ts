@@ -98,6 +98,9 @@ export function customerMissingCommercialData(customer: Pick<Customer, 'taxId' |
 export interface CartItem {
   id: string;
   productVariantId: string;
+  /** The parent product — lets the UI fetch its images (`GET /products/:productId/images`) for a
+   * line thumbnail. */
+  productId: string;
   sku: string;
   productName: string;
   quantity: number;
@@ -180,6 +183,24 @@ export function orderStatusTone(status: string): 'neutral' | 'success' | 'warnin
   }
 }
 
+/** Owner redesign — split payment at checkout. Every `CreateOrderInput.payments` entry's
+ * `amount` must sum exactly to the order total (checked server-side). */
+export const PAYMENT_METHODS = ['cash', 'transfer', 'card', 'other'] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  cash: 'Efectivo',
+  transfer: 'Transferencia',
+  card: 'Tarjeta',
+  other: 'Otros',
+};
+
+/** `OrderPaymentResponseDto`. */
+export interface OrderPayment {
+  paymentMethod: string;
+  amount: number;
+}
+
 export const DOCUMENT_TYPES = ['invoice', 'sales_note'] as const;
 export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
@@ -223,6 +244,7 @@ export interface Order {
   customerId?: string;
   customer: OrderCustomerSnapshot;
   items: OrderItem[];
+  payments: OrderPayment[];
   subtotal: number;
   discountTotal: number;
   taxTotal: number;
@@ -234,10 +256,18 @@ export interface Order {
 }
 
 /** `POST /orders` body — `CreateOrderDto`. Never sends `customerId`/`locationId`/`total`/`status`
- * (all derived from the cart + validated prices server-side). Requires an `Idempotency-Key` header. */
+ * (all derived from the cart + validated prices server-side). Requires an `Idempotency-Key`
+ * header. No `payments` here — the owner's split-payment redesign asks for that at confirm
+ * (`ConfirmOrderInput`), not at creation. */
 export interface CreateOrderInput {
   cartId: string;
   documentType: DocumentType;
+}
+
+/** `POST /orders/:id/confirm` body — `ConfirmOrderDto`. Picked at the actual commit boundary, not
+ * at `POST /orders` — see `CreateOrderInput`'s doc comment. */
+export interface ConfirmOrderInput {
+  payments: { paymentMethod: PaymentMethod; amount: number }[];
 }
 
 /** The order lifecycle the UI can drive (`OrdersService`): `pending → confirmed` (`POST /orders/:id/confirm`,
@@ -280,6 +310,9 @@ export function priceApprovalStatusTone(status: string): 'neutral' | 'success' |
 export interface PriceApproval {
   id: string;
   orderId: string;
+  /** The parent order's own number (e.g. ORD-000042) — resolved server-side, never derived from
+   * `orderId` on screen. */
+  orderNumber: string;
   orderItemId: string;
   requestedPrice: number;
   maxPriceAtRequest: number;
@@ -287,7 +320,11 @@ export interface PriceApproval {
   discountAmount: number;
   reason: string;
   requestedBy: string;
+  /** The requester's display name, resolved server-side — never a raw id on screen. */
+  requestedByName: string;
   approvedBy?: string;
+  /** The approver/rejecter's display name — present whenever `approvedBy` is. */
+  approvedByName?: string;
   status: string;
   requestedAt: string;
   resolvedAt?: string;
@@ -296,11 +333,23 @@ export interface PriceApproval {
 /** `POST /price-approvals` body — `CreatePriceApprovalDto`. The line already exists on a `pending`
  * order with `isExceptionalDiscount = true`; the server derives every price from that frozen row.
  * `reason` is the only field the client legitimately supplies; `requestedPrice` is an optional
- * cross-check that must equal the frozen line price (`422` on mismatch) — the UI does not send it. */
+ * cross-check that must equal the frozen line price (`422` on mismatch) — the UI does not send it.
+ * `newPrice` is the owner redesign for resubmitting after a rejection: proposes a different price
+ * for the line before filing this new request (validated the same way a negotiated price is at
+ * checkout). Omit to file against the price already on the line. */
 export interface CreatePriceApprovalInput {
   orderItemId: string;
   reason: string;
   requestedPrice?: number;
+  newPrice?: number;
+}
+
+/** `POST /price-approvals/:id/approve` body — `ResolvePriceApprovalDto`. `price`, when present and
+ * different from the line's current price, means the approver is editing it — editing IS approving
+ * with that new price (owner redesign), validated and applied atomically with the approval. Omit to
+ * approve the price exactly as requested. Never sent to `/reject`. */
+export interface ApprovePriceApprovalInput {
+  price?: number;
 }
 
 // --- sales returns ------------------------------------------------------------------------------

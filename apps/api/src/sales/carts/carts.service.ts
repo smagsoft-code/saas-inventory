@@ -143,7 +143,7 @@ export class CartsService {
       const variant = await this.loadSellableVariant(tx, tenantId, dto.productVariantId);
 
       // Soft, early guidance-level price validation (§101) — the authoritative check re-runs under
-      // lock at checkout (§20). A below-`min_price` line is now allowed to stage in the cart
+      // lock at checkout (§20). A below-`base_price` line is now allowed to stage in the cart
       // (FASE 13: checkout turns it into an exceptional order + approval flow); only an
       // above-`max_price` price is rejected this early.
       if (dto.negotiatedUnitPrice !== undefined) {
@@ -250,6 +250,37 @@ export class CartsService {
     });
   }
 
+  /**
+   * Abandons the caller's own open cart (owner feature: "Eliminar" + "Nueva venta" in the sale
+   * flow — a vendor must discard the current cart before starting a fresh one with a different
+   * sucursal/almacén). `status -> 'abandoned'` (already in the schema's CHECK, migration 0009 —
+   * this is the first endpoint to actually set it), never a hard delete, so the cart and its items
+   * stay around for audit/debugging. `findOpenByUser` only ever looks for `status = 'open'`, so
+   * this immediately frees the caller to `POST /cart` a brand new one. A no-op (not a 404) when
+   * there is no open cart — "no cart to discard" is not an error condition for this action.
+   */
+  async discard(tenantId: string, userId: string, meta: AuditMeta): Promise<void> {
+    return withTenantTransaction(tenantId, async (tx) => {
+      const open = await this.cartsRepository.findOpenByUser(tx, tenantId, userId);
+      if (!open) {
+        return;
+      }
+      const locked = await this.cartsRepository.lockById(tx, tenantId, open.id);
+      if (!locked || locked.status !== 'open') {
+        return;
+      }
+      await this.cartsRepository.update(tx, tenantId, locked.id, { status: 'abandoned' });
+
+      await this.writeAudit(tx, {
+        tenantId,
+        actorId: userId,
+        actionCode: 'cart.abandoned',
+        entityId: locked.id,
+        meta,
+      });
+    });
+  }
+
   private async lockOpenCart(tx: TenantTransaction, tenantId: string, userId: string): Promise<CartRow> {
     const open = await this.cartsRepository.findOpenByUser(tx, tenantId, userId);
     if (!open) {
@@ -331,6 +362,7 @@ export class CartsService {
     return {
       id: item.id,
       productVariantId: item.productVariantId,
+      productId: variant?.productId ?? '',
       sku: variant?.sku ?? '(unknown)',
       productName: variant?.productName ?? '(unknown)',
       quantity,

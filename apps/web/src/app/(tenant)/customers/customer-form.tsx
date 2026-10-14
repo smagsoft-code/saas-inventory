@@ -41,16 +41,31 @@ const TAX_ID_ERRORS: Record<CustomerType, string> = {
 export function CustomerForm({
   mode,
   customer,
+  onCreated,
+  onCancel,
+  initialTaxId,
 }: {
   mode: 'create' | 'edit';
   customer?: Customer;
+  /** When set (the sale-flow "Crear nuevo cliente" modal), a successful create calls this
+   * instead of navigating to `/customers/:id` — the caller stays on its own page/modal and
+   * decides what to do with the new customer (e.g. select it on the cart). Has no effect in
+   * `edit` mode. */
+  onCreated?: (customer: Customer) => void;
+  /** Overrides the "Volver a clientes" button when embedded outside `/customers/*` (e.g. the
+   * sale-flow modal, which should just close instead of navigating away). */
+  onCancel?: () => void;
+  /** Prefills the identification field in `create` mode — the sale-flow search bar's "no
+   * coincide, presiona Enter para crear" shortcut hands over whatever the owner already typed so
+   * they don't retype it. No effect in `edit` mode (`customer.taxId` wins there). */
+  initialTaxId?: string;
 }): React.JSX.Element {
   const router = useRouter();
 
   const [type, setType] = useState<CustomerType>((customer?.type as CustomerType) ?? 'cedula');
   const [firstName, setFirstName] = useState(customer?.firstName ?? '');
   const [lastName, setLastName] = useState(customer?.lastName ?? '');
-  const [taxId, setTaxId] = useState(customer?.taxId ?? '');
+  const [taxId, setTaxId] = useState(customer?.taxId ?? initialTaxId ?? '');
   const [email, setEmail] = useState(customer?.email ?? '');
   const [phone, setPhone] = useState(customer?.phone ?? '');
   const [address, setAddress] = useState(customer?.address ?? '');
@@ -118,6 +133,10 @@ export function CustomerForm({
         if (phone.trim()) body['phone'] = phone.trim();
         if (address.trim()) body['address'] = address.trim();
         const created = await apiFetch<Customer>(CUSTOMERS_PATH, { method: 'POST', body });
+        if (onCreated) {
+          onCreated(created);
+          return;
+        }
         router.push(`/customers/${created.id}`);
         router.refresh();
         return;
@@ -274,8 +293,8 @@ export function CustomerForm({
         <Button type="submit" loading={submitting} disabled={!dirty} className="w-fit">
           {mode === 'create' ? 'Crear cliente' : 'Guardar cambios'}
         </Button>
-        <Button type="button" variant="ghost" className="w-fit" onClick={() => router.push('/customers')}>
-          Volver a clientes
+        <Button type="button" variant="ghost" className="w-fit" onClick={onCancel ?? (() => router.push('/customers'))}>
+          {onCancel ? 'Cancelar' : 'Volver a clientes'}
         </Button>
       </div>
     </form>

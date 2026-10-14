@@ -11,7 +11,7 @@ export type SalesSummaryGroupBy = (typeof SALES_SUMMARY_GROUP_BY)[number];
  * `all` (the default — every matching order/line, byte-for-byte the pre-F18-06 behaviour) has to
  * stay distinct from `exclude` (only non-exceptional). The source of truth is the frozen,
  * write-once `order_items.is_exceptional_discount` flag (set at `POST /orders` when a line's
- * negotiated price is below the variant's `min_price` — `OrdersService.resolveLines`), **never** a
+ * negotiated price is below the variant's `base_price` — `OrdersService.resolveLines`), **never** a
  * join to `price_approvals`: an exceptional line can exist with no approval row at all (a `pending`
  * order nobody filed a request for yet, or a tenant whose
  * `tenant_price_policies.exceptional_discount_requires_approval = false`), so `price_approvals` is

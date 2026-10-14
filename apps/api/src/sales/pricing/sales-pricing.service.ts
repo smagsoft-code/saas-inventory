@@ -7,12 +7,12 @@ export interface VariantPriceContext {
   minPrice: number;
 }
 
-export type PriceClassification = 'within_range' | 'below_min' | 'above_max';
+export type PriceClassification = 'within_range' | 'below_base' | 'above_max';
 
 export interface ResolvedUnitPrice {
   unitPrice: number;
-  /** `below_min` is an exceptional discount — the caller sets `is_exceptional_discount` and drives
-   * the `price_approvals` workflow / confirm gate. */
+  /** `below_base` is an exceptional discount — the caller sets `is_exceptional_discount` and
+   * drives the `price_approvals` workflow / confirm gate. */
   classification: PriceClassification;
 }
 
@@ -21,11 +21,13 @@ export interface ResolvedUnitPrice {
  * CATALOG stays the source of truth for `max_price`/`base_price`/`min_price` (§44) — this service
  * only *consumes* them and never stores its own copy.
  *
- * FASE 13 boundary (§41, §58): a price within `[min_price, max_price]` is a normal negotiation. A
- * price **below `min_price`** is now PERMITTED to enter an order as an exceptional discount
- * (`is_exceptional_discount = true`) — `resolveUnitPrice` classifies it as `below_min` rather than
- * rejecting it; the caller (OrdersService) then enforces the tenant hard floor
- * (`assertWithinHardFloor`, ADR-0022 point 2) and, at confirm, the `price_approvals` gate. A price
+ * Owner policy change (post-FASE 13): the exceptional-discount trigger moved from "below
+ * `min_price`" to **"below `base_price`"** — only `[base_price, max_price]` is a normal
+ * negotiation now; anything in `[min_price, base_price)` is *also* an exceptional discount
+ * (`is_exceptional_discount = true`), not just below `min_price`. `resolveUnitPrice` classifies
+ * either band as `below_base` rather than rejecting it; the caller (OrdersService) then enforces
+ * the tenant hard floor (`assertWithinHardFloor`, ADR-0022 point 2 — still anchored to
+ * `min_price` specifically, unchanged) and, at confirm, the `price_approvals` gate. A price
  * **above `max_price`** is always invalid (400). This service still never reads
  * `tenant_price_policies` itself — it takes the effective policy value as a parameter.
  */
@@ -35,8 +37,8 @@ export class SalesPricingService {
     if (unitPrice > ctx.maxPrice) {
       return 'above_max';
     }
-    if (unitPrice < ctx.minPrice) {
-      return 'below_min';
+    if (unitPrice < ctx.basePrice) {
+      return 'below_base';
     }
     return 'within_range';
   }
@@ -44,8 +46,10 @@ export class SalesPricingService {
   /**
    * Resolves the effective unit price for a line (the proposed price, or the live base price when
    * the vendor did not negotiate) and validates it. Throws `400` for a non-finite/negative price
-   * or one above `max_price`. A below-`min_price` price is returned with `classification =
-   * 'below_min'`, never thrown — it is an exceptional discount the caller handles.
+   * or one above `max_price`. A below-`base_price` price is returned with `classification =
+   * 'below_base'`, never thrown — it is an exceptional discount the caller handles. A price that
+   * falls back to `basePrice` itself (no negotiation) is never exceptional — the comparison is
+   * strict (`<`).
    */
   resolveUnitPrice(
     proposedUnitPrice: number | null | undefined,
@@ -67,11 +71,13 @@ export class SalesPricingService {
   }
 
   /**
-   * The tenant's hard discount floor (ADR-0022 point 2 / database.md#pricing): a below-`min_price`
-   * price more than `maxDiscountBelowMinPercent`% under the floor is rejected outright — it can
-   * never become a `price_approvals` request, because no approval could authorize it. A `null`
-   * policy value means no floor beyond `min_price >= 0` itself. Only meaningful for a `below_min`
-   * line; a no-op otherwise.
+   * The tenant's hard discount floor (ADR-0022 point 2 / database.md#pricing): a price more than
+   * `maxDiscountBelowMinPercent`% under `min_price` is rejected outright — it can never become a
+   * `price_approvals` request, because no approval could authorize it. Deliberately still keyed
+   * to `min_price` alone (not `base_price`) — this is the one absolute floor, unaffected by the
+   * owner's base-price policy change above. A `null` policy value means no floor beyond
+   * `min_price >= 0` itself. A no-op for any price at or above `min_price` (including the
+   * `[min_price, base_price)` band that is exceptional but not below the hard floor).
    */
   assertWithinHardFloor(
     unitPrice: number,
@@ -91,10 +97,10 @@ export class SalesPricingService {
   }
 
   /**
-   * Soft, guidance-level validation for the cart (carts.service.ts). A cart may now stage a
-   * below-`min_price` line — checkout turns it into an exceptional order + approval flow — so this
-   * only rejects an above-`max_price` or otherwise invalid price. The authoritative rules (hard
-   * floor, approval gate) re-run under lock at checkout / confirm.
+   * Soft, guidance-level validation for the cart (carts.service.ts). A cart may stage a
+   * below-`base_price` (even below-`min_price`) line — checkout turns it into an exceptional
+   * order + approval flow — so this only rejects an above-`max_price` or otherwise invalid price.
+   * The authoritative rules (hard floor, approval gate) re-run under lock at checkout / confirm.
    */
   assertNotAboveMax(
     proposedUnitPrice: number | null | undefined,

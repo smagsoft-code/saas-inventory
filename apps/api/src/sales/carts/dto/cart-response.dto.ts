@@ -7,6 +7,9 @@ export class CartItemResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   productVariantId!: string;
 
+  @ApiProperty({ type: String, format: 'uuid', description: 'The parent product — lets the UI fetch its images (GET /products/:productId/images) for a line thumbnail.' })
+  productId!: string;
+
   @ApiProperty({ type: String })
   sku!: string;
 

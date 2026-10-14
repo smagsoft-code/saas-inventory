@@ -124,11 +124,11 @@ describe('CreateUserForm — location assignment (single flow, reuses PUT /users
     });
   });
 
-  it('declares the same 10-character minimum as the password field (client-side hint only — the server is the authority)', () => {
+  it('has no minimum length on "Usuario" (only non-empty) while the password keeps its own 10-character floor', () => {
     render(<CreateUserForm roles={[]} locationOptions={[]} />);
     const usuario = screen.getByLabelText(/^usuario$/i) as HTMLInputElement;
     const password = screen.getByLabelText(/contraseña temporal/i) as HTMLInputElement;
-    expect(usuario.minLength).toBe(10);
+    expect(usuario.minLength).toBe(1);
     expect(usuario.type).toBe('text');
     expect(password.minLength).toBe(10);
   });

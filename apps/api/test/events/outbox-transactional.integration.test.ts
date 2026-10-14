@@ -65,8 +65,15 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('events: transactional outb
     return (JSON.parse(order.body) as { id: string }).id;
   }
 
-  const confirm = (f: Fixture, orderId: string, session: Session = f.admin) =>
-    c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/confirm`, headers: c.writeHeaders(session) });
+  // Owner redesign: the payment method is now picked at confirm, not at order creation —
+  // `amount` defaults to 200 (the default `pendingOrder()` fixture: 2 units @ basePrice 100).
+  const confirm = (f: Fixture, orderId: string, session: Session = f.admin, amount = 200) =>
+    c.inject({
+      method: 'POST',
+      url: `/api/v1/orders/${orderId}/confirm`,
+      headers: c.writeHeaders(session),
+      payload: { payments: [{ paymentMethod: 'cash', amount }] },
+    });
 
   async function outboxRows(tenantId: string, aggregateId: string) {
     const { client, db } = getMigratorDb();

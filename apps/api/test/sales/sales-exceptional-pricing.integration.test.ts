@@ -60,7 +60,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
     f: Fixture,
     session: Session,
     opts: { variantId?: string; unitPrice?: number; quantity?: number } = {},
-  ): Promise<{ orderId: string; orderItemId: string; isExceptional: boolean }> {
+  ): Promise<{ orderId: string; orderItemId: string; isExceptional: boolean; total: number }> {
     const variantId = opts.variantId ?? f.variantId;
     const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(session), payload: { locationId: f.locationId, customerId: f.customerId } });
     expect(created.statusCode, created.body).toBe(201);
@@ -72,6 +72,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
       payload: { productVariantId: variantId, quantity: opts.quantity ?? 1, ...(opts.unitPrice === undefined ? {} : { negotiatedUnitPrice: opts.unitPrice }) },
     });
     expect(added.statusCode, added.body).toBe(200);
+    const subtotal = (JSON.parse(added.body) as { subtotal: number }).subtotal;
     const order = await c.inject({
       method: 'POST',
       url: '/api/v1/orders',
@@ -80,11 +81,18 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
     });
     expect(order.statusCode, order.body).toBe(201);
     const body = JSON.parse(order.body) as { id: string; items: { id: string; isExceptionalDiscount: boolean }[] };
-    return { orderId: body.id, orderItemId: body.items[0]!.id, isExceptional: body.items[0]!.isExceptionalDiscount };
+    return { orderId: body.id, orderItemId: body.items[0]!.id, isExceptional: body.items[0]!.isExceptionalDiscount, total: subtotal };
   }
 
-  const confirm = (session: Session, orderId: string) =>
-    c.inject({ method: 'POST', url: `/api/v1/orders/${orderId}/confirm`, headers: c.writeHeaders(session) });
+  // Owner redesign: the payment method is now picked at confirm — callers pass the `total` their
+  // own `pendingOrder()` call returned.
+  const confirm = (session: Session, orderId: string, amount: number) =>
+    c.inject({
+      method: 'POST',
+      url: `/api/v1/orders/${orderId}/confirm`,
+      headers: c.writeHeaders(session),
+      payload: { payments: [{ paymentMethod: 'cash', amount }] },
+    });
 
   const requestApproval = (session: Session, payload: Record<string, unknown>) =>
     c.inject({ method: 'POST', url: '/api/v1/price-approvals', headers: c.writeHeaders(session), payload });
@@ -122,21 +130,31 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
   }
 
   // ---- P1 --------------------------------------------------------------------
-  it('P1: a normal (>= min_price) line confirms without any approval — FASE 12 unchanged', async () => {
+  it('P1: a normal (>= base_price) line confirms without any approval — FASE 12 unchanged', async () => {
     const f = await seed('P1 Co', `p1-${uniq()}@ex.com`);
-    const { orderId, isExceptional } = await pendingOrder(f, f.admin, { unitPrice: 95 });
+    const { orderId, isExceptional, total } = await pendingOrder(f, f.admin, { unitPrice: 110 });
     expect(isExceptional).toBe(false);
-    const r = await confirm(f.admin, orderId);
+    const r = await confirm(f.admin, orderId, total);
     expect(r.statusCode, r.body).toBe(200);
     expect(JSON.parse(r.body).status).toBe('confirmed');
+  });
+
+  // ---- owner policy change: [min_price, base_price) is now exceptional too -----------------
+  it('a line in [min_price, base_price) is exceptional (new trigger), but the hard floor never applies to it', async () => {
+    const f = await seed('Band Co', `band-${uniq()}@ex.com`);
+    // 90 is between min_price (80) and base_price (100) — below base_price now, still above min_price.
+    const { orderId, isExceptional, total } = await pendingOrder(f, f.admin, { unitPrice: 90 });
+    expect(isExceptional).toBe(true);
+    const blocked = await confirm(f.admin, orderId, total);
+    expect(blocked.statusCode).toBe(409); // still needs approval despite never going below min_price
   });
 
   // ---- P2 --------------------------------------------------------------------
   it('P2: a below-min line creates a pending exceptional order; confirm is blocked (409) with no approval', async () => {
     const f = await seed('P2 Co', `p2-${uniq()}@ex.com`);
-    const { orderId, isExceptional } = await pendingOrder(f, f.admin, { unitPrice: 70 });
+    const { orderId, isExceptional, total } = await pendingOrder(f, f.admin, { unitPrice: 70 });
     expect(isExceptional).toBe(true);
-    const r = await confirm(f.admin, orderId);
+    const r = await confirm(f.admin, orderId, total);
     expect(r.statusCode).toBe(409);
     expect(await movementTypes(f.tenantId, orderId)).toEqual(['RESERVATION']); // reserved, never SALE
   });
@@ -147,14 +165,14 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
     const seller = await c.createAndLoginAs(f.admin, `seller-${uniq()}@ex.com`, 'Vendedor');
     // Vendedor needs to sell at the location:
     await c.setUserLocations(f.admin, seller.user.id, [f.locationId]);
-    const { orderId, orderItemId } = await pendingOrder(f, seller, { unitPrice: 70 });
+    const { orderId, orderItemId, total } = await pendingOrder(f, seller, { unitPrice: 70 });
 
     const req = await requestApproval(seller, { orderItemId, reason: 'long-standing customer, matched competitor quote' });
     expect(req.statusCode, req.body).toBe(201);
     const approvalId = (JSON.parse(req.body) as { id: string }).id;
 
     // The requester cannot confirm yet.
-    expect((await confirm(seller, orderId)).statusCode).toBe(409);
+    expect((await confirm(seller, orderId, total)).statusCode).toBe(409);
 
     // A supervisor (has pricing.discount.approve) approves.
     const supervisor = await c.createAndLoginAs(f.admin, `sup-${uniq()}@ex.com`, 'Supervisor');
@@ -162,7 +180,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
     expect(ap.statusCode, ap.body).toBe(200);
     expect(JSON.parse(ap.body).status).toBe('approved');
 
-    const done = await confirm(seller, orderId);
+    const done = await confirm(seller, orderId, total);
     expect(done.statusCode, done.body).toBe(200);
     const order = JSON.parse(done.body) as { status: string; items: { isExceptionalDiscount: boolean; unitPrice: number }[] };
     expect(order.status).toBe('confirmed');
@@ -187,12 +205,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
   // ---- P6 / P12 --------------------------------------------------------------------
   it('P6+P12: a rejected approval never authorizes confirm', async () => {
     const f = await seed('P6 Co', `p6-${uniq()}@ex.com`);
-    const { orderId, orderItemId } = await pendingOrder(f, f.admin, { unitPrice: 70 });
+    const { orderId, orderItemId, total } = await pendingOrder(f, f.admin, { unitPrice: 70 });
     const req = await requestApproval(f.admin, { orderItemId, reason: 'please' });
     const approvalId = (JSON.parse(req.body) as { id: string }).id;
     const supervisor = await c.createAndLoginAs(f.admin, `sup6-${uniq()}@ex.com`, 'Supervisor');
     expect((await reject(supervisor, approvalId)).statusCode).toBe(200);
-    expect((await confirm(f.admin, orderId)).statusCode).toBe(409);
+    expect((await confirm(f.admin, orderId, total)).statusCode).toBe(409);
     // Cannot re-approve a rejected request.
     expect((await approve(supervisor, approvalId)).statusCode).toBe(409);
   });
@@ -230,7 +248,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
   // ---- P11 --------------------------------------------------------------------
   it('P11: an approval cannot be requested for a line that is not an exceptional discount (422)', async () => {
     const f = await seed('P11 Co', `p11-${uniq()}@ex.com`);
-    const { orderItemId } = await pendingOrder(f, f.admin, { unitPrice: 95 }); // within range
+    const { orderItemId } = await pendingOrder(f, f.admin, { unitPrice: 110 }); // within range (>= base_price)
     const r = await requestApproval(f.admin, { orderItemId, reason: 'not needed' });
     expect(r.statusCode).toBe(422);
   });
@@ -239,13 +257,13 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
   it('P13: an approval is bound to one order line — after confirm it stays approved and cannot re-authorize', async () => {
     const f = await seed('P13 Co', `p13-${uniq()}@ex.com`);
     const supervisor = await c.createAndLoginAs(f.admin, `sup13-${uniq()}@ex.com`, 'Supervisor');
-    const { orderId, orderItemId } = await pendingOrder(f, f.admin, { unitPrice: 70 });
+    const { orderId, orderItemId, total } = await pendingOrder(f, f.admin, { unitPrice: 70 });
     const req = await requestApproval(f.admin, { orderItemId, reason: 'once' });
     const approvalId = (JSON.parse(req.body) as { id: string }).id;
     expect((await approve(supervisor, approvalId)).statusCode).toBe(200);
-    expect((await confirm(f.admin, orderId)).statusCode).toBe(200);
+    expect((await confirm(f.admin, orderId, total)).statusCode).toBe(200);
     // Confirm again is idempotent (already confirmed) and never writes a second SALE.
-    expect((await confirm(f.admin, orderId)).statusCode).toBe(200);
+    expect((await confirm(f.admin, orderId, total)).statusCode).toBe(200);
     const types = await movementTypes(f.tenantId, orderId);
     expect(types.filter((t) => t === 'SALE')).toHaveLength(1);
     // The approval row is still just "approved" — there is no separate "used" state to leak.
@@ -253,18 +271,18 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
     expect(JSON.parse(get.body).status).toBe('approved');
     // A second exceptional order for the same variant needs its OWN approval.
     const second = await pendingOrder(f, f.admin, { unitPrice: 70 });
-    expect((await confirm(f.admin, second.orderId)).statusCode).toBe(409);
+    expect((await confirm(f.admin, second.orderId, second.total)).statusCode).toBe(409);
   });
 
   // ---- P14 --------------------------------------------------------------------
   it('P14: two concurrent confirms of one approved exceptional order -> exactly one SALE per line', async () => {
     const f = await seed('P14 Co', `p14-${uniq()}@ex.com`);
     const supervisor = await c.createAndLoginAs(f.admin, `sup14-${uniq()}@ex.com`, 'Supervisor');
-    const { orderId, orderItemId } = await pendingOrder(f, f.admin, { unitPrice: 70 });
+    const { orderId, orderItemId, total } = await pendingOrder(f, f.admin, { unitPrice: 70 });
     const req = await requestApproval(f.admin, { orderItemId, reason: 'race' });
     const approvalId = (JSON.parse(req.body) as { id: string }).id;
     expect((await approve(supervisor, approvalId)).statusCode).toBe(200);
-    const [r1, r2] = await Promise.all([confirm(f.admin, orderId), confirm(f.admin, orderId)]);
+    const [r1, r2] = await Promise.all([confirm(f.admin, orderId, total), confirm(f.admin, orderId, total)]);
     expect([r1.statusCode, r2.statusCode].filter((s) => s === 200)).toHaveLength(2); // one confirms, one idempotent
     const types = await movementTypes(f.tenantId, orderId);
     expect(types.filter((t) => t === 'SALE')).toHaveLength(1);
@@ -309,7 +327,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
   it('P17: repricing the variant after checkout does not change the frozen line or break confirm', async () => {
     const f = await seed('P17 Co', `p17-${uniq()}@ex.com`);
     const supervisor = await c.createAndLoginAs(f.admin, `sup17-${uniq()}@ex.com`, 'Supervisor');
-    const { orderId, orderItemId } = await pendingOrder(f, f.admin, { unitPrice: 70 });
+    const { orderId, orderItemId, total } = await pendingOrder(f, f.admin, { unitPrice: 70 });
     const req = await requestApproval(f.admin, { orderItemId, reason: 'freeze' });
     const approvalId = (JSON.parse(req.body) as { id: string }).id;
     // Move the catalog min_price to 100 (above the requested 70).
@@ -321,7 +339,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
     });
     expect(patch.statusCode, patch.body).toBe(200);
     expect((await approve(supervisor, approvalId)).statusCode).toBe(200);
-    const done = await confirm(f.admin, orderId);
+    const done = await confirm(f.admin, orderId, total);
     expect(done.statusCode, done.body).toBe(200);
     expect(JSON.parse(done.body).items[0].unitPrice).toBe(70); // frozen at checkout, never recomputed
   });

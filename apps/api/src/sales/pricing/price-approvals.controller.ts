@@ -11,6 +11,7 @@ import { RequirePermissions } from '../../common/decorators/require-permissions.
 import { CreatePriceApprovalDto } from './dto/create-price-approval.dto';
 import { ListPriceApprovalsQueryDto } from './dto/list-price-approvals-query.dto';
 import { PriceApprovalResponseDto } from './dto/price-approval-response.dto';
+import { ResolvePriceApprovalDto } from './dto/resolve-price-approval.dto';
 import { PriceApprovalsService } from './price-approvals.service';
 
 /**
@@ -74,12 +75,17 @@ export class PriceApprovalsController {
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Param('id') id: string,
+    @Body() dto: ResolvePriceApprovalDto,
     @Req() request: FastifyRequest,
   ): Promise<PriceApprovalResponseDto> {
-    return this.priceApprovalsService.approve(tenantId, principal.userId, permissions, id, {
-      correlationId: request.correlationId,
-      ipAddress: request.ip,
-    });
+    return this.priceApprovalsService.approve(
+      tenantId,
+      principal.userId,
+      permissions,
+      id,
+      { correlationId: request.correlationId, ipAddress: request.ip },
+      dto.price,
+    );
   }
 
   @Post(':id/reject')
