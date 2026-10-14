@@ -116,6 +116,15 @@ export class OrderResponseDto {
   @ApiPropertyOptional({ type: String, format: 'uuid' })
   placedByUserId?: string;
 
+  @ApiPropertyOptional({ type: String, description: 'Seller (creator) display name. Only on GET /orders (list).' })
+  placedByName?: string;
+
+  @ApiPropertyOptional({
+    enum: ['none', 'pending', 'delivered', 'failed'],
+    description: 'Rolled-up event_outbox delivery status of the order events. Only on GET /orders (list).',
+  })
+  notificationStatus?: 'none' | 'pending' | 'delivered' | 'failed';
+
   @ApiProperty({ type: String, format: 'date-time' })
   createdAt!: string;
 

@@ -77,7 +77,11 @@ function build() {
   const customersRepository = { findById: vi.fn().mockResolvedValue(CUSTOMER) };
   const catalogLookup = { findVariantById: vi.fn().mockResolvedValue(VARIANT) };
   const locationsRepository = { findById: vi.fn().mockResolvedValue(LOCATION) };
-  const locationAuthorizationService = { assertAccess: vi.fn() };
+  const locationAuthorizationService = {
+    assertAccess: vi.fn(),
+    resolveReadScope: vi.fn((_tx: unknown, _t: string, _u: string, loc?: string) => Promise.resolve(loc ? { locationId: loc } : {})),
+    canAccess: vi.fn().mockResolvedValue(true),
+  };
   const stockLedgerService = { applyMovement: vi.fn().mockResolvedValue({}) };
   const idempotencyRepository = { find: vi.fn().mockResolvedValue(undefined), create: vi.fn() };
   const pricePoliciesRepository = {
@@ -87,7 +91,12 @@ function build() {
     lockByOrder: vi.fn().mockResolvedValue([]),
     cancelPendingByOrder: vi.fn().mockResolvedValue(0),
   };
-  const orderNotificationsRepository = { listByOrder: vi.fn().mockResolvedValue([]) };
+  const orderNotificationsRepository = {
+    listByOrder: vi.fn().mockResolvedValue([]),
+    rollUpByOrders: vi.fn().mockResolvedValue(new Map()),
+  };
+  const usersRepository = { findNamesByIds: vi.fn().mockResolvedValue(new Map()) };
+  const tenantSettingsRepository = { find: vi.fn().mockResolvedValue({ timezone: 'America/Guayaquil' }) };
   const orderPaymentsRepository = { listByOrder: vi.fn().mockResolvedValue([]), createMany: vi.fn().mockResolvedValue([]) };
   const auditLogService = { record: vi.fn() };
   const domainEventPublisher = { append: vi.fn() };
@@ -134,6 +143,8 @@ function build() {
     priceApprovalsRepository as never,
     orderNotificationsRepository as never,
     orderPaymentsRepository as never,
+    usersRepository as never,
+    tenantSettingsRepository as never,
     auditLogService as never,
     domainEventPublisher as never,
   );
@@ -151,6 +162,8 @@ function build() {
     pricePoliciesRepository,
     priceApprovalsRepository,
     orderPaymentsRepository,
+    orderNotificationsRepository,
+    usersRepository,
     createdOrder,
   };
 }
@@ -447,5 +460,56 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
       expect.anything(),
       expect.objectContaining({ movementType: 'RESERVATION_RELEASE' }),
     );
+  });
+});
+
+describe('OrdersService.list — business-day filter, seller and notification columns', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const query = { page: 1, pageSize: 20 };
+
+  it('resolves dateFrom (no dateTo) to exactly one tenant-local day, half-open', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+    await service.list(TENANT_ID, ACTOR_ID, PERMS, { ...query, dateFrom: '2026-10-13' });
+    const params = ordersRepository.listByTenant.mock.calls[0]![2] as { dayRange: { gte: Date; lt: Date } };
+    // America/Guayaquil is UTC-5 with no DST.
+    expect(params.dayRange.gte.toISOString()).toBe('2026-10-13T05:00:00.000Z');
+    expect(params.dayRange.lt.toISOString()).toBe('2026-10-14T05:00:00.000Z');
+  });
+
+  it('includes the whole final day for a multi-day range', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+    await service.list(TENANT_ID, ACTOR_ID, PERMS, { ...query, dateFrom: '2026-10-13', dateTo: '2026-10-15' });
+    const params = ordersRepository.listByTenant.mock.calls[0]![2] as { dayRange: { gte: Date; lt: Date } };
+    expect(params.dayRange.lt.toISOString()).toBe('2026-10-16T05:00:00.000Z');
+  });
+
+  it('passes the Almacén (locationId) filter through to the repository', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+    await service.list(TENANT_ID, ACTOR_ID, PERMS, { ...query, locationId: 'loc-1' });
+    expect(ordersRepository.listByTenant.mock.calls[0]![2]).toMatchObject({ locationId: 'loc-1' });
+  });
+
+  it('rejects dateTo without dateFrom and an impossible calendar date', async () => {
+    const { service } = build();
+    await expect(service.list(TENANT_ID, ACTOR_ID, PERMS, { ...query, dateTo: '2026-10-13' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.list(TENANT_ID, ACTOR_ID, PERMS, { ...query, dateFrom: '2026-02-31' })).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('adds seller name and notification status with ONE batched lookup each (no N+1)', async () => {
+    const { service, ordersRepository, usersRepository, orderNotificationsRepository, createdOrder } = build();
+    const second = { ...createdOrder, id: 'order-2', placedByUserId: null };
+    ordersRepository.listByTenant.mockResolvedValue({ rows: [createdOrder, second], total: 2 });
+    usersRepository.findNamesByIds.mockResolvedValue(new Map([[ACTOR_ID, 'Ana Vendedora']]));
+    orderNotificationsRepository.rollUpByOrders.mockResolvedValue(new Map([['order-1', 'delivered']]));
+    const result = await service.list(TENANT_ID, ACTOR_ID, PERMS, query);
+    expect(usersRepository.findNamesByIds).toHaveBeenCalledTimes(1);
+    expect(orderNotificationsRepository.rollUpByOrders).toHaveBeenCalledTimes(1);
+    expect(result.data[0]).toMatchObject({ placedByName: 'Ana Vendedora', notificationStatus: 'delivered' });
+    expect(result.data[1]!.placedByName).toBeUndefined();
+    expect(result.data[1]!.notificationStatus).toBe('none');
   });
 });

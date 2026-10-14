@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, gte, lt, sql, type SQL } from 'drizzle-orm';
-import { priceApprovals } from '../../database/schema';
+import { and, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
+import { orders, priceApprovals } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
 export interface PeriodBucketRow {
@@ -25,6 +25,9 @@ interface RangeParams {
   gte: Date;
   lt: Date;
   status?: string | undefined;
+  /** The parent order's location (Almacén) — `price_approvals` has none of its own. */
+  locationId?: string | undefined;
+  locationIds?: string[] | undefined;
 }
 
 /**
@@ -60,6 +63,21 @@ export class ApprovalsReportRepository {
     ];
     if (range.status) {
       conditions.push(eq(priceApprovals.status, range.status));
+    }
+    if (range.locationId) {
+      // Semi-join on orders, never a real join — one row per approval stays one row, so every
+      // COUNT/SUM keeps its exactness guarantee.
+      conditions.push(
+        sql`exists (select 1 from ${orders} where ${orders.tenantId} = ${priceApprovals.tenantId} and ${orders.id} = ${priceApprovals.orderId} and ${orders.locationId} = ${range.locationId})`,
+      );
+    }
+    // Read scope of a restricted caller (ADR-0024/0035): only their assigned locations; none = nothing.
+    if (range.locationIds) {
+      conditions.push(
+        range.locationIds.length > 0
+          ? sql`exists (select 1 from ${orders} where ${orders.tenantId} = ${priceApprovals.tenantId} and ${orders.id} = ${priceApprovals.orderId} and ${inArray(orders.locationId, range.locationIds)})`
+          : sql`false`,
+      );
     }
     return conditions;
   }

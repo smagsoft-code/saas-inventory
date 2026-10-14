@@ -30,10 +30,11 @@ export class OrdersController {
   @ApiOkResponse({ type: OrderResponseDto, isArray: true })
   async list(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Query() query: ListOrdersQueryDto,
   ): Promise<PaginatedResult<OrderResponseDto>> {
-    return this.ordersService.list(tenantId, permissions, query);
+    return this.ordersService.list(tenantId, principal.userId, permissions, query);
   }
 
   @Get(':id')
@@ -41,10 +42,11 @@ export class OrdersController {
   @ApiOkResponse({ type: OrderResponseDto })
   async getById(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Param('id') id: string,
   ): Promise<OrderResponseDto> {
-    return this.ordersService.getById(tenantId, permissions, id);
+    return this.ordersService.getById(tenantId, principal.userId, permissions, id);
   }
 
   @Get(':id/notifications')
@@ -52,9 +54,10 @@ export class OrdersController {
   @ApiOkResponse({ type: OrderNotificationsResponseDto })
   async notifications(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
     @Param('id') id: string,
   ): Promise<OrderNotificationsResponseDto> {
-    return this.ordersService.getNotifications(tenantId, id);
+    return this.ordersService.getNotifications(tenantId, principal.userId, id);
   }
 
   @Post()

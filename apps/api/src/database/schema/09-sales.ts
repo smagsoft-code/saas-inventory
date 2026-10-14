@@ -315,6 +315,8 @@ export const orderPayments = pgTable('order_payments', {
 export const salesReturns = pgTable('sales_returns', {
   id: id(),
   tenantId: tenantId(),
+  /** Human-readable per-tenant sequential code (`DEV-001`, `DEV-1000`…) — assigned at creation. */
+  returnNumber: text('return_number').notNull(),
   orderId: uuid('order_id').notNull(),
   locationId: uuid('location_id').notNull(),
   status: text('status').notNull().default('requested'),
@@ -345,6 +347,7 @@ export const salesReturns = pgTable('sales_returns', {
     foreignColumns: [users.tenantId, users.id],
   }).onDelete('restrict'),
   unique('sales_returns_tenant_id_id_key').on(t.tenantId, t.id),
+  unique('sales_returns_tenant_return_number_key').on(t.tenantId, t.returnNumber),
   check('sales_returns_status_check', sql`${t.status} IN ('requested', 'inspecting', 'resolved', 'cancelled')`),
   index('sales_returns_tenant_order_idx').on(t.tenantId, t.orderId),
   index('sales_returns_tenant_status_created_idx').on(t.tenantId, t.status, t.createdAt),

@@ -1,74 +1,51 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { ReturnsReportError, ReturnsReportSection } from './returns-report-section';
-import type { ReturnsSummary } from '../../../lib/types/returns-reports';
+import { ReturnsReportError, ReturnsSummaryCards, summarizeReturns } from './returns-report-section';
+import type { ReturnsPeriodBucket, ReturnsSummary } from '../../../lib/types/returns-reports';
 
-function baseSummary(overrides: Partial<ReturnsSummary> = {}): ReturnsSummary {
+function bucket(overrides: Partial<ReturnsPeriodBucket> = {}): ReturnsPeriodBucket {
+  return { key: '2026-10-13', returnCount: 2, orderCount: 2, lineCount: 2, quantity: 5, returnedValue: 200, avgReturnValue: 100, ...overrides };
+}
+
+function summary(buckets: ReturnsPeriodBucket[]): ReturnsSummary {
   return {
-    from: '2026-08-01T00:00:00.000Z',
-    to: '2026-08-31T00:00:00.000Z',
+    from: '2026-10-13T05:00:00.000Z',
+    to: '2026-10-14T05:00:00.000Z',
     timezone: 'America/Bogota',
     currency: 'USD',
     groupBy: 'day',
-    buckets: [],
-    ...overrides,
+    buckets,
   };
 }
 
-describe('ReturnsReportSection', () => {
-  it('shows an empty state when there are no buckets — never a fake zero table', () => {
-    render(<ReturnsReportSection summary={baseSummary()} currency="USD" />);
-    expect(screen.getByText('Sin devoluciones en este período')).toBeInTheDocument();
+describe('summarizeReturns', () => {
+  it('sums day buckets and recomputes the average from the totals', () => {
+    expect(
+      summarizeReturns([bucket(), bucket({ key: '2026-10-14', returnCount: 1, quantity: 1, returnedValue: 100 })]),
+    ).toEqual({ returnCount: 3, quantity: 6, returnedValue: 300, avgReturnValue: 100 });
   });
 
-  it('renders period rows with real Returns/Units returned/Returned value/Avg per return KPI tiles', () => {
-    const summary = baseSummary({
-      groupBy: 'day',
-      buckets: [
-        { key: '2026-08-01', returnCount: 2, orderCount: 2, lineCount: 2, quantity: 5, returnedValue: 200, avgReturnValue: 100 },
-      ],
-    });
-    render(<ReturnsReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('2026-08-01')).toBeInTheDocument();
-    // KPI strip's "Returned value" tile and the table row both show the (single-bucket) total.
-    expect(screen.getAllByText('200.00 USD')).toHaveLength(2);
+  it('an empty period is real zeros', () => {
+    expect(summarizeReturns([])).toEqual({ returnCount: 0, quantity: 0, returnedValue: 0, avgReturnValue: 0 });
+  });
+});
+
+describe('ReturnsSummaryCards', () => {
+  it('keeps the same four cards and has no period table', () => {
+    render(<ReturnsSummaryCards statusLabel="resueltas" summary={summary([bucket()])} />);
+    expect(screen.getByText('Devoluciones')).toBeInTheDocument();
+    expect(screen.getByText('Unidades devueltas')).toBeInTheDocument();
+    expect(screen.getByText('Valor devuelto')).toBeInTheDocument();
+    expect(screen.getByText('Promedio por devolución')).toBeInTheDocument();
+    expect(screen.getAllByText('200.00 USD')).toHaveLength(1);
+    expect(screen.getByText('100.00 USD')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('renders product buckets with SKU/quantity columns, never an "Avg per return" KPI tile', () => {
-    const summary = baseSummary({
-      groupBy: 'product',
-      buckets: [
-        { key: 'variant-1', sku: 'SKU-1', productName: 'Widget', returnCount: 3, orderCount: 3, lineCount: 3, quantity: 7, returnedValue: 700 },
-      ],
-    });
-    render(<ReturnsReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('Widget')).toBeInTheDocument();
-    expect(screen.getByText('SKU-1')).toBeInTheDocument();
-    expect(screen.getByText('Productos')).toBeInTheDocument();
-    expect(screen.queryByText('Prom. / devolución')).not.toBeInTheDocument();
-  });
-
-  it('renders customer buckets with the frozen customer name', () => {
-    const summary = baseSummary({
-      groupBy: 'customer',
-      buckets: [
-        { key: 'cust-1', customerName: 'Acme Corp', returnCount: 4, orderCount: 4, lineCount: 4, quantity: 8, returnedValue: 400, avgReturnValue: 100 },
-      ],
-    });
-    render(<ReturnsReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('Acme Corp')).toBeInTheDocument();
-  });
-
-  it('renders disposition buckets with a labeled disposition, never a "Returns" KPI tile', () => {
-    const summary = baseSummary({
-      groupBy: 'disposition',
-      buckets: [{ key: 'restock', lineCount: 3, quantity: 6, returnedValue: 300 }],
-    });
-    render(<ReturnsReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('Reingreso a stock (vendible)')).toBeInTheDocument();
-    expect(screen.getAllByText('Líneas').length).toBeGreaterThan(0);
-    expect(screen.queryByText('Devoluciones')).not.toBeInTheDocument();
-    expect(screen.queryByText('Prom. / devolución')).not.toBeInTheDocument();
+  it('names the counted status and says the value is not a refund', () => {
+    render(<ReturnsSummaryCards statusLabel="solicitadas" summary={summary([])} />);
+    expect(screen.getByText(/devoluciones solicitadas/)).toBeInTheDocument();
+    expect(screen.getByText(/no es un reembolso/)).toBeInTheDocument();
   });
 });
 
@@ -76,18 +53,17 @@ describe('ReturnsReportError', () => {
   it('shows an access-denied title for a 403 — never a redirect to login', () => {
     render(<ReturnsReportError status={403} message="No tienes permiso para hacer esto." />);
     expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
-    expect(screen.getByText("No tienes permiso para hacer esto.")).toBeInTheDocument();
+    expect(screen.getByText('No tienes permiso para hacer esto.')).toBeInTheDocument();
   });
 
   it('shows a friendly title and the correlation id for a 5xx', () => {
-    render(<ReturnsReportError status={500} message="Something went wrong on our end. Please try again." correlationId="corr-123" />);
+    render(<ReturnsReportError status={500} message="Something went wrong on our end." correlationId="corr-123" />);
     expect(screen.getByText('Algo salió mal de nuestro lado')).toBeInTheDocument();
     expect(screen.getByText(/corr-123/)).toBeInTheDocument();
   });
 
   it('offers a retry link back to #report', () => {
     render(<ReturnsReportError status={400} message="Some of the information provided is invalid." />);
-    const retry = screen.getByRole('link', { name: 'Reintentar' });
-    expect(retry).toHaveAttribute('href', '#report');
+    expect(screen.getByRole('link', { name: 'Reintentar' })).toHaveAttribute('href', '#report');
   });
 });

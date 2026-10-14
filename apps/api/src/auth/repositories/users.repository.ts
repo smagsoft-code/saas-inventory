@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, eq, ilike, isNull, type SQL } from 'drizzle-orm';
+import { and, count, eq, ilike, inArray, isNull, type SQL } from 'drizzle-orm';
 import { users } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -30,6 +30,17 @@ export interface UserListRow {
  */
 @Injectable()
 export class UsersRepository {
+  /** Batched display-name lookup (one query for a whole page) — id → full name. Includes
+   * soft-deleted users on purpose: a historical sale keeps showing who made it. */
+  async findNamesByIds(tx: TenantTransaction, tenantId: string, ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await tx
+      .select({ id: users.id, fullName: users.fullName })
+      .from(users)
+      .where(and(eq(users.tenantId, tenantId), inArray(users.id, ids)));
+    return new Map(rows.map((row) => [row.id, row.fullName]));
+  }
+
   async findByEmail(tx: TenantTransaction, tenantId: string, email: string): Promise<UserRow | undefined> {
     const [row] = await tx
       .select()

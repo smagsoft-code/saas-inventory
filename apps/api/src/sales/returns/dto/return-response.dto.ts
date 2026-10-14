@@ -10,6 +10,12 @@ export class ReturnItemResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   productVariantId!: string;
 
+  @ApiPropertyOptional({ type: String, description: 'Frozen SKU of the sold line.' })
+  sku?: string;
+
+  @ApiPropertyOptional({ type: String, description: 'Frozen product name of the sold line.' })
+  productName?: string;
+
   @ApiProperty({ type: Number })
   quantityReturned!: number;
 
@@ -33,6 +39,12 @@ export class ReturnResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
 
+  @ApiProperty({ type: String, example: 'DEV-001', description: 'Per-tenant sequential code.' })
+  returnNumber!: string;
+
+  @ApiPropertyOptional({ type: String, example: 'ORD-000012', description: 'Order number of the original sale.' })
+  orderNumber?: string;
+
   @ApiProperty({ type: String, format: 'uuid' })
   orderId!: string;
 
@@ -45,8 +57,14 @@ export class ReturnResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   requestedBy!: string;
 
+  @ApiPropertyOptional({ type: String, description: 'Display name of requestedBy.' })
+  requestedByName?: string;
+
   @ApiPropertyOptional({ type: String, format: 'uuid', description: 'Who received the physical goods (set at inspection).' })
   receivedBy?: string;
+
+  @ApiPropertyOptional({ type: String, description: 'Display name of receivedBy.' })
+  receivedByName?: string;
 
   @ApiProperty({ type: String })
   reason!: string;

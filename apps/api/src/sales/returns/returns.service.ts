@@ -9,6 +9,9 @@ import {
 import { generateId } from '@saas-inventory/shared';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { sql } from 'drizzle-orm';
+import { TenantSettingsRepository } from '../../administration/tenant-settings/tenant-settings.repository';
+import { DEFAULT_TIMEZONE } from '../../administration/tenant-settings/tenant-settings.service';
+import { UsersRepository } from '../../auth/repositories/users.repository';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { DomainEventPublisher } from '../../common/events/domain-event-publisher.service';
 import type {
@@ -17,6 +20,7 @@ import type {
   SalesReturnResolvedData,
 } from '../../common/events/domain-event.contracts';
 import { EVENT_TYPES } from '../../common/events/event-types';
+import { localDayRangeToUtc } from '../../common/reporting/local-day-range';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
 import { LocationsRepository } from '../../inventory/repositories/locations.repository';
@@ -94,17 +98,34 @@ export class ReturnsService {
     private readonly idempotencyRepository: SalesIdempotencyRepository,
     private readonly auditLogService: AuditLogService,
     private readonly domainEventPublisher: DomainEventPublisher,
+    private readonly usersRepository: UsersRepository,
+    private readonly tenantSettingsRepository: TenantSettingsRepository,
   ) {}
 
-  async list(tenantId: string, query: ListReturnsQueryDto): Promise<PaginatedResult<ReturnResponseDto>> {
+  async list(tenantId: string, actorId: string, query: ListReturnsQueryDto): Promise<PaginatedResult<ReturnResponseDto>> {
     return withTenantTransaction(tenantId, async (tx) => {
+      if (query.dateTo && !query.dateFrom) {
+        throw new BadRequestException('`dateTo` requires `dateFrom`.');
+      }
+      // Business-day filter (tenant timezone, whole final day included, half-open upper bound).
+      let dayRange: { gte: Date; lt: Date } | undefined;
+      if (query.dateFrom) {
+        const settings = await this.tenantSettingsRepository.find(tx, tenantId);
+        dayRange = localDayRangeToUtc(query.dateFrom, query.dateTo, settings?.timezone ?? DEFAULT_TIMEZONE);
+      }
+      // Same location scope as the writes (ADR-0024/0035): a restricted caller only sees returns
+      // received at their assigned locations, and asking for another one is a 403.
+      const readScope = await this.locationAuthorizationService.resolveReadScope(tx, tenantId, actorId, query.locationId);
       const { rows, total } = await this.returnsRepository.listByTenant(tx, tenantId, {
         page: query.page,
         pageSize: query.pageSize,
         status: query.status,
         orderId: query.orderId,
+        locationId: readScope.locationId,
+        locationIds: readScope.locationIds,
+        dayRange,
       });
-      const data = await Promise.all(rows.map((row) => this.toResponse(tx, tenantId, row)));
+      const data = await this.toResponses(tx, tenantId, rows);
       return {
         data,
         meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.max(1, Math.ceil(total / query.pageSize)) },
@@ -112,10 +133,11 @@ export class ReturnsService {
     });
   }
 
-  async getById(tenantId: string, id: string): Promise<ReturnResponseDto> {
+  async getById(tenantId: string, actorId: string, id: string): Promise<ReturnResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const row = await this.returnsRepository.findById(tx, tenantId, id);
-      if (!row) {
+      // 404, not 403, for a return outside the caller's locations - its existence is not revealed.
+      if (!row || !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, row.locationId))) {
         throw new NotFoundException('Sales return not found.');
       }
       return this.toResponse(tx, tenantId, row);
@@ -191,9 +213,11 @@ export class ReturnsService {
       }
 
       const returnId = generateId();
+      const returnNumber = await this.returnsRepository.nextReturnNumber(tx, tenantId);
       const created = await this.returnsRepository.create(tx, {
         id: returnId,
         tenantId,
+        returnNumber,
         orderId: order.id,
         locationId: dto.locationId,
         status: 'requested',
@@ -519,26 +543,64 @@ export class ReturnsService {
   }
 
   private async toResponse(tx: TenantTransaction, tenantId: string, row: SalesReturnRow): Promise<ReturnResponseDto> {
-    const items = await this.returnItemsRepository.listByReturn(tx, tenantId, row.id);
-    return {
-      id: row.id,
-      orderId: row.orderId,
-      locationId: row.locationId,
-      status: row.status,
-      requestedBy: row.requestedBy,
-      ...(row.receivedBy ? { receivedBy: row.receivedBy } : {}),
-      reason: row.reason,
-      items: items.map((item) => this.toItemResponse(item)),
-      createdAt: row.createdAt.toISOString(),
-      updatedAt: row.updatedAt.toISOString(),
-    };
+    const [response] = await this.toResponses(tx, tenantId, [row]);
+    return response!;
   }
 
-  private toItemResponse(item: SalesReturnItemRow): ReturnItemResponseDto {
+  /** Builds responses for a whole page with four batched lookups (items, order numbers, product
+   * labels, user names) — never one query per row. */
+  private async toResponses(tx: TenantTransaction, tenantId: string, rows: SalesReturnRow[]): Promise<ReturnResponseDto[]> {
+    if (rows.length === 0) return [];
+    const items = await this.returnItemsRepository.listByReturns(
+      tx,
+      tenantId,
+      rows.map((row) => row.id),
+    );
+    const userIds = new Set<string>();
+    for (const row of rows) {
+      userIds.add(row.requestedBy);
+      if (row.receivedBy) userIds.add(row.receivedBy);
+    }
+    const [orderNumbers, labels, userNames] = await Promise.all([
+      this.ordersRepository.findNumbersByIds(tx, tenantId, [...new Set(rows.map((row) => row.orderId))]),
+      this.orderItemsRepository.findLabelsByIds(tx, tenantId, [...new Set(items.map((item) => item.orderItemId))]),
+      this.usersRepository.findNamesByIds(tx, tenantId, [...userIds]),
+    ]);
+    const itemsByReturn = new Map<string, SalesReturnItemRow[]>();
+    for (const item of items) {
+      const list = itemsByReturn.get(item.returnId) ?? [];
+      list.push(item);
+      itemsByReturn.set(item.returnId, list);
+    }
+    return rows.map((row) => {
+      const orderNumber = orderNumbers.get(row.orderId);
+      const requestedByName = userNames.get(row.requestedBy);
+      const receivedByName = row.receivedBy ? userNames.get(row.receivedBy) : undefined;
+      return {
+        id: row.id,
+        returnNumber: row.returnNumber,
+        ...(orderNumber ? { orderNumber } : {}),
+        orderId: row.orderId,
+        locationId: row.locationId,
+        status: row.status,
+        requestedBy: row.requestedBy,
+        ...(requestedByName ? { requestedByName } : {}),
+        ...(row.receivedBy ? { receivedBy: row.receivedBy } : {}),
+        ...(receivedByName ? { receivedByName } : {}),
+        reason: row.reason,
+        items: (itemsByReturn.get(row.id) ?? []).map((item) => this.toItemResponse(item, labels.get(item.orderItemId))),
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      };
+    });
+  }
+
+  private toItemResponse(item: SalesReturnItemRow, label?: { sku: string; productName: string }): ReturnItemResponseDto {
     return {
       id: item.id,
       orderItemId: item.orderItemId,
       productVariantId: item.productVariantId,
+      ...(label ? { sku: label.sku, productName: label.productName } : {}),
       quantityReturned: Number(item.quantityReturned),
       ...(item.disposition ? { disposition: item.disposition } : {}),
       ...(item.dispositionLocationId ? { dispositionLocationId: item.dispositionLocationId } : {}),

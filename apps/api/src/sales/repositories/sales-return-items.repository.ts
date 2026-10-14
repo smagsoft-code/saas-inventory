@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, ne, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import { salesReturnItems, salesReturns } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -43,6 +43,16 @@ export class SalesReturnItemsRepository {
       return [];
     }
     return tx.insert(salesReturnItems).values(values).returning();
+  }
+
+  /** One query for a whole page of returns (no N+1). */
+  async listByReturns(tx: TenantTransaction, tenantId: string, returnIds: string[]): Promise<SalesReturnItemRow[]> {
+    if (returnIds.length === 0) return [];
+    return tx
+      .select()
+      .from(salesReturnItems)
+      .where(and(eq(salesReturnItems.tenantId, tenantId), inArray(salesReturnItems.returnId, returnIds)))
+      .orderBy(salesReturnItems.createdAt);
   }
 
   async listByReturn(tx: TenantTransaction, tenantId: string, returnId: string): Promise<SalesReturnItemRow[]> {

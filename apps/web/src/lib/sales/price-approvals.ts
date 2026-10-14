@@ -18,6 +18,11 @@ export interface ListPriceApprovalsQuery {
   pageSize?: number;
   status?: PriceApprovalStatus;
   orderId?: string;
+  /** The parent order's location (Almacén). */
+  locationId?: string;
+  /** Business-day filter on `requested_at` (`YYYY-MM-DD`, tenant timezone, whole final day inclusive). */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export async function listPriceApprovals(query: ListPriceApprovalsQuery = {}): Promise<Paginated<PriceApproval>> {
@@ -30,6 +35,15 @@ export async function listPriceApprovals(query: ListPriceApprovalsQuery = {}): P
   }
   if (query.orderId) {
     params['orderId'] = query.orderId;
+  }
+  if (query.locationId) {
+    params['locationId'] = query.locationId;
+  }
+  if (query.dateFrom) {
+    params['dateFrom'] = query.dateFrom;
+  }
+  if (query.dateTo) {
+    params['dateTo'] = query.dateTo;
   }
   return serverApiFetch<Paginated<PriceApproval>>('/api/v1/price-approvals', { query: params });
 }

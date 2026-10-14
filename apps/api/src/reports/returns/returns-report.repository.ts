@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, desc, gte, lt, sql, type SQL } from 'drizzle-orm';
+import { and, inArray, eq, desc, gte, lt, sql, type SQL } from 'drizzle-orm';
 import { orderItems, orders, salesReturnItems, salesReturns } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -73,19 +73,28 @@ export type DateTruncUnit = 'day' | 'week' | 'month';
  */
 @Injectable()
 export class ReturnsReportRepository {
-  private baseConditions(tenantId: string, range: { gte: Date; lt: Date; status: string }): SQL[] {
-    return [
+  private baseConditions(tenantId: string, range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined }): SQL[] {
+    const conditions = [
       eq(salesReturns.tenantId, tenantId),
       eq(salesReturns.status, range.status),
       gte(salesReturns.createdAt, range.gte),
       lt(salesReturns.createdAt, range.lt),
     ];
+    // Recibido en — plain equality on the receiving location, never a grouping dimension.
+    if (range.locationId) {
+      conditions.push(eq(salesReturns.locationId, range.locationId));
+    }
+    // Read scope of a restricted caller (ADR-0024/0035): only their assigned locations; none = nothing.
+    if (range.locationIds) {
+      conditions.push(range.locationIds.length > 0 ? inArray(salesReturns.locationId, range.locationIds) : sql`false`);
+    }
+    return conditions;
   }
 
   async summaryByPeriod(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; unit: DateTruncUnit; timezone: string },
+    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined; unit: DateTruncUnit; timezone: string },
   ): Promise<PeriodBucketRow[]> {
     // Same alias-then-reference trick as SalesReportRepository.summaryByPeriod — Drizzle renders an
     // identical `sql` fragment differently in SELECT vs GROUP BY/ORDER BY, which Postgres then
@@ -116,7 +125,7 @@ export class ReturnsReportRepository {
   async summaryByCustomer(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string },
+    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined },
   ): Promise<CustomerBucketRow[]> {
     const rows = await tx
       .select({
@@ -149,7 +158,7 @@ export class ReturnsReportRepository {
   async summaryByProduct(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string },
+    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined },
   ): Promise<ProductBucketRow[]> {
     const rows = await tx
       .select({
@@ -178,7 +187,7 @@ export class ReturnsReportRepository {
   async summaryByDisposition(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string },
+    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined },
   ): Promise<DispositionBucketRow[]> {
     const rows = await tx
       .select({

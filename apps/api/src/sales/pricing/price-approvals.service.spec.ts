@@ -64,7 +64,7 @@ function build() {
   };
   const ordersRepository = {
     lockById: vi.fn().mockResolvedValue({ id: 'order-1', status: 'pending', tenantId: TENANT }),
-    findById: vi.fn().mockResolvedValue({ id: 'order-1', orderNumber: 'ORD-000001', tenantId: TENANT }),
+    findById: vi.fn().mockResolvedValue({ id: 'order-1', orderNumber: 'ORD-000001', tenantId: TENANT, locationId: 'loc-1' }),
     updateTotals: vi.fn().mockResolvedValue(undefined),
   };
   const orderItemsRepository = {
@@ -73,7 +73,13 @@ function build() {
       Promise.resolve({ ...ORDER_ITEM, ...values }),
     ),
     listByOrder: vi.fn().mockResolvedValue([ORDER_ITEM]),
+    findLabelsByIds: vi.fn().mockResolvedValue(new Map([['oi-1', { sku: 'SKU-1', productName: 'Refrigerator' }]])),
   };
+  const locationAuthorizationService = {
+    resolveReadScope: vi.fn((_tx: unknown, _t: string, _u: string, loc?: string) => Promise.resolve(loc ? { locationId: loc } : {})),
+    canAccess: vi.fn().mockResolvedValue(true),
+  };
+  const tenantSettingsRepository = { find: vi.fn().mockResolvedValue({ timezone: 'America/Guayaquil' }) };
   const usersRepository = {
     findById: vi.fn((_tx: unknown, _tenantId: string, userId: string) =>
       Promise.resolve(userId === REQUESTER ? { id: REQUESTER, fullName: 'Jane Requester' } : { id: APPROVER, fullName: 'Alex Approver' }),
@@ -93,6 +99,8 @@ function build() {
     new SalesPricingService(),
     auditLogService as never,
     domainEventPublisher as never,
+    tenantSettingsRepository as never,
+    locationAuthorizationService as never,
   );
   return {
     service,
@@ -281,23 +289,23 @@ describe('PriceApprovalsService — visibility & permissions', () => {
   it('omits minPriceAtRequest for a caller without pricing.floor.view (§45 / P15)', async () => {
     const { service, priceApprovalsRepository } = build();
     priceApprovalsRepository.findById.mockResolvedValue(PENDING_ROW);
-    const withoutFloor = await service.getById(TENANT, ['pricing.discount.approve'], 'pa-1');
+    const withoutFloor = await service.getById(TENANT, REQUESTER, ['pricing.discount.approve'], 'pa-1');
     expect(withoutFloor.minPriceAtRequest).toBeUndefined();
     expect(withoutFloor.maxPriceAtRequest).toBe(120);
     expect(withoutFloor.basePriceAtRequest).toBe(100); // never gated — it's the trigger itself
-    const withFloor = await service.getById(TENANT, ['pricing.discount.approve', 'pricing.floor.view'], 'pa-1');
+    const withFloor = await service.getById(TENANT, REQUESTER, ['pricing.discount.approve', 'pricing.floor.view'], 'pa-1');
     expect(withFloor.minPriceAtRequest).toBe(80);
   });
 
   it('403s a caller with neither request nor approve permission', async () => {
     const { service } = build();
-    await expect(service.getById(TENANT, ['sales.orders.view'], 'pa-1')).rejects.toThrow(ForbiddenException);
+    await expect(service.getById(TENANT, REQUESTER, ['sales.orders.view'], 'pa-1')).rejects.toThrow(ForbiddenException);
   });
 
   it('resolves orderNumber + requestedByName server-side, never a raw id', async () => {
     const { service, priceApprovalsRepository } = build();
     priceApprovalsRepository.findById.mockResolvedValue(PENDING_ROW);
-    const result = await service.getById(TENANT, APPROVE_PERMS, 'pa-1');
+    const result = await service.getById(TENANT, REQUESTER, APPROVE_PERMS, 'pa-1');
     expect(result.orderNumber).toBe('ORD-000001');
     expect(result.requestedByName).toBe('Jane Requester');
     expect(result.approvedByName).toBeUndefined();
@@ -306,7 +314,35 @@ describe('PriceApprovalsService — visibility & permissions', () => {
   it('resolves approvedByName once a request is resolved', async () => {
     const { service, priceApprovalsRepository } = build();
     priceApprovalsRepository.findById.mockResolvedValue({ ...PENDING_ROW, status: 'approved', approvedBy: APPROVER });
-    const result = await service.getById(TENANT, APPROVE_PERMS, 'pa-1');
+    const result = await service.getById(TENANT, REQUESTER, APPROVE_PERMS, 'pa-1');
     expect(result.approvedByName).toBe('Alex Approver');
+  });
+});
+
+describe('PriceApprovalsService.list — Almacén, product and business-day filter', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const query = { page: 1, pageSize: 20 };
+
+  it('adds the order location and the product name to each row, with one batched label lookup', async () => {
+    const { service, priceApprovalsRepository, orderItemsRepository } = build();
+    priceApprovalsRepository.listByTenant.mockResolvedValue({ rows: [PENDING_ROW, { ...PENDING_ROW, id: 'pa-2' }], total: 2 });
+    const result = await service.list(TENANT, REQUESTER, REQUEST_PERMS, query as never);
+    expect(orderItemsRepository.findLabelsByIds).toHaveBeenCalledTimes(1);
+    expect(result.data[0]).toMatchObject({ locationId: 'loc-1', productName: 'Refrigerator', sku: 'SKU-1' });
+  });
+
+  it('resolves dateFrom to one tenant-local day on requested_at and passes locationId through', async () => {
+    const { service, priceApprovalsRepository } = build();
+    priceApprovalsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+    await service.list(TENANT, REQUESTER, REQUEST_PERMS, { ...query, dateFrom: '2026-10-13', locationId: 'loc-1' } as never);
+    const params = priceApprovalsRepository.listByTenant.mock.calls[0]![2] as { dayRange: { gte: Date; lt: Date }; locationId: string };
+    expect(params.dayRange.gte.toISOString()).toBe('2026-10-13T05:00:00.000Z');
+    expect(params.dayRange.lt.toISOString()).toBe('2026-10-14T05:00:00.000Z');
+    expect(params.locationId).toBe('loc-1');
+  });
+
+  it('rejects dateTo without dateFrom', async () => {
+    const { service } = build();
+    await expect(service.list(TENANT, REQUESTER, REQUEST_PERMS, { ...query, dateTo: '2026-10-13' } as never)).rejects.toThrow('dateTo');
   });
 });

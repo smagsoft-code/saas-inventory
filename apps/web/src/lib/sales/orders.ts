@@ -16,8 +16,14 @@ export interface ListOrdersQuery {
   status?: OrderStatus;
   customerId?: string;
   documentType?: DocumentType;
+  /** `orders.location_id` equality (Almacén). */
+  locationId?: string;
   createdFrom?: string;
   createdTo?: string;
+  /** Business-day filter (`YYYY-MM-DD`, tenant timezone, whole final day inclusive). Takes
+   * precedence over `createdFrom`/`createdTo` in the backend. `dateTo` defaults to `dateFrom`. */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export async function listOrders(query: ListOrdersQuery = {}): Promise<Paginated<Order>> {
@@ -34,11 +40,20 @@ export async function listOrders(query: ListOrdersQuery = {}): Promise<Paginated
   if (query.documentType) {
     params['documentType'] = query.documentType;
   }
+  if (query.locationId) {
+    params['locationId'] = query.locationId;
+  }
   if (query.createdFrom) {
     params['createdFrom'] = query.createdFrom;
   }
   if (query.createdTo) {
     params['createdTo'] = query.createdTo;
+  }
+  if (query.dateFrom) {
+    params['dateFrom'] = query.dateFrom;
+  }
+  if (query.dateTo) {
+    params['dateTo'] = query.dateTo;
   }
   return serverApiFetch<Paginated<Order>>('/api/v1/orders', { query: params });
 }

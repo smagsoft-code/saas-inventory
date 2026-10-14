@@ -10,6 +10,7 @@ import {
   returnActionsForStatus,
   type Disposition,
 } from '../../../../lib/types/sales';
+import { DispositionGuide } from './disposition-guide';
 import { Alert } from '../../../../components/ui/alert';
 import { Button } from '../../../../components/ui/button';
 import { Card, CardBody } from '../../../../components/ui/card';
@@ -260,10 +261,7 @@ export function ReturnActions({
         {showInspect && inspectOpen && (
           <div className="flex flex-col gap-4 rounded-md border border-slate-200 p-3">
             <p className="text-sm font-medium text-slate-700">Disposición por línea</p>
-            <p className="text-xs text-slate-500">
-              Reingreso a stock reingresa en un almacén vendible; cuarentena, dañado y desecho reingresan en un
-              almacén no vendible.
-            </p>
+            <DispositionGuide />
             {lines.map((line) => {
               const row = inspectRows[line.returnItemId]!;
               const pool = dispositionPool(row.disposition);

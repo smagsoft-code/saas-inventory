@@ -251,6 +251,10 @@ export interface Order {
   total: number;
   currency: string;
   placedByUserId?: string;
+  /** Seller (creator) display name — only on the `GET /orders` list. */
+  placedByName?: string;
+  /** Rolled-up `event_outbox` delivery status — only on the `GET /orders` list. */
+  notificationStatus?: NotificationOverallStatus;
   createdAt: string;
   updatedAt: string;
 }
@@ -314,6 +318,11 @@ export interface PriceApproval {
    * `orderId` on screen. */
   orderNumber: string;
   orderItemId: string;
+  /** The parent order's location (Almacén). */
+  locationId: string;
+  /** Frozen product label of the order line this request is about. */
+  productName?: string;
+  sku?: string;
   requestedPrice: number;
   maxPriceAtRequest: number;
   minPriceAtRequest?: number;
@@ -398,6 +407,9 @@ export interface ReturnItem {
   id: string;
   orderItemId: string;
   productVariantId: string;
+  /** Frozen SKU / product name of the sold line. */
+  sku?: string;
+  productName?: string;
   quantityReturned: number;
   disposition?: string;
   dispositionLocationId?: string;
@@ -406,15 +418,19 @@ export interface ReturnItem {
   notes?: string;
 }
 
-/** `ReturnResponseDto` — a reversal traced to a **confirmed** order (ADR-0021). No `orderNumber`
- * (`GAP-NAME-ENRICHMENT`). */
+/** `ReturnResponseDto` — a reversal traced to a **confirmed** order (ADR-0021). `returnNumber` is the
+ * per-tenant sequential code (`DEV-001`); `orderNumber` and the user names are resolved server-side. */
 export interface Return {
   id: string;
+  returnNumber: string;
+  orderNumber?: string;
   orderId: string;
   locationId: string;
   status: string;
   requestedBy: string;
+  requestedByName?: string;
   receivedBy?: string;
+  receivedByName?: string;
   reason: string;
   items: ReturnItem[];
   createdAt: string;

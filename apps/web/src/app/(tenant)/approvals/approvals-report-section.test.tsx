@@ -1,91 +1,70 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { ApprovalsReportError, ApprovalsReportSection } from './approvals-report-section';
-import type { ApprovalsSummary } from '../../../lib/types/approvals-reports';
+import { ApprovalsReportError, ApprovalsSummaryCards, summarizeApprovals } from './approvals-report-section';
+import type { ApprovalsPeriodBucket, ApprovalsSummary } from '../../../lib/types/approvals-reports';
 
-function baseSummary(overrides: Partial<ApprovalsSummary> = {}): ApprovalsSummary {
+function bucket(overrides: Partial<ApprovalsPeriodBucket> = {}): ApprovalsPeriodBucket {
   return {
-    from: '2026-08-01T00:00:00.000Z',
-    to: '2026-08-31T00:00:00.000Z',
-    timezone: 'America/Bogota',
-    currency: 'USD',
-    groupBy: 'day',
-    buckets: [],
+    key: '2026-10-13',
+    requestCount: 4,
+    approvedCount: 3,
+    rejectedCount: 1,
+    cancelledCount: 0,
+    pendingCount: 0,
+    approvedDiscountValue: 180,
+    approvalRate: 0.75,
     ...overrides,
   };
 }
 
-describe('ApprovalsReportSection', () => {
-  it('shows an empty state when there are no buckets — never a fake zero table', () => {
-    render(<ApprovalsReportSection summary={baseSummary()} currency="USD" />);
-    expect(screen.getByText('Sin solicitudes de aprobación en este período')).toBeInTheDocument();
+function summary(buckets: ApprovalsPeriodBucket[]): ApprovalsSummary {
+  return {
+    from: '2026-10-13T05:00:00.000Z',
+    to: '2026-10-14T05:00:00.000Z',
+    timezone: 'America/Bogota',
+    currency: 'USD',
+    groupBy: 'day',
+    buckets,
+  };
+}
+
+describe('summarizeApprovals', () => {
+  it('sums day buckets and recomputes the rate from summed approved/rejected (not an average)', () => {
+    const result = summarizeApprovals([
+      bucket({ requestCount: 4, approvedCount: 3, rejectedCount: 1, pendingCount: 0, approvedDiscountValue: 180 }),
+      bucket({ key: '2026-10-14', requestCount: 2, approvedCount: 0, rejectedCount: 1, pendingCount: 1, approvedDiscountValue: 0 }),
+    ]);
+    expect(result).toEqual({ requestCount: 6, approvalRate: 0.6, pending: 1, approvedDiscountValue: 180 });
   });
 
-  it('renders period rows with Requests / Approval rate / Pending / Approved discount KPI tiles', () => {
-    const summary = baseSummary({
-      groupBy: 'day',
-      buckets: [
-        {
-          key: '2026-08-01',
-          requestCount: 4,
-          approvedCount: 3,
-          rejectedCount: 1,
-          cancelledCount: 0,
-          pendingCount: 0,
-          approvedDiscountValue: 180,
-          approvalRate: 0.75,
-        },
-      ],
-    });
-    render(<ApprovalsReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('2026-08-01')).toBeInTheDocument();
-    // "Approval rate" is both a KPI tile label and a column header.
-    expect(screen.getAllByText('Tasa de aprobación').length).toBeGreaterThan(0);
-    // 0.75 -> "75.0%" appears in both the KPI tile and the table row.
-    expect(screen.getAllByText('75.0%')).toHaveLength(2);
-    expect(screen.getAllByText('180.00 USD')).toHaveLength(2);
+  it('rate is null when nothing has been decided', () => {
+    expect(summarizeApprovals([bucket({ approvedCount: 0, rejectedCount: 0, pendingCount: 2, requestCount: 2 })]).approvalRate).toBeNull();
+    expect(summarizeApprovals([]).approvalRate).toBeNull();
+  });
+});
+
+describe('ApprovalsSummaryCards', () => {
+  it('shows the four cards with their values and no period table', () => {
+    render(<ApprovalsSummaryCards summary={summary([bucket()])} />);
+    expect(screen.getByText('Solicitudes')).toBeInTheDocument();
+    expect(screen.getByText('Tasa de aprobación')).toBeInTheDocument();
+    expect(screen.getByText('Pendientes')).toBeInTheDocument();
+    expect(screen.getByText('Descuento aprobado')).toBeInTheDocument();
+    expect(screen.getByText('75.0%')).toBeInTheDocument();
+    expect(screen.getByText('180.00 USD')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('renders an em dash for a null approval rate, never a fake 0%', () => {
-    const summary = baseSummary({
-      groupBy: 'day',
-      buckets: [
-        {
-          key: '2026-08-02',
-          requestCount: 3,
-          approvedCount: 0,
-          rejectedCount: 0,
-          cancelledCount: 1,
-          pendingCount: 2,
-          approvedDiscountValue: 0,
-          approvalRate: null,
-        },
-      ],
-    });
-    render(<ApprovalsReportSection summary={summary} currency="USD" />);
-    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
-    expect(screen.queryByText('0.0%')).not.toBeInTheDocument();
-  });
-
-  it('renders status buckets with a labeled status and a discount value, never an approval-rate column', () => {
-    const summary = baseSummary({
-      groupBy: 'status',
-      buckets: [
-        { key: 'approved', requestCount: 3, discountValue: 90 },
-        { key: 'rejected', requestCount: 2, discountValue: 55 },
-      ],
-    });
-    render(<ApprovalsReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('Aprobada')).toBeInTheDocument();
-    expect(screen.getByText('Rechazada')).toBeInTheDocument();
-    expect(screen.getByText('Estados')).toBeInTheDocument();
-    expect(screen.queryByText('Tasa de aprobación')).not.toBeInTheDocument();
+  it('empty period shows real zeros and a dash for the rate', () => {
+    render(<ApprovalsSummaryCards summary={summary([])} />);
+    expect(screen.getByText('—')).toBeInTheDocument();
+    expect(screen.getByText('0.00 USD')).toBeInTheDocument();
   });
 });
 
 describe('ApprovalsReportError', () => {
   it('shows an access-denied title for a 403 — never a redirect to login', () => {
-    render(<ApprovalsReportError status={403} message="You don't have permission to do that." />);
+    render(<ApprovalsReportError status={403} message="You do not have permission." />);
     expect(screen.getByText('Acceso denegado')).toBeInTheDocument();
   });
 

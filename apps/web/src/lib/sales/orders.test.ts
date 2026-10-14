@@ -23,6 +23,18 @@ describe('listOrders', () => {
   });
 });
 
+describe('listOrders business-day filter', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('forwards dateFrom/dateTo as plain calendar days alongside the other filters', async () => {
+    mocked.mockResolvedValueOnce(emptyPage);
+    await listOrders({ dateFrom: '2026-10-13', dateTo: '2026-10-15', status: 'confirmed', documentType: 'invoice', customerId: 'c1' });
+    expect(mocked).toHaveBeenCalledWith('/api/v1/orders', {
+      query: { page: 1, pageSize: 20, status: 'confirmed', documentType: 'invoice', customerId: 'c1', dateFrom: '2026-10-13', dateTo: '2026-10-15' },
+    });
+  });
+});
+
 describe('getOrder', () => {
   beforeEach(() => vi.clearAllMocks());
   it('reads GET /orders/:id', async () => {

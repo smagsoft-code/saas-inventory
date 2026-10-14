@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -7,7 +8,11 @@ import {
 } from '@nestjs/common';
 import { generateId } from '@saas-inventory/shared';
 import type { PaginatedResult } from '@saas-inventory/types';
+import { TenantSettingsRepository } from '../../administration/tenant-settings/tenant-settings.repository';
+import { DEFAULT_TIMEZONE } from '../../administration/tenant-settings/tenant-settings.service';
+import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
 import { AuditLogService } from '../../common/audit/audit-log.service';
+import { localDayRangeToUtc } from '../../common/reporting/local-day-range';
 import { DomainEventPublisher } from '../../common/events/domain-event-publisher.service';
 import type { PriceApprovalRequestedData, PriceApprovalResolvedData } from '../../common/events/domain-event.contracts';
 import { EVENT_TYPES } from '../../common/events/event-types';
@@ -84,22 +89,41 @@ export class PriceApprovalsService {
     private readonly pricingService: SalesPricingService,
     private readonly auditLogService: AuditLogService,
     private readonly domainEventPublisher: DomainEventPublisher,
+    private readonly tenantSettingsRepository: TenantSettingsRepository,
+    private readonly locationAuthorizationService: LocationAuthorizationService,
   ) {}
 
   async list(
     tenantId: string,
+    actorId: string,
     permissions: string[],
     query: ListPriceApprovalsQueryDto,
   ): Promise<PaginatedResult<PriceApprovalResponseDto>> {
     this.assertCanView(permissions);
     return withTenantTransaction(tenantId, async (tx) => {
+      if (query.dateTo && !query.dateFrom) {
+        throw new BadRequestException('`dateTo` requires `dateFrom`.');
+      }
+      // Business-day filter on requested_at (tenant timezone, whole final day, half-open upper bound).
+      let dayRange: { gte: Date; lt: Date } | undefined;
+      if (query.dateFrom) {
+        const settings = await this.tenantSettingsRepository.find(tx, tenantId);
+        dayRange = localDayRangeToUtc(query.dateFrom, query.dateTo, settings?.timezone ?? DEFAULT_TIMEZONE);
+      }
+      // Same location scope as the writes (ADR-0024/0035), through the parent order's location.
+      const readScope = await this.locationAuthorizationService.resolveReadScope(tx, tenantId, actorId, query.locationId);
       const { rows, total } = await this.priceApprovalsRepository.listByTenant(tx, tenantId, {
         page: query.page,
         pageSize: query.pageSize,
         status: query.status,
         orderId: query.orderId,
+        locationId: readScope.locationId,
+        locationIds: readScope.locationIds,
+        dayRange,
       });
-      const data = await Promise.all(rows.map((row) => this.toResponse(tx, tenantId, row, permissions)));
+      // One batched lookup for the product labels of the whole page.
+      const labels = await this.orderItemsRepository.findLabelsByIds(tx, tenantId, [...new Set(rows.map((row) => row.orderItemId))]);
+      const data = await Promise.all(rows.map((row) => this.toResponse(tx, tenantId, row, permissions, labels)));
       return {
         data,
         meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.max(1, Math.ceil(total / query.pageSize)) },
@@ -107,11 +131,16 @@ export class PriceApprovalsService {
     });
   }
 
-  async getById(tenantId: string, permissions: string[], id: string): Promise<PriceApprovalResponseDto> {
+  async getById(tenantId: string, actorId: string, permissions: string[], id: string): Promise<PriceApprovalResponseDto> {
     this.assertCanView(permissions);
     return withTenantTransaction(tenantId, async (tx) => {
       const row = await this.priceApprovalsRepository.findById(tx, tenantId, id);
       if (!row) {
+        throw new NotFoundException('Price approval not found.');
+      }
+      // 404, not 403, for a request whose order sits outside the caller's locations.
+      const order = await this.ordersRepository.findById(tx, tenantId, row.orderId);
+      if (order && !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, order.locationId))) {
         throw new NotFoundException('Price approval not found.');
       }
       return this.toResponse(tx, tenantId, row, permissions);
@@ -427,8 +456,11 @@ export class PriceApprovalsService {
     tenantId: string,
     row: PriceApprovalRow,
     permissions: string[],
+    prefetchedLabels?: Map<string, { sku: string; productName: string }>,
   ): Promise<PriceApprovalResponseDto> {
     const canViewFloor = permissions.includes('pricing.floor.view');
+    const labels = prefetchedLabels ?? (await this.orderItemsRepository.findLabelsByIds(tx, tenantId, [row.orderItemId]));
+    const label = labels.get(row.orderItemId);
     const [order, requester, approver] = await Promise.all([
       this.ordersRepository.findById(tx, tenantId, row.orderId),
       this.usersRepository.findById(tx, tenantId, row.requestedBy),
@@ -439,6 +471,8 @@ export class PriceApprovalsService {
       orderId: row.orderId,
       orderNumber: order?.orderNumber ?? row.orderId,
       orderItemId: row.orderItemId,
+      locationId: order?.locationId ?? '',
+      ...(label ? { productName: label.productName, sku: label.sku } : {}),
       requestedPrice: Number(row.requestedPrice),
       maxPriceAtRequest: Number(row.maxPriceAtRequest),
       basePriceAtRequest: Number(row.basePriceAtRequest),

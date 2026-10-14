@@ -16,6 +16,11 @@ export interface ListReturnsQuery {
   pageSize?: number;
   status?: ReturnStatus;
   orderId?: string;
+  /** `sales_returns.location_id` (Recibido en). */
+  locationId?: string;
+  /** Business-day filter (`YYYY-MM-DD`, tenant timezone, whole final day inclusive). */
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export async function listReturns(query: ListReturnsQuery = {}): Promise<Paginated<Return>> {
@@ -28,6 +33,15 @@ export async function listReturns(query: ListReturnsQuery = {}): Promise<Paginat
   }
   if (query.orderId) {
     params['orderId'] = query.orderId;
+  }
+  if (query.locationId) {
+    params['locationId'] = query.locationId;
+  }
+  if (query.dateFrom) {
+    params['dateFrom'] = query.dateFrom;
+  }
+  if (query.dateTo) {
+    params['dateTo'] = query.dateTo;
   }
   return serverApiFetch<Paginated<Return>>('/api/v1/sales-returns', { query: params });
 }

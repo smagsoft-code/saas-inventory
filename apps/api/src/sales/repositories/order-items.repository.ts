@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { orderItems } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -58,6 +58,21 @@ export class OrderItemsRepository {
       .from(orderItems)
       .where(and(eq(orderItems.tenantId, tenantId), eq(orderItems.id, id)));
     return row;
+  }
+
+  /** Product label snapshots (sku + name, frozen at sale time) for a batch of order lines — one query,
+   * used to put product names on return / approval lists without a lookup per row. */
+  async findLabelsByIds(
+    tx: TenantTransaction,
+    tenantId: string,
+    ids: string[],
+  ): Promise<Map<string, { sku: string; productName: string }>> {
+    if (ids.length === 0) return new Map();
+    const rows = await tx
+      .select({ id: orderItems.id, sku: orderItems.skuSnapshot, productName: orderItems.productNameSnapshot })
+      .from(orderItems)
+      .where(and(eq(orderItems.tenantId, tenantId), inArray(orderItems.id, ids)));
+    return new Map(rows.map((row) => [row.id, { sku: row.sku, productName: row.productName }]));
   }
 
   async listByOrder(tx: TenantTransaction, tenantId: string, orderId: string): Promise<OrderItemRow[]> {

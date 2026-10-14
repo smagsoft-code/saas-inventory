@@ -17,7 +17,7 @@ function buildService() {
     summaryByProduct: vi.fn().mockResolvedValue([]),
   };
   const tenantSettingsRepository = { find: vi.fn().mockResolvedValue(undefined) };
-  const service = new SalesReportService(salesReportRepository as never, tenantSettingsRepository as never);
+  const service = new SalesReportService(salesReportRepository as never, tenantSettingsRepository as never, { resolveReadScope: vi.fn((_tx: unknown, _t: string, _u: string, loc?: string) => Promise.resolve(loc ? { locationId: loc } : {})) } as never);
   return { service, salesReportRepository, tenantSettingsRepository };
 }
 
@@ -42,27 +42,27 @@ function query(overrides: QueryOverrides = {}): SalesSummaryQueryDto {
 describe('SalesReportService.getSalesSummary', () => {
   it('rejects when `from` is missing', async () => {
     const { service } = buildService();
-    await expect(service.getSalesSummary('t1', query({ from: undefined }))).rejects.toThrow(BadRequestException);
+    await expect(service.getSalesSummary('t1', 'u1', query({ from: undefined }))).rejects.toThrow(BadRequestException);
   });
 
   it('rejects when `to` is missing', async () => {
     const { service } = buildService();
-    await expect(service.getSalesSummary('t1', query({ to: undefined }))).rejects.toThrow(BadRequestException);
+    await expect(service.getSalesSummary('t1', 'u1', query({ to: undefined }))).rejects.toThrow(BadRequestException);
   });
 
   it('rejects when `from` is not strictly before `to`', async () => {
     const { service } = buildService();
     await expect(
-      service.getSalesSummary('t1', query({ from: '2026-09-02T00:00:00.000Z', to: '2026-09-02T00:00:00.000Z' })),
+      service.getSalesSummary('t1', 'u1', query({ from: '2026-09-02T00:00:00.000Z', to: '2026-09-02T00:00:00.000Z' })),
     ).rejects.toThrow(BadRequestException);
     await expect(
-      service.getSalesSummary('t1', query({ from: '2026-09-03T00:00:00.000Z', to: '2026-09-02T00:00:00.000Z' })),
+      service.getSalesSummary('t1', 'u1', query({ from: '2026-09-03T00:00:00.000Z', to: '2026-09-02T00:00:00.000Z' })),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('defaults status to "confirmed" when omitted', async () => {
     const { service, salesReportRepository } = buildService();
-    await service.getSalesSummary('t1', query({ status: undefined }));
+    await service.getSalesSummary('t1', 'u1', query({ status: undefined }));
     expect(salesReportRepository.summaryByPeriod).toHaveBeenCalledWith(
       expect.anything(),
       't1',
@@ -72,7 +72,7 @@ describe('SalesReportService.getSalesSummary', () => {
 
   it('respects an explicit status override', async () => {
     const { service, salesReportRepository } = buildService();
-    await service.getSalesSummary('t1', query({ status: 'pending' }));
+    await service.getSalesSummary('t1', 'u1', query({ status: 'pending' }));
     expect(salesReportRepository.summaryByPeriod).toHaveBeenCalledWith(
       expect.anything(),
       't1',
@@ -82,7 +82,7 @@ describe('SalesReportService.getSalesSummary', () => {
 
   it('defaults the exceptional filter to "all" and echoes it in the response (F18-06)', async () => {
     const { service, salesReportRepository } = buildService();
-    const result = await service.getSalesSummary('t1', query({ exceptional: undefined }));
+    const result = await service.getSalesSummary('t1', 'u1', query({ exceptional: undefined }));
     expect(salesReportRepository.summaryByPeriod).toHaveBeenCalledWith(
       expect.anything(),
       't1',
@@ -99,7 +99,7 @@ describe('SalesReportService.getSalesSummary', () => {
     ] as const) {
       for (const exceptional of ['only', 'exclude'] as const) {
         const { service, salesReportRepository } = buildService();
-        const result = await service.getSalesSummary('t1', query({ groupBy, exceptional }));
+        const result = await service.getSalesSummary('t1', 'u1', query({ groupBy, exceptional }));
         expect(salesReportRepository[method]).toHaveBeenCalledWith(
           expect.anything(),
           't1',
@@ -117,7 +117,7 @@ describe('SalesReportService.getSalesSummary', () => {
       ['product', 'summaryByProduct'],
     ] as const) {
       const { service, salesReportRepository } = buildService();
-      await service.getSalesSummary('t1', query({ groupBy, locationId: 'loc-1' }));
+      await service.getSalesSummary('t1', 'u1', query({ groupBy, locationId: 'loc-1' }));
       expect(salesReportRepository[method]).toHaveBeenCalledWith(
         expect.anything(),
         't1',
@@ -130,7 +130,7 @@ describe('SalesReportService.getSalesSummary', () => {
     const { service, salesReportRepository } = buildService();
     for (const groupBy of ['day', 'week', 'month'] as const) {
       salesReportRepository.summaryByPeriod.mockClear();
-      await service.getSalesSummary('t1', query({ groupBy }));
+      await service.getSalesSummary('t1', 'u1', query({ groupBy }));
       expect(salesReportRepository.summaryByPeriod).toHaveBeenCalledWith(
         expect.anything(),
         't1',
@@ -143,7 +143,7 @@ describe('SalesReportService.getSalesSummary', () => {
 
   it('dispatches groupBy=customer to summaryByCustomer only', async () => {
     const { service, salesReportRepository } = buildService();
-    await service.getSalesSummary('t1', query({ groupBy: 'customer' }));
+    await service.getSalesSummary('t1', 'u1', query({ groupBy: 'customer' }));
     expect(salesReportRepository.summaryByCustomer).toHaveBeenCalledTimes(1);
     expect(salesReportRepository.summaryByPeriod).not.toHaveBeenCalled();
     expect(salesReportRepository.summaryByProduct).not.toHaveBeenCalled();
@@ -151,7 +151,7 @@ describe('SalesReportService.getSalesSummary', () => {
 
   it('dispatches groupBy=product to summaryByProduct only', async () => {
     const { service, salesReportRepository } = buildService();
-    await service.getSalesSummary('t1', query({ groupBy: 'product' }));
+    await service.getSalesSummary('t1', 'u1', query({ groupBy: 'product' }));
     expect(salesReportRepository.summaryByProduct).toHaveBeenCalledTimes(1);
     expect(salesReportRepository.summaryByPeriod).not.toHaveBeenCalled();
     expect(salesReportRepository.summaryByCustomer).not.toHaveBeenCalled();
@@ -160,14 +160,14 @@ describe('SalesReportService.getSalesSummary', () => {
   it('echoes the resolved tenant timezone, defaulting to UTC with no tenant_settings row', async () => {
     const { service, tenantSettingsRepository } = buildService();
     tenantSettingsRepository.find.mockResolvedValue(undefined);
-    const result = await service.getSalesSummary('t1', query());
+    const result = await service.getSalesSummary('t1', 'u1', query());
     expect(result.timezone).toBe('UTC');
   });
 
   it('echoes the real tenant_settings.timezone when a row exists', async () => {
     const { service, tenantSettingsRepository } = buildService();
     tenantSettingsRepository.find.mockResolvedValue({ timezone: 'America/Bogota' });
-    const result = await service.getSalesSummary('t1', query());
+    const result = await service.getSalesSummary('t1', 'u1', query());
     expect(result.timezone).toBe('America/Bogota');
   });
 
@@ -176,7 +176,7 @@ describe('SalesReportService.getSalesSummary', () => {
     salesReportRepository.summaryByPeriod.mockResolvedValue([
       { key: '2026-09-01', orderCount: 3, subtotal: '100.00', discountTotal: '10.00', total: '91.00' },
     ]);
-    const result = await service.getSalesSummary('t1', query());
+    const result = await service.getSalesSummary('t1', 'u1', query());
     const bucket = result.buckets[0] as { subtotal: number; discountTotal: number; total: number; avgTicket: number };
     expect(bucket.subtotal).toBe(100);
     expect(bucket.discountTotal).toBe(10);
@@ -190,14 +190,14 @@ describe('SalesReportService.getSalesSummary', () => {
     salesReportRepository.summaryByPeriod.mockResolvedValue([
       { key: '2026-09-01', orderCount: 0, subtotal: '0', discountTotal: '0', total: '0' },
     ]);
-    const result = await service.getSalesSummary('t1', query());
+    const result = await service.getSalesSummary('t1', 'u1', query());
     const bucket = result.buckets[0] as { avgTicket: number };
     expect(bucket.avgTicket).toBe(0);
   });
 
   it('returns an empty buckets array (not an error) when nothing matches the range', async () => {
     const { service } = buildService();
-    const result = await service.getSalesSummary('t1', query());
+    const result = await service.getSalesSummary('t1', 'u1', query());
     expect(result.buckets).toEqual([]);
     expect(result.from).toBe('2026-09-01T00:00:00.000Z');
     expect(result.to).toBe('2026-09-02T00:00:00.000Z');
@@ -210,7 +210,7 @@ describe('SalesReportService.getSalesSummary', () => {
     salesReportRepository.summaryByProduct.mockResolvedValue([
       { key: 'variant-1', sku: 'SKU-1', productName: 'Widget', orderCount: '2', quantity: '5', discountTotal: '1.00', total: '50.00' },
     ]);
-    const result = await service.getSalesSummary('t1', query({ groupBy: 'product' }));
+    const result = await service.getSalesSummary('t1', 'u1', query({ groupBy: 'product' }));
     const bucket = result.buckets[0] as unknown as Record<string, unknown>;
     expect(bucket).toEqual({
       key: 'variant-1',
@@ -230,9 +230,49 @@ describe('SalesReportService.getSalesSummary', () => {
     salesReportRepository.summaryByCustomer.mockResolvedValue([
       { key: 'cust-1', customerName: 'Acme Corp', orderCount: 2, subtotal: '100.00', discountTotal: '0', total: '100.00' },
     ]);
-    const result = await service.getSalesSummary('t1', query({ groupBy: 'customer' }));
+    const result = await service.getSalesSummary('t1', 'u1', query({ groupBy: 'customer' }));
     const bucket = result.buckets[0] as { customerName: string; avgTicket: number };
     expect(bucket.customerName).toBe('Acme Corp');
     expect(bucket.avgTicket).toBe(50);
+  });
+});
+
+describe('SalesReportService.getSalesSummary — business-day mode and new filters', () => {
+  it('dateFrom alone resolves to exactly one tenant-local day and ignores from/to', async () => {
+    const { service, salesReportRepository, tenantSettingsRepository } = buildService();
+    tenantSettingsRepository.find.mockResolvedValue({ timezone: 'America/Guayaquil' });
+    const res = await service.getSalesSummary('t1', 'u1', {
+      groupBy: 'day',
+      exceptional: 'all',
+      dateFrom: '2026-10-13',
+    } as SalesSummaryQueryDto);
+    const args = salesReportRepository.summaryByPeriod.mock.calls[0]![2] as { gte: Date; lt: Date };
+    expect(args.gte.toISOString()).toBe('2026-10-13T05:00:00.000Z');
+    expect(args.lt.toISOString()).toBe('2026-10-14T05:00:00.000Z');
+    expect(res.from).toBe('2026-10-13T05:00:00.000Z');
+  });
+
+  it('rejects dateTo without dateFrom, and a missing range entirely', async () => {
+    const { service } = buildService();
+    await expect(
+      service.getSalesSummary('t1', 'u1', { groupBy: 'day', exceptional: 'all', dateTo: '2026-10-13' } as SalesSummaryQueryDto),
+    ).rejects.toThrow(BadRequestException);
+    await expect(
+      service.getSalesSummary('t1', 'u1', { groupBy: 'day', exceptional: 'all' } as SalesSummaryQueryDto),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('passes documentType and customerId through to the repository', async () => {
+    const { service, salesReportRepository } = buildService();
+    await service.getSalesSummary('t1', 'u1', {
+      ...query(),
+      documentType: 'invoice',
+      customerId: '0190b2c4-0000-7000-8000-000000000001',
+    } as SalesSummaryQueryDto);
+    expect(salesReportRepository.summaryByPeriod).toHaveBeenCalledWith(
+      expect.anything(),
+      't1',
+      expect.objectContaining({ documentType: 'invoice', customerId: '0190b2c4-0000-7000-8000-000000000001' }),
+    );
   });
 });

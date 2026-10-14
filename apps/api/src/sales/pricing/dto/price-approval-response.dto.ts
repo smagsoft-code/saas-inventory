@@ -22,6 +22,15 @@ export class PriceApprovalResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   orderItemId!: string;
 
+  @ApiProperty({ type: String, format: 'uuid', description: "The parent order's location (Almacén)." })
+  locationId!: string;
+
+  @ApiPropertyOptional({ type: String, description: 'Frozen product name of the order line this request is about.' })
+  productName?: string;
+
+  @ApiPropertyOptional({ type: String, description: 'Frozen SKU of the order line.' })
+  sku?: string;
+
   @ApiProperty({ type: Number, description: 'The requested (below-base-price) unit price — frozen from the order line.' })
   requestedPrice!: number;
 

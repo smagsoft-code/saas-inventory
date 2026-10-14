@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { TenantSettingsRepository } from '../../administration/tenant-settings/tenant-settings.repository';
 import { DEFAULT_TIMEZONE } from '../../administration/tenant-settings/tenant-settings.service';
 import { toHalfOpenRange } from '../../common/reporting/date-range';
+import { localDayRangeToUtc } from '../../common/reporting/local-day-range';
+import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { DEFAULT_CURRENCY } from '../../sales/orders/orders.service';
 import { roundMoney } from '../../sales/sales-money';
@@ -41,6 +43,7 @@ export class ReturnsReportService {
   constructor(
     private readonly returnsReportRepository: ReturnsReportRepository,
     private readonly tenantSettingsRepository: TenantSettingsRepository,
+    private readonly locationAuthorizationService: LocationAuthorizationService,
   ) {}
 
   /** Mirrors `SalesReportService.resolveTenantTimezone` — kept as its own small copy rather than a
@@ -50,23 +53,31 @@ export class ReturnsReportService {
     return row?.timezone ?? DEFAULT_TIMEZONE;
   }
 
-  async getReturnsSummary(tenantId: string, query: ReturnsSummaryQueryDto): Promise<ReturnsSummaryResponseDto> {
-    if (!query.from || !query.to) {
+  async getReturnsSummary(tenantId: string, actorId: string, query: ReturnsSummaryQueryDto): Promise<ReturnsSummaryResponseDto> {
+    // Business-day mode (`dateFrom`/`dateTo`, tenant timezone) replaces from/to when present.
+    if (query.dateTo && !query.dateFrom) {
+      throw new BadRequestException('`dateTo` requires `dateFrom`.');
+    }
+    if (!query.dateFrom && (!query.from || !query.to)) {
       throw new BadRequestException('`from` and `to` are both required.');
     }
-    const from = query.from;
-    const to = query.to;
-    if (new Date(from).getTime() >= new Date(to).getTime()) {
+    const from = query.from ?? '';
+    const to = query.to ?? '';
+    if (!query.dateFrom && new Date(from).getTime() >= new Date(to).getTime()) {
       throw new BadRequestException('`from` must be strictly before `to`.');
     }
-    const range = toHalfOpenRange(from, to);
     const status = query.status ?? DEFAULT_STATUS;
 
     return withTenantTransaction(tenantId, async (tx) => {
       const timezone = await this.resolveTenantTimezone(tx, tenantId);
+      // Same location scope as the writes (ADR-0024/0035): a restricted caller never aggregates
+      // beyond their assigned locations, and asking for another one is a 403.
+      const readScope = await this.locationAuthorizationService.resolveReadScope(tx, tenantId, actorId, query.locationId);
+      const range = query.dateFrom ? localDayRangeToUtc(query.dateFrom, query.dateTo, timezone) : toHalfOpenRange(from, to);
 
       if (query.groupBy === 'customer') {
-        const rows = await this.returnsReportRepository.summaryByCustomer(tx, tenantId, { gte: range.gte, lt: range.lt, status });
+        const rows = await this.returnsReportRepository.summaryByCustomer(tx, tenantId, { gte: range.gte, lt: range.lt, status, locationId: readScope.locationId,
+          locationIds: readScope.locationIds });
         const buckets: ReturnsCustomerBucketDto[] = rows.map((row) => {
           const returnCount = Number(row.returnCount);
           const returnedValue = Number(row.returnedValue);
@@ -81,11 +92,12 @@ export class ReturnsReportService {
             avgReturnValue: returnCount > 0 ? roundMoney(returnedValue / returnCount) : 0,
           };
         });
-        return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
+        return { from: range.gte.toISOString(), to: range.lt.toISOString(), timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
       }
 
       if (query.groupBy === 'product') {
-        const rows = await this.returnsReportRepository.summaryByProduct(tx, tenantId, { gte: range.gte, lt: range.lt, status });
+        const rows = await this.returnsReportRepository.summaryByProduct(tx, tenantId, { gte: range.gte, lt: range.lt, status, locationId: readScope.locationId,
+          locationIds: readScope.locationIds });
         const buckets: ReturnsProductBucketDto[] = rows.map((row) => ({
           key: row.key,
           sku: row.sku,
@@ -96,18 +108,19 @@ export class ReturnsReportService {
           quantity: Number(row.quantity),
           returnedValue: Number(row.returnedValue),
         }));
-        return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
+        return { from: range.gte.toISOString(), to: range.lt.toISOString(), timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
       }
 
       if (query.groupBy === 'disposition') {
-        const rows = await this.returnsReportRepository.summaryByDisposition(tx, tenantId, { gte: range.gte, lt: range.lt, status });
+        const rows = await this.returnsReportRepository.summaryByDisposition(tx, tenantId, { gte: range.gte, lt: range.lt, status, locationId: readScope.locationId,
+          locationIds: readScope.locationIds });
         const buckets: ReturnsDispositionBucketDto[] = rows.map((row) => ({
           key: row.key,
           lineCount: Number(row.lineCount),
           quantity: Number(row.quantity),
           returnedValue: Number(row.returnedValue),
         }));
-        return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
+        return { from: range.gte.toISOString(), to: range.lt.toISOString(), timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
       }
 
       // day | week | month
@@ -117,7 +130,8 @@ export class ReturnsReportService {
         // guard, not a second validation layer, matching SalesReportService's identical guard.
         throw new BadRequestException(`Unsupported groupBy: ${String(query.groupBy)}`);
       }
-      const rows = await this.returnsReportRepository.summaryByPeriod(tx, tenantId, { gte: range.gte, lt: range.lt, status, unit, timezone });
+      const rows = await this.returnsReportRepository.summaryByPeriod(tx, tenantId, { gte: range.gte, lt: range.lt, status, unit, timezone, locationId: readScope.locationId,
+          locationIds: readScope.locationIds });
       const buckets: ReturnsPeriodBucketDto[] = rows.map((row) => {
         const returnCount = Number(row.returnCount);
         const returnedValue = Number(row.returnedValue);
@@ -131,7 +145,7 @@ export class ReturnsReportService {
           avgReturnValue: returnCount > 0 ? roundMoney(returnedValue / returnCount) : 0,
         };
       });
-      return { from, to, timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
+      return { from: range.gte.toISOString(), to: range.lt.toISOString(), timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, buckets };
     });
   }
 }

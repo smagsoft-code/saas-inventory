@@ -4,20 +4,16 @@ import { createPermissionChecker } from '../../../lib/auth/permissions';
 import { httpErrorMessage, isApiError } from '../../../lib/api/errors';
 import { listPriceApprovals } from '../../../lib/sales/price-approvals';
 import { getApprovalsSummary } from '../../../lib/sales/approvals-reports';
+import { resolveHistoryDates, tenantToday } from '../../../lib/sales/history-dates';
+import { resolveLocationFilter } from '../../../lib/sales/history-scope';
 import { shortId } from '../../../lib/inventory/location-index';
-import { tenantStartOfDayUtc } from '../../../lib/home/tenant-day';
 import {
   PRICE_APPROVAL_STATUSES,
   PRICE_APPROVAL_STATUS_LABELS,
   priceApprovalStatusTone,
   type PriceApprovalStatus,
 } from '../../../lib/types/sales';
-import {
-  APPROVALS_SUMMARY_GROUP_BY,
-  APPROVALS_SUMMARY_STATUSES,
-  type ApprovalsSummary,
-  type ApprovalsSummaryGroupBy,
-} from '../../../lib/types/approvals-reports';
+import type { ApprovalsSummary } from '../../../lib/types/approvals-reports';
 import { PageContainer } from '../../../components/ui/page-container';
 import { PageHeader } from '../../../components/ui/page-header';
 import { Badge } from '../../../components/ui/badge';
@@ -25,33 +21,25 @@ import { EmptyState } from '../../../components/ui/empty-state';
 import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
-import { ApprovalsQueueStatusFilter } from './approvals-queue-status-filter';
-import { ApprovalsReportFilters, type ApprovalsReportFilterValues } from './approvals-report-filters';
-import { ApprovalsReportError, ApprovalsReportSection } from './approvals-report-section';
+import { HistoryFilters, type HistoryFilterValues } from '../../../components/history-filters';
+import { ApprovalsReportError, ApprovalsSummaryCards } from './approvals-report-section';
 
 export const metadata = { title: 'Aprobaciones · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 function pickStatus(value: string | undefined): PriceApprovalStatus | undefined {
   return (PRICE_APPROVAL_STATUSES as readonly string[]).includes(value ?? '') ? (value as PriceApprovalStatus) : undefined;
 }
 
-function pickGroupBy(value: string | undefined): ApprovalsSummaryGroupBy {
-  return (APPROVALS_SUMMARY_GROUP_BY as readonly string[]).includes(value ?? '') ? (value as ApprovalsSummaryGroupBy) : 'day';
-}
-
-function pickReportStatus(value: string | undefined): string {
-  return (APPROVALS_SUMMARY_STATUSES as readonly string[]).includes(value ?? '') ? (value as string) : '';
-}
-
 /**
  * Price-approval queue (`S-APPROVALS-LIST`) — `GET /api/v1/price-approvals` (requires
  * `pricing.discount.request` **or** `pricing.discount.approve` — `@RequireAnyPermission`, F17-09).
- * Real filters only: `status`, `orderId` (offset paginated) — no text search, no sort, no date
- * filter. Resolving a request (`approve` / `reject`) is done from the detail page and needs
- * `pricing.discount.approve`.
+ * ONE filter bar (Desde, Hasta, Almacén, Estado) drives both the four cards
+ * (`GET /reports/approvals-summary`, only for `pricing.discount.approve`) and the queue — the same
+ * values are sent to both. Dates are tenant-timezone calendar days on `requested_at` (default
+ * today); Almacén is the parent order's location, limited to the caller's own scope. Resolving a
+ * request (`approve` / `reject`) is done from the detail page and needs `pricing.discount.approve`.
  */
 export default async function ApprovalsPage({
   searchParams,
@@ -60,10 +48,9 @@ export default async function ApprovalsPage({
     page?: string;
     status?: string;
     orderId?: string;
-    reportFrom?: string;
-    reportTo?: string;
-    reportGroupBy?: string;
-    reportStatus?: string;
+    locationId?: string;
+    dateFrom?: string;
+    dateTo?: string;
   }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -76,70 +63,82 @@ export default async function ApprovalsPage({
       </PageContainer>
     );
   }
-  // The F18-05 governance report reuses the endpoint's own gate — `pricing.discount.approve`
+  // The governance cards reuse the endpoint's own gate — `pricing.discount.approve`
   // (Administrador / Supervisor), narrower than the queue's request-OR-approve gate. A Vendedor
-  // sees the queue below but not the tenant-wide approval-rate report.
+  // sees the queue but not the tenant-wide approval-rate cards.
   const canViewReport = checker.can('pricing.discount.approve');
 
   const sp = await searchParams;
+  const timezone = session?.timezone ?? 'UTC';
+  const today = tenantToday(timezone);
+  const { dateFrom, dateTo } = resolveHistoryDates(sp, timezone);
   const page = Math.max(1, Number(sp.page) || 1);
   const status = pickStatus(sp.status);
   const orderId = sp.orderId || undefined;
+  const location = await resolveLocationFilter(checker.can('warehouses.view'), sp.locationId);
+  const locationId = location.selectedId;
 
-  // F18-05 report period default: last 30 days, resolved in the tenant's own timezone
-  // (session.timezone — F18-01), matching the /returns and /sales pages' identical precedent so a
-  // normal visit never hits the required-from/to 400 the endpoint enforces.
-  const now = new Date();
-  const reportFrom = sp.reportFrom || tenantStartOfDayUtc(session?.timezone ?? 'UTC', new Date(now.getTime() - THIRTY_DAYS_MS));
-  const reportTo = sp.reportTo || now.toISOString();
-  const reportGroupBy = pickGroupBy(sp.reportGroupBy);
-  const reportStatus = pickReportStatus(sp.reportStatus);
-  const reportFilters: ApprovalsReportFilterValues = { from: reportFrom, to: reportTo, groupBy: reportGroupBy, status: reportStatus };
-
-  let summary: ApprovalsSummary | undefined;
-  let summaryError: { status: number; message: string; correlationId: string | undefined } | undefined;
-  if (canViewReport) {
-    try {
-      summary = await getApprovalsSummary({
-        from: reportFrom,
-        to: reportTo,
-        groupBy: reportGroupBy,
-        ...(reportStatus ? { status: reportStatus } : {}),
-      });
-    } catch (error) {
-      summaryError = {
-        status: isApiError(error) ? error.status : 0,
-        message: httpErrorMessage(error),
-        correlationId: isApiError(error) ? error.correlationId : undefined,
-      };
-    }
-  }
-
-  const result = await listPriceApprovals({
-    page,
-    pageSize: PAGE_SIZE,
+  const filters: HistoryFilterValues = { dateFrom, dateTo, status, locationId };
+  // The exact same filter set feeds the cards and the queue.
+  const common = {
+    dateFrom,
+    ...(dateTo ? { dateTo } : {}),
     ...(status ? { status } : {}),
-    ...(orderId ? { orderId } : {}),
-  });
+    ...(locationId ? { locationId } : {}),
+  };
 
-  function buildHref(next: { page?: number; status?: string | null; orderId?: string | null }): string {
+  type SummaryOutcome =
+    | { summary: ApprovalsSummary }
+    | { error: { status: number; message: string; correlationId: string | undefined } }
+    | null;
+  const summaryPromise: Promise<SummaryOutcome> = canViewReport
+    ? getApprovalsSummary({ ...common, groupBy: 'day' })
+        .then((summary): SummaryOutcome => ({ summary }))
+        .catch(
+          (error: unknown): SummaryOutcome => ({
+            error: {
+              status: isApiError(error) ? error.status : 0,
+              message: httpErrorMessage(error),
+              correlationId: isApiError(error) ? error.correlationId : undefined,
+            },
+          }),
+        )
+    : Promise.resolve(null);
+
+  const [result, outcome] = await Promise.all([
+    listPriceApprovals({ page, pageSize: PAGE_SIZE, ...common, ...(orderId ? { orderId } : {}) }),
+    summaryPromise,
+  ]);
+
+  const hasNarrowing = Boolean(status || orderId || dateTo || dateFrom !== today || locationId !== location.defaultId);
+  const dateFormat = (() => {
+    try {
+      return new Intl.DateTimeFormat('es', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' });
+    } catch {
+      return new Intl.DateTimeFormat('es', { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' });
+    }
+  })();
+
+  function buildHref(nextPage: number): string {
     const params = new URLSearchParams();
-    const nextStatus = next.status === undefined ? status : next.status || undefined;
-    const nextOrderId = next.orderId === undefined ? orderId : next.orderId || undefined;
-    if (nextStatus) params.set('status', nextStatus);
-    if (nextOrderId) params.set('orderId', nextOrderId);
-    // Carries the report section's own params forward too — the two filter sets are independent,
-    // matching the /returns page's identical precedent (paginating/filtering the queue should not
-    // silently reset the report back to its default period).
-    if (sp.reportFrom) params.set('reportFrom', sp.reportFrom);
-    if (sp.reportTo) params.set('reportTo', sp.reportTo);
-    if (sp.reportGroupBy) params.set('reportGroupBy', sp.reportGroupBy);
-    if (sp.reportStatus) params.set('reportStatus', sp.reportStatus);
-    if (next.page && next.page > 1) params.set('page', String(next.page));
-    return `/approvals${params.toString() ? `?${params}` : ''}`;
+    params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    if (locationId) params.set('locationId', locationId);
+    if (status) params.set('status', status);
+    if (orderId) params.set('orderId', orderId);
+    if (nextPage > 1) params.set('page', String(nextPage));
+    return `/approvals?${params}`;
   }
 
-  const hasFilter = Boolean(status || orderId);
+  const preserve = orderId ? { orderId } : undefined;
+  const withoutOrderHref = (() => {
+    const params = new URLSearchParams();
+    params.set('dateFrom', dateFrom);
+    if (dateTo) params.set('dateTo', dateTo);
+    if (locationId) params.set('locationId', locationId);
+    if (status) params.set('status', status);
+    return `/approvals?${params}`;
+  })();
 
   return (
     <PageContainer>
@@ -148,64 +147,49 @@ export default async function ApprovalsPage({
         description="Solicitudes de descuento excepcional: precios bajo el mínimo a la espera de una decisión."
       />
 
-      {canViewReport && (
-        <>
-          <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
-            <h2 id="report-heading" className="text-sm font-semibold text-slate-900">
-              Reporte de aprobaciones
-            </h2>
-            <ApprovalsReportFilters initial={reportFilters} />
-            {summary ? (
-              <ApprovalsReportSection summary={summary} currency={summary.currency} />
-            ) : (
-              summaryError && (
-                <ApprovalsReportError
-                  status={summaryError.status}
-                  message={summaryError.message}
-                  correlationId={summaryError.correlationId}
-                />
-              )
-            )}
-          </section>
+      <HistoryFilters
+        basePath="/approvals"
+        initial={filters}
+        today={today}
+        defaultLocationId={location.defaultId}
+        locations={location.options}
+        allowAllLocations={location.allowAll}
+        statusOptions={PRICE_APPROVAL_STATUSES.map((value) => ({ value, label: PRICE_APPROVAL_STATUS_LABELS[value] }))}
+        preserve={preserve}
+        includeDates
+      />
 
-          <hr className="border-slate-200" />
-
-          <h2 className="text-sm font-semibold text-slate-900">Cola de aprobaciones</h2>
-        </>
+      {outcome && (
+        <section aria-label="Resumen de aprobaciones" id="report">
+          {'summary' in outcome ? (
+            <ApprovalsSummaryCards summary={outcome.summary} />
+          ) : (
+            <ApprovalsReportError status={outcome.error.status} message={outcome.error.message} correlationId={outcome.error.correlationId} />
+          )}
+        </section>
       )}
 
-      <div className="flex flex-col gap-3">
-        <ApprovalsQueueStatusFilter
-          {...(status ? { status } : {})}
-          {...(orderId ? { orderId } : {})}
-          reportParams={{
-            ...(sp.reportFrom ? { reportFrom: sp.reportFrom } : {}),
-            ...(sp.reportTo ? { reportTo: sp.reportTo } : {}),
-            ...(sp.reportGroupBy ? { reportGroupBy: sp.reportGroupBy } : {}),
-            ...(sp.reportStatus ? { reportStatus: sp.reportStatus } : {}),
-          }}
-        />
+      <h2 className="text-sm font-semibold text-slate-900">Cola de aprobaciones</h2>
 
-        {orderId && (
-          <p className="flex items-center gap-2 text-sm text-slate-600">
-            Filtrado a un pedido
-            <Link href={`/sales/${orderId}`} className="font-medium text-slate-700 underline underline-offset-2">
-              {shortId(orderId)}
-            </Link>
-            <Link href={buildHref({ orderId: null })} className="text-xs font-medium text-slate-500 hover:underline">
-              Quitar
-            </Link>
-          </p>
-        )}
-      </div>
+      {orderId && (
+        <p className="flex items-center gap-2 text-sm text-slate-600">
+          Filtrado a un pedido
+          <Link href={`/sales/${orderId}`} className="font-medium text-slate-700 underline underline-offset-2">
+            {shortId(orderId)}
+          </Link>
+          <Link href={withoutOrderHref} className="text-xs font-medium text-slate-500 hover:underline">
+            Quitar
+          </Link>
+        </p>
+      )}
 
       {result.data.length === 0 ? (
         <EmptyState
-          title={hasFilter ? 'Ninguna solicitud coincide con estos filtros' : 'No hay solicitudes de descuento excepcional'}
+          title={hasNarrowing ? 'Ninguna solicitud coincide con estos filtros' : 'No hay solicitudes de descuento excepcional hoy'}
           description={
-            hasFilter
-              ? 'Prueba con otro estado.'
-              : 'Una solicitud aparece aquí cuando un vendedor vende una línea bajo su precio mínimo.'
+            hasNarrowing
+              ? 'Prueba con otro estado, almacén o rango de fechas.'
+              : 'Una solicitud aparece aquí cuando un vendedor vende una línea bajo su precio mínimo. Cambia el rango de fechas para ver días anteriores.'
           }
         />
       ) : (
@@ -213,11 +197,15 @@ export default async function ApprovalsPage({
           <Table>
             <THead>
               <TR>
-                <TH>Pedido</TH>
-                <TH className="text-right">Precio solicitado</TH>
+                <TH className="whitespace-nowrap">Pedido</TH>
+                <TH>Producto</TH>
+                <TH>Almacén</TH>
+                <TH className="whitespace-nowrap text-right" title="Precio solicitado">
+                  P. solicitado
+                </TH>
                 <TH className="text-right">Descuento</TH>
-                <TH>Motivo</TH>
-                <TH>Solicitado</TH>
+                <TH className="w-48">Motivo</TH>
+                <TH className="whitespace-nowrap">Solicitado</TH>
                 <TH>Estado</TH>
                 <TH className="w-0">
                   <span className="sr-only">Acciones</span>
@@ -227,7 +215,7 @@ export default async function ApprovalsPage({
             <TBody>
               {result.data.map((approval) => (
                 <TR key={approval.id}>
-                  <TD>
+                  <TD className="whitespace-nowrap">
                     <Link
                       href={`/sales/${approval.orderId}`}
                       className="font-medium text-slate-700 underline-offset-2 hover:underline"
@@ -235,14 +223,24 @@ export default async function ApprovalsPage({
                       {approval.orderNumber}
                     </Link>
                   </TD>
-                  <TD className="text-right text-slate-700">{approval.requestedPrice.toFixed(2)}</TD>
-                  <TD className="text-right text-slate-500">{approval.discountAmount.toFixed(2)}</TD>
-                  <TD className="max-w-xs truncate text-slate-500" title={approval.reason}>
-                    {approval.reason}
+                  <TD className="max-w-[12rem] text-slate-700">
+                    {approval.productName ? (
+                      <span className="block truncate" title={approval.sku ? `${approval.sku} · ${approval.productName}` : approval.productName}>
+                        {approval.productName}
+                      </span>
+                    ) : (
+                      '—'
+                    )}
                   </TD>
-                  <TD className="whitespace-nowrap text-slate-500">
-                    {new Date(approval.requestedAt).toLocaleDateString()}
+                  <TD className="whitespace-nowrap text-slate-500">{location.index.locationName(approval.locationId)}</TD>
+                  <TD className="whitespace-nowrap text-right text-slate-700">{approval.requestedPrice.toFixed(2)}</TD>
+                  <TD className="whitespace-nowrap text-right text-slate-500">{approval.discountAmount.toFixed(2)}</TD>
+                  <TD className="w-48 min-w-[10rem] max-w-[12rem] text-xs leading-snug text-slate-500">
+                    <span className="line-clamp-2" title={approval.reason}>
+                      {approval.reason}
+                    </span>
                   </TD>
+                  <TD className="whitespace-nowrap text-slate-500">{dateFormat.format(new Date(approval.requestedAt))}</TD>
                   <TD>
                     <Badge tone={priceApprovalStatusTone(approval.status)}>
                       {PRICE_APPROVAL_STATUS_LABELS[approval.status as PriceApprovalStatus] ?? approval.status}
@@ -265,7 +263,7 @@ export default async function ApprovalsPage({
             pageSize={result.meta.pageSize}
             total={result.meta.total}
             totalPages={result.meta.totalPages}
-            buildHref={(nextPage) => buildHref({ page: nextPage })}
+            buildHref={buildHref}
           />
         </>
       )}

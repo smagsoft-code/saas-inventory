@@ -29,16 +29,21 @@ export class ReturnsController {
   @ApiOkResponse({ type: ReturnResponseDto, isArray: true })
   async list(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
     @Query() query: ListReturnsQueryDto,
   ): Promise<PaginatedResult<ReturnResponseDto>> {
-    return this.returnsService.list(tenantId, query);
+    return this.returnsService.list(tenantId, principal.userId, query);
   }
 
   @Get(':id')
   @RequirePermissions('sales.returns.view')
   @ApiOkResponse({ type: ReturnResponseDto })
-  async getById(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<ReturnResponseDto> {
-    return this.returnsService.getById(tenantId, id);
+  async getById(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @Param('id') id: string,
+  ): Promise<ReturnResponseDto> {
+    return this.returnsService.getById(tenantId, principal.userId, id);
   }
 
   @Post()

@@ -28,8 +28,50 @@ import type { TenantTransaction } from '../database/tenant-context';
  * including the deliberately accepted fragility (renaming that role away from the literal string
  * "Administrador" loses the exception for whoever holds it).
  */
+/** What a *read* of location-bound data (orders, returns, approvals and their reports) may see. */
+export interface ReadScope {
+  /** A single location to filter by (the caller asked for one and may see it). */
+  locationId?: string;
+  /** The caller's whole assigned set — present only for a restricted caller who asked for no
+   * specific location. An empty array legitimately means "nothing is visible". */
+  locationIds?: string[];
+}
+
 @Injectable()
 export class LocationAuthorizationService {
+  /**
+   * Read-side of ADR-0024/0035 for list and report endpoints: the same scope `assertAccess` enforces
+   * for writes, applied to what a caller may *see*. An unrestricted caller (founding Administrador)
+   * sees everything, narrowed only by the location they ask for. A restricted caller asking for a
+   * location outside their assignments gets a 403 (the same answer a write would give); asking for
+   * none is narrowed to their assigned set — never tenant-wide.
+   */
+  async resolveReadScope(
+    tx: TenantTransaction,
+    tenantId: string,
+    userId: string,
+    requestedLocationId?: string,
+  ): Promise<ReadScope> {
+    const scope = await this.getOperatingScope(tx, tenantId, userId);
+    if (scope.unrestricted) {
+      return requestedLocationId ? { locationId: requestedLocationId } : {};
+    }
+    if (requestedLocationId) {
+      if (!scope.locationIds.includes(requestedLocationId)) {
+        throw new ForbiddenException('You are not authorized to view data of this location.');
+      }
+      return { locationId: requestedLocationId };
+    }
+    return { locationIds: scope.locationIds };
+  }
+
+  /** Whether a single record's location is visible to the caller — used by `GET /:id` reads, which
+   * answer 404 (never 403) so a hidden record's existence is not revealed. */
+  async canAccess(tx: TenantTransaction, tenantId: string, userId: string, locationId: string): Promise<boolean> {
+    const scope = await this.getOperatingScope(tx, tenantId, userId);
+    return scope.unrestricted || scope.locationIds.includes(locationId);
+  }
+
   async assertAccess(tx: TenantTransaction, tenantId: string, userId: string, locationId: string): Promise<void> {
     if (await this.isFoundingAdministrador(tx, tenantId, userId)) {
       return;

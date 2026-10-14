@@ -3,6 +3,7 @@ import { TenantSettingsRepository } from '../administration/tenant-settings/tena
 import { ApprovalsReportController } from './approvals/approvals-report.controller';
 import { ApprovalsReportRepository } from './approvals/approvals-report.repository';
 import { ApprovalsReportService } from './approvals/approvals-report.service';
+import { LocationAuthorizationService } from '../inventory/location-authorization.service';
 import { ImportsReportController } from './imports/imports-report.controller';
 import { ImportsReportRepository } from './imports/imports-report.repository';
 import { ImportsReportService } from './imports/imports-report.service';
@@ -89,6 +90,9 @@ import { TransfersReportService } from './transfers/transfers-report.service';
     ProductsReportService,
     ProductsReportRepository,
     TenantSettingsRepository,
+    // Read-side location scope (ADR-0024/0035): a plain injectable with no dependencies, provided
+    // directly the same way TenantSettingsRepository is, rather than importing InventoryModule.
+    LocationAuthorizationService,
   ],
 })
 export class ReportsModule {}

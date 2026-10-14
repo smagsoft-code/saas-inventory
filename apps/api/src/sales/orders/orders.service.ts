@@ -3,10 +3,14 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { generateId } from '@saas-inventory/shared';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { sql } from 'drizzle-orm';
+import { TenantSettingsRepository } from '../../administration/tenant-settings/tenant-settings.repository';
+import { DEFAULT_TIMEZONE } from '../../administration/tenant-settings/tenant-settings.service';
+import { UsersRepository } from '../../auth/repositories/users.repository';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { DomainEventPublisher } from '../../common/events/domain-event-publisher.service';
 import type { OrderCancelledData, OrderConfirmedData } from '../../common/events/domain-event.contracts';
 import { EVENT_TYPES } from '../../common/events/event-types';
+import { localDayRangeToUtc } from '../../common/reporting/local-day-range';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
 import { LocationsRepository } from '../../inventory/repositories/locations.repository';
@@ -113,22 +117,55 @@ export class OrdersService {
     private readonly priceApprovalsRepository: PriceApprovalsRepository,
     private readonly orderNotificationsRepository: OrderNotificationsRepository,
     private readonly orderPaymentsRepository: OrderPaymentsRepository,
+    private readonly usersRepository: UsersRepository,
+    private readonly tenantSettingsRepository: TenantSettingsRepository,
     private readonly auditLogService: AuditLogService,
     private readonly domainEventPublisher: DomainEventPublisher,
   ) {}
 
-  async list(tenantId: string, permissions: string[], query: ListOrdersQueryDto): Promise<PaginatedResult<OrderResponseDto>> {
+  async list(tenantId: string, actorId: string, permissions: string[], query: ListOrdersQueryDto): Promise<PaginatedResult<OrderResponseDto>> {
     return withTenantTransaction(tenantId, async (tx) => {
+      if (query.dateTo && !query.dateFrom) {
+        throw new BadRequestException('`dateTo` requires `dateFrom`.');
+      }
+      // Business-day filter (tenant timezone, whole final day included, half-open upper bound).
+      let dayRange: { gte: Date; lt: Date } | undefined;
+      if (query.dateFrom) {
+        const settings = await this.tenantSettingsRepository.find(tx, tenantId);
+        dayRange = localDayRangeToUtc(query.dateFrom, query.dateTo, settings?.timezone ?? DEFAULT_TIMEZONE);
+      }
+      // Same location scope as the writes (ADR-0024/0035): a restricted caller only sees orders of
+      // their assigned locations, and asking for another one is a 403.
+      const readScope = await this.locationAuthorizationService.resolveReadScope(tx, tenantId, actorId, query.locationId);
       const { rows, total } = await this.ordersRepository.listByTenant(tx, tenantId, {
         page: query.page,
         pageSize: query.pageSize,
         status: query.status,
         customerId: query.customerId,
         documentType: query.documentType,
+        locationId: readScope.locationId,
+        locationIds: readScope.locationIds,
         createdFrom: query.createdFrom,
         createdTo: query.createdTo,
+        dayRange,
       });
-      const data = await Promise.all(rows.map((row) => this.toResponse(tx, tenantId, row, permissions)));
+      // Two batched lookups for the whole page — never one per row.
+      const sellerIds = [...new Set(rows.map((row) => row.placedByUserId).filter((id): id is string => Boolean(id)))];
+      const [sellerNames, notificationByOrder] = await Promise.all([
+        this.usersRepository.findNamesByIds(tx, tenantId, sellerIds),
+        this.orderNotificationsRepository.rollUpByOrders(tx, tenantId, rows.map((row) => row.id)),
+      ]);
+      const data = await Promise.all(
+        rows.map(async (row) => {
+          const response = await this.toResponse(tx, tenantId, row, permissions);
+          const placedByName = row.placedByUserId ? sellerNames.get(row.placedByUserId) : undefined;
+          return {
+            ...response,
+            ...(placedByName ? { placedByName } : {}),
+            notificationStatus: notificationByOrder.get(row.id) ?? ('none' as const),
+          };
+        }),
+      );
       return {
         data,
         meta: { page: query.page, pageSize: query.pageSize, total, totalPages: Math.max(1, Math.ceil(total / query.pageSize)) },
@@ -136,10 +173,11 @@ export class OrdersService {
     });
   }
 
-  async getById(tenantId: string, permissions: string[], id: string): Promise<OrderResponseDto> {
+  async getById(tenantId: string, actorId: string, permissions: string[], id: string): Promise<OrderResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const order = await this.ordersRepository.findById(tx, tenantId, id);
-      if (!order) {
+      // 404, not 403, for an order outside the caller's locations - its existence is not revealed.
+      if (!order || !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, order.locationId))) {
         throw new NotFoundException('Order not found.');
       }
       return this.toResponse(tx, tenantId, order, permissions);
@@ -152,10 +190,10 @@ export class OrdersService {
    * not in the caller's tenant (same shape as `getById`). A deployment with outbound notifications
    * disabled legitimately reports every event `pending` — nothing claims the rows.
    */
-  async getNotifications(tenantId: string, id: string): Promise<OrderNotificationsResponseDto> {
+  async getNotifications(tenantId: string, actorId: string, id: string): Promise<OrderNotificationsResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const order = await this.ordersRepository.findById(tx, tenantId, id);
-      if (!order) {
+      if (!order || !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, order.locationId))) {
         throw new NotFoundException('Order not found.');
       }
       const rows = await this.orderNotificationsRepository.listByOrder(tx, tenantId, id);

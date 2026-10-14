@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, gte, lt, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
 import { orderItems, orders } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -71,7 +71,15 @@ export type ExceptionalFilter = 'all' | 'only' | 'exclude';
 export class SalesReportRepository {
   private dateRangeConditions(
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined },
+    range: {
+      gte: Date;
+      lt: Date;
+      status: string;
+      locationId?: string | undefined;
+      locationIds?: string[] | undefined;
+      documentType?: string | undefined;
+      customerId?: string | undefined;
+    },
   ): SQL[] {
     const conditions = [
       eq(orders.tenantId, tenantId),
@@ -83,6 +91,16 @@ export class SalesReportRepository {
     // never a groupBy dimension (GAP-ORDERS-LOCATION stays open for that). See the DTO's own comment.
     if (range.locationId) {
       conditions.push(eq(orders.locationId, range.locationId));
+    }
+    // Read scope of a restricted caller (ADR-0024/0035): only their assigned locations; none = nothing.
+    if (range.locationIds) {
+      conditions.push(range.locationIds.length > 0 ? inArray(orders.locationId, range.locationIds) : sql`false`);
+    }
+    if (range.documentType) {
+      conditions.push(eq(orders.documentType, range.documentType));
+    }
+    if (range.customerId) {
+      conditions.push(eq(orders.customerId, range.customerId));
     }
     return conditions;
   }
@@ -119,6 +137,9 @@ export class SalesReportRepository {
       timezone: string;
       exceptional: ExceptionalFilter;
       locationId?: string | undefined;
+      locationIds?: string[] | undefined;
+      documentType?: string | undefined;
+      customerId?: string | undefined;
     },
   ): Promise<PeriodBucketRow[]> {
     // Bucket boundary is computed in the tenant's own IANA zone (never UTC/server-local), then
@@ -156,7 +177,16 @@ export class SalesReportRepository {
   async summaryByCustomer(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; exceptional: ExceptionalFilter; locationId?: string | undefined },
+    range: {
+      gte: Date;
+      lt: Date;
+      status: string;
+      exceptional: ExceptionalFilter;
+      locationId?: string | undefined;
+      locationIds?: string[] | undefined;
+      documentType?: string | undefined;
+      customerId?: string | undefined;
+    },
   ): Promise<CustomerBucketRow[]> {
     const rows = await tx
       .select({
@@ -190,7 +220,16 @@ export class SalesReportRepository {
   async summaryByProduct(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; exceptional: ExceptionalFilter; locationId?: string | undefined },
+    range: {
+      gte: Date;
+      lt: Date;
+      status: string;
+      exceptional: ExceptionalFilter;
+      locationId?: string | undefined;
+      locationIds?: string[] | undefined;
+      documentType?: string | undefined;
+      customerId?: string | undefined;
+    },
   ): Promise<ProductBucketRow[]> {
     const rows = await tx
       .select({

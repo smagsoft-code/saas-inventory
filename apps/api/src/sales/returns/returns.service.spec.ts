@@ -19,6 +19,7 @@ const NON_SELLABLE_LOCATION = { id: 'loc-quar', tenantId: TENANT, status: 'activ
 
 const RETURN_ROW = {
   id: 'ret-1',
+  returnNumber: 'DEV-001',
   tenantId: TENANT,
   orderId: 'order-1',
   locationId: 'loc-recv',
@@ -48,6 +49,7 @@ const RETURN_ITEM = {
 function build() {
   const returnsRepository = {
     create: vi.fn().mockResolvedValue(RETURN_ROW),
+    nextReturnNumber: vi.fn().mockResolvedValue('DEV-001'),
     findById: vi.fn(),
     lockById: vi.fn(),
     listByTenant: vi.fn(),
@@ -56,17 +58,29 @@ function build() {
   const returnItemsRepository = {
     createMany: vi.fn().mockResolvedValue([RETURN_ITEM]),
     listByReturn: vi.fn().mockResolvedValue([RETURN_ITEM]),
+    listByReturns: vi.fn().mockResolvedValue([RETURN_ITEM]),
     sumReturnedByOrder: vi.fn().mockResolvedValue(new Map()),
     recordInspection: vi.fn(),
   };
-  const ordersRepository = { lockById: vi.fn().mockResolvedValue(CONFIRMED_ORDER) };
-  const orderItemsRepository = { listByOrder: vi.fn().mockResolvedValue([ORDER_ITEM]), findById: vi.fn().mockResolvedValue(ORDER_ITEM) };
+  const ordersRepository = {
+    lockById: vi.fn().mockResolvedValue(CONFIRMED_ORDER),
+    findNumbersByIds: vi.fn().mockResolvedValue(new Map()),
+  };
+  const orderItemsRepository = { listByOrder: vi.fn().mockResolvedValue([ORDER_ITEM]), findById: vi.fn().mockResolvedValue(ORDER_ITEM),
+    findLabelsByIds: vi.fn().mockResolvedValue(new Map()),
+  };
   const locationsRepository = { findById: vi.fn().mockResolvedValue(RECEIVING_LOCATION) };
-  const locationAuthorizationService = { assertAccess: vi.fn() };
+  const locationAuthorizationService = {
+    assertAccess: vi.fn(),
+    resolveReadScope: vi.fn((_tx: unknown, _t: string, _u: string, loc?: string) => Promise.resolve(loc ? { locationId: loc } : {})),
+    canAccess: vi.fn().mockResolvedValue(true),
+  };
   const stockLedgerService = { applyMovement: vi.fn().mockResolvedValue({}) };
   const idempotencyRepository = { find: vi.fn().mockResolvedValue(undefined), create: vi.fn() };
   const auditLogService = { record: vi.fn() };
   const domainEventPublisher = { append: vi.fn() };
+  const usersRepository = { findNamesByIds: vi.fn().mockResolvedValue(new Map()) };
+  const tenantSettingsRepository = { find: vi.fn().mockResolvedValue({ timezone: 'America/Guayaquil' }) };
 
   const service = new ReturnsService(
     returnsRepository as never,
@@ -79,9 +93,12 @@ function build() {
     idempotencyRepository as never,
     auditLogService as never,
     domainEventPublisher as never,
+    usersRepository as never,
+    tenantSettingsRepository as never,
   );
   return {
     service,
+    usersRepository,
     returnsRepository,
     returnItemsRepository,
     ordersRepository,
@@ -271,5 +288,60 @@ describe('ReturnsService.cancel', () => {
     returnsRepository.lockById.mockResolvedValue(RETURN_ROW);
     await service.cancel(TENANT, ACTOR, 'ret-1', META);
     expect(returnsRepository.updateStatus).toHaveBeenCalledWith(expect.anything(), TENANT, 'ret-1', { status: 'cancelled' });
+  });
+});
+
+describe('ReturnsService.list — number, names, products and filters', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const query = { page: 1, pageSize: 20 };
+
+  it('enriches a page with ONE batched lookup each: order number, product labels, user names', async () => {
+    const { service, returnsRepository, returnItemsRepository, ordersRepository, orderItemsRepository, usersRepository } = build();
+    const second = { ...RETURN_ROW, id: 'ret-2', returnNumber: 'DEV-002', receivedBy: 'user-9' };
+    returnsRepository.listByTenant.mockResolvedValue({ rows: [{ ...RETURN_ROW, returnNumber: 'DEV-001' }, second], total: 2 });
+    returnItemsRepository.listByReturns.mockResolvedValue([RETURN_ITEM, { ...RETURN_ITEM, id: 'ri-2', returnId: 'ret-2' }]);
+    ordersRepository.findNumbersByIds.mockResolvedValue(new Map([[RETURN_ROW.orderId, 'ORD-000007']]));
+    orderItemsRepository.findLabelsByIds.mockResolvedValue(new Map([['oi-1', { sku: 'SKU-1', productName: 'Refrigerator' }]]));
+    usersRepository.findNamesByIds.mockResolvedValue(new Map([[RETURN_ROW.requestedBy, 'Ana'], ['user-9', 'Luis']]));
+
+    const result = await service.list(TENANT, 'user-1', query);
+
+    expect(returnItemsRepository.listByReturns).toHaveBeenCalledTimes(1);
+    expect(ordersRepository.findNumbersByIds).toHaveBeenCalledTimes(1);
+    expect(orderItemsRepository.findLabelsByIds).toHaveBeenCalledTimes(1);
+    expect(usersRepository.findNamesByIds).toHaveBeenCalledTimes(1);
+    expect(result.data[0]).toMatchObject({ returnNumber: 'DEV-001', orderNumber: 'ORD-000007', requestedByName: 'Ana' });
+    expect(result.data[0]!.receivedByName).toBeUndefined();
+    expect(result.data[0]!.items[0]).toMatchObject({ sku: 'SKU-1', productName: 'Refrigerator' });
+    expect(result.data[1]).toMatchObject({ returnNumber: 'DEV-002', receivedByName: 'Luis' });
+  });
+
+  it('resolves dateFrom to one tenant-local day and passes locationId through', async () => {
+    const { service, returnsRepository } = build();
+    returnsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+    await service.list(TENANT, 'user-1', { ...query, dateFrom: '2026-10-13', locationId: 'loc-1' });
+    const params = returnsRepository.listByTenant.mock.calls[0]![2] as { dayRange: { gte: Date; lt: Date }; locationId: string };
+    expect(params.dayRange.gte.toISOString()).toBe('2026-10-13T05:00:00.000Z');
+    expect(params.dayRange.lt.toISOString()).toBe('2026-10-14T05:00:00.000Z');
+    expect(params.locationId).toBe('loc-1');
+  });
+
+  it('rejects dateTo without dateFrom', async () => {
+    const { service } = build();
+    await expect(service.list(TENANT, 'user-1', { ...query, dateTo: '2026-10-13' })).rejects.toThrow('dateTo');
+  });
+
+  it('create asks the repository for the next DEV number and stores it', async () => {
+    const { service, returnsRepository } = build();
+    returnsRepository.nextReturnNumber.mockResolvedValue('DEV-1000');
+    await service.create(
+      TENANT,
+      ACTOR,
+      { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] },
+      META,
+      KEY,
+    );
+    expect(returnsRepository.nextReturnNumber).toHaveBeenCalledTimes(1);
+    expect(returnsRepository.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ returnNumber: 'DEV-1000' }));
   });
 });

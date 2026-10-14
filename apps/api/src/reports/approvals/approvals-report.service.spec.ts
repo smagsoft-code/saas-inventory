@@ -16,7 +16,7 @@ function buildService() {
     summaryByStatus: vi.fn().mockResolvedValue([]),
   };
   const tenantSettingsRepository = { find: vi.fn().mockResolvedValue(undefined) };
-  const service = new ApprovalsReportService(approvalsReportRepository as never, tenantSettingsRepository as never);
+  const service = new ApprovalsReportService(approvalsReportRepository as never, tenantSettingsRepository as never, { resolveReadScope: vi.fn((_tx: unknown, _t: string, _u: string, loc?: string) => Promise.resolve(loc ? { locationId: loc } : {})) } as never);
   return { service, approvalsReportRepository, tenantSettingsRepository };
 }
 
@@ -39,27 +39,27 @@ function query(overrides: QueryOverrides = {}): ApprovalsSummaryQueryDto {
 describe('ApprovalsReportService.getApprovalsSummary', () => {
   it('rejects when `from` is missing', async () => {
     const { service } = buildService();
-    await expect(service.getApprovalsSummary('t1', query({ from: undefined }))).rejects.toThrow(BadRequestException);
+    await expect(service.getApprovalsSummary('t1', 'u1', query({ from: undefined }))).rejects.toThrow(BadRequestException);
   });
 
   it('rejects when `to` is missing', async () => {
     const { service } = buildService();
-    await expect(service.getApprovalsSummary('t1', query({ to: undefined }))).rejects.toThrow(BadRequestException);
+    await expect(service.getApprovalsSummary('t1', 'u1', query({ to: undefined }))).rejects.toThrow(BadRequestException);
   });
 
   it('rejects when `from` is not strictly before `to`', async () => {
     const { service } = buildService();
     await expect(
-      service.getApprovalsSummary('t1', query({ from: '2026-09-02T00:00:00.000Z', to: '2026-09-02T00:00:00.000Z' })),
+      service.getApprovalsSummary('t1', 'u1', query({ from: '2026-09-02T00:00:00.000Z', to: '2026-09-02T00:00:00.000Z' })),
     ).rejects.toThrow(BadRequestException);
     await expect(
-      service.getApprovalsSummary('t1', query({ from: '2026-09-03T00:00:00.000Z', to: '2026-09-02T00:00:00.000Z' })),
+      service.getApprovalsSummary('t1', 'u1', query({ from: '2026-09-03T00:00:00.000Z', to: '2026-09-02T00:00:00.000Z' })),
     ).rejects.toThrow(BadRequestException);
   });
 
   it('has NO default status — passes status through as undefined when omitted', async () => {
     const { service, approvalsReportRepository } = buildService();
-    await service.getApprovalsSummary('t1', query({ status: undefined }));
+    await service.getApprovalsSummary('t1', 'u1', query({ status: undefined }));
     expect(approvalsReportRepository.summaryByPeriod).toHaveBeenCalledWith(
       expect.anything(),
       't1',
@@ -69,7 +69,7 @@ describe('ApprovalsReportService.getApprovalsSummary', () => {
 
   it('respects an explicit status override', async () => {
     const { service, approvalsReportRepository } = buildService();
-    await service.getApprovalsSummary('t1', query({ status: 'approved' }));
+    await service.getApprovalsSummary('t1', 'u1', query({ status: 'approved' }));
     expect(approvalsReportRepository.summaryByPeriod).toHaveBeenCalledWith(
       expect.anything(),
       't1',
@@ -82,7 +82,7 @@ describe('ApprovalsReportService.getApprovalsSummary', () => {
     for (const groupBy of ['day', 'week', 'month'] as const) {
       approvalsReportRepository.summaryByPeriod.mockClear();
       approvalsReportRepository.summaryByStatus.mockClear();
-      await service.getApprovalsSummary('t1', query({ groupBy }));
+      await service.getApprovalsSummary('t1', 'u1', query({ groupBy }));
       expect(approvalsReportRepository.summaryByPeriod).toHaveBeenCalledWith(
         expect.anything(),
         't1',
@@ -94,7 +94,7 @@ describe('ApprovalsReportService.getApprovalsSummary', () => {
 
   it('dispatches groupBy=status to summaryByStatus only', async () => {
     const { service, approvalsReportRepository } = buildService();
-    await service.getApprovalsSummary('t1', query({ groupBy: 'status' }));
+    await service.getApprovalsSummary('t1', 'u1', query({ groupBy: 'status' }));
     expect(approvalsReportRepository.summaryByStatus).toHaveBeenCalledTimes(1);
     expect(approvalsReportRepository.summaryByPeriod).not.toHaveBeenCalled();
   });
@@ -102,14 +102,14 @@ describe('ApprovalsReportService.getApprovalsSummary', () => {
   it('echoes the resolved tenant timezone, defaulting to UTC with no tenant_settings row', async () => {
     const { service, tenantSettingsRepository } = buildService();
     tenantSettingsRepository.find.mockResolvedValue(undefined);
-    const result = await service.getApprovalsSummary('t1', query());
+    const result = await service.getApprovalsSummary('t1', 'u1', query());
     expect(result.timezone).toBe('UTC');
   });
 
   it('echoes the real tenant_settings.timezone when a row exists', async () => {
     const { service, tenantSettingsRepository } = buildService();
     tenantSettingsRepository.find.mockResolvedValue({ timezone: 'America/Bogota' });
-    const result = await service.getApprovalsSummary('t1', query());
+    const result = await service.getApprovalsSummary('t1', 'u1', query());
     expect(result.timezone).toBe('America/Bogota');
   });
 
@@ -126,7 +126,7 @@ describe('ApprovalsReportService.getApprovalsSummary', () => {
         approvedDiscountValue: '180.00',
       },
     ]);
-    const result = await service.getApprovalsSummary('t1', query());
+    const result = await service.getApprovalsSummary('t1', 'u1', query());
     const bucket = result.buckets[0] as {
       requestCount: number;
       approvedCount: number;
@@ -159,7 +159,7 @@ describe('ApprovalsReportService.getApprovalsSummary', () => {
         approvedDiscountValue: '0',
       },
     ]);
-    const result = await service.getApprovalsSummary('t1', query());
+    const result = await service.getApprovalsSummary('t1', 'u1', query());
     expect((result.buckets[0] as { approvalRate: number | null }).approvalRate).toBeNull();
   });
 
@@ -176,14 +176,14 @@ describe('ApprovalsReportService.getApprovalsSummary', () => {
         approvedDiscountValue: '40',
       },
     ]);
-    const result = await service.getApprovalsSummary('t1', query());
+    const result = await service.getApprovalsSummary('t1', 'u1', query());
     // 4 / (4 + 1) = 0.8 — the 5 cancelled rows do not dilute it.
     expect((result.buckets[0] as { approvalRate: number | null }).approvalRate).toBe(0.8);
   });
 
   it('returns an empty buckets array (not an error) when nothing matches the range', async () => {
     const { service } = buildService();
-    const result = await service.getApprovalsSummary('t1', query());
+    const result = await service.getApprovalsSummary('t1', 'u1', query());
     expect(result.buckets).toEqual([]);
     expect(result.from).toBe('2026-09-01T00:00:00.000Z');
     expect(result.to).toBe('2026-09-02T00:00:00.000Z');
@@ -197,11 +197,30 @@ describe('ApprovalsReportService.getApprovalsSummary', () => {
       { key: 'approved', requestCount: '3', discountValue: '90.00' },
       { key: 'rejected', requestCount: '2', discountValue: '55.00' },
     ]);
-    const result = await service.getApprovalsSummary('t1', query({ groupBy: 'status' }));
+    const result = await service.getApprovalsSummary('t1', 'u1', query({ groupBy: 'status' }));
     expect(result.buckets).toEqual([
       { key: 'approved', requestCount: 3, discountValue: 90 },
       { key: 'rejected', requestCount: 2, discountValue: 55 },
     ]);
     expect(result.buckets[0]).not.toHaveProperty('approvalRate');
+  });
+});
+
+describe('ApprovalsReportService.getApprovalsSummary — business-day mode and Almacén', () => {
+  it('dateFrom alone resolves to one tenant-local day and passes locationId through', async () => {
+    const { service, approvalsReportRepository, tenantSettingsRepository } = buildService();
+    tenantSettingsRepository.find.mockResolvedValue({ timezone: 'America/Guayaquil' });
+    const res = await service.getApprovalsSummary('t1', 'u1', { groupBy: 'day', dateFrom: '2026-10-13', locationId: 'loc-1' } as ApprovalsSummaryQueryDto);
+    const args = approvalsReportRepository.summaryByPeriod.mock.calls[0]![2] as { gte: Date; lt: Date; locationId: string };
+    expect(args.gte.toISOString()).toBe('2026-10-13T05:00:00.000Z');
+    expect(args.lt.toISOString()).toBe('2026-10-14T05:00:00.000Z');
+    expect(args.locationId).toBe('loc-1');
+    expect(res.from).toBe('2026-10-13T05:00:00.000Z');
+  });
+
+  it('rejects dateTo without dateFrom and a missing range', async () => {
+    const { service } = buildService();
+    await expect(service.getApprovalsSummary('t1', 'u1', { groupBy: 'day', dateTo: '2026-10-13' } as ApprovalsSummaryQueryDto)).rejects.toThrow(BadRequestException);
+    await expect(service.getApprovalsSummary('t1', 'u1', { groupBy: 'day' } as ApprovalsSummaryQueryDto)).rejects.toThrow(BadRequestException);
   });
 });

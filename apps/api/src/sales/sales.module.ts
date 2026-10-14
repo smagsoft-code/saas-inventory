@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { TenantSettingsRepository } from '../administration/tenant-settings/tenant-settings.repository';
 import { UsersRepository } from '../auth/repositories/users.repository';
 import { AuditLogService } from '../common/audit/audit-log.service';
 import { DomainEventPublisher } from '../common/events/domain-event-publisher.service';
@@ -84,6 +85,8 @@ import { ReturnsService } from './returns/returns.service';
     // price-approvals' response resolves the requester/approver's display name — reused rather
     // than duplicated, same precedent InventoryModule already set for location-assignments.
     UsersRepository,
+    // Business-day filters on GET /orders resolve dates in the tenant's own timezone.
+    TenantSettingsRepository,
   ],
 })
 export class SalesModule {}

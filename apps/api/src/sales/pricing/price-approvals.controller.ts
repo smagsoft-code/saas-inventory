@@ -33,10 +33,11 @@ export class PriceApprovalsController {
   @ApiOkResponse({ type: PriceApprovalResponseDto, isArray: true })
   async list(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Query() query: ListPriceApprovalsQueryDto,
   ): Promise<PaginatedResult<PriceApprovalResponseDto>> {
-    return this.priceApprovalsService.list(tenantId, permissions, query);
+    return this.priceApprovalsService.list(tenantId, principal.userId, permissions, query);
   }
 
   @Get(':id')
@@ -44,10 +45,11 @@ export class PriceApprovalsController {
   @ApiOkResponse({ type: PriceApprovalResponseDto })
   async getById(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Param('id') id: string,
   ): Promise<PriceApprovalResponseDto> {
-    return this.priceApprovalsService.getById(tenantId, permissions, id);
+    return this.priceApprovalsService.getById(tenantId, principal.userId, permissions, id);
   }
 
   @Post()

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, gte, lte, sql, type SQL } from 'drizzle-orm';
+import { and, count, desc, eq, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
 import { orders } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -65,6 +65,16 @@ export class OrdersRepository {
     return row;
   }
 
+  /** order id → human order number (`ORD-000123`) for a batch of ids, one query. */
+  async findNumbersByIds(tx: TenantTransaction, tenantId: string, ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await tx
+      .select({ id: orders.id, orderNumber: orders.orderNumber })
+      .from(orders)
+      .where(and(eq(orders.tenantId, tenantId), inArray(orders.id, ids)));
+    return new Map(rows.map((row) => [row.id, row.orderNumber]));
+  }
+
   async lockById(tx: TenantTransaction, tenantId: string, id: string): Promise<OrderRow | undefined> {
     const [row] = await tx
       .select()
@@ -83,8 +93,12 @@ export class OrdersRepository {
       status?: string | undefined;
       customerId?: string | undefined;
       documentType?: string | undefined;
+      locationId?: string | undefined;
+      locationIds?: string[] | undefined;
       createdFrom?: string | undefined;
       createdTo?: string | undefined;
+      /** Half-open business-day range already resolved to UTC instants (`localDayRangeToUtc`). */
+      dayRange?: { gte: Date; lt: Date } | undefined;
     },
   ): Promise<{ rows: OrderRow[]; total: number }> {
     const conditions: SQL[] = [eq(orders.tenantId, tenantId)];
@@ -97,11 +111,22 @@ export class OrdersRepository {
     if (params.documentType) {
       conditions.push(eq(orders.documentType, params.documentType));
     }
+    if (params.locationId) {
+      conditions.push(eq(orders.locationId, params.locationId));
+    }
+    // Read scope of a restricted caller (ADR-0024/0035): only their assigned locations; none = nothing.
+    if (params.locationIds) {
+      conditions.push(params.locationIds.length > 0 ? inArray(orders.locationId, params.locationIds) : sql`false`);
+    }
     if (params.createdFrom) {
       conditions.push(gte(orders.createdAt, new Date(params.createdFrom)));
     }
     if (params.createdTo) {
       conditions.push(lte(orders.createdAt, new Date(params.createdTo)));
+    }
+    if (params.dayRange) {
+      conditions.push(gte(orders.createdAt, params.dayRange.gte));
+      conditions.push(lt(orders.createdAt, params.dayRange.lt));
     }
     const where = and(...conditions);
 

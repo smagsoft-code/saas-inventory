@@ -8,8 +8,14 @@ import type { SalesSummary, SalesSummaryExceptional, SalesSummaryGroupBy } from 
  * calling.
  */
 export interface SalesSummaryQuery {
-  from: string;
-  to: string;
+  /** `[from, to)` UTC instants. Omit both when using the business-day `dateFrom`/`dateTo`. */
+  from?: string;
+  to?: string;
+  /** Business-day filter (`YYYY-MM-DD`, tenant timezone, whole final day inclusive); replaces from/to. */
+  dateFrom?: string;
+  dateTo?: string;
+  documentType?: string;
+  customerId?: string;
   groupBy: SalesSummaryGroupBy;
   status?: string;
   /** F18-06 — filter by `order_items.is_exceptional_discount`. Omitted / `'all'` = no filter. */
@@ -21,7 +27,13 @@ export interface SalesSummaryQuery {
 }
 
 export async function getSalesSummary(query: SalesSummaryQuery): Promise<SalesSummary> {
-  const params: Record<string, string> = { from: query.from, to: query.to, groupBy: query.groupBy };
+  const params: Record<string, string> = { groupBy: query.groupBy };
+  if (query.from) params['from'] = query.from;
+  if (query.to) params['to'] = query.to;
+  if (query.dateFrom) params['dateFrom'] = query.dateFrom;
+  if (query.dateTo) params['dateTo'] = query.dateTo;
+  if (query.documentType) params['documentType'] = query.documentType;
+  if (query.customerId) params['customerId'] = query.customerId;
   if (query.status) {
     params['status'] = query.status;
   }

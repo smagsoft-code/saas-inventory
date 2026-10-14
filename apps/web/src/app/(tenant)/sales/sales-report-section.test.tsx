@@ -1,12 +1,12 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { SalesReportError, SalesReportSection } from './sales-report-section';
+import { SalesReportError, SalesSummaryCards, summarizeSales } from './sales-report-section';
 import type { SalesSummary } from '../../../lib/types/reports';
 
 function baseSummary(overrides: Partial<SalesSummary> = {}): SalesSummary {
   return {
-    from: '2026-08-01T00:00:00.000Z',
-    to: '2026-08-31T00:00:00.000Z',
+    from: '2026-10-13T05:00:00.000Z',
+    to: '2026-10-14T05:00:00.000Z',
     timezone: 'America/Bogota',
     currency: 'USD',
     groupBy: 'day',
@@ -16,55 +16,61 @@ function baseSummary(overrides: Partial<SalesSummary> = {}): SalesSummary {
   };
 }
 
-describe('SalesReportSection', () => {
-  it('shows an empty state when there are no buckets — never a fake zero table', () => {
-    render(<SalesReportSection summary={baseSummary()} currency="USD" />);
-    expect(screen.getByText('Sin ventas en este período')).toBeInTheDocument();
-  });
-
-  it('the empty state names the exceptional-discount filter when it is the active one (F18-06)', () => {
-    render(<SalesReportSection summary={baseSummary({ exceptional: 'only' })} currency="USD" />);
-    expect(screen.getByText('Sin ventas con descuento excepcional en este período')).toBeInTheDocument();
-  });
-
-  it('renders period rows with real Revenue/Orders/Avg ticket/Discounts KPI tiles (day/week/month)', () => {
+describe('summarizeSales', () => {
+  it('sums day buckets: sin descuento = subtotal + descuentos, netas = total, pedidos = count', () => {
     const summary = baseSummary({
-      groupBy: 'day',
       buckets: [
-        { key: '2026-08-01', orderCount: 2, subtotal: 300, discountTotal: 10, total: 290, avgTicket: 145 },
+        { key: '2026-10-13', orderCount: 2, subtotal: 220, discountTotal: 20, total: 220, avgTicket: 110 },
+        { key: '2026-10-14', orderCount: 1, subtotal: 100, discountTotal: 0, total: 100, avgTicket: 100 },
       ],
     });
-    render(<SalesReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('2026-08-01')).toBeInTheDocument();
-    // KPI strip's Revenue tile and the table row both show the (single-bucket) total — two matches.
-    expect(screen.getAllByText('290.00 USD')).toHaveLength(2);
-    expect(screen.getAllByText('2').length).toBeGreaterThan(0); // orderCount appears in the KPI + the row
+    expect(summarizeSales(summary)).toEqual({ withoutDiscount: 340, discounts: 20, net: 320, orderCount: 3 });
   });
 
-  it('renders product buckets with SKU/quantity columns, never an "Orders" or "Avg ticket" KPI tile', () => {
+  it('is exact to the cent (no float drift)', () => {
     const summary = baseSummary({
-      groupBy: 'product',
       buckets: [
-        { key: 'variant-1', sku: 'SKU-1', productName: 'Widget', orderCount: 3, quantity: 7, discountTotal: 0, total: 700 },
+        { key: 'a', orderCount: 1, subtotal: 0.1, discountTotal: 0.2, total: 0.1, avgTicket: 0.1 },
+        { key: 'b', orderCount: 1, subtotal: 0.2, discountTotal: 0.1, total: 0.2, avgTicket: 0.2 },
       ],
     });
-    render(<SalesReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('Widget')).toBeInTheDocument();
-    expect(screen.getByText('SKU-1')).toBeInTheDocument();
-    expect(screen.getByText('Unidades vendidas')).toBeInTheDocument();
+    expect(summarizeSales(summary)).toEqual({ withoutDiscount: 0.6, discounts: 0.3, net: 0.3, orderCount: 2 });
+  });
+
+  it('empty period is real zeros', () => {
+    expect(summarizeSales(baseSummary())).toEqual({ withoutDiscount: 0, discounts: 0, net: 0, orderCount: 0 });
+  });
+});
+
+describe('SalesSummaryCards', () => {
+  it('shows exactly the four approved cards and no Periodo table', () => {
+    render(
+      <SalesSummaryCards
+        statusLabel="confirmados"
+        summary={baseSummary({
+          buckets: [{ key: '2026-10-13', orderCount: 2, subtotal: 220, discountTotal: 20, total: 220, avgTicket: 110 }],
+        })}
+      />,
+    );
+    expect(screen.getByText('Ventas sin descuento')).toBeInTheDocument();
+    expect(screen.getByText('Descuentos')).toBeInTheDocument();
+    expect(screen.getByText('Ventas netas')).toBeInTheDocument();
+    expect(screen.getByText('Cantidad de pedidos')).toBeInTheDocument();
+    expect(screen.getByText('240.00 USD')).toBeInTheDocument();
+    expect(screen.getByText('20.00 USD')).toBeInTheDocument();
+    expect(screen.getByText('220.00 USD')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.queryByText('Ticket promedio')).not.toBeInTheDocument();
-    expect(screen.queryByText('Pedidos')).not.toBeInTheDocument();
+    expect(screen.queryByText('Periodo')).not.toBeInTheDocument();
   });
 
-  it('renders customer buckets with the frozen customer name', () => {
-    const summary = baseSummary({
-      groupBy: 'customer',
-      buckets: [
-        { key: 'cust-1', customerName: 'Acme Corp', orderCount: 4, subtotal: 400, discountTotal: 0, total: 400, avgTicket: 100 },
-      ],
-    });
-    render(<SalesReportSection summary={summary} currency="USD" />);
-    expect(screen.getByText('Acme Corp')).toBeInTheDocument();
+  it('shows zeros (not an empty state) for a period with no orders, and names the counted status', () => {
+    render(<SalesSummaryCards statusLabel="pendientes" summary={baseSummary()} />);
+    expect(screen.getAllByText('0.00 USD')).toHaveLength(3);
+    expect(screen.getByText('0')).toBeInTheDocument();
+    expect(screen.getByText(/pedidos pendientes/)).toBeInTheDocument();
+    expect(screen.getByText(/No restan devoluciones/)).toBeInTheDocument();
   });
 });
 
@@ -78,12 +84,6 @@ describe('SalesReportError', () => {
   it('shows a friendly title and the correlation id for a 5xx', () => {
     render(<SalesReportError status={500} message="Something went wrong on our end. Please try again." correlationId="corr-123" />);
     expect(screen.getByText('Algo salió mal de nuestro lado')).toBeInTheDocument();
-    expect(screen.getByText(/corr-123/)).toBeInTheDocument();
-  });
-
-  it('offers a retry link back to #report', () => {
-    render(<SalesReportError status={400} message="Some of the information provided is invalid." />);
-    const retry = screen.getByRole('link', { name: 'Reintentar' });
-    expect(retry).toHaveAttribute('href', '#report');
+    expect(screen.getByText('Referencia: corr-123')).toBeInTheDocument();
   });
 });

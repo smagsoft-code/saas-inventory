@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsUUID } from 'class-validator';
-import { ORDER_STATUSES } from '../../../sales/orders/dto/list-orders-query.dto';
+import { IsIn, IsOptional, IsUUID, Matches } from 'class-validator';
+import { CALENDAR_DATE_PATTERN } from '../../../common/reporting/local-day-range';
+import { DOCUMENT_TYPES, ORDER_STATUSES } from '../../../sales/orders/dto/list-orders-query.dto';
 import { ReportDateRangeQueryDto } from '../../../common/reporting/report-date-range.dto';
 
 export const SALES_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'product', 'customer'] as const;
@@ -74,4 +75,29 @@ export class SalesSummaryQueryDto extends ReportDateRangeQueryDto {
   @IsOptional()
   @IsUUID()
   locationId?: string;
+
+  @ApiPropertyOptional({ enum: DOCUMENT_TYPES, description: 'orders.document_type equality filter.' })
+  @IsOptional()
+  @IsIn(DOCUMENT_TYPES)
+  documentType?: (typeof DOCUMENT_TYPES)[number];
+
+  @ApiPropertyOptional({ type: String, format: 'uuid', description: 'orders.customer_id equality filter.' })
+  @IsOptional()
+  @IsUUID()
+  customerId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '2026-10-13',
+    description:
+      'Business-day alternative to from/to (YYYY-MM-DD, tenant timezone, whole final day inclusive). When present it replaces from/to.',
+  })
+  @IsOptional()
+  @Matches(CALENDAR_DATE_PATTERN, { message: 'dateFrom must be a YYYY-MM-DD calendar date' })
+  dateFrom?: string;
+
+  @ApiPropertyOptional({ type: String, example: '2026-10-13', description: 'Last business day, inclusive. Defaults to dateFrom.' })
+  @IsOptional()
+  @Matches(CALENDAR_DATE_PATTERN, { message: 'dateTo must be a YYYY-MM-DD calendar date' })
+  dateTo?: string;
 }

@@ -2802,6 +2802,7 @@ are all durable columns — no reconstruction from current product/user state is
 sales_returns
   id                uuid PK
   tenant_id         uuid NOT NULL FK -> tenants(id), UNIQUE (tenant_id, id)
+  return_number     text NOT NULL, UNIQUE (tenant_id, return_number)  -- per-tenant sequential code DEV-001…DEV-999, DEV-1000… (migration 0041; 3 digits is a minimum)
   order_id          uuid NOT NULL FK -> orders(tenant_id, id)
   location_id       uuid NOT NULL FK -> locations(tenant_id, id)    -- where the returned goods are physically received
   status            text NOT NULL CHECK IN ('requested','inspecting','resolved','cancelled'), DEFAULT 'requested'

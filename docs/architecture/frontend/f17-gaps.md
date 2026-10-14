@@ -220,6 +220,16 @@ phase: **F17-10 or a dedicated F17-RETURNS slice.** The order detail links to `/
 `confirmed` order's state but offers no "start a return" action yet.
 
 ### `GAP-ORDERS-LOCATION`
+
+**RESOLVED (2026-10) — read scope is now enforced in the backend.** Decision: an operational user sees only
+data of their authorized locations (ADR-0024/0035). `LocationAuthorizationService.resolveReadScope` /
+`canAccess` apply the same scope the writes use to: `GET /orders` (+ `:id`, `:id/notifications`),
+`GET /sales-returns` (+ `:id`), `GET /price-approvals` (+ `:id`) and `GET /reports/{sales,returns,approvals}-summary`.
+A restricted caller who sends no `locationId` is narrowed to their assigned set (never tenant-wide; none
+assigned = nothing), asking for another location is **403**, and a record outside their locations is
+**404** on `GET /:id` (existence not revealed). The founding Administrador (ADR-0035) stays unrestricted.
+Orders/returns/approvals all gained a `locationId` filter (orders.location_id / sales_returns.location_id /
+the parent order's location). The historical notes below describe the state before this change.
 `orders.location_id` exists but `GET /orders` has **no `locationId` filter** and the endpoint does
 not location-scope order visibility. **Decision needed:** should an operational user see only
 orders placed at their authorized locations? If yes → add the filter + scope (F18/additive). If no

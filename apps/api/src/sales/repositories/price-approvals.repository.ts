@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, sql, type SQL } from 'drizzle-orm';
-import { priceApprovals } from '../../database/schema';
+import { and, count, desc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
+import { orders, priceApprovals } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
 export interface PriceApprovalRow {
@@ -124,7 +124,17 @@ export class PriceApprovalsRepository {
   async listByTenant(
     tx: TenantTransaction,
     tenantId: string,
-    params: { page: number; pageSize: number; status?: string | undefined; orderId?: string | undefined },
+    params: {
+      page: number;
+      pageSize: number;
+      status?: string | undefined;
+      orderId?: string | undefined;
+      /** The parent order's location (Almacén) — `price_approvals` has no location of its own. */
+      locationId?: string | undefined;
+      locationIds?: string[] | undefined;
+      /** Half-open business-day range on `requested_at`, already resolved to UTC instants. */
+      dayRange?: { gte: Date; lt: Date } | undefined;
+    },
   ): Promise<{ rows: PriceApprovalRow[]; total: number }> {
     const conditions: SQL[] = [eq(priceApprovals.tenantId, tenantId)];
     if (params.status) {
@@ -132,6 +142,24 @@ export class PriceApprovalsRepository {
     }
     if (params.orderId) {
       conditions.push(eq(priceApprovals.orderId, params.orderId));
+    }
+    if (params.locationId) {
+      // Semi-join, never a real join: no fan-out, one row per approval.
+      conditions.push(
+        sql`exists (select 1 from ${orders} where ${orders.tenantId} = ${priceApprovals.tenantId} and ${orders.id} = ${priceApprovals.orderId} and ${orders.locationId} = ${params.locationId})`,
+      );
+    }
+    // Read scope of a restricted caller (ADR-0024/0035): only their assigned locations; none = nothing.
+    if (params.locationIds) {
+      conditions.push(
+        params.locationIds.length > 0
+          ? sql`exists (select 1 from ${orders} where ${orders.tenantId} = ${priceApprovals.tenantId} and ${orders.id} = ${priceApprovals.orderId} and ${inArray(orders.locationId, params.locationIds)})`
+          : sql`false`,
+      );
+    }
+    if (params.dayRange) {
+      conditions.push(gte(priceApprovals.requestedAt, params.dayRange.gte));
+      conditions.push(lt(priceApprovals.requestedAt, params.dayRange.lt));
     }
     const where = and(...conditions);
 
