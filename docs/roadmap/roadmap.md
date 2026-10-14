@@ -364,3 +364,7 @@ FASE 14 — this is the state the Fase 5 QA campaign leaves the local environmen
 serialized / lot-tracked variants remains a pending explicit design (no approved
 `order_items` ↔ `product_serials`/`product_lots` model, no serial/lot column on
 `inventory_movements`) — it is not assigned to any phase yet.
+
+**Deferred (owner decision):** a monetary refund registry for sales returns is **not** started —
+returns remain product-only. See [future-refunds.md](future-refunds.md) for the current state, the
+proposal and the open decisions.
