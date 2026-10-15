@@ -547,8 +547,8 @@ export function ProductCartModal({
                 )}
                 {results.length > 0 && (
                   <ul className="flex flex-col divide-y divide-slate-100">
-                    {results.map((product) => (
-                      <li key={product.id}>
+                    {results.map((product, index) => (
+                      <li key={product.variantId}>
                         {/* The whole row is the hit target — clicking anywhere on it (not just a
                          * separate button) selects the product, same pattern as the customer
                          * search above. */}
@@ -558,7 +558,10 @@ export function ProductCartModal({
                           onClick={() => void onPickProduct(product)}
                           className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <span className="text-sm font-medium text-slate-900">{product.name}</span>
+                          <span className="flex min-w-0 flex-col">
+                            <span className="truncate text-xs font-medium text-slate-900">{product.name}</span>
+                            <span className="text-[11px] text-slate-500">{product.sku}</span>
+                          </span>
                           {variantsLoading === product.id ? (
                             <span className="text-xs text-slate-500">Cargando…</span>
                           ) : (
@@ -567,7 +570,9 @@ export function ProductCartModal({
                             </span>
                           )}
                         </button>
-                        {expanded?.productId === product.id && (
+                        {/* A product with several matching variants appears once per variant; its variant
+                         * list opens under the first of those rows only. */}
+                        {expanded?.productId === product.id && results.findIndex((r) => r.id === product.id) === index && (
                           <ul className="mt-2 flex flex-col gap-1 pl-3">
                             {expanded.variants.length === 0 && (
                               <li className="text-xs text-slate-500">Sin variantes vendibles.</li>

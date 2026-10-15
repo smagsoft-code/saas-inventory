@@ -24,6 +24,7 @@ import { NoAccess } from '../../../../../../components/ui/no-access';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../../../components/ui/table';
 import { VariantForm } from '../../variant-form';
 import { ProductImageQrPanel } from '../../../product-image-qr-panel';
+import { StagedImageProvider } from '../../../staged-image';
 
 export const metadata = { title: 'Variante · SaaS Inventory' };
 
@@ -107,6 +108,7 @@ export default async function VariantDetailPage({
       {/* Same row layout as `product-form.tsx`'s create flow — the form on the left, the image +
           QR `<aside>` on the right at the same position/size, not a separate full-width card
           below (OUI-009). */}
+      <StagedImageProvider>
       <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
         <Card className="w-full max-w-xl">
           <CardBody className="flex flex-col gap-4">
@@ -181,6 +183,7 @@ export default async function VariantDetailPage({
           {...(qrValue ? { initialQrValue: qrValue } : {})}
         />
       </div>
+      </StagedImageProvider>
 
       {canViewInventory && (
         <Card>

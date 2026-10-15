@@ -8,6 +8,7 @@ import { AttributesRepository } from '../repositories/attributes.repository';
 import type { CategoryRow } from '../repositories/categories.repository';
 import { CategoriesRepository } from '../repositories/categories.repository';
 import type { AuditMeta } from '../catalog-audit-meta';
+import type { NextCodeResponseDto } from '../next-code-response.dto';
 import type { CategoryAttributeResponseDto } from './dto/category-attributes.dto';
 import type { SetCategoryAttributesDto } from './dto/category-attributes.dto';
 import type { CategoryResponseDto } from './dto/category-response.dto';
@@ -38,7 +39,7 @@ function toResponse(category: CategoryRow): CategoryResponseDto {
     id: category.id,
     parentCategoryId: category.parentCategoryId ?? undefined,
     name: category.name,
-    slug: category.slug,
+    code: category.code,
     status: category.status,
     createdAt: category.createdAt.toISOString(),
   };
@@ -56,6 +57,11 @@ export class CategoriesService {
     private readonly attributesRepository: AttributesRepository,
     private readonly auditLogService: AuditLogService,
   ) {}
+
+  /** Preview of the next automatic category code (see `CategoriesRepository.nextCode`). */
+  async getNextCode(tenantId: string): Promise<NextCodeResponseDto> {
+    return withTenantTransaction(tenantId, async (tx) => ({ code: await this.categoriesRepository.nextCode(tx, tenantId) }));
+  }
 
   async list(tenantId: string, query: ListCategoriesQueryDto): Promise<PaginatedResult<CategoryResponseDto>> {
     return withTenantTransaction(tenantId, async (tx) => {
@@ -101,12 +107,13 @@ export class CategoriesService {
           id: generateId(),
           tenantId,
           name: dto.name,
-          slug: dto.slug,
+          // Proposed automatically when the caller does not send one (the screen pre-fills it).
+          code: dto.code ?? (await this.categoriesRepository.nextCode(tx, tenantId)),
           parentCategoryId: dto.parentCategoryId,
         });
       } catch (error) {
         if (isUniqueViolation(error)) {
-          throw new ConflictException('A category with this slug already exists.');
+          throw new ConflictException('A category with this code already exists.');
         }
         throw error;
       }
@@ -116,7 +123,7 @@ export class CategoriesService {
         actorId,
         actionCode: 'category.created',
         entityId: created.id,
-        afterState: { name: created.name, slug: created.slug, parentCategoryId: created.parentCategoryId },
+        afterState: { name: created.name, code: created.code, parentCategoryId: created.parentCategoryId },
         meta,
       });
 
@@ -151,13 +158,13 @@ export class CategoriesService {
       try {
         updated = await this.categoriesRepository.update(tx, tenantId, categoryId, {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
-          ...(dto.slug !== undefined ? { slug: dto.slug } : {}),
+          ...(dto.code !== undefined ? { code: dto.code } : {}),
           ...(dto.parentCategoryId !== undefined ? { parentCategoryId: dto.parentCategoryId } : {}),
           ...(dto.status !== undefined ? { status: dto.status } : {}),
         });
       } catch (error) {
         if (isUniqueViolation(error)) {
-          throw new ConflictException('A category with this slug already exists.');
+          throw new ConflictException('A category with this code already exists.');
         }
         throw error;
       }
@@ -170,8 +177,8 @@ export class CategoriesService {
         actorId,
         actionCode: 'category.updated',
         entityId: categoryId,
-        beforeState: { name: before.name, slug: before.slug, status: before.status },
-        afterState: { name: updated.name, slug: updated.slug, status: updated.status },
+        beforeState: { name: before.name, code: before.code, status: before.status },
+        afterState: { name: updated.name, code: updated.code, status: updated.status },
         meta,
       });
 

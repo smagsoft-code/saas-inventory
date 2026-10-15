@@ -8,6 +8,7 @@ import { Badge } from '../../../components/ui/badge';
 import { Spinner } from '../../../components/ui/spinner';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
 import { QrThumbnailModal } from '../../../components/qr-thumbnail-modal';
+import { ProductPreviewModal } from './product-preview-modal';
 import { VARIANT_STATUS_LABELS, type VariantStatus } from '../../../lib/types/products';
 import type { InventoryBalance } from '../../../lib/types/inventory';
 import type { ProductCatalogRow } from '../../../lib/types/product-catalog';
@@ -76,71 +77,75 @@ function ExistenciasCard({
   locationWarehouseNames: Map<string, string>;
 }): React.JSX.Element {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white">
-      <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-        <h3 className="text-sm font-semibold text-slate-900">Existencias</h3>
-        <div className="flex gap-4 text-sm font-medium text-slate-600">
-          <Link
-            href={`/inventory/movements?productVariantId=${variantId}`}
-            className="hover:underline"
-          >
+    // A *secondary* table: indented under the product row with a left rule, small type and a light
+    // header — so it never reads as a second, equal-rank table next to the main products one.
+    <div className="ml-6 border-l-2 border-slate-300 pl-4">
+      <div className="mb-1.5 flex items-center justify-between">
+        <h3 className="text-xs font-semibold text-slate-500">Existencias</h3>
+        <div className="flex gap-3 text-xs font-medium text-slate-500">
+          <Link href={`/inventory/movements?productVariantId=${variantId}`} className="hover:underline">
             Movimientos
           </Link>
-          <Link
-            href={`/inventory/adjust?productVariantId=${variantId}`}
-            className="hover:underline"
-          >
+          <Link href={`/inventory/adjust?productVariantId=${variantId}`} className="hover:underline">
             Ajustar
           </Link>
         </div>
       </div>
 
       {!balances || balances.status === 'loading' ? (
-        <p className="flex items-center gap-2 px-4 py-4 text-sm text-slate-500">
-          <Spinner className="h-4 w-4" /> Cargando existencias…
+        <p className="flex items-center gap-2 py-2 text-xs text-slate-500">
+          <Spinner className="h-3 w-3" /> Cargando existencias…
         </p>
       ) : balances.status === 'error' ? (
-        <p className="px-4 py-4 text-sm text-red-700">{balances.error}</p>
+        <p className="py-2 text-xs text-red-700">{balances.error}</p>
       ) : balances.rows.length === 0 ? (
-        <p className="px-4 py-4 text-sm text-slate-500">
-          Sin existencias registradas para esta variante.
-        </p>
+        <p className="py-2 text-xs text-slate-500">Sin existencias registradas para esta variante.</p>
       ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Almacén</TH>
-              <TH>Sucursal</TH>
-              <TH className="text-right">Disponible</TH>
-              <TH className="text-right">Físico</TH>
-              <TH className="text-right">Reservado</TH>
-              <TH className="text-right">Comprometido</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {balances.rows.map((balance) => (
-              <TR key={balance.id}>
-                <TD>
-                  <Link
-                    href={`/inventory/${balance.id}`}
-                    className="font-medium text-slate-700 underline-offset-2 hover:underline"
-                  >
-                    {locationNames.get(balance.locationId) ?? balance.locationId}
-                  </Link>
-                </TD>
-                <TD className="text-slate-500">
-                  {locationWarehouseNames.get(balance.locationId) ?? '—'}
-                </TD>
-                <TD className="text-right font-semibold text-slate-900">
-                  {balance.quantityAvailable}
-                </TD>
-                <TD className="text-right text-slate-500">{balance.quantityPhysical}</TD>
-                <TD className="text-right text-slate-500">{balance.quantityReserved}</TD>
-                <TD className="text-right text-slate-500">{balance.quantityCommitted}</TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
+        <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+          <table className="w-full border-collapse text-xs">
+            <thead className="bg-slate-100 text-left">
+              <tr>
+                <th scope="col" className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  Sucursal
+                </th>
+                <th scope="col" className="px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  Almacén
+                </th>
+                <th scope="col" className="px-2 py-1.5 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  Disponible
+                </th>
+                <th scope="col" className="px-2 py-1.5 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  Físico
+                </th>
+                <th scope="col" className="px-2 py-1.5 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  Reservado
+                </th>
+                <th scope="col" className="px-2 py-1.5 text-right text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  Comprometido
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {balances.rows.map((balance) => (
+                <tr key={balance.id}>
+                  <td className="px-2 py-1.5 text-slate-500">{locationWarehouseNames.get(balance.locationId) ?? '—'}</td>
+                  <td className="px-2 py-1.5">
+                    <Link
+                      href={`/inventory/${balance.id}`}
+                      className="font-medium text-slate-700 underline-offset-2 hover:underline"
+                    >
+                      {locationNames.get(balance.locationId) ?? balance.locationId}
+                    </Link>
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-semibold text-slate-800">{balance.quantityAvailable}</td>
+                  <td className="px-2 py-1.5 text-right text-slate-500">{balance.quantityPhysical}</td>
+                  <td className="px-2 py-1.5 text-right text-slate-500">{balance.quantityReserved}</td>
+                  <td className="px-2 py-1.5 text-right text-slate-500">{balance.quantityCommitted}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -156,6 +161,7 @@ function ExistenciasCard({
 export function ProductsCatalogTable({
   rows,
   categoryNames,
+  attributeLineByVariant,
   qrValueByVariant,
   canManage,
   canViewInventory,
@@ -164,6 +170,8 @@ export function ProductsCatalogTable({
 }: {
   rows: ProductCatalogRow[];
   categoryNames: Map<string, string>;
+  /** `variantId -> "Color: Crema; Medidas: 80 cm"`, resolved server-side — shown under the name. */
+  attributeLineByVariant?: Map<string, string>;
   /** `variantId -> {apiPublicUrl}/q/:code` (OUI-008) — the QR's real scannable value, precomputed
    * server-side (never a function, never crosses the RSC boundary — see `locationNames`'s own note
    * below). Bounded to the first 100 QR codes tenant-wide (`GET /qr-codes?targetType=product_variant`,
@@ -212,7 +220,8 @@ export function ProductsCatalogTable({
   }
 
   return (
-    <Table>
+    // Compact on purpose: smaller type and tighter cell padding so the (now wider) table fits in one view.
+    <Table className="[&_td]:px-2 [&_td]:text-xs [&_th]:px-2">
       <THead>
         <TR>
           <TH className="w-0">
@@ -228,6 +237,7 @@ export function ProductsCatalogTable({
             <span className="sr-only">Imagen</span>
           </TH>
           <TH>Nombre</TH>
+          <TH>Categoría</TH>
           <TH>Código</TH>
           <TH className="text-right">Stock</TH>
           <TH className="text-right">Precio máx.</TH>
@@ -269,10 +279,31 @@ export function ProductsCatalogTable({
                   </button>
                 </TD>
                 <TD>
-                  <ThumbnailPlaceholder {...(row.thumbnailUrl ? { src: row.thumbnailUrl } : {})} />
+                  <ProductPreviewModal
+                    productId={row.productId}
+                    variantId={row.variantId}
+                    productName={row.productName}
+                    sku={row.sku}
+                    categoryName={categoryNames.get(row.categoryId ?? '')}
+                    thumbnailUrl={row.thumbnailUrl}
+                    detailHref={`/products/${row.productId}/variants/${row.variantId}`}
+                    canManage={canManage}
+                  >
+                    <ThumbnailPlaceholder {...(row.thumbnailUrl ? { src: row.thumbnailUrl } : {})} />
+                  </ProductPreviewModal>
                 </TD>
-                <TD className="font-medium">{row.productName}</TD>
-                <TD className="text-slate-500">{row.sku}</TD>
+                <TD>
+                  <span className="font-medium">{row.productName}</span>
+                  {attributeLineByVariant?.get(row.variantId) && (
+                    <span className="mt-0.5 block max-w-[16rem] text-[11px] leading-snug text-slate-500">
+                      {attributeLineByVariant.get(row.variantId)}
+                    </span>
+                  )}
+                </TD>
+                <TD className="max-w-[8rem] truncate text-slate-600" title={categoryNames.get(row.categoryId ?? '')}>
+                  {categoryNames.get(row.categoryId ?? '') ?? '—'}
+                </TD>
+                <TD className="whitespace-nowrap text-slate-500">{row.sku}</TD>
                 <TD className="text-right text-slate-700">{row.availableQuantity}</TD>
                 <TD className="text-right text-slate-500">{money(row.maxPrice)}</TD>
                 <TD className="text-right text-slate-500">{money(row.basePrice)}</TD>
@@ -298,26 +329,31 @@ export function ProductsCatalogTable({
                   )}
                 </TD>
                 <TD>
+                  {/* Icon-only (pencil to edit, eye to just view) — the name stays in aria-label/title. */}
                   <Link
                     href={`/products/${row.productId}/variants/${row.variantId}`}
-                    className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+                    aria-label={canManage ? 'Editar' : 'Ver'}
+                    title={canManage ? 'Editar' : 'Ver'}
+                    className="flex h-7 w-7 items-center justify-center rounded text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                   >
-                    {canManage ? 'Editar' : 'Ver'}
+                    {canManage ? (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.12 2.12 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} aria-hidden>
+                        <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
                   </Link>
                 </TD>
               </TR>
               {isOpen && (
                 <TR>
-                  <TD colSpan={10} className="bg-slate-50">
+                  <TD colSpan={11} className="bg-slate-50">
                     <div className="flex flex-col gap-3 py-3">
-                      {categoryNames.get(row.categoryId ?? '') && (
-                        <p className="text-sm">
-                          <span className="text-slate-500">Categoría:</span>{' '}
-                          <span className="text-slate-800">
-                            {categoryNames.get(row.categoryId ?? '')}
-                          </span>
-                        </p>
-                      )}
                       {canViewInventory ? (
                         <ExistenciasCard
                           variantId={row.variantId}

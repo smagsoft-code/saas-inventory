@@ -8,6 +8,11 @@ import { Input, Select } from '../../../components/ui/input';
 
 /** Turns a `datetime-local` input value (`YYYY-MM-DDTHH:mm`) into a full ISO string for the
  * backend, and an ISO string back into the input's expected local slice. */
+/** `Medidas (cm)` — the attribute's name plus its unit of measure when it has one. */
+export function fieldLabel(field: AttributeField): string {
+  return field.unit ? `${field.name} (${field.unit})` : field.name;
+}
+
 export function toIsoFromLocal(local: string): string {
   const date = new Date(local);
   return Number.isNaN(date.getTime()) ? local : date.toISOString();
@@ -130,7 +135,7 @@ function AttributeControl({
   switch (field.dataType) {
     case 'boolean':
       return (
-        <GroupShell label={field.name} required={field.isRequired} {...(error ? { error } : {})}>
+        <GroupShell label={fieldLabel(field)} required={field.isRequired} {...(error ? { error } : {})}>
           {(describedBy) => (
             <label className="flex items-center gap-2 text-sm text-slate-700">
               <input
@@ -150,7 +155,7 @@ function AttributeControl({
     case 'number':
     case 'decimal':
       return (
-        <Field label={field.name} required={field.isRequired} {...(error ? { error } : {})} {...(hint ? { hint } : {})}>
+        <Field label={fieldLabel(field)} required={field.isRequired} {...(error ? { error } : {})} {...(hint ? { hint } : {})}>
           <Input
             type="number"
             step={field.dataType === 'decimal' ? 'any' : '1'}
@@ -164,7 +169,7 @@ function AttributeControl({
       );
     case 'date':
       return (
-        <Field label={field.name} required={field.isRequired} {...(error ? { error } : {})} {...(hint ? { hint } : {})}>
+        <Field label={fieldLabel(field)} required={field.isRequired} {...(error ? { error } : {})} {...(hint ? { hint } : {})}>
           <Input
             type="date"
             value={typeof value === 'string' ? value : ''}
@@ -176,7 +181,7 @@ function AttributeControl({
     case 'datetime':
       return (
         <Field
-          label={field.name}
+          label={fieldLabel(field)}
           required={field.isRequired}
           {...(error ? { error } : {})}
           hint={hint ?? 'Se guarda en ISO-8601 (UTC).'}
@@ -191,7 +196,7 @@ function AttributeControl({
       );
     case 'select':
       return (
-        <Field label={field.name} required={field.isRequired} {...(error ? { error } : {})} {...(hint ? { hint } : {})}>
+        <Field label={fieldLabel(field)} required={field.isRequired} {...(error ? { error } : {})} {...(hint ? { hint } : {})}>
           <Select
             value={typeof value === 'string' ? value : ''}
             disabled={disabled}
@@ -214,7 +219,7 @@ function AttributeControl({
       const codes = new Set(selected);
       const extras = selected.filter((code) => !options.some((o) => o.code === code));
       return (
-        <GroupShell label={field.name} required={field.isRequired} {...(error ? { error } : {})}>
+        <GroupShell label={fieldLabel(field)} required={field.isRequired} {...(error ? { error } : {})}>
           {() => (
             <div className="flex flex-col gap-1.5">
               {options.map((option) => (
@@ -253,7 +258,7 @@ function AttributeControl({
     }
     default:
       return (
-        <Field label={field.name} required={field.isRequired} {...(error ? { error } : {})} {...(hint ? { hint } : {})}>
+        <Field label={fieldLabel(field)} required={field.isRequired} {...(error ? { error } : {})} {...(hint ? { hint } : {})}>
           <Input
             value={typeof value === 'string' ? value : ''}
             disabled={disabled}

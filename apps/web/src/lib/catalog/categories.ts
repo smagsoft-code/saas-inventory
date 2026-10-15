@@ -27,6 +27,16 @@ export async function listCategories(query: ListCategoriesQuery = {}): Promise<P
   return serverApiFetch<Paginated<Category>>('/api/v1/categories', { query: params });
 }
 
+/**
+ * The next automatic category code (`CAT-001`, `CAT-002`, …) — a preview of
+ * `GET /api/v1/categories/next-code`. The form pre-fills it; if left untouched it is not sent and the
+ * server assigns the real next one atomically.
+ */
+export async function getNextCategoryCode(): Promise<string> {
+  const response = await serverApiFetch<{ code: string }>('/api/v1/categories/next-code');
+  return response.code;
+}
+
 export async function getCategory(id: string): Promise<Category> {
   return serverApiFetch<Category>(`/api/v1/categories/${id}`);
 }

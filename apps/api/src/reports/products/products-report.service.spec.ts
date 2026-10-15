@@ -32,6 +32,7 @@ function row(overrides: Partial<ProductCatalogRow> = {}): ProductCatalogRow {
     basePrice: '80',
     availableQuantity: '5',
     imageId: null,
+    attributes: null,
     totalCount: '1',
     ...overrides,
   };
@@ -44,7 +45,7 @@ describe('ProductsReportService.listCatalog', () => {
     expect(productsReportRepository.list).toHaveBeenCalledWith(
       expect.anything(),
       't1',
-      { q: 'widg', categoryId: 'c1', status: 'active', stock: 'with' },
+      { q: 'widg', categoryId: 'c1', status: 'active', productStatus: undefined, stock: 'with' },
       1,
       20,
     );
@@ -98,6 +99,29 @@ describe('ProductsReportService.listCatalog', () => {
     productsReportRepository.list.mockResolvedValue([row({ imageId: 'img-1' })]);
     const result = await service.listCatalog('t1', query());
     expect(result.data[0]?.thumbnailUrl).toBe('/api/v1/products/p1/images/img-1');
+  });
+
+  it('passes productStatus (the status of the parent product) through, e.g. the sales picker asking for active only', async () => {
+    const { service, productsReportRepository } = buildService();
+    await service.listCatalog('t1', query({ q: 'arm', status: 'active', productStatus: 'active' }));
+    expect(productsReportRepository.list).toHaveBeenCalledWith(
+      expect.anything(),
+      't1',
+      expect.objectContaining({ q: 'arm', status: 'active', productStatus: 'active' }),
+      1,
+      20,
+    );
+  });
+
+  it('exposes the merged attribute values (and omits the field when there are none)', async () => {
+    const { service, productsReportRepository } = buildService();
+    productsReportRepository.list.mockResolvedValue([
+      row({ attributes: { ATR001: 'crema', ATR002: 80 } }),
+      row({ variantId: 'v2', attributes: {} }),
+    ]);
+    const result = await service.listCatalog('t1', query());
+    expect(result.data[0]?.attributes).toEqual({ ATR001: 'crema', ATR002: 80 });
+    expect(result.data[1]).not.toHaveProperty('attributes');
   });
 
   it('reads total from the first row\'s totalCount (COUNT(*) OVER())', async () => {

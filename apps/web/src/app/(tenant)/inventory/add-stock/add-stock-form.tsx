@@ -9,13 +9,10 @@ import { Alert } from '../../../../components/ui/alert';
 import { Button, ButtonLink } from '../../../../components/ui/button';
 import { Field } from '../../../../components/ui/field';
 import { Input, Select, Textarea } from '../../../../components/ui/input';
+import { ProductSearchSelect } from '../../../../components/product-search-select';
 
 const ADJUSTMENTS_PATH = '/api/v1/inventory/adjustments';
 
-export interface ProductOption {
-  id: string;
-  name: string;
-}
 export interface WarehouseOption {
   id: string;
   name: string;
@@ -41,18 +38,18 @@ interface VariantOption {
 export function AddStockForm({
   fixedProductVariantId,
   fixedVariantLabel,
-  products,
   warehouses,
   locations,
 }: {
   fixedProductVariantId?: string;
   /** Etiqueta humana (SKU) para la variante fija, cuando el caller ya la conoce — solo display. */
   fixedVariantLabel?: string;
-  products: ProductOption[];
   warehouses: WarehouseOption[];
   locations: LocationOption[];
 }): React.JSX.Element {
-  const [productId, setProductId] = useState('');
+  // The product picked in the search bar (id + name); the variant is then chosen among its own.
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
+  const productId = selectedProduct?.id ?? '';
   const [variants, setVariants] = useState<VariantOption[]>([]);
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [productVariantId, setProductVariantId] = useState(fixedProductVariantId ?? '');
@@ -75,18 +72,18 @@ export function AddStockForm({
     () => locations.filter((l) => l.warehouseId === warehouseId),
     [locations, warehouseId],
   );
-  const selectedProduct = products.find((p) => p.id === productId);
   const selectedVariant = variants.find((v) => v.id === productVariantId);
   const selectedWarehouse = warehouses.find((w) => w.id === warehouseId);
   const selectedLocation = locations.find((l) => l.id === locationId);
 
-  async function onProductChange(nextProductId: string): Promise<void> {
-    setProductId(nextProductId);
+  async function onProductChange(next: { id: string; name: string } | null): Promise<void> {
+    setSelectedProduct(next);
     setProductVariantId('');
     setVariants([]);
-    if (!nextProductId) {
+    if (!next) {
       return;
     }
+    const nextProductId = next.id;
     setVariantsLoading(true);
     try {
       const rows = await apiFetch<{ id: string; sku: string }[]>(`/api/v1/products/${nextProductId}/variants`);
@@ -168,7 +165,7 @@ export function AddStockForm({
     setError(null);
     setStep('form');
     if (!variantFixed) {
-      setProductId('');
+      setSelectedProduct(null);
       setVariants([]);
       setProductVariantId('');
     }
@@ -242,16 +239,14 @@ export function AddStockForm({
         </Field>
       ) : (
         <>
-          <Field label="Producto">
-            <Select value={productId} onChange={(event) => void onProductChange(event.target.value)}>
-              <option value="">Elegir un producto…</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium text-slate-700">Producto</span>
+            <ProductSearchSelect
+              selected={selectedProduct ? { id: selectedProduct.id, label: selectedProduct.name } : null}
+              onSelect={(product) => void onProductChange({ id: product.id, name: product.name })}
+              onClear={() => void onProductChange(null)}
+            />
+          </div>
           <Field
             label="Variante"
             required

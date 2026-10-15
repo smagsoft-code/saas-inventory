@@ -8,11 +8,13 @@ const mocked = vi.mocked(apiFetch);
 describe('sale-api', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('searchProducts sends q/status/pageSize only — no tenantId', async () => {
-    mocked.mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Widget' }] });
+  it('searchProducts queries the variant-grain catalog report by name/code — no tenantId', async () => {
+    mocked.mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Widget', variantId: 'v1', sku: 'WID-001' }] });
     const rows = await searchProducts('wid');
-    expect(mocked).toHaveBeenCalledWith('/api/v1/products', { query: { q: 'wid', status: 'active', pageSize: 8 } });
-    expect(rows).toEqual([{ id: 'p1', name: 'Widget' }]);
+    expect(mocked).toHaveBeenCalledWith('/api/v1/reports/product-catalog', {
+      query: { q: 'wid', status: 'active', productStatus: 'active', pageSize: 8 },
+    });
+    expect(rows).toEqual([{ id: 'p1', variantId: 'v1', name: 'Widget', sku: 'WID-001' }]);
     expect(JSON.stringify(mocked.mock.calls)).not.toMatch(/tenant_?id/i);
   });
 

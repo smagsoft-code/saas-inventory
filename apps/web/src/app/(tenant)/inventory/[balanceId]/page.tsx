@@ -82,10 +82,10 @@ export default async function BalanceDetailPage({
           </p>
 
           <dl className="grid max-w-md grid-cols-[8rem_1fr] gap-y-2 text-sm">
-            <dt className="text-slate-500">Almacén</dt>
-            <dd className="text-slate-900">{index.locationName(balance.locationId)}</dd>
             <dt className="text-slate-500">Sucursal</dt>
             <dd className="text-slate-900">{index.warehouseName(balance.locationId)}</dd>
+            <dt className="text-slate-500">Almacén</dt>
+            <dd className="text-slate-900">{index.locationName(balance.locationId)}</dd>
             <dt className="text-slate-500">Variante</dt>
             <dd className="text-slate-900">
               <code className="text-xs">{balance.productVariantId}</code>

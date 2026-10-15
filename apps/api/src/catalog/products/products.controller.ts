@@ -7,6 +7,8 @@ import { CurrentPermissions } from '../../common/decorators/current-permissions.
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { NextCodeResponseDto } from '../next-code-response.dto';
+import { NextSkuQueryDto } from './dto/next-sku-query.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { ListProductsQueryDto } from './dto/list-products-query.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
@@ -37,6 +39,17 @@ export class ProductsController {
     @Query() query: ListProductsQueryDto,
   ): Promise<PaginatedResult<ProductResponseDto>> {
     return this.productsService.list(tenantId, query);
+  }
+
+  // Declared before `:id` so "next-sku" is never read as a product id.
+  @Get('next-sku')
+  @RequirePermissions('products.view')
+  @ApiOkResponse({
+    type: NextCodeResponseDto,
+    description: 'Preview of the next automatic product code for a category: ARM-001, ARM-002, … (first three letters of the category; PRD without one).',
+  })
+  async nextSku(@CurrentTenant() tenantId: string, @Query() query: NextSkuQueryDto): Promise<NextCodeResponseDto> {
+    return this.productsService.getNextSku(tenantId, query.categoryId);
   }
 
   @Get(':id')

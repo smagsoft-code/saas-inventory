@@ -7,7 +7,6 @@ import { AddStockForm } from './add-stock-form';
 vi.mock('../../../../lib/api/client', () => ({ apiFetch: vi.fn() }));
 const mockedFetch = vi.mocked(apiFetch);
 
-const PRODUCTS = [{ id: 'p1', name: 'Silla de Comedor' }];
 const WAREHOUSES = [
   { id: 'w1', name: 'Sucursal Principal' },
   { id: 'w2', name: 'Sucursal Norte' },
@@ -17,16 +16,42 @@ const LOCATIONS = [
   { id: 'l2', warehouseId: 'w1', name: 'Cuarentena' },
   { id: 'l3', warehouseId: 'w2', name: 'General' },
 ];
+const MOVEMENT = { id: 'm1', productVariantId: 'v1', locationId: 'l1', movementType: 'RECEIPT', quantity: 20, balanceAfter: 20 };
+
+/** Routes by path: product search, variants of the chosen product, and the adjustments POST. */
+function routeFetch(opts: { products?: unknown[]; adjustment?: unknown } = {}): void {
+  mockedFetch.mockImplementation((async (path: string) => {
+    if (path === '/api/v1/products') {
+      return {
+        data: opts.products ?? [
+          { id: 'p1', name: 'Silla de Comedor', status: 'active' },
+          { id: 'p2', name: 'Silla vieja', status: 'discontinued' },
+          { id: 'p3', name: 'Silla nueva', status: 'draft' },
+        ],
+      };
+    }
+    if (path === '/api/v1/products/p1/variants') return [{ id: 'v1', sku: 'SILLA-1' }];
+    if (path === '/api/v1/inventory/adjustments') {
+      if (opts.adjustment instanceof Error) throw opts.adjustment;
+      return opts.adjustment ?? MOVEMENT;
+    }
+    throw new Error(`unexpected fetch ${path}`);
+  }) as never);
+}
 
 function renderForm(overrides: Partial<React.ComponentProps<typeof AddStockForm>> = {}) {
-  return render(
-    <AddStockForm products={PRODUCTS} warehouses={WAREHOUSES} locations={LOCATIONS} {...overrides} />,
-  );
+  return render(<AddStockForm warehouses={WAREHOUSES} locations={LOCATIONS} {...overrides} />);
+}
+
+/** Types in the product search bar and picks the first real result. */
+async function pickProduct(name = 'Silla de Comedor'): Promise<void> {
+  fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'silla' } });
+  fireEvent.click(await screen.findByRole('option', { name: new RegExp(name) }));
+  await screen.findByRole('option', { name: 'SILLA-1' });
 }
 
 async function fillMinimal() {
-  fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'p1' } });
-  await screen.findByRole('option', { name: 'SILLA-1' });
+  await pickProduct();
   fireEvent.change(screen.getByLabelText('Variante'), { target: { value: 'v1' } });
   fireEvent.change(screen.getByLabelText('Sucursal'), { target: { value: 'w1' } });
   fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: 'l1' } });
@@ -36,8 +61,48 @@ async function fillMinimal() {
 }
 
 describe('AddStockForm', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    routeFetch();
+  });
   afterEach(() => cleanup());
+
+  it('uses a search bar for the product (no dropdown) and searches the server with q', async () => {
+    renderForm();
+    expect(screen.getByLabelText('Buscar producto')).toHaveAttribute('type', 'search');
+    expect(mockedFetch).not.toHaveBeenCalled(); // nothing is preloaded
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'silla' } });
+    await screen.findByRole('option', { name: /Silla de Comedor/ });
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products', { query: { q: 'silla', pageSize: 20 } });
+    expect(mockedFetch).toHaveBeenCalledTimes(1); // debounced: one request for the whole word
+  });
+
+  it('offers every product except discontinued ones (drafts included, tagged)', async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'silla' } });
+    await screen.findByRole('option', { name: /Silla de Comedor/ });
+    expect(screen.getByRole('option', { name: /Silla nueva/ })).toBeInTheDocument();
+    expect(screen.getByText('Borrador')).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Silla vieja/ })).not.toBeInTheDocument();
+  });
+
+  it('shows an empty-result message', async () => {
+    routeFetch({ products: [] });
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'zzz' } });
+    expect(await screen.findByText('Ningún producto coincide con esa búsqueda.')).toBeInTheDocument();
+  });
+
+  it('after picking a product it loads that product\'s variants, and "Cambiar" returns to the search bar', async () => {
+    renderForm();
+    await pickProduct();
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products/p1/variants');
+    expect(screen.getByText('Silla de Comedor')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Buscar producto')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar' }));
+    expect(screen.getByLabelText('Buscar producto')).toHaveValue('');
+    expect(screen.getByLabelText('Variante')).toBeDisabled();
+  });
 
   it('only offers locations belonging to the chosen sucursal (cascading selector)', () => {
     renderForm();
@@ -56,7 +121,6 @@ describe('AddStockForm', () => {
   });
 
   it('shows a review step before sending anything to the API, with the movement framed as an entry', async () => {
-    mockedFetch.mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }]);
     renderForm();
     await fillMinimal();
     fireEvent.click(screen.getByRole('button', { name: 'Revisar ingreso' }));
@@ -64,14 +128,12 @@ describe('AddStockForm', () => {
     expect(await screen.findByText('Revisar ingreso de stock')).toBeInTheDocument();
     expect(screen.getByText('+20')).toBeInTheDocument();
     expect(screen.getByText('Producción propia')).toBeInTheDocument();
-    // Nothing sent yet — only the variants GET so far, never the adjustments POST.
+    expect(screen.getByText('Silla de Comedor')).toBeInTheDocument();
+    // Nothing written yet — never the adjustments POST.
     expect(mockedFetch).not.toHaveBeenCalledWith('/api/v1/inventory/adjustments', expect.anything());
   });
 
   it('POSTs movementType RECEIPT only after confirming the review, never exposing the type to the user', async () => {
-    mockedFetch
-      .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }]) // variants
-      .mockResolvedValueOnce({ id: 'm1', productVariantId: 'v1', locationId: 'l1', movementType: 'RECEIPT', quantity: 20, balanceAfter: 20 }); // adjustment
     renderForm();
     await fillMinimal();
     fireEvent.click(screen.getByRole('button', { name: 'Revisar ingreso' }));
@@ -95,10 +157,8 @@ describe('AddStockForm', () => {
   });
 
   it('requires a positive quantity, a unit cost, and a 1–500 char reason before allowing review', async () => {
-    mockedFetch.mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }]);
     renderForm();
-    fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'p1' } });
-    await screen.findByRole('option', { name: 'SILLA-1' });
+    await pickProduct();
     fireEvent.change(screen.getByLabelText('Variante'), { target: { value: 'v1' } });
     fireEvent.change(screen.getByLabelText('Sucursal'), { target: { value: 'w1' } });
     fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: 'l1' } });
@@ -112,15 +172,13 @@ describe('AddStockForm', () => {
 
   it('shows a fixed, read-only variant and skips the product/variant pickers when preselected', () => {
     renderForm({ fixedProductVariantId: 'v9', fixedVariantLabel: 'PRESET-SKU' });
-    expect(screen.queryByLabelText('Producto')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Buscar producto')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Variante')).toHaveValue('PRESET-SKU');
     expect(screen.getByLabelText('Variante')).toHaveAttribute('readonly');
   });
 
   it('surfaces a safe 403 message and returns to the form instead of showing a raw backend error', async () => {
-    mockedFetch
-      .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
-      .mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'no', undefined));
+    routeFetch({ adjustment: new ApiError(403, 'FORBIDDEN', 'no', undefined) });
     renderForm();
     await fillMinimal();
     fireEvent.click(screen.getByRole('button', { name: 'Revisar ingreso' }));
@@ -132,9 +190,6 @@ describe('AddStockForm', () => {
   });
 
   it('lets the caller start a fresh entry after a successful one', async () => {
-    mockedFetch
-      .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
-      .mockResolvedValueOnce({ id: 'm1', productVariantId: 'v1', locationId: 'l1', movementType: 'RECEIPT', quantity: 20, balanceAfter: 20 });
     renderForm();
     await fillMinimal();
     fireEvent.click(screen.getByRole('button', { name: 'Revisar ingreso' }));
@@ -143,7 +198,7 @@ describe('AddStockForm', () => {
     await screen.findByText(/ingreso registrado/i);
 
     fireEvent.click(screen.getByRole('button', { name: 'Registrar otro ingreso' }));
-    expect(screen.getByLabelText('Producto')).toHaveValue('');
+    expect(screen.getByLabelText('Buscar producto')).toHaveValue('');
     expect(screen.getByLabelText('Cantidad a ingresar')).toHaveValue(null);
     expect(screen.getByLabelText('Costo unitario')).toHaveValue(null);
   });

@@ -145,7 +145,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('import: staged Excel onboa
   }
 
   async function createCategory(admin: Session, name: string, slug: string): Promise<string> {
-    const response = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(admin), payload: { name, slug } });
+    const response = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(admin), payload: { name, code: slug } });
     expect(response.statusCode).toBe(201);
     return (JSON.parse(response.body) as { id: string }).id;
   }

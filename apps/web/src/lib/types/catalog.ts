@@ -17,7 +17,8 @@ export interface Category {
   id: string;
   parentCategoryId?: string;
   name: string;
-  slug: string;
+  /** Per-tenant code (`CAT-001`…), proposed automatically and editable. Formerly `slug`. */
+  code: string;
   /** `active` | `inactive` — categories are deactivated, never hard-deleted (no DELETE endpoint). */
   status: string;
   createdAt: string;
@@ -26,7 +27,8 @@ export interface Category {
 /** `POST /categories` body — `CreateCategoryDto`. */
 export interface CreateCategoryInput {
   name: string;
-  slug: string;
+  /** Omit to let the server assign the next automatic code. */
+  code?: string;
   parentCategoryId?: string;
 }
 
@@ -34,7 +36,7 @@ export interface CreateCategoryInput {
  * unchanged. `status` toggles `active`/`inactive`. */
 export interface UpdateCategoryInput {
   name?: string;
-  slug?: string;
+  code?: string;
   parentCategoryId?: string;
   status?: 'active' | 'inactive';
 }
@@ -174,5 +176,8 @@ export const ATTRIBUTE_DATA_TYPE_LABELS: Record<string, string> = {
   multi_select: 'Selección múltiple',
 };
 
-/** The slug format the backend enforces (`create-category.dto.ts`). */
-export const CATEGORY_SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+/** The code format the backend enforces (`create-category.dto.ts`): letters of any case, digits and
+ * hyphens, 2–60 characters, no leading/trailing hyphen. */
+export const CATEGORY_CODE_PATTERN = /^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/;
+export const CATEGORY_CODE_MIN = 2;
+export const CATEGORY_CODE_MAX = 60;

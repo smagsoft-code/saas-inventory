@@ -17,6 +17,7 @@ function toRowDto(row: ProductCatalogRow): ProductCatalogRowDto {
     maxPrice: Number(row.maxPrice),
     basePrice: Number(row.basePrice),
     availableQuantity: Number(row.availableQuantity),
+    ...(row.attributes && Object.keys(row.attributes).length > 0 ? { attributes: row.attributes } : {}),
     ...(row.imageId ? { thumbnailUrl: `/api/v1/products/${row.productId}/images/${row.imageId}` } : {}),
   };
 }
@@ -36,6 +37,7 @@ export class ProductsReportService {
       q: query.q?.trim() || undefined,
       categoryId: query.categoryId,
       status: query.status,
+      productStatus: query.productStatus,
       stock: query.stock,
     };
 

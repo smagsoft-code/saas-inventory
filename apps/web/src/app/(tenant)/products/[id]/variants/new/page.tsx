@@ -4,7 +4,6 @@ import { createPermissionChecker } from '../../../../../../lib/auth/permissions'
 import { isApiError } from '../../../../../../lib/api/errors';
 import { serverApiFetch } from '../../../../../../lib/api/server';
 import { getProduct } from '../../../../../../lib/catalog/products';
-import { getCategory } from '../../../../../../lib/catalog/categories';
 import { listAttributeDefinitions } from '../../../../../../lib/catalog/attributes';
 import { loadCategoryAttributeFieldSets } from '../../../../../../lib/catalog/product-attributes';
 import { apiPublicUrl } from '../../../../../../lib/api/public-url';
@@ -47,8 +46,6 @@ export default async function NewVariantPage({
   const fieldSets = canViewCategories
     ? await loadCategoryAttributeFieldSets((path) => serverApiFetch(path), product.categoryId, definitions)
     : { product: [], variant: [], options: {} };
-  const category =
-    product.categoryId && canViewCategories ? await getCategory(product.categoryId).catch(() => null) : null;
 
   return (
     <PageContainer>
@@ -62,7 +59,6 @@ export default async function NewVariantPage({
         canViewCost={checker.can('pricing.cost.view')}
         totalPhysicalStock={null}
         {...(product.categoryId ? { categoryId: product.categoryId } : {})}
-        {...(category ? { categoryName: category.name } : {})}
         apiPublicUrl={apiPublicUrl()}
       />
     </PageContainer>

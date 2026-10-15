@@ -16,14 +16,20 @@ const EXISTING_CATEGORY = {
   tenantId: TENANT_ID,
   parentCategoryId: null,
   name: 'Motos',
-  slug: 'motos',
+  code: 'CAT-001',
   status: 'active',
   createdAt: new Date('2026-01-01T00:00:00Z'),
   updatedAt: new Date('2026-01-01T00:00:00Z'),
 };
 
 function buildService() {
-  const categoriesRepository = { findById: vi.fn(), listByTenant: vi.fn(), create: vi.fn(), update: vi.fn() };
+  const categoriesRepository = {
+    findById: vi.fn(),
+    listByTenant: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    nextCode: vi.fn().mockResolvedValue('CAT-007'),
+  };
   const attributesRepository = {
     listCategoryAttributes: vi.fn().mockResolvedValue([]),
     listDefinitionsByTenant: vi.fn().mockResolvedValue([]),
@@ -49,19 +55,46 @@ describe('CategoriesService', () => {
       const { service, categoriesRepository } = buildService();
       categoriesRepository.findById.mockResolvedValue(undefined);
       await expect(
-        service.create(TENANT_ID, ACTOR_ID, { name: 'Sub', slug: 'sub', parentCategoryId: 'foreign-id' }, META),
+        service.create(TENANT_ID, ACTOR_ID, { name: 'Sub', code: 'SUB-1', parentCategoryId: 'foreign-id' }, META),
       ).rejects.toThrow(NotFoundException);
     });
   });
 
   describe('create', () => {
-    it('maps a unique-slug violation to ConflictException (both direct and .cause-wrapped shapes)', async () => {
+    it('maps a unique-code violation to ConflictException (both direct and .cause-wrapped shapes)', async () => {
       const { service, categoriesRepository } = buildService();
       categoriesRepository.create.mockRejectedValueOnce({ code: '23505' });
-      await expect(service.create(TENANT_ID, ACTOR_ID, { name: 'Motos', slug: 'motos' }, META)).rejects.toThrow(ConflictException);
+      await expect(service.create(TENANT_ID, ACTOR_ID, { name: 'Motos', code: 'MOTOS' }, META)).rejects.toThrow(ConflictException);
 
       categoriesRepository.create.mockRejectedValueOnce(new Error('Failed query', { cause: { code: '23505' } }));
-      await expect(service.create(TENANT_ID, ACTOR_ID, { name: 'Motos', slug: 'motos' }, META)).rejects.toThrow(ConflictException);
+      await expect(service.create(TENANT_ID, ACTOR_ID, { name: 'Motos', code: 'MOTOS' }, META)).rejects.toThrow(ConflictException);
+    });
+  });
+
+  describe('create — category code', () => {
+    it('uses the code the caller typed (any case) as is', async () => {
+      const { service, categoriesRepository } = buildService();
+      categoriesRepository.create.mockResolvedValue({ ...EXISTING_CATEGORY, code: 'Muebles-A' });
+      await service.create(TENANT_ID, ACTOR_ID, { name: 'Muebles', code: 'Muebles-A' }, META);
+      expect(categoriesRepository.nextCode).not.toHaveBeenCalled();
+      expect(categoriesRepository.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ code: 'Muebles-A' }));
+    });
+
+    it('proposes the next automatic code (CAT-00X) when none is sent', async () => {
+      const { service, categoriesRepository } = buildService();
+      categoriesRepository.create.mockResolvedValue({ ...EXISTING_CATEGORY, code: 'CAT-007' });
+      const result = await service.create(TENANT_ID, ACTOR_ID, { name: 'Motos' }, META);
+      expect(categoriesRepository.nextCode).toHaveBeenCalledTimes(1);
+      expect(categoriesRepository.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ code: 'CAT-007' }));
+      expect(result.code).toBe('CAT-007');
+    });
+  });
+
+  describe('getNextCode', () => {
+    it('previews the next automatic code without creating anything', async () => {
+      const { service, categoriesRepository } = buildService();
+      await expect(service.getNextCode(TENANT_ID)).resolves.toEqual({ code: 'CAT-007' });
+      expect(categoriesRepository.create).not.toHaveBeenCalled();
     });
   });
 

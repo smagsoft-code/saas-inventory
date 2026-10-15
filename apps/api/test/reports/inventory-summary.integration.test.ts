@@ -34,7 +34,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: inventory summary
 
   async function createCategory(admin: Session, name: string): Promise<string> {
     const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') + `-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    const res = await c.inject({ method: 'POST', url: '/api/v1/categories', headers: c.writeHeaders(admin), payload: { name, slug } });
+    const res = await c.inject({ method: 'POST', url: '/api/v1/categories', headers: c.writeHeaders(admin), payload: { name, code: slug } });
     expect(res.statusCode, res.body).toBe(201);
     return (JSON.parse(res.body) as { id: string }).id;
   }

@@ -323,11 +323,11 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 - **Route:** `/categories` · **Permission:** `categories.view` (list) / `categories.manage` (edit).
 - **Endpoints:** `GET /api/v1/categories` — query `{ page, pageSize, status? }` (**no parent
   filter** — build the tree client-side from `parentCategoryId`); `GET /:id`; `POST`; `PATCH /:id`.
-- **Columns:** name, slug, parent, status. Tree view (hierarchical, `parentCategoryId` self-FK).
+- **Columns:** name, code, parent, status. Tree view (hierarchical, `parentCategoryId` self-FK).
 - **Sub-screen `S-CAT-CATEGORY-ATTRS`:** `GET/PUT /api/v1/categories/:id/attributes`
   (`categories.view` / `catalog.attributes.manage`) — which attribute definitions apply and
   whether required.
-- **Validation:** slug unique per tenant; a category cannot be its own parent; parent must exist.
+- **Validation:** code unique per tenant (case-insensitive); a category cannot be its own parent; parent must exist.
 - **F17.**
 
 ### `S-CAT-ATTR-DEFS` — Attribute definitions

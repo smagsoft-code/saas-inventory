@@ -40,6 +40,7 @@ function buildService() {
     findVariantById: vi.fn(),
     listVariantsByProduct: vi.fn(),
     createVariant: vi.fn(),
+    nextSku: vi.fn(),
     updateVariant: vi.fn(),
     recordPriceChange: vi.fn(),
     brandExists: vi.fn(),
@@ -100,6 +101,96 @@ describe('ProductsService', () => {
       await expect(
         service.create(TENANT_ID, ACTOR_ID, { name: 'Moto', defaultVariant: { sku: 'S', maxPrice: 100, basePrice: 150, minPrice: 50 } }, META),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('automatic product code (SKU) — <CAT>-00X, sequence per prefix across categories', () => {
+    it('the prefix is the category\'s first three letters and the sequence is asked for that prefix', async () => {
+      const { service, productsRepository, categoriesRepository } = buildService();
+      categoriesRepository.findById.mockResolvedValue({ id: CATEGORY_ID, name: 'ARMARIO SIN MALETERO' });
+      productsRepository.nextSku.mockResolvedValue('ARM-002');
+      await expect(service.getNextSku(TENANT_ID, CATEGORY_ID)).resolves.toEqual({ code: 'ARM-002' });
+      expect(productsRepository.nextSku).toHaveBeenCalledWith(expect.anything(), TENANT_ID, 'ARM');
+    });
+
+    it('without a category the prefix is PRD', async () => {
+      const { service, productsRepository } = buildService();
+      productsRepository.nextSku.mockResolvedValue('PRD-001');
+      await service.getNextSku(TENANT_ID);
+      expect(productsRepository.nextSku).toHaveBeenCalledWith(expect.anything(), TENANT_ID, 'PRD');
+    });
+
+    it('create with a category and no SKU numbers it under that category\'s prefix', async () => {
+      const { service, productsRepository, categoriesRepository } = buildService();
+      categoriesRepository.findById.mockResolvedValue({ id: CATEGORY_ID, name: 'Armario con maletero' });
+      productsRepository.nextSku.mockResolvedValue('ARM-007');
+      productsRepository.create.mockResolvedValue(EXISTING_PRODUCT);
+      productsRepository.createVariant.mockRejectedValueOnce({ code: '23505' });
+      const noSku = { maxPrice: 100, basePrice: 80, minPrice: 60 };
+      await service.create(TENANT_ID, ACTOR_ID, { name: 'Armario', categoryId: CATEGORY_ID, defaultVariant: noSku }, META).catch(() => undefined);
+      expect(productsRepository.nextSku).toHaveBeenCalledWith(expect.anything(), TENANT_ID, 'ARM');
+      expect(productsRepository.createVariant).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ sku: 'ARM-007', barcode: 'COD-ARM-007' }),
+      );
+    });
+
+    it('create without a SKU takes the next PRD code and derives the barcode from it', async () => {
+      const { service, productsRepository } = buildService();
+      productsRepository.nextSku.mockResolvedValue('PRD-042');
+      productsRepository.create.mockResolvedValue(EXISTING_PRODUCT);
+      productsRepository.createVariant.mockRejectedValueOnce({ code: '23505' }); // stop after the variant insert
+      const noSku = { maxPrice: 100, basePrice: 80, minPrice: 60 };
+      await service.create(TENANT_ID, ACTOR_ID, { name: 'Armario', defaultVariant: noSku }, META).catch(() => undefined);
+      expect(productsRepository.nextSku).toHaveBeenCalledTimes(1);
+      expect(productsRepository.createVariant).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ sku: 'PRD-042', barcode: 'COD-PRD-042' }),
+      );
+    });
+
+    it('create with a SKU typed by the user keeps it as is and never touches the sequence', async () => {
+      const { service, productsRepository } = buildService();
+      productsRepository.create.mockResolvedValue(EXISTING_PRODUCT);
+      productsRepository.createVariant.mockRejectedValueOnce({ code: '23505' });
+      await service.create(TENANT_ID, ACTOR_ID, { name: 'Armario', defaultVariant: VALID_VARIANT_FIELDS }, META).catch(() => undefined);
+      expect(productsRepository.nextSku).not.toHaveBeenCalled();
+      expect(productsRepository.createVariant).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ sku: 'SKU-1', barcode: undefined }),
+      );
+    });
+
+    it('an additional variant without a SKU also gets the next PRD code', async () => {
+      const { service, productsRepository } = buildService();
+      productsRepository.nextSku.mockResolvedValue('PRD-043');
+      productsRepository.findById.mockResolvedValue(EXISTING_PRODUCT);
+      productsRepository.createVariant.mockRejectedValueOnce({ code: '23505' });
+      const noSku = { maxPrice: 100, basePrice: 80, minPrice: 60 };
+      await service.createVariant(TENANT_ID, ACTOR_ID, [], PRODUCT_ID, noSku, META).catch(() => undefined);
+      expect(productsRepository.createVariant).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ sku: 'PRD-043', barcode: 'COD-PRD-043' }),
+      );
+    });
+
+    it('getNextSku previews the next code without creating anything', async () => {
+      const { service, productsRepository } = buildService();
+      productsRepository.nextSku.mockResolvedValue('PRD-001');
+      await expect(service.getNextSku(TENANT_ID)).resolves.toEqual({ code: 'PRD-001' });
+      expect(productsRepository.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('create — initial status', () => {
+    it('a new product starts active (sellable straight away), not draft', async () => {
+      const { service, productsRepository } = buildService();
+      productsRepository.create.mockResolvedValue(EXISTING_PRODUCT);
+      productsRepository.createVariant.mockRejectedValueOnce({ code: '23505' }); // stop after the product insert
+      await service
+        .create(TENANT_ID, ACTOR_ID, { name: 'Armario', defaultVariant: VALID_VARIANT_FIELDS }, META)
+        .catch(() => undefined);
+      expect(productsRepository.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ status: 'active' }));
     });
   });
 

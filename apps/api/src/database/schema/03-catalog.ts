@@ -45,7 +45,9 @@ export const categories = pgTable('categories', {
   tenantId: tenantId(),
   parentCategoryId: uuid('parent_category_id'),
   name: text('name').notNull(),
-  slug: text('slug').notNull(),
+  /** Human-readable per-tenant code (`CAT-001`, `CAT-1000`…) — proposed automatically, editable.
+   * Formerly `slug` (migration 0042). Unique per tenant, case-insensitively. */
+  code: text('code').notNull(),
   status: text('status').notNull().default('active'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -58,7 +60,7 @@ export const categories = pgTable('categories', {
     foreignColumns: [t.tenantId, t.id],
   }).onDelete('restrict'),
   unique('categories_tenant_id_id_key').on(t.tenantId, t.id),
-  unique('categories_tenant_id_slug_key').on(t.tenantId, t.slug),
+  uniqueIndex('categories_tenant_code_lower_key').on(t.tenantId, sql`lower(${t.code})`),
   check('categories_status_check', sql`${t.status} IN ('active', 'inactive')`),
   tenantIsolationPolicy('categories'),
 ]).enableRLS();

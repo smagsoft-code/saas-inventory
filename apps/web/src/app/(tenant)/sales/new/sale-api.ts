@@ -2,22 +2,30 @@ import { apiFetch } from '../../../../lib/api/client';
 import type { ProductImage, Variant } from '../../../../lib/types/products';
 import type { QrResolveIdentity } from '../../../../lib/types/qr';
 
+/** One search hit = one sellable *variant* (so the code can be shown under the name). `id` is the
+ * parent product's id — what the cart flow then uses to list/choose its variants. */
 export interface ProductSearchResult {
   id: string;
+  variantId: string;
   name: string;
+  /** The variant's code (SKU). */
+  sku: string;
 }
 
 /**
- * Product search for the "Crear venta" cart modal — `GET /products?q=&status=active`
- * (`products.view`). `q` already matches product name OR any variant's SKU/barcode
- * (case-insensitive substring, `ListProductsQueryDto.q`), which also covers typing a scanned
- * code by hand. Bounded to a handful of results; this is a picker, not the catalog list.
+ * Product search for the "Crear venta" cart modal — `GET /reports/product-catalog?q=` (variant
+ * grain, `products.view`). `q` matches the product name, the variant's code (SKU) or its barcode
+ * (case-insensitive substring), so typing a code finds it directly. Only active variants of ACTIVE
+ * products are offered (`status` + `productStatus`): a draft or discontinued product is never put in a
+ * cart. Each hit carries its code so the picker can show it under the name. Bounded to a handful of
+ * results; this is a picker, not the catalog list.
  */
 export async function searchProducts(q: string): Promise<ProductSearchResult[]> {
-  const page = await apiFetch<{ data: ProductSearchResult[] }>('/api/v1/products', {
-    query: { q, status: 'active', pageSize: 8 },
-  });
-  return page.data;
+  const page = await apiFetch<{ data: { productId: string; productName: string; variantId: string; sku: string }[] }>(
+    '/api/v1/reports/product-catalog',
+    { query: { q, status: 'active', productStatus: 'active', pageSize: 8 } },
+  );
+  return page.data.map((row) => ({ id: row.productId, variantId: row.variantId, name: row.productName, sku: row.sku }));
 }
 
 /** `GET /products/:id/variants` — no tenant-wide variant list exists (`GAP-VARIANT-LIST`). */

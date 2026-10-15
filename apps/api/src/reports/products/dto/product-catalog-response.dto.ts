@@ -41,4 +41,12 @@ export class ProductCatalogRowDto {
     description: 'Same-origin path to the product\'s first image (OUI-006), when it has one — GET /products/:productId/images/:imageId.',
   })
   thumbnailUrl?: string;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Attribute values keyed by attribute code — the product\'s and the variant\'s merged (variant wins). Omitted when there are none.',
+  })
+  attributes?: Record<string, unknown>;
 }

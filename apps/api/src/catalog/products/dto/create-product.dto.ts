@@ -4,7 +4,7 @@ import { IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Min, ValidateNes
 import { VariantFieldsDto } from './variant-fields.dto';
 
 /** No `tenantId`/`status` field, deliberately — tenant is always CurrentTenant, and a new product
- * always starts `draft` (the column default), matching core/users/dto/create-user.dto.ts's
+ * always starts `active` (set by `ProductsService.create`; change it later via PATCH), matching core/users/dto/create-user.dto.ts's
  * mass-assignment posture. `categoryId`/`brandId`/`supplierId`, when given, are validated against
  * the same tenant by the service layer. `defaultVariant` is mandatory — ADR-0017: "every product has
  * at least one variant... application logic always creates a single default variant alongside the

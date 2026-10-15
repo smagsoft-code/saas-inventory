@@ -24,4 +24,6 @@ export interface ProductCatalogRow {
   availableQuantity: number;
   /** Same-origin path to the product's first image (OUI-006), when it has one. */
   thumbnailUrl?: string;
+  /** Attribute values by attribute code — product's and variant's merged (variant wins). */
+  attributes?: Record<string, unknown>;
 }

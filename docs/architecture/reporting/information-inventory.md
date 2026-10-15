@@ -71,7 +71,7 @@ Derivable-but-not-exposed: count of memberships per identity; active-session cou
 
 | Table | Key fields | States | Exposed by API |
 | --- | --- | --- | --- |
-| `categories` | `name`, `slug`, `parent_category_id`, `deleted_at` | `active` · `inactive` | `GET /categories` (`categories.view`, filter `status`, paginated), `GET /:id`, `POST`, `PATCH`; `GET/PUT /categories/:id/attributes`. |
+| `categories` | `name`, `code`, `parent_category_id`, `deleted_at` | `active` · `inactive` | `GET /categories` (`categories.view`, filter `status`, paginated), `GET /:id`, `POST`, `PATCH`; `GET/PUT /categories/:id/attributes`. |
 | `brands` | `name`, `deleted_at` | `active` · `inactive` | **No CRUD, no list** — reference/attribution only (ADR-0019). Referenced by `products.brand_id`. |
 | `suppliers` | `display_name`, `tax_id`, `email`, `phone`, `address`, `notes`, `deleted_at` | `active` · `inactive` | **No CRUD, no list** — passive reference only (ADR-0019). No PURCHASING context exists. |
 | `attribute_definitions` / `attribute_options` / `category_attributes` | `code`, `data_type`, `applies_to`, unit, min/max, `display_order` | `active` · `inactive` | `GET/POST /attribute-definitions` (+ options sub-resource), `GET /categories/:id/attributes`. Governs the JSONB `attributes` on products/variants (ADR-0026). |

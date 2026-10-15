@@ -121,7 +121,7 @@ export default async function CategoriesPage({
             <THead>
               <TR>
                 <TH>Nombre</TH>
-                <TH>Slug</TH>
+                <TH>Código</TH>
                 <TH>Padre</TH>
                 <TH>Estado</TH>
                 <TH className="w-0"><span className="sr-only">Acciones</span></TH>
@@ -132,7 +132,7 @@ export default async function CategoriesPage({
                 <TR key={category.id}>
                   <TD className="font-medium">{category.name}</TD>
                   <TD className="text-slate-500">
-                    <code className="text-xs">{category.slug}</code>
+                    <code className="text-xs">{category.code}</code>
                   </TD>
                   <TD className="text-slate-500">
                     {category.parentCategoryId

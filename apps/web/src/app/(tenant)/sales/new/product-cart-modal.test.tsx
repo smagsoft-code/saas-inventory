@@ -139,23 +139,27 @@ describe('ProductCartModal', () => {
     });
   });
 
-  it('searches GET /products?q= (debounced) and adds a single-variant product at maxPrice', async () => {
+  it('searches GET /reports/product-catalog?q= (debounced) and adds a single-variant product at maxPrice', async () => {
     const { onCartUpdated } = renderModal();
     vi.useFakeTimers();
-    mockedFetch.mockResolvedValueOnce({ data: [{ id: 'prod-1', name: 'Blender' }] });
+    mockedFetch.mockResolvedValueOnce({ data: [{ productId: 'prod-1', productName: 'Blender', variantId: 'var-1', sku: 'BLE-001' }] });
     fireEvent.change(screen.getByLabelText(/buscar producto/i), { target: { value: 'blen' } });
     expect(mockedFetch).not.toHaveBeenCalled();
 
     // advanceTimersByTimeAsync also flushes the microtask queue in between — required since the
     // debounced search awaits the (otherwise fake-timer-frozen) mocked apiFetch promise.
     await vi.advanceTimersByTimeAsync(350);
-    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products', { query: { q: 'blen', status: 'active', pageSize: 8 } });
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/reports/product-catalog', {
+      query: { q: 'blen', status: 'active', productStatus: 'active', pageSize: 8 },
+    });
     // Switch back to real timers before the remaining, non-debounced interactions — mixing fake
     // timers with Testing Library's own polling `waitFor` would hang. The React state update from
     // the just-resolved search promise may still be one microtask tick away, so re-check "Blender"
     // through `waitFor` rather than a synchronous `getByText`.
     vi.useRealTimers();
     await waitFor(() => expect(screen.getByText('Blender')).toBeInTheDocument());
+    // The variant's code is shown under the name.
+    expect(screen.getByText('BLE-001')).toBeInTheDocument();
 
     mockedFetch.mockResolvedValueOnce([
       { id: 'var-1', productId: 'prod-1', sku: 'SKU-1', unit: 'un', maxPrice: 15, basePrice: 10, status: 'active', isSerialized: false, isLotTracked: false, attributes: {}, createdAt: '', updatedAt: '' },
@@ -163,7 +167,7 @@ describe('ProductCartModal', () => {
     mockedFetch.mockResolvedValueOnce({ data: [{ quantityAvailable: 10 }] }); // picker's own stock check
     mockedFetch.mockResolvedValueOnce({ data: [{ quantityAvailable: 10 }] }); // addVariant's re-check
     mockedFetch.mockResolvedValueOnce(CART_WITH_LINE);
-    fireEvent.click(screen.getByRole('button', { name: 'Blender' }));
+    fireEvent.click(screen.getByRole('button', { name: /Blender/ }));
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/cart/items', {
         method: 'POST',
@@ -497,8 +501,8 @@ describe('ProductCartModal', () => {
 /** Drives the search box with real timers (the debounce path itself is covered by the dedicated
  * fake-timer test above) by resolving instantly — used only to get to the variant-picker UI. */
 async function pickFirstResultAfterSearch(productName: string, productId: string): Promise<HTMLElement> {
-  mockedFetch.mockResolvedValueOnce({ data: [{ id: productId, name: productName }] });
+  mockedFetch.mockResolvedValueOnce({ data: [{ productId, productName, variantId: `${productId}-v`, sku: 'COD-001' }] });
   fireEvent.change(screen.getByLabelText(/buscar producto/i), { target: { value: productName } });
   await screen.findByText(productName);
-  return screen.getByRole('button', { name: productName });
+  return screen.getByRole('button', { name: new RegExp(productName) });
 }

@@ -54,7 +54,9 @@ const CREATE_PROPS = {
 function routeCreateFetch(impl?: (path: string, opts?: unknown) => unknown) {
   mockedFetch.mockImplementation(async (path: string, opts?: unknown) => {
     if (impl) return impl(path, opts);
-    if (path === '/api/v1/reports/product-catalog') return { data: [] };
+    if (path === '/api/v1/products/next-sku') {
+      return { code: (opts as { query?: { categoryId?: string } } | undefined)?.query?.categoryId ? 'ARM-012' : 'PRD-012' };
+    }
     if (path === '/api/v1/qr-codes') {
       return { id: 'qr-1', code: 'ABC123', targetType: 'product_variant', targetId: 'v-new', status: 'active', createdAt: '', updatedAt: '' };
     }
@@ -123,14 +125,27 @@ describe('VariantForm — create', () => {
     expect(screen.getByLabelText(/código de barras/i)).toHaveValue('MY-BARCODE');
   });
 
-  it('suggests the next código from the product\'s own (fixed) category, with COD-<código> as the barcode', async () => {
-    routeCreateFetch((path) => {
-      if (path === '/api/v1/reports/product-catalog') return { data: [{ sku: 'CAR-001' }, { sku: 'CAR-002' }] };
-      return { id: 'v-new' };
-    });
-    render(<VariantForm {...CREATE_PROPS} categoryId="cat-1" categoryName="Carpintería" />);
-    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('CAR-003'));
-    await waitFor(() => expect(screen.getByLabelText(/código de barras/i)).toHaveValue('COD-CAR-003'));
+  it('proposes the next automatic code under the product\'s own category prefix, with COD-<código> as the barcode', async () => {
+    render(<VariantForm {...CREATE_PROPS} categoryId="cat-arm" />);
+    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('ARM-012'));
+    await waitFor(() => expect(screen.getByLabelText(/código de barras/i)).toHaveValue('COD-ARM-012'));
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products/next-sku', { query: { categoryId: 'cat-arm' } });
+  });
+
+  it('falls back to the PRD prefix for a product without a category', async () => {
+    render(<VariantForm {...CREATE_PROPS} />);
+    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('PRD-012'));
+  });
+
+  it('an untouched automatic code is not sent — the server assigns it', async () => {
+    render(<VariantForm {...CREATE_PROPS} />);
+    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('PRD-012'));
+    await fillMinimalCreate();
+    fireEvent.click(screen.getByRole('button', { name: /crear variante/i }));
+    await waitForCreateToSettle();
+    const [, opts] = mockedFetch.mock.calls.find(([p]) => p === '/api/v1/products/p1/variants')!;
+    expect((opts as { body: Record<string, unknown> }).body).not.toHaveProperty('sku');
+    expect((opts as { body: Record<string, unknown> }).body).not.toHaveProperty('barcode');
   });
 
   it('shows an image picker and, once created, the auto-generated QR with Precio máximo', async () => {

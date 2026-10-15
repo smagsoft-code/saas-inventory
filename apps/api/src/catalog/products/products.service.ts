@@ -8,6 +8,8 @@ import type { ProductRow, VariantRow, VariantVisibility } from '../repositories/
 import { ProductsRepository } from '../repositories/products.repository';
 import type { AuditMeta } from '../catalog-audit-meta';
 import { AttributeValidationService } from './attribute-validation.service';
+import type { NextCodeResponseDto } from '../next-code-response.dto';
+import { skuPrefixFromCategoryName } from '../sku-prefix';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { ListProductsQueryDto } from './dto/list-products-query.dto';
 import type { ProductResponseDto } from './dto/product-response.dto';
@@ -101,6 +103,20 @@ export class ProductsService {
     });
   }
 
+  /** The SKU prefix for a category: its first three letters (`ARM`), or `PRD` without one. */
+  private async skuPrefixFor(tx: TenantTransaction, tenantId: string, categoryId: string | null | undefined): Promise<string> {
+    const category = categoryId ? await this.categoriesRepository.findById(tx, tenantId, categoryId) : undefined;
+    return skuPrefixFromCategoryName(category?.name);
+  }
+
+  /** Preview of the next automatic product code for a category (see `ProductsRepository.nextSku`). */
+  async getNextSku(tenantId: string, categoryId?: string): Promise<NextCodeResponseDto> {
+    return withTenantTransaction(tenantId, async (tx) => {
+      const prefix = await this.skuPrefixFor(tx, tenantId, categoryId);
+      return { code: await this.productsRepository.nextSku(tx, tenantId, prefix) };
+    });
+  }
+
   async create(tenantId: string, actorId: string, dto: CreateProductDto, meta: AuditMeta): Promise<ProductResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       await this.assertReferencesExist(tx, tenantId, dto.categoryId, dto.brandId, dto.supplierId);
@@ -121,20 +137,29 @@ export class ProductsService {
         supplierId: dto.supplierId ?? null,
         name: dto.name,
         description: dto.description,
+        // A new product is sellable straight away (owner decision): it starts `active`, not `draft`.
+        // `draft`/`discontinued` stay available through PATCH. (The column default is still `draft`,
+        // as a safe fallback for any other insert path.)
+        status: 'active',
         warrantyMonths: dto.warrantyMonths,
         attributes: productAttributes,
       });
 
       // ADR-0017: every product creates exactly one default variant alongside it, in the same
       // transaction — INVENTORY/SALES always have exactly one kind of thing to reference.
+      // No SKU sent -> the next automatic <CAT>-00X for the category's prefix (and COD-<sku> as the
+      // barcode unless one was sent).
+      const defaultSku =
+        dto.defaultVariant.sku ??
+        (await this.productsRepository.nextSku(tx, tenantId, await this.skuPrefixFor(tx, tenantId, categoryId)));
       let variant: VariantRow;
       try {
         variant = await this.productsRepository.createVariant(tx, {
           id: generateId(),
           tenantId,
           productId,
-          sku: dto.defaultVariant.sku,
-          barcode: dto.defaultVariant.barcode,
+          sku: defaultSku,
+          barcode: dto.defaultVariant.barcode ?? (dto.defaultVariant.sku ? undefined : `COD-${defaultSku}`),
           unit: dto.defaultVariant.unit,
           maxPrice: String(dto.defaultVariant.maxPrice),
           basePrice: String(dto.defaultVariant.basePrice),
@@ -276,14 +301,19 @@ export class ProductsService {
       await this.attributeValidationService.validate(tx, tenantId, product.categoryId, 'variant', attributes);
       this.assertPriceTierValues(dto.minPrice, dto.basePrice, dto.maxPrice);
 
+      // No SKU sent -> the next automatic <CAT>-00X for the product's category prefix (and COD-<sku> as
+      // the barcode unless one was sent).
+      const sku =
+        dto.sku ??
+        (await this.productsRepository.nextSku(tx, tenantId, await this.skuPrefixFor(tx, tenantId, product.categoryId)));
       let variant: VariantRow;
       try {
         variant = await this.productsRepository.createVariant(tx, {
           id: generateId(),
           tenantId,
           productId,
-          sku: dto.sku,
-          barcode: dto.barcode,
+          sku,
+          barcode: dto.barcode ?? (dto.sku ? undefined : `COD-${sku}`),
           unit: dto.unit,
           maxPrice: String(dto.maxPrice),
           basePrice: String(dto.basePrice),

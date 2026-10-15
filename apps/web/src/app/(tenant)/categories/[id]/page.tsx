@@ -54,7 +54,7 @@ export default async function CategoryDetailPage({
     <PageContainer>
       <PageHeader
         title={category.name}
-        description={`/${category.slug}`}
+        description={category.code}
         actions={
           <Badge tone={statusTone(category.status)}>
             {category.status === 'active' ? 'Activa' : category.status === 'inactive' ? 'Inactiva' : category.status}
@@ -75,8 +75,8 @@ export default async function CategoryDetailPage({
             <dl className="grid max-w-md grid-cols-[8rem_1fr] gap-y-2 text-sm">
               <dt className="text-slate-500">Nombre</dt>
               <dd className="text-slate-900">{category.name}</dd>
-              <dt className="text-slate-500">Slug</dt>
-              <dd className="text-slate-900"><code className="text-xs">{category.slug}</code></dd>
+              <dt className="text-slate-500">Código</dt>
+              <dd className="text-slate-900"><code className="text-xs">{category.code}</code></dd>
               <dt className="text-slate-500">Padre</dt>
               <dd className="text-slate-900">
                 {category.parentCategoryId

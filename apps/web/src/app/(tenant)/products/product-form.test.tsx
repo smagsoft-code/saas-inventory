@@ -23,7 +23,16 @@ if (!URL.revokeObjectURL) {
   URL.revokeObjectURL = vi.fn();
 }
 
-const CATEGORIES = [{ id: 'cat-1', name: 'Appliances' }];
+const CATEGORIES = [
+  { id: 'cat-1', name: 'Appliances' },
+  { id: 'cat-2', name: 'Muebles' },
+];
+
+/** Types in the Categoría search bar and picks the first match (the bar replaced the dropdown). */
+async function pickCategory(search = 'appl', name = 'Appliances'): Promise<void> {
+  fireEvent.change(screen.getByLabelText('Buscar categoría'), { target: { value: search } });
+  fireEvent.click(await screen.findByRole('option', { name }));
+}
 const DEFS: AttributeDefinition[] = [
   { id: 'd1', code: 'color', name: 'Color', dataType: 'text', appliesTo: 'product', isRequiredDefault: false, status: 'active' },
 ];
@@ -49,6 +58,10 @@ function routeFetch(impl?: (path: string, opts?: unknown) => unknown) {
       return [
         { attributeDefinitionId: 'd1', code: 'color', name: 'Color', dataType: 'text', isRequired: true, displayOrder: 0 },
       ];
+    }
+    if (path === '/api/v1/products/next-sku') {
+      const categoryId = (opts as { query?: { categoryId?: string } } | undefined)?.query?.categoryId;
+      return { code: categoryId ? 'APP-004' : 'PRD-007' };
     }
     if (impl) return impl(path, opts);
     if (path === '/api/v1/products/new-id/variants') return DEFAULT_VARIANTS;
@@ -93,7 +106,7 @@ describe('ProductForm — create', () => {
     const body = opts as { method: string; body: Record<string, unknown> };
     expect(body.method).toBe('POST');
     expect(body.body).toMatchObject({
-      name: 'Blender',
+      name: 'BLENDER',
       attributes: {},
       defaultVariant: { sku: 'BLND-1', maxPrice: 100, basePrice: 80, minPrice: 60, attributes: {} },
     });
@@ -101,6 +114,38 @@ describe('ProductForm — create', () => {
     expect(JSON.stringify(opts)).not.toMatch(/tenantId/i);
     // OUI-007: never navigates away on its own — the caller sees the image + QR panel first.
     expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it('the product name is always typed in capitals', () => {
+    render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'armario con maletero' } });
+    expect(screen.getByLabelText(/^nombre/i)).toHaveValue('ARMARIO CON MALETERO');
+  });
+
+  it('puts Categoría at the very top of the window, before Nombre', () => {
+    render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
+    const categoria = screen.getByLabelText('Buscar categoría');
+    const nombre = screen.getByLabelText(/Nombre/);
+    expect(categoria.compareDocumentPosition(nombre) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const firstField = document.querySelector('form select, form input, form textarea');
+    expect(firstField).toBe(categoria);
+  });
+
+  it('Categoría is a search bar (not a dropdown): local, case-insensitive match with no extra request', async () => {
+    render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
+    expect(screen.getByLabelText('Buscar categoría')).toHaveAttribute('type', 'search');
+    expect(screen.queryByRole('combobox', { name: /categoría/i })).not.toBeInTheDocument();
+    mockedFetch.mockClear();
+    fireEvent.change(screen.getByLabelText('Buscar categoría'), { target: { value: 'MUEB' } });
+    expect(await screen.findByRole('option', { name: 'Muebles' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: 'Appliances' })).not.toBeInTheDocument();
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it('shows a message when no category matches, and Categoría stays optional', async () => {
+    render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
+    fireEvent.change(screen.getByLabelText('Buscar categoría'), { target: { value: 'zzz' } });
+    expect(await screen.findByText('Ninguna categoría coincide con esa búsqueda.')).toBeInTheDocument();
   });
 
   it('blocks a price tier where min > base client-side', () => {
@@ -117,7 +162,7 @@ describe('ProductForm — create', () => {
 
   it('loads category-driven attributes and enforces a required one before POST', async () => {
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
-    fireEvent.change(screen.getByLabelText(/categoría/i), { target: { value: 'cat-1' } });
+    await pickCategory();
     // dynamic field appears
     expect(await screen.findByLabelText(/^color/i)).toBeInTheDocument();
 
@@ -138,9 +183,9 @@ describe('ProductForm — create', () => {
 
   it('prunes attribute values that no longer belong when the category is cleared', async () => {
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
-    fireEvent.change(screen.getByLabelText(/categoría/i), { target: { value: 'cat-1' } });
+    await pickCategory();
     fireEvent.change(await screen.findByLabelText(/^color/i), { target: { value: 'red' } });
-    fireEvent.change(screen.getByLabelText(/categoría/i), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar' }));
     await waitFor(() => expect(screen.queryByLabelText(/^color/i)).not.toBeInTheDocument());
 
     fillMinimalCreate();
@@ -150,31 +195,47 @@ describe('ProductForm — create', () => {
     expect((opts as { body: Record<string, unknown> }).body.attributes).toEqual({});
   });
 
-  it('suggests SKU-001 for a category with no existing SKUs, and COD-<sku> as the barcode', async () => {
-    routeFetch((path) => {
-      if (path === '/api/v1/reports/product-catalog') return { data: [] };
-      return { id: 'new-id' };
-    });
+  it('proposes the next automatic code: PRD-… without a category, then the category\'s 3 letters + the next number', async () => {
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
-    fireEvent.change(screen.getByLabelText(/categoría/i), { target: { value: 'cat-1' } });
+    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('PRD-007'));
+    await waitFor(() => expect(screen.getByLabelText(/código de barras/i)).toHaveValue('COD-PRD-007'));
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products/next-sku', {});
+    expect(screen.getByText(/automático: 3 primeras letras de la categoría/i)).toBeInTheDocument();
 
-    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('APP-001'));
-    await waitFor(() => expect(screen.getByLabelText(/código de barras/i)).toHaveValue('COD-APP-001'));
-    expect(screen.getByText(/sugerido a partir de la categoría/i)).toBeInTheDocument();
+    // Choosing a category asks the server for that category's prefix (the sequence is evaluated there,
+    // across every category sharing the prefix).
+    await pickCategory();
+    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('APP-004'));
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products/next-sku', { query: { categoryId: 'cat-1' } });
+    await waitFor(() => expect(screen.getByLabelText(/código de barras/i)).toHaveValue('COD-APP-004'));
+
+    // Clearing the category goes back to the default prefix.
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar' }));
+    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('PRD-007'));
   });
 
-  it('suggests the next sequential number after the highest existing SKU in that category', async () => {
-    routeFetch((path) => {
-      if (path === '/api/v1/reports/product-catalog') {
-        return { data: [{ sku: 'APP-001' }, { sku: 'APP-003' }, { sku: 'OTHER-999' }] };
-      }
-      return { id: 'new-id' };
-    });
+  it('a code typed by hand is not overwritten when the category changes', async () => {
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
-    fireEvent.change(screen.getByLabelText(/categoría/i), { target: { value: 'cat-1' } });
+    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('PRD-007'));
+    fireEvent.change(screen.getByLabelText(/^código$/i), { target: { value: 'MIO-1' } });
+    await pickCategory();
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products/next-sku', { query: { categoryId: 'cat-1' } }));
+    expect(screen.getByLabelText(/^código$/i)).toHaveValue('MIO-1');
+  });
 
-    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('APP-004'));
-    await waitFor(() => expect(screen.getByLabelText(/código de barras/i)).toHaveValue('COD-APP-004'));
+  it('an untouched automatic code is NOT sent: the server assigns the real next one (and the barcode)', async () => {
+    render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
+    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('PRD-007'));
+    fireEvent.change(screen.getByLabelText(/^nombre/i), { target: { value: 'Blender' } });
+    fireEvent.change(screen.getByLabelText(/precio máximo/i), { target: { value: '100' } });
+    fireEvent.change(screen.getByLabelText(/precio base/i), { target: { value: '80' } });
+    fireEvent.change(screen.getByLabelText(/precio mínimo/i), { target: { value: '60' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    await waitForCreateToSettle();
+    const [, opts] = mockedFetch.mock.calls.find(([p]) => p === '/api/v1/products')!;
+    const variantBody = (opts as { body: { defaultVariant: Record<string, unknown> } }).body.defaultVariant;
+    expect(variantBody).not.toHaveProperty('sku');
+    expect(variantBody).not.toHaveProperty('barcode');
   });
 
   it('stops suggesting once the user edits the SKU by hand, and decouples the barcode once edited too', async () => {
@@ -183,13 +244,12 @@ describe('ProductForm — create', () => {
       return { id: 'new-id' };
     });
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
-    fireEvent.change(screen.getByLabelText(/categoría/i), { target: { value: 'cat-1' } });
-    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('APP-001'));
+    await waitFor(() => expect(screen.getByLabelText(/^código$/i)).toHaveValue('PRD-007'));
 
     // Editing the SKU by hand still updates the barcode (still auto-following) until IT is edited too.
     fireEvent.change(screen.getByLabelText(/^código$/i), { target: { value: 'CUSTOM-9' } });
     expect(screen.getByLabelText(/código de barras/i)).toHaveValue('COD-CUSTOM-9');
-    expect(screen.queryByText(/sugerido a partir de la categoría/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/automático: 3 primeras letras/i)).not.toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/código de barras/i), { target: { value: 'MY-OWN-BARCODE' } });
     // Changing the SKU again no longer touches a barcode the user has already taken over.
@@ -338,7 +398,7 @@ describe('ProductForm — create', () => {
 describe('ProductForm — edit', () => {
   const PRODUCT = {
     id: 'p1',
-    name: 'Blender',
+    name: 'BLENDER',
     description: '',
     status: 'draft',
     attributes: {},

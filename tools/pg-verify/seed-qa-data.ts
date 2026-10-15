@@ -193,12 +193,12 @@ async function main(): Promise<void> {
   const catFerreteria = await getOrCreate<Category>(
     '/api/v1/categories?pageSize=100',
     (c) => c.name === 'Ferretería',
-    () => api('POST', '/api/v1/categories', { name: 'Ferretería', slug: 'ferreteria' }),
+    () => api('POST', '/api/v1/categories', { name: 'Ferretería' }),
   );
   const catElectronica = await getOrCreate<Category>(
     '/api/v1/categories?pageSize=100',
     (c) => c.name === 'Electrónica',
-    () => api('POST', '/api/v1/categories', { name: 'Electrónica', slug: 'electronica' }),
+    () => api('POST', '/api/v1/categories', { name: 'Electrónica' }),
   );
 
   section('4. Products + variants');

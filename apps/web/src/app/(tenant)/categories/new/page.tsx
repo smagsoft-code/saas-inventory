@@ -1,6 +1,6 @@
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
-import { listCategories } from '../../../../lib/catalog/categories';
+import { getNextCategoryCode, listCategories } from '../../../../lib/catalog/categories';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { NoAccess } from '../../../../components/ui/no-access';
@@ -20,7 +20,11 @@ export default async function NewCategoryPage(): Promise<React.JSX.Element> {
     );
   }
 
-  const parents = await listCategories({ pageSize: 100, status: 'active' });
+  const [parents, suggestedCode] = await Promise.all([
+    listCategories({ pageSize: 100, status: 'active' }),
+    // A failed preview just leaves the code empty — an untouched code is assigned by the server anyway.
+    getNextCategoryCode().catch(() => ''),
+  ]);
 
   return (
     <PageContainer>
@@ -28,6 +32,7 @@ export default async function NewCategoryPage(): Promise<React.JSX.Element> {
       <CategoryForm
         mode="create"
         parentOptions={parents.data.map((c) => ({ id: c.id, name: c.name }))}
+        suggestedCode={suggestedCode}
       />
     </PageContainer>
   );

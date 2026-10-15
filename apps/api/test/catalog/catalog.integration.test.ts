@@ -126,7 +126,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('catalog: categories/produc
   }
 
   async function createCategory(admin: Session, name: string, slug: string): Promise<string> {
-    const response = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(admin), payload: { name, slug } });
+    const response = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(admin), payload: { name, code: slug } });
     expect(response.statusCode).toBe(201);
     return (JSON.parse(response.body) as { id: string }).id;
   }
@@ -151,7 +151,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('catalog: categories/produc
 
       const getResponse = await inject({ method: 'GET', url: `/api/v1/categories/${categoryId}`, headers: readHeaders(admin) });
       expect(getResponse.statusCode).toBe(200);
-      expect(JSON.parse(getResponse.body).slug).toBe('motocicletas');
+      expect(JSON.parse(getResponse.body).code).toBe('motocicletas');
 
       const patchResponse = await inject({
         method: 'PATCH',
@@ -160,25 +160,55 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('catalog: categories/produc
         payload: { name: 'Motos y Cuatrimotos' },
       });
       expect(patchResponse.statusCode).toBe(200);
-      expect(JSON.parse(patchResponse.body).name).toBe('Motos y Cuatrimotos');
+      expect(JSON.parse(patchResponse.body).name).toBe('MOTOS Y CUATRIMOTOS'); // names are always stored in capitals
 
       const otherTenant = await registerTenant('Catalog Beta Co', 'admin@catalog-beta.example');
       const crossTenant = await inject({ method: 'GET', url: `/api/v1/categories/${categoryId}`, headers: readHeaders(otherTenant) });
       expect(crossTenant.statusCode).toBe(404);
     });
 
-    it('rejects a duplicate slug within the same tenant (409) and tenantId in the body (400, mass assignment)', async () => {
+    it('category codes: automatic CAT-00X sequence, any-case manual codes, case-insensitive uniqueness, bad format 400', async () => {
+      const admin = await registerTenant('Catalog Codes Co', 'admin@catalog-codes.example');
+      const create = (payload: Record<string, unknown>) =>
+        inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(admin), payload });
+
+      // No code sent -> the server proposes CAT-001, CAT-002, ... per tenant.
+      const first = await create({ name: 'Auto 1' });
+      const second = await create({ name: 'Auto 2' });
+      expect(first.statusCode, first.body).toBe(201);
+      expect(JSON.parse(first.body).code).toBe('CAT-001');
+      expect(JSON.parse(first.body).name).toBe('AUTO 1'); // category names are always capitals
+      expect(JSON.parse(second.body).code).toBe('CAT-002');
+
+      // A hand-typed code may use capitals; the sequence just continues after the highest CAT-<n>.
+      const manual = await create({ name: 'Manual', code: 'Muebles-Sala' });
+      expect(manual.statusCode, manual.body).toBe(201);
+      expect(JSON.parse(manual.body).code).toBe('Muebles-Sala');
+      expect(JSON.parse((await create({ name: 'Auto 3' })).body).code).toBe('CAT-003');
+
+      // Uniqueness ignores case; a bad format is a 400.
+      expect((await create({ name: 'Dup', code: 'cat-001' })).statusCode).toBe(409);
+      expect((await create({ name: 'Bad', code: 'con espacio' })).statusCode).toBe(400);
+      expect((await create({ name: 'Bad2', code: '-inicio' })).statusCode).toBe(400);
+
+      // Another tenant starts again at CAT-001.
+      const other = await registerTenant('Catalog Codes Other Co', 'admin@catalog-codes-other.example');
+      const otherFirst = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(other), payload: { name: 'Auto' } });
+      expect(JSON.parse(otherFirst.body).code).toBe('CAT-001');
+    });
+
+    it('rejects a duplicate code within the same tenant (409) and tenantId in the body (400, mass assignment)', async () => {
       const admin = await registerTenant('Catalog Gamma Co', 'admin@catalog-gamma.example');
       await createCategory(admin, 'Electro', 'electro');
 
-      const dup = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(admin), payload: { name: 'Electro 2', slug: 'electro' } });
+      const dup = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(admin), payload: { name: 'Electro 2', code: 'ELECTRO' } });
       expect(dup.statusCode).toBe(409);
 
       const massAssignment = await inject({
         method: 'POST',
         url: '/api/v1/categories',
         headers: writeHeaders(admin),
-        payload: { name: 'Mass Assignment Attempt', slug: 'mass-assignment-cat', tenantId: 'some-other-tenant' },
+        payload: { name: 'Mass Assignment Attempt', code: 'mass-assignment-cat', tenantId: 'some-other-tenant' },
       });
       expect(massAssignment.statusCode).toBe(400);
     });
@@ -193,7 +223,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('catalog: categories/produc
       const viewAllowed = await inject({ method: 'GET', url: '/api/v1/categories', headers: readHeaders(vendedor) });
       expect(viewAllowed.statusCode).toBe(200);
 
-      const manageForbidden = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(vendedor), payload: { name: 'X', slug: 'x' } });
+      const manageForbidden = await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(vendedor), payload: { name: 'X', code: 'X1' } });
       expect(manageForbidden.statusCode).toBe(403);
     });
 
@@ -381,7 +411,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('catalog: categories/produc
 
       const detail = await inject({ method: 'GET', url: `/api/v1/products/${productId}`, headers: readHeaders(admin) });
       expect(detail.statusCode).toBe(200);
-      expect(JSON.parse(detail.body).status).toBe('draft');
+      expect(JSON.parse(detail.body).status).toBe('active');
 
       const patched = await inject({ method: 'PATCH', url: `/api/v1/products/${productId}`, headers: writeHeaders(admin), payload: { status: 'active' } });
       expect(patched.statusCode).toBe(200);
@@ -484,6 +514,78 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('catalog: categories/produc
         payload: { name: 'X', defaultVariant: { sku: 'OMICRON-X', maxPrice: 10, basePrice: 8, minPrice: 5 } },
       });
       expect(manageForbidden.statusCode).toBe(403);
+    });
+  });
+
+  describe('automatic codes — PRD-00X products and CAT-00X categories (one sequence per tenant)', () => {
+    it('product code = first 3 letters of the category + a sequence shared by every category with that prefix', async () => {
+      const admin = await registerTenant('Catalog Sku Co', 'admin@catalog-sku.example');
+      const conMaletero = await createCategory(admin, 'Armario con maletero', 'arm-con');
+      const sinMaletero = await createCategory(admin, 'Armario sin maletero', 'arm-sin');
+      const ferreteria = await createCategory(admin, 'Ferretería', 'fer');
+      const nextSku = async (who: Session, categoryId?: string) =>
+        (
+          JSON.parse(
+            (await inject({ method: 'GET', url: `/api/v1/products/next-sku${categoryId ? `?categoryId=${categoryId}` : ''}`, headers: readHeaders(who) })).body,
+          ) as { code: string }
+        ).code;
+      const create = (who: Session, name: string, categoryId: string | undefined, variant: Record<string, unknown> = {}) =>
+        inject({
+          method: 'POST',
+          url: '/api/v1/products',
+          headers: writeHeaders(who),
+          payload: { name, ...(categoryId ? { categoryId } : {}), defaultVariant: { maxPrice: 100, basePrice: 90, minPrice: 80, ...variant } },
+        });
+      const variantOf = async (productId: string) =>
+        (JSON.parse((await inject({ method: 'GET', url: `/api/v1/products/${productId}/variants`, headers: readHeaders(admin) })).body) as Array<{ sku: string; barcode?: string }>)[0]!;
+
+      // Preview, then the first product of the first "ARM" category.
+      expect(await nextSku(admin, conMaletero)).toBe('ARM-001');
+      const first = await create(admin, 'Armario uno', conMaletero);
+      expect(first.statusCode, first.body).toBe(201);
+      const v1 = await variantOf(JSON.parse(first.body).id);
+      expect(v1.sku).toBe('ARM-001');
+      expect(v1.barcode).toBe('COD-ARM-001');
+      expect(JSON.parse(first.body).name).toBe('ARMARIO UNO'); // product names are always capitals
+
+      // A DIFFERENT category with the same three letters continues the SAME sequence (never repeats ARM-001).
+      expect(await nextSku(admin, sinMaletero)).toBe('ARM-002');
+      const second = await create(admin, 'Armario dos', sinMaletero);
+      expect((await variantOf(JSON.parse(second.body).id)).sku).toBe('ARM-002');
+
+      // Another prefix has its own sequence; no category falls back to PRD.
+      expect((await variantOf(JSON.parse((await create(admin, 'Martillo', ferreteria)).body).id)).sku).toBe('FER-001');
+      expect((await variantOf(JSON.parse((await create(admin, 'Suelto', undefined)).body).id)).sku).toBe('PRD-001');
+
+      // A hand-typed code in the same shape counts: the sequence continues after the highest.
+      const manual = await create(admin, 'Manual', conMaletero, { sku: 'ARM-010' });
+      expect(manual.statusCode, manual.body).toBe(201);
+      expect(await nextSku(admin, sinMaletero)).toBe('ARM-011');
+
+      // An additional variant of a product takes the next number under its own category's prefix.
+      const extra = await inject({
+        method: 'POST',
+        url: `/api/v1/products/${JSON.parse(first.body).id}/variants`,
+        headers: writeHeaders(admin),
+        payload: { maxPrice: 100, basePrice: 90, minPrice: 80 },
+      });
+      expect(extra.statusCode, extra.body).toBe(201);
+      expect(JSON.parse(extra.body).sku).toBe('ARM-011');
+      expect(JSON.parse(extra.body).barcode).toBe('COD-ARM-011');
+
+      // Per tenant: another company starts again at ARM-001; unauthenticated is 401.
+      const other = await registerTenant('Catalog Sku Other Co', 'admin@catalog-sku-other.example');
+      const otherCat = await createCategory(other, 'Armarios', 'armarios');
+      expect(await nextSku(other, otherCat)).toBe('ARM-001');
+      expect((await inject({ method: 'GET', url: '/api/v1/products/next-sku' })).statusCode).toBe(401);
+    });
+
+    it('category code preview: GET /categories/next-code follows the sequence', async () => {
+      const admin = await registerTenant('Catalog Next Code Co', 'admin@catalog-nextcode.example');
+      const next = async () => (JSON.parse((await inject({ method: 'GET', url: '/api/v1/categories/next-code', headers: readHeaders(admin) })).body) as { code: string }).code;
+      expect(await next()).toBe('CAT-001');
+      await inject({ method: 'POST', url: '/api/v1/categories', headers: writeHeaders(admin), payload: { name: 'Una' } });
+      expect(await next()).toBe('CAT-002');
     });
   });
 

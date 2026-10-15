@@ -10,12 +10,12 @@ export class UpdateCategoryDto {
   @Length(2, 120)
   name?: string;
 
-  @ApiPropertyOptional({ type: String, minLength: 2, maxLength: 120 })
+  @ApiPropertyOptional({ type: String, minLength: 2, maxLength: 60, example: 'CAT-001' })
   @IsOptional()
   @IsString()
-  @Matches(/^[a-z0-9]+(-[a-z0-9]+)*$/, { message: 'slug must be lowercase, alphanumeric, and hyphen-separated.' })
-  @Length(2, 120)
-  slug?: string;
+  @Matches(/^[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/, { message: 'code must be letters, digits and hyphens (no spaces, no leading/trailing hyphen).' })
+  @Length(2, 60)
+  code?: string;
 
   @ApiPropertyOptional({ type: String, description: 'An existing category id in the current tenant, or omit to leave unchanged.' })
   @IsOptional()

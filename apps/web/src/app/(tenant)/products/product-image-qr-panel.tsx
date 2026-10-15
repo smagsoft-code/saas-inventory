@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api/client';
 import { httpErrorMessage } from '../../../lib/api/errors';
 import { Alert } from '../../../components/ui/alert';
@@ -8,6 +8,7 @@ import { Button, ButtonLink } from '../../../components/ui/button';
 import { Spinner } from '../../../components/ui/spinner';
 import { QrCodeImage } from '../../../components/qr-code-image';
 import { ImageFilePicker } from '../../../components/image-file-picker';
+import { useStagedImage } from './staged-image';
 
 /** Mirrors `PRODUCT_IMAGE_ALLOWED_MIME_TYPES`/`PRODUCT_IMAGE_MAX_BYTES`
  * (`apps/api/src/catalog/products/product-images.service.ts`) — the same up-front client check
@@ -47,7 +48,23 @@ export function ProductImageQrPanel({
   initialImageUrl?: string;
   initialQrValue?: string;
 }): React.JSX.Element {
+  const staged = useStagedImage();
   const [imageUrl, setImageUrl] = useState<string | undefined>(initialImageUrl);
+  // Local preview of the staged (picked, not yet saved) image.
+  const [stagedPreview, setStagedPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!staged?.file) {
+      setStagedPreview(null);
+      return;
+    }
+    const url = URL.createObjectURL(staged.file);
+    setStagedPreview(url);
+    return () => URL.revokeObjectURL(url);
+  }, [staged?.file]);
+  // After a save the page refreshes with the stored image; show it once the staged one is gone.
+  useEffect(() => {
+    setImageUrl(initialImageUrl);
+  }, [initialImageUrl]);
   const [imageError, setImageError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
@@ -64,6 +81,11 @@ export function ProductImageQrPanel({
     }
     if (file.size > IMAGE_MAX_BYTES) {
       setImageError('Esa imagen supera el límite de 5 MB.');
+      return;
+    }
+    if (staged) {
+      // Edit screen: only stage it — it is uploaded by "Guardar cambios", with the other changes.
+      staged.setFile(file);
       return;
     }
     setUploading(true);
@@ -102,11 +124,11 @@ export function ProductImageQrPanel({
     <aside className="flex w-full flex-col gap-4 lg:w-72 lg:shrink-0">
       <div className="rounded-md border border-slate-200 p-4">
         <h3 className="mb-3 text-sm font-semibold text-slate-900">Imagen del producto</h3>
-        {imageUrl ? (
+        {stagedPreview || imageUrl ? (
           // A same-origin path from the API (`ProductImageResponseDto.url`), never a fabricated
           // one — same posture as `products-catalog-table.tsx`'s real thumbnails.
           <img
-            src={imageUrl}
+            src={stagedPreview ?? imageUrl}
             alt=""
             className="mb-3 aspect-square w-full rounded-md border border-slate-200 object-cover"
           />
@@ -135,8 +157,16 @@ export function ProductImageQrPanel({
                 <Spinner className="h-3 w-3" /> Subiendo…
               </p>
             )}
+            {stagedPreview && (
+              <p className="mb-2 flex items-center gap-2 text-xs text-slate-600" role="status">
+                Imagen nueva sin guardar — pulsa «Guardar cambios».
+                <button type="button" className="font-medium underline" onClick={() => staged?.setFile(null)}>
+                  Descartar
+                </button>
+              </p>
+            )}
             <ImageFilePicker
-              label={imageUrl ? 'Reemplazar imagen' : 'Elegir imagen'}
+              label={imageUrl || stagedPreview ? 'Reemplazar imagen' : 'Elegir imagen'}
               hint="Opcional. JPEG, PNG o WEBP, hasta 5 MB."
               accept={IMAGE_ACCEPT}
               disabled={uploading}

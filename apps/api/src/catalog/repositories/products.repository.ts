@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, eq, exists, ilike, isNull, or } from 'drizzle-orm';
+import { and, count, eq, exists, ilike, isNull, or, sql } from 'drizzle-orm';
 import { brands, productPriceHistory, products, productVariants, suppliers } from '../../database/schema';
+import { upperName } from '../upper-name';
 import type { TenantTransaction } from '../../database/tenant-context';
 
 export interface ProductRow {
@@ -138,7 +139,10 @@ export class ProductsRepository {
       attributes: Record<string, unknown>;
     },
   ): Promise<ProductRow> {
-    const [row] = await tx.insert(products).values(values).returning();
+    const [row] = await tx
+      .insert(products)
+      .values({ ...values, name: upperName(values.name) })
+      .returning();
     if (!row) {
       throw new Error('Product insert did not return a row.');
     }
@@ -165,7 +169,7 @@ export class ProductsRepository {
     }
     const [row] = await tx
       .update(products)
-      .set(values)
+      .set(values.name !== undefined ? { ...values, name: upperName(values.name) } : values)
       .where(and(eq(products.tenantId, tenantId), eq(products.id, productId), isNull(products.deletedAt)))
       .returning();
     return row;
@@ -209,6 +213,27 @@ export class ProductsRepository {
         ),
       )
       .orderBy(productVariants.createdAt);
+  }
+
+  /**
+   * The next free automatic product code (variant SKU) for a prefix: `ARM-001`, `ARM-002`, … The
+   * prefix is the first three letters of the product's category, so several categories can share it
+   * (`ARMARIO CON MALETERO`, `ARMARIO SIN MALETERO` → `ARM`); the **sequence is evaluated across the
+   * whole tenant for that prefix** — every category and every variant with that prefix — so a number is
+   * never repeated. Three digits is a minimum, never a cap (`ARM-1000` follows `ARM-999`). One more
+   * than the highest `<PREFIX>-<number>` the tenant already has — counting every variant, so a code is
+   * never reused — under a transaction-scoped advisory lock (per tenant + prefix) so two concurrent
+   * creates cannot be handed the same one. A code the user typed in another shape is ignored.
+   * `prefix` must be letters only (see `skuPrefixFromCategoryName`).
+   */
+  async nextSku(tx: TenantTransaction, tenantId: string, prefix: string): Promise<string> {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`catalog.product_sku:${tenantId}:${prefix}`}))`);
+    const pattern = `(?i)^${prefix}-([0-9]+)$`;
+    const rows = await tx.execute<{ max: string | null }>(
+      sql`select max(substring(sku from ${pattern})::bigint)::text as max from product_variants where tenant_id = ${tenantId}`,
+    );
+    const next = Number(rows[0]?.max ?? 0) + 1;
+    return `${prefix}-${String(next).padStart(3, '0')}`;
   }
 
   async createVariant(

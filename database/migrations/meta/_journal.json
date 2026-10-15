@@ -295,6 +295,20 @@
       "when": 1791953637686,
       "tag": "0041_sales_returns_return_number",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1792030296700,
+      "tag": "0042_categories_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1792032813412,
+      "tag": "0043_uppercase_product_category_names",
+      "breakpoints": true
     }
   ]
 }

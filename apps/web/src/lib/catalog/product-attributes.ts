@@ -1,4 +1,4 @@
-import type { AttributeDefinition, AttributeOption, CategoryAttribute } from '../types/catalog';
+import type { AttributeDefinition, AttributeOption, CategoryAttribute, MeasurementUnit } from '../types/catalog';
 import { isSelectType } from '../types/catalog';
 
 /**
@@ -39,6 +39,8 @@ export interface AttributeField {
   appliesTo: AttributeFieldScope;
   minValue?: number;
   maxValue?: number;
+  /** Unit of measure code (e.g. `cm`) of a numeric attribute, shown next to its label. */
+  unit?: string;
 }
 
 /** Pure — join category assignments with definitions, filter by scope + active, order. */
@@ -46,8 +48,10 @@ export function resolveAttributeFields(
   assignments: CategoryAttribute[],
   definitions: AttributeDefinition[],
   scope: AttributeFieldScope,
+  units: MeasurementUnit[] = [],
 ): AttributeField[] {
   const defById = new Map(definitions.map((def) => [def.id, def]));
+  const unitById = new Map(units.map((unit) => [unit.id, unit]));
   return assignments
     .flatMap((assignment) => {
       const def = defById.get(assignment.attributeDefinitionId);
@@ -65,6 +69,8 @@ export function resolveAttributeFields(
       };
       if (typeof def.minValue === 'number') field.minValue = def.minValue;
       if (typeof def.maxValue === 'number') field.maxValue = def.maxValue;
+      const unit = def.unitId ? unitById.get(def.unitId)?.code : undefined;
+      if (unit) field.unit = unit;
       return [field];
     })
     .sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
@@ -92,8 +98,11 @@ export async function loadCategoryAttributeFieldSets(
   const assignments = await fetchJson<CategoryAttribute[]>(
     `/api/v1/categories/${categoryId}/attributes`,
   );
-  const product = resolveAttributeFields(assignments, definitions, 'product');
-  const variant = resolveAttributeFields(assignments, definitions, 'variant');
+  // Units are cosmetic (a label suffix): if they cannot be loaded the form still works without them.
+  const unitsResponse = await fetchJson<MeasurementUnit[]>('/api/v1/measurement-units').catch(() => []);
+  const units = Array.isArray(unitsResponse) ? unitsResponse : [];
+  const product = resolveAttributeFields(assignments, definitions, 'product', units);
+  const variant = resolveAttributeFields(assignments, definitions, 'variant', units);
   const selectDefIds = [
     ...new Set(
       [...product, ...variant]

@@ -22,12 +22,16 @@ export type ProductCatalogRow = {
    * `null` when it has none yet (OUI-006). A `product_images` row (CATALOG-owned) joined here, not
    * a new endpoint or an N+1 per row — `Reports -> Catalog` is an already-allowed edge. */
   imageId: string | null;
+  /** The product's attribute values merged with the variant's (variant wins on a shared code), keyed
+   * by attribute code — raw JSONB; the client resolves names/units from the definitions. */
+  attributes: Record<string, unknown> | null;
   totalCount: string;
 };
 
 export interface ProductCatalogFilters {
   q?: string | undefined;
   categoryId?: string | undefined;
+  productStatus?: string | undefined;
   status?: ProductCatalogStatus | undefined;
   stock?: ProductCatalogStockFilter | undefined;
 }
@@ -54,9 +58,10 @@ export class ProductsReportRepository {
       WHERE pv.tenant_id = ${tenantId}
         AND pv.deleted_at IS NULL
         AND p.deleted_at IS NULL
-        ${filters.q ? sql`AND (p.name ILIKE '%' || ${filters.q} || '%' OR pv.sku ILIKE '%' || ${filters.q} || '%')` : sql``}
+        ${filters.q ? sql`AND (p.name ILIKE '%' || ${filters.q} || '%' OR pv.sku ILIKE '%' || ${filters.q} || '%' OR pv.barcode ILIKE '%' || ${filters.q} || '%')` : sql``}
         ${filters.categoryId ? sql`AND p.category_id = ${filters.categoryId}` : sql``}
         ${filters.status ? sql`AND pv.status = ${filters.status}` : sql``}
+        ${filters.productStatus ? sql`AND p.status = ${filters.productStatus}` : sql``}
         ${filters.stock === 'with' ? sql`AND COALESCE(stock.available_quantity, 0) > 1` : sql``}
         ${filters.stock === 'without' ? sql`AND COALESCE(stock.available_quantity, 0) = 0` : sql``}
     `;
@@ -82,6 +87,7 @@ export class ProductsReportRepository {
         pv.base_price AS "basePrice",
         COALESCE(stock.available_quantity, 0) AS "availableQuantity",
         img.id AS "imageId",
+        (COALESCE(p.attributes, '{}'::jsonb) || COALESCE(pv.attributes, '{}'::jsonb)) AS attributes,
         COUNT(*) OVER() AS "totalCount"
       FROM product_variants pv
       JOIN products p ON p.tenant_id = pv.tenant_id AND p.id = pv.product_id

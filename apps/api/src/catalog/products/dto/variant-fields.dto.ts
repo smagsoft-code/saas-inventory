@@ -7,10 +7,16 @@ import { IsBoolean, IsNumber, IsObject, IsOptional, IsString, Length, Min } from
  * tier ordering (min <= base <= max) is checked by ProductsService against the same rule the
  * database CHECK enforces — a clean 400 before ever reaching Postgres's constraint error. */
 export class VariantFieldsDto {
-  @ApiProperty({ type: String })
+  @ApiPropertyOptional({
+    type: String,
+    example: 'ARM-001',
+    description:
+      "Product code (SKU), unique per tenant. Omit it to get the next automatic one: the first three letters of the category (ARM-001, ARM-002, … — PRD without a category), numbered across every category sharing that prefix; the barcode then defaults to COD-<sku> unless sent.",
+  })
+  @IsOptional()
   @IsString()
   @Length(1, 80)
-  sku!: string;
+  sku?: string;
 
   @ApiPropertyOptional({ type: String })
   @IsOptional()

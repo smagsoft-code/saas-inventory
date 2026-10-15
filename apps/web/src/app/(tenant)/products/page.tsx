@@ -2,6 +2,8 @@ import { getSession } from '../../../lib/auth/session';
 import { createPermissionChecker } from '../../../lib/auth/permissions';
 import { listProductCatalog } from '../../../lib/catalog/product-catalog';
 import { listCategories } from '../../../lib/catalog/categories';
+import { getAttributeOptions, listAttributeDefinitions, listMeasurementUnits } from '../../../lib/catalog/attributes';
+import { buildAttributeSummaryFromDefinitions, formatAttributeSummaryLine } from '../../../lib/catalog/attribute-summary';
 import { listQrCodes } from '../../../lib/catalog/qr-codes';
 import { buildLocationIndex } from '../../../lib/inventory/location-index';
 import { apiPublicUrl } from '../../../lib/api/public-url';
@@ -96,6 +98,30 @@ export default async function ProductsPage({
     canViewInventory ? buildLocationIndex(checker.can('warehouses.view')) : Promise.resolve(null),
   ]);
   const categoryNames = new Map<string, string>((categories?.data ?? []).map((c) => [c.id, c.name]));
+
+  // "Color: Crema; Medidas: 80 cm" under each product name: attribute names, option labels and units
+  // come from the (bounded) definitions list, resolved here so only plain strings reach the table.
+  // Cosmetic — if any lookup fails the table simply shows no attribute line.
+  const attributeLineByVariant = new Map<string, string>();
+  if (result.data.some((row) => row.attributes)) {
+    try {
+      const [definitions, units] = await Promise.all([listAttributeDefinitions(), listMeasurementUnits()]);
+      const selectDefinitions = definitions.filter((d) => d.dataType === 'select' || d.dataType === 'multi_select');
+      const optionEntries = await Promise.all(
+        selectDefinitions.map(async (d) => [d.id, await getAttributeOptions(d.id)] as const),
+      );
+      const options = Object.fromEntries(optionEntries);
+      for (const row of result.data) {
+        if (!row.attributes) continue;
+        const line = formatAttributeSummaryLine(
+          buildAttributeSummaryFromDefinitions({ definitions, options, units, values: row.attributes }),
+        );
+        if (line) attributeLineByVariant.set(row.variantId, line);
+      }
+    } catch {
+      attributeLineByVariant.clear();
+    }
+  }
   // OUI-008: the real scannable value, not just presence — a plain string per variant, so it can
   // cross the RSC boundary into the Client Component table below. `status === 'active'` only — a
   // revoked QR must never keep showing the thumbnail (a revoked code 404s if actually scanned);
@@ -156,6 +182,7 @@ export default async function ProductsPage({
       ) : (
         <>
           <ProductsCatalogTable
+          attributeLineByVariant={attributeLineByVariant}
             rows={result.data}
             categoryNames={categoryNames}
             qrValueByVariant={qrValueByVariant}

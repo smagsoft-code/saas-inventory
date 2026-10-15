@@ -11,7 +11,7 @@ export class CategoryResponseDto {
   name!: string;
 
   @ApiProperty({ type: String })
-  slug!: string;
+  code!: string;
 
   @ApiProperty({ enum: ['active', 'inactive'] })
   status!: string;

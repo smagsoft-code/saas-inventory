@@ -42,7 +42,7 @@ export class ProductCatalogQueryDto {
   @Max(100)
   pageSize = 20;
 
-  @ApiPropertyOptional({ type: String, description: 'Substring match on product name or variant SKU (case-insensitive).' })
+  @ApiPropertyOptional({ type: String, description: 'Substring match on product name, variant SKU or variant barcode (case-insensitive).' })
   @IsOptional()
   @IsString()
   @MinLength(1)
@@ -58,6 +58,14 @@ export class ProductCatalogQueryDto {
   @IsOptional()
   @IsIn(PRODUCT_CATALOG_STATUSES)
   status?: ProductCatalogStatus;
+
+  @ApiPropertyOptional({
+    enum: ['draft', 'active', 'discontinued'],
+    description: "The parent product's own status (as opposed to `status`, the variant's). The sales picker asks for `active` so draft products never show up for sale.",
+  })
+  @IsOptional()
+  @IsIn(['draft', 'active', 'discontinued'])
+  productStatus?: 'draft' | 'active' | 'discontinued';
 
   @ApiPropertyOptional({
     enum: PRODUCT_CATALOG_STOCK_FILTERS,

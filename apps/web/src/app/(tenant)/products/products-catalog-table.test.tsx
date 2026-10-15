@@ -6,8 +6,10 @@ import { ProductsCatalogTable } from './products-catalog-table';
 import type { ProductCatalogRow } from '../../../lib/types/product-catalog';
 
 vi.mock('next/link', () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
-    <a href={href}>{children}</a>
+  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode } & Record<string, unknown>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
   ),
 }));
 
@@ -84,11 +86,13 @@ describe('ProductsCatalogTable', () => {
         locationWarehouseNames={new Map()}
       />,
     );
-    expect(screen.queryByText('Electrónica')).not.toBeInTheDocument();
+    // The category lives in its own column; the expanded panel no longer repeats it.
+    expect(screen.queryByText('Ver producto completo →')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Expandir Widget/ }));
-    expect(screen.getByText('Electrónica')).toBeInTheDocument();
+    expect(screen.getByText('Ver producto completo →')).toBeInTheDocument();
+    expect(screen.queryByText('Categoría:')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Contraer Widget/ }));
-    expect(screen.queryByText('Electrónica')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ver producto completo →')).not.toBeInTheDocument();
   });
 
   it('links to "Generar" a QR for a variant that has none, and shows a scannable thumbnail for one that does', () => {
@@ -131,6 +135,42 @@ describe('ProductsCatalogTable', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Cerrar' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('has a Categoría column (name of the product\'s category, "—" when none)', () => {
+    render(
+      <ProductsCatalogTable
+        rows={[row({ categoryId: 'c1' }), { ...row({ variantId: 'v2', sku: 'SKU-2' }), categoryId: undefined as unknown as string }]}
+        categoryNames={new Map([['c1', 'Electrónica']])}
+        qrValueByVariant={new Map()}
+        canManage
+        canViewInventory={false}
+        locationNames={new Map()}
+        locationWarehouseNames={new Map()}
+      />,
+    );
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers.indexOf('Categoría')).toBeGreaterThan(headers.indexOf('Nombre'));
+    expect(headers.indexOf('Categoría')).toBeLessThan(headers.indexOf('Código'));
+    expect(screen.getByText('Electrónica')).toBeInTheDocument();
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+  });
+
+  it('the edit action is an icon (pencil) with an accessible name, not the word "Editar"', () => {
+    render(
+      <ProductsCatalogTable
+        rows={[row()]}
+        categoryNames={new Map()}
+        qrValueByVariant={new Map()}
+        canManage
+        canViewInventory={false}
+        locationNames={new Map()}
+        locationWarehouseNames={new Map()}
+      />,
+    );
+    const edit = screen.getByRole('link', { name: 'Editar' });
+    expect(edit).toHaveTextContent('');
+    expect(edit.querySelector('svg')).not.toBeNull();
   });
 
   it('links Editar to the variant edit page, and reads "Ver" when the caller cannot manage', () => {
@@ -195,6 +235,23 @@ describe('ProductsCatalogTable', () => {
     expect(mockedFetch).not.toHaveBeenCalled();
   });
 
+  it('lists the attributes under the product name (Color: Crema; Medidas: 80 cm)', () => {
+    render(
+      <ProductsCatalogTable
+        rows={[row()]}
+        categoryNames={new Map()}
+        attributeLineByVariant={new Map([['v1', 'Color: Crema; Medidas: 80 cm']])}
+        qrValueByVariant={new Map()}
+        canManage
+        canViewInventory={false}
+        locationNames={locationNames}
+        locationWarehouseNames={locationWarehouseNames}
+      />,
+    );
+    expect(screen.getByText('Widget')).toBeInTheDocument();
+    expect(screen.getByText('Color: Crema; Medidas: 80 cm')).toBeInTheDocument();
+  });
+
   it('lazily fetches Existencias on first expand and renders Almacén/Sucursal/Disponible/Físico/Reservado/Comprometido', async () => {
     mockedFetch.mockResolvedValue({
       data: [
@@ -230,6 +287,10 @@ describe('ProductsCatalogTable', () => {
 
     await waitFor(() => expect(screen.getByText('Cuarentena QA')).toBeInTheDocument());
     expect(screen.getByText('Sucursal Principal QA')).toBeInTheDocument();
+    // Sucursal comes first, then Almacén.
+    const headers = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(headers.indexOf('Sucursal')).toBeGreaterThan(-1);
+    expect(headers.indexOf('Sucursal')).toBeLessThan(headers.indexOf('Almacén'));
     expect(screen.getByText('Movimientos')).toBeInTheDocument();
     expect(screen.getByText('Ajustar')).toBeInTheDocument();
 

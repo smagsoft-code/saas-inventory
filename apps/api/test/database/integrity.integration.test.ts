@@ -57,7 +57,7 @@ describe.skipIf(!integrationTestsEnabled)('integrity', () => {
       await db.insert(schema.tenants).values({ id: otherTenantId, name: 'Other Co', slug: 'other-co-fk-test' });
 
       const categoryId = generateId();
-      await db.insert(schema.categories).values({ id: categoryId, tenantId, name: 'Cat A', slug: 'cat-a-fk-test' });
+      await db.insert(schema.categories).values({ id: categoryId, tenantId, name: 'Cat A', code: 'cat-a-fk-test' });
 
       // A product for tenant B that tries to reference tenant A's category — must fail: there is
       // no row in categories with (tenant_id, id) = (otherTenantId, categoryId), because that
@@ -128,7 +128,7 @@ describe.skipIf(!integrationTestsEnabled)('integrity', () => {
           id: generateId(),
           tenantId,
           name: 'Bad Status',
-          slug: 'bad-status-check-test',
+          code: 'bad-status-check-test',
           status: 'not_a_real_status',
         }),
       ).rejects.toThrow();

@@ -980,7 +980,7 @@ categories
   tenant_id         uuid NOT NULL FK -> tenants(id), UNIQUE (tenant_id, id)
   parent_category_id uuid NULL FK -> categories(tenant_id, id)   -- composite, self-referencing
   name              text NOT NULL
-  slug              text NOT NULL
+  code              text NOT NULL, UNIQUE (tenant_id, lower(code))  -- CAT-001…CAT-999, CAT-1000… proposed automatically, editable, any case; formerly `slug` (migration 0042)
   status            text NOT NULL CHECK IN ('active','inactive'), DEFAULT 'active'
   created_at        timestamptz NOT NULL DEFAULT now()
   updated_at        timestamptz NOT NULL DEFAULT now()

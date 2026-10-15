@@ -6,6 +6,7 @@ import type { AuthPrincipal } from '../../common/context/request-context';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { NextCodeResponseDto } from '../next-code-response.dto';
 import { CategoriesService } from './categories.service';
 import { CategoryAttributeResponseDto, SetCategoryAttributesDto } from './dto/category-attributes.dto';
 import { CategoryResponseDto } from './dto/category-response.dto';
@@ -31,6 +32,14 @@ export class CategoriesController {
     @Query() query: ListCategoriesQueryDto,
   ): Promise<PaginatedResult<CategoryResponseDto>> {
     return this.categoriesService.list(tenantId, query);
+  }
+
+  // Declared before `:id` so "next-code" is never read as a category id.
+  @Get('next-code')
+  @RequirePermissions('categories.view')
+  @ApiOkResponse({ type: NextCodeResponseDto, description: 'Preview of the next automatic category code (CAT-001, CAT-002, …).' })
+  async nextCode(@CurrentTenant() tenantId: string): Promise<NextCodeResponseDto> {
+    return this.categoriesService.getNextCode(tenantId);
   }
 
   @Get(':id')
