@@ -10,7 +10,7 @@ import { IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLeng
 export const PRODUCT_CATALOG_STATUSES = ['active', 'discontinued'] as const;
 export type ProductCatalogStatus = (typeof PRODUCT_CATALOG_STATUSES)[number];
 
-export const PRODUCT_CATALOG_STOCK_FILTERS = ['with', 'without'] as const;
+export const PRODUCT_CATALOG_STOCK_FILTERS = ['with', 'without', 'available'] as const;
 export type ProductCatalogStockFilter = (typeof PRODUCT_CATALOG_STOCK_FILTERS)[number];
 
 /**
@@ -53,6 +53,20 @@ export class ProductCatalogQueryDto {
   @IsOptional()
   @IsUUID()
   categoryId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'uuid',
+    description: "Count stock at this one location only (`availableQuantity` and the `stock` filter), instead of tenant-wide — what a sale made from that almacén can actually draw on.",
+  })
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  @ApiPropertyOptional({ type: String, format: 'uuid', description: 'Exactly one variant — lets a screen that only holds a variant id show its code/name.' })
+  @IsOptional()
+  @IsUUID()
+  variantId?: string;
 
   @ApiPropertyOptional({ enum: PRODUCT_CATALOG_STATUSES })
   @IsOptional()

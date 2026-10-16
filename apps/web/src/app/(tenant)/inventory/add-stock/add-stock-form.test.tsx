@@ -27,10 +27,14 @@ function routeFetch(opts: { products?: unknown[]; adjustment?: unknown } = {}): 
           { id: 'p1', name: 'Silla de Comedor', status: 'active' },
           { id: 'p2', name: 'Silla vieja', status: 'discontinued' },
           { id: 'p3', name: 'Silla nueva', status: 'draft' },
+          { id: 'p4', name: 'Mesa de centro', status: 'active' },
         ],
       };
     }
     if (path === '/api/v1/products/p1/variants') return [{ id: 'v1', sku: 'SILLA-1' }];
+    if (path === '/api/v1/products/p4/variants') return [{ id: 'v4a', sku: 'MESA-1' }, { id: 'v4b', sku: 'MESA-2' }];
+    if (path === '/api/v1/products/p1/images') return [{ url: '/api/v1/products/p1/images/img-1' }];
+    if (path === '/api/v1/qr-codes') return { data: [{ code: 'abc123' }] };
     if (path === '/api/v1/inventory/adjustments') {
       if (opts.adjustment instanceof Error) throw opts.adjustment;
       return opts.adjustment ?? MOVEMENT;
@@ -102,6 +106,34 @@ describe('AddStockForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cambiar' }));
     expect(screen.getByLabelText('Buscar producto')).toHaveValue('');
     expect(screen.getByLabelText('Variante')).toBeDisabled();
+  });
+
+  it('preselects the variant when the product has only one, and leaves the choice open when it has several', async () => {
+    renderForm({ canViewQr: true, apiPublicUrl: 'http://api.test' });
+    await pickProduct();
+    await waitFor(() => expect(screen.getByLabelText('Variante')).toHaveValue('v1'));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cambiar' }));
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mesa' } });
+    fireEvent.click(await screen.findByRole('option', { name: /Mesa de centro/ }));
+    await screen.findByRole('option', { name: 'MESA-2' });
+    expect(screen.getByLabelText('Variante')).toHaveValue('');
+  });
+
+  it('shows the product photo and the variant QR in a side panel', async () => {
+    const { container } = renderForm({ canViewQr: true, apiPublicUrl: 'http://api.test' });
+    await pickProduct();
+    await waitFor(() => expect(container.querySelector('aside img')).toHaveAttribute('src', '/api/v1/products/p1/images/img-1'));
+    expect(await screen.findByText('http://api.test/q/abc123')).toBeInTheDocument();
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/qr-codes', {
+      query: { targetType: 'product_variant', targetId: 'v1', pageSize: 1 },
+    });
+  });
+
+  it('hides the QR card without the QR permission', async () => {
+    renderForm();
+    await pickProduct();
+    expect(screen.queryByText('Código QR')).not.toBeInTheDocument();
   });
 
   it('only offers locations belonging to the chosen sucursal (cascading selector)', () => {

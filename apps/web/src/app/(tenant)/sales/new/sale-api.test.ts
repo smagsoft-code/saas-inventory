@@ -18,6 +18,14 @@ describe('sale-api', () => {
     expect(JSON.stringify(mocked.mock.calls)).not.toMatch(/tenant_?id/i);
   });
 
+  it('searchProducts only asks for variants with stock at the sale almacén when given its id', async () => {
+    mocked.mockResolvedValueOnce({ data: [] });
+    await searchProducts('wid', 'loc-1');
+    expect(mocked).toHaveBeenCalledWith('/api/v1/reports/product-catalog', {
+      query: { q: 'wid', status: 'active', productStatus: 'active', stock: 'available', locationId: 'loc-1', pageSize: 8 },
+    });
+  });
+
   it('listVariants reads GET /products/:id/variants', async () => {
     mocked.mockResolvedValueOnce([{ id: 'v1', sku: 'SKU-1' }]);
     await listVariants('p1');

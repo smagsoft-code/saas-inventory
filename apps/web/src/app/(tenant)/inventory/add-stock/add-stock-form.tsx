@@ -10,6 +10,7 @@ import { Button, ButtonLink } from '../../../../components/ui/button';
 import { Field } from '../../../../components/ui/field';
 import { Input, Select, Textarea } from '../../../../components/ui/input';
 import { ProductSearchSelect } from '../../../../components/product-search-select';
+import { VariantMediaPanel } from './variant-media-panel';
 
 const ADJUSTMENTS_PATH = '/api/v1/inventory/adjustments';
 
@@ -38,12 +39,20 @@ interface VariantOption {
 export function AddStockForm({
   fixedProductVariantId,
   fixedVariantLabel,
+  fixedProduct,
+  apiPublicUrl = '',
+  canViewQr = false,
   warehouses,
   locations,
 }: {
   fixedProductVariantId?: string;
   /** Etiqueta humana (SKU) para la variante fija, cuando el caller ya la conoce — solo display. */
   fixedVariantLabel?: string;
+  /** The fixed variant's product (id + name) when the caller resolved it — drives the photo panel. */
+  fixedProduct?: { id: string; name: string };
+  /** Base URL for the public QR resolver, and whether the user may see QR codes. */
+  apiPublicUrl?: string;
+  canViewQr?: boolean;
   warehouses: WarehouseOption[];
   locations: LocationOption[];
 }): React.JSX.Element {
@@ -86,8 +95,15 @@ export function AddStockForm({
     const nextProductId = next.id;
     setVariantsLoading(true);
     try {
-      const rows = await apiFetch<{ id: string; sku: string }[]>(`/api/v1/products/${nextProductId}/variants`);
-      setVariants(rows.map((r) => ({ id: r.id, sku: r.sku })));
+      const rows = await apiFetch<{ id: string; sku: string }[]>(
+        `/api/v1/products/${nextProductId}/variants`,
+      );
+      const options = rows.map((r) => ({ id: r.id, sku: r.sku }));
+      setVariants(options);
+      // A product with a single variant: it is the only possible choice, so it comes preselected.
+      if (options.length === 1) {
+        setProductVariantId(options[0]!.id);
+      }
     } catch (err) {
       setError(httpErrorMessage(err));
     } finally {
@@ -180,13 +196,17 @@ export function AddStockForm({
     return (
       <div className="flex max-w-md flex-col gap-4">
         <Alert tone="success">
-          Ingreso registrado. Nueva cantidad física en este almacén: <strong>{result.balanceAfter}</strong>.
+          Ingreso registrado. Nueva cantidad física en este almacén:{' '}
+          <strong>{result.balanceAfter}</strong>.
         </Alert>
         <div className="flex gap-2">
           <Button type="button" onClick={startAnother} className="w-fit">
             Registrar otro ingreso
           </Button>
-          <Link href="/inventory" className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline">
+          <Link
+            href="/inventory"
+            className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+          >
             Ir a inventario
           </Link>
         </div>
@@ -194,137 +214,199 @@ export function AddStockForm({
     );
   }
 
+  const mediaPanel = (
+    <VariantMediaPanel
+      productId={fixedProduct?.id ?? productId}
+      variantId={productVariantId}
+      apiPublicUrl={apiPublicUrl}
+      canViewQr={canViewQr}
+    />
+  );
+
   if (step === 'review') {
     return (
-      <div className="flex max-w-md flex-col gap-4">
-        <div className="rounded-md border border-slate-200 p-4">
-          <h3 className="mb-3 text-sm font-semibold text-slate-900">Revisar ingreso de stock</h3>
-          <dl className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
-            <dt className="text-slate-500">Producto</dt>
-            <dd className="text-slate-900">{selectedProduct?.name ?? '—'}</dd>
-            <dt className="text-slate-500">Variante (Código)</dt>
-            <dd className="text-slate-900">{fixedVariantLabel ?? selectedVariant?.sku ?? '—'}</dd>
-            <dt className="text-slate-500">Sucursal</dt>
-            <dd className="text-slate-900">{selectedWarehouse?.name ?? '—'}</dd>
-            <dt className="text-slate-500">Almacén</dt>
-            <dd className="text-slate-900">{selectedLocation?.name ?? '—'}</dd>
-            <dt className="text-slate-500">Cantidad a ingresar</dt>
-            <dd className="text-slate-900">+{quantity}</dd>
-            <dt className="text-slate-500">Costo unitario</dt>
-            <dd className="text-slate-900">{unitCost}</dd>
-            <dt className="text-slate-500">Motivo</dt>
-            <dd className="text-slate-900">{reason}</dd>
-          </dl>
+      <div className="flex flex-col gap-6 lg:flex-row">
+        <div className="flex w-full max-w-md flex-col gap-4">
+          <div className="rounded-md border border-slate-200 p-4">
+            <h3 className="mb-3 text-sm font-semibold text-slate-900">Revisar ingreso de stock</h3>
+            <dl className="grid grid-cols-[8rem_1fr] gap-y-2 text-sm">
+              <dt className="text-slate-500">Producto</dt>
+              <dd className="text-slate-900">
+                {selectedProduct?.name ?? fixedProduct?.name ?? '—'}
+              </dd>
+              <dt className="text-slate-500">Variante (Código)</dt>
+              <dd className="text-slate-900">{fixedVariantLabel ?? selectedVariant?.sku ?? '—'}</dd>
+              <dt className="text-slate-500">Sucursal</dt>
+              <dd className="text-slate-900">{selectedWarehouse?.name ?? '—'}</dd>
+              <dt className="text-slate-500">Almacén</dt>
+              <dd className="text-slate-900">{selectedLocation?.name ?? '—'}</dd>
+              <dt className="text-slate-500">Cantidad a ingresar</dt>
+              <dd className="text-slate-900">+{quantity}</dd>
+              <dt className="text-slate-500">Costo unitario</dt>
+              <dd className="text-slate-900">{unitCost}</dd>
+              <dt className="text-slate-500">Motivo</dt>
+              <dd className="text-slate-900">{reason}</dd>
+            </dl>
+          </div>
+          {error && <Alert tone="error">{error}</Alert>}
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              loading={submitting}
+              onClick={() => void onConfirm()}
+              className="w-fit"
+            >
+              Confirmar ingreso
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={submitting}
+              onClick={() => setStep('form')}
+              className="w-fit"
+            >
+              Volver a editar
+            </Button>
+          </div>
         </div>
-        {error && <Alert tone="error">{error}</Alert>}
-        <div className="flex gap-2">
-          <Button type="button" loading={submitting} onClick={() => void onConfirm()} className="w-fit">
-            Confirmar ingreso
-          </Button>
-          <Button type="button" variant="ghost" disabled={submitting} onClick={() => setStep('form')} className="w-fit">
-            Volver a editar
-          </Button>
-        </div>
+        {mediaPanel}
       </div>
     );
   }
 
   return (
-    <form onSubmit={onReview} noValidate className="flex max-w-md flex-col gap-4">
-      {error && <Alert tone="error">{error}</Alert>}
+    <div className="flex flex-col gap-6 lg:flex-row">
+      <form onSubmit={onReview} noValidate className="flex w-full max-w-md flex-col gap-4">
+        {error && <Alert tone="error">{error}</Alert>}
 
-      {variantFixed ? (
-        <Field label="Variante" hint="Fija para este ingreso.">
-          <Input readOnly value={fixedVariantLabel ?? productVariantId} />
-        </Field>
-      ) : (
-        <>
-          <div className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-slate-700">Producto</span>
-            <ProductSearchSelect
-              selected={selectedProduct ? { id: selectedProduct.id, label: selectedProduct.name } : null}
-              onSelect={(product) => void onProductChange({ id: product.id, name: product.name })}
-              onClear={() => void onProductChange(null)}
-            />
-          </div>
-          <Field
-            label="Variante"
-            required
-            {...(fieldError['productVariantId'] ? { error: fieldError['productVariantId'] } : {})}
-            {...(variantsLoading ? { hint: 'Cargando variantes…' } : {})}
-          >
-            <Select
-              value={productVariantId}
-              disabled={!productId || variantsLoading}
-              onChange={(event) => setProductVariantId(event.target.value)}
-            >
-              <option value="">{productId ? 'Elegir una variante…' : 'Elige primero un producto'}</option>
-              {variants.map((variant) => (
-                <option key={variant.id} value={variant.id}>
-                  {variant.sku}
-                </option>
-              ))}
-            </Select>
+        {variantFixed ? (
+          <Field label="Variante" hint="Fija para este ingreso.">
+            <Input readOnly value={fixedVariantLabel ?? productVariantId} />
           </Field>
-        </>
-      )}
+        ) : (
+          <>
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-medium text-slate-700">Producto</span>
+              <ProductSearchSelect
+                selected={
+                  selectedProduct ? { id: selectedProduct.id, label: selectedProduct.name } : null
+                }
+                onSelect={(product) => void onProductChange({ id: product.id, name: product.name })}
+                onClear={() => void onProductChange(null)}
+              />
+            </div>
+            <Field
+              label="Variante"
+              required
+              {...(fieldError['productVariantId'] ? { error: fieldError['productVariantId'] } : {})}
+              {...(variantsLoading ? { hint: 'Cargando variantes…' } : {})}
+            >
+              <Select
+                value={productVariantId}
+                disabled={!productId || variantsLoading}
+                onChange={(event) => setProductVariantId(event.target.value)}
+              >
+                <option value="">
+                  {productId ? 'Elegir una variante…' : 'Elige primero un producto'}
+                </option>
+                {variants.map((variant) => (
+                  <option key={variant.id} value={variant.id}>
+                    {variant.sku}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </>
+        )}
 
-      <Field label="Sucursal" required {...(fieldError['warehouseId'] ? { error: fieldError['warehouseId'] } : {})}>
-        <Select value={warehouseId} onChange={(event) => onWarehouseChange(event.target.value)}>
-          <option value="">Elegir una sucursal…</option>
-          {warehouses.map((warehouse) => (
-            <option key={warehouse.id} value={warehouse.id}>
-              {warehouse.name}
+        <Field
+          label="Sucursal"
+          required
+          {...(fieldError['warehouseId'] ? { error: fieldError['warehouseId'] } : {})}
+        >
+          <Select value={warehouseId} onChange={(event) => onWarehouseChange(event.target.value)}>
+            <option value="">Elegir una sucursal…</option>
+            {warehouses.map((warehouse) => (
+              <option key={warehouse.id} value={warehouse.id}>
+                {warehouse.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+
+        <Field
+          label="Almacén"
+          required
+          {...(fieldError['locationId'] ? { error: fieldError['locationId'] } : {})}
+        >
+          <Select
+            value={locationId}
+            disabled={!warehouseId}
+            onChange={(event) => setLocationId(event.target.value)}
+          >
+            <option value="">
+              {warehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}
             </option>
-          ))}
-        </Select>
-      </Field>
+            {locationsInWarehouse.map((location) => (
+              <option key={location.id} value={location.id}>
+                {location.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
 
-      <Field
-        label="Almacén"
-        required
-        {...(fieldError['locationId'] ? { error: fieldError['locationId'] } : {})}
-      >
-        <Select value={locationId} disabled={!warehouseId} onChange={(event) => setLocationId(event.target.value)}>
-          <option value="">{warehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}</option>
-          {locationsInWarehouse.map((location) => (
-            <option key={location.id} value={location.id}>
-              {location.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
+        <Field
+          label="Cantidad a ingresar"
+          required
+          {...(fieldError['quantity'] ? { error: fieldError['quantity'] } : {})}
+        >
+          <Input
+            type="number"
+            min={0}
+            step="any"
+            value={quantity}
+            onChange={(event) => setQuantity(event.target.value)}
+          />
+        </Field>
 
-      <Field label="Cantidad a ingresar" required {...(fieldError['quantity'] ? { error: fieldError['quantity'] } : {})}>
-        <Input type="number" min={0} step="any" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-      </Field>
+        <Field
+          label="Costo unitario"
+          required
+          hint="Costo por unidad del stock que estás ingresando — no es el precio de venta."
+          {...(fieldError['unitCost'] ? { error: fieldError['unitCost'] } : {})}
+        >
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            value={unitCost}
+            onChange={(event) => setUnitCost(event.target.value)}
+          />
+        </Field>
 
-      <Field
-        label="Costo unitario"
-        required
-        hint="Costo por unidad del stock que estás ingresando — no es el precio de venta."
-        {...(fieldError['unitCost'] ? { error: fieldError['unitCost'] } : {})}
-      >
-        <Input type="number" min={0} step="0.01" value={unitCost} onChange={(event) => setUnitCost(event.target.value)} />
-      </Field>
+        <Field
+          label="Motivo del ingreso"
+          required
+          hint="Ej: producción propia, compra directa a proveedor, devolución de consignación."
+          {...(fieldError['reason'] ? { error: fieldError['reason'] } : {})}
+        >
+          <Textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            maxLength={500}
+          />
+        </Field>
 
-      <Field
-        label="Motivo del ingreso"
-        required
-        hint="Ej: producción propia, compra directa a proveedor, devolución de consignación."
-        {...(fieldError['reason'] ? { error: fieldError['reason'] } : {})}
-      >
-        <Textarea value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} />
-      </Field>
-
-      <div className="flex gap-2">
-        <Button type="submit" className="w-fit">
-          Revisar ingreso
-        </Button>
-        <ButtonLink href="/inventory" variant="ghost" className="w-fit">
-          Cancelar
-        </ButtonLink>
-      </div>
-    </form>
+        <div className="flex gap-2">
+          <Button type="submit" className="w-fit">
+            Revisar ingreso
+          </Button>
+          <ButtonLink href="/inventory" variant="ghost" className="w-fit">
+            Cancelar
+          </ButtonLink>
+        </div>
+      </form>
+      {mediaPanel}
+    </div>
   );
 }

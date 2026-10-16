@@ -17,13 +17,22 @@ export interface ProductSearchResult {
  * grain, `products.view`). `q` matches the product name, the variant's code (SKU) or its barcode
  * (case-insensitive substring), so typing a code finds it directly. Only active variants of ACTIVE
  * products are offered (`status` + `productStatus`): a draft or discontinued product is never put in a
- * cart. Each hit carries its code so the picker can show it under the name. Bounded to a handful of
+ * cart, and — given the sale's `locationId` — only variants with stock available there. Each hit carries its code so the picker can show it under the name. Bounded to a handful of
  * results; this is a picker, not the catalog list.
  */
-export async function searchProducts(q: string): Promise<ProductSearchResult[]> {
+export async function searchProducts(q: string, locationId?: string): Promise<ProductSearchResult[]> {
   const page = await apiFetch<{ data: { productId: string; productName: string; variantId: string; sku: string }[] }>(
     '/api/v1/reports/product-catalog',
-    { query: { q, status: 'active', productStatus: 'active', pageSize: 8 } },
+    {
+      query: {
+        q,
+        status: 'active',
+        productStatus: 'active',
+        // Only what can actually be sold: stock available at the sale's own almacén.
+        ...(locationId ? { stock: 'available', locationId } : {}),
+        pageSize: 8,
+      },
+    },
   );
   return page.data.map((row) => ({ id: row.productId, variantId: row.variantId, name: row.productName, sku: row.sku }));
 }

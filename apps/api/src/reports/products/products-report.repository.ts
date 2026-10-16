@@ -32,6 +32,8 @@ export interface ProductCatalogFilters {
   q?: string | undefined;
   categoryId?: string | undefined;
   productStatus?: string | undefined;
+  variantId?: string | undefined;
+  locationId?: string | undefined;
   status?: ProductCatalogStatus | undefined;
   stock?: ProductCatalogStockFilter | undefined;
 }
@@ -61,8 +63,10 @@ export class ProductsReportRepository {
         ${filters.q ? sql`AND (p.name ILIKE '%' || ${filters.q} || '%' OR pv.sku ILIKE '%' || ${filters.q} || '%' OR pv.barcode ILIKE '%' || ${filters.q} || '%')` : sql``}
         ${filters.categoryId ? sql`AND p.category_id = ${filters.categoryId}` : sql``}
         ${filters.status ? sql`AND pv.status = ${filters.status}` : sql``}
+        ${filters.variantId ? sql`AND pv.id = ${filters.variantId}` : sql``}
         ${filters.productStatus ? sql`AND p.status = ${filters.productStatus}` : sql``}
         ${filters.stock === 'with' ? sql`AND COALESCE(stock.available_quantity, 0) > 1` : sql``}
+        ${filters.stock === 'available' ? sql`AND COALESCE(stock.available_quantity, 0) > 0` : sql``}
         ${filters.stock === 'without' ? sql`AND COALESCE(stock.available_quantity, 0) = 0` : sql``}
     `;
   }
@@ -95,6 +99,7 @@ export class ProductsReportRepository {
         SELECT product_variant_id, SUM(quantity_available) AS available_quantity
         FROM inventory_balances
         WHERE tenant_id = ${tenantId}
+          ${filters.locationId ? sql`AND location_id = ${filters.locationId}` : sql``}
         GROUP BY product_variant_id
       ) stock ON stock.product_variant_id = pv.id
       LEFT JOIN LATERAL (

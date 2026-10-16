@@ -115,6 +115,62 @@ describe('AdjustmentForm', () => {
     expect(mockedFetch).not.toHaveBeenCalled();
   });
 
+  it('offers an OPTIONAL "Costo unitario" for an inbound adjustment: sent when filled, omitted when empty', async () => {
+    mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 8 });
+    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    fireEvent.change(screen.getByLabelText(/sucursal/i), { target: { value: 'wh-1' } });
+    fireEvent.change(screen.getByLabelText(/almacén/i), { target: { value: 'loc-1' } });
+    fireEvent.change(screen.getByLabelText(/cantidad/i), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText(/motivo/i), { target: { value: 'conteo' } });
+    // Default type is an inbound one: the cost field shows but never blocks the submit.
+    expect(screen.getByRole('button', { name: /registrar ajuste/i })).toBeEnabled();
+    fireEvent.change(screen.getByLabelText(/costo unitario/i), { target: { value: '12.5' } });
+    fireEvent.click(screen.getByRole('button', { name: /registrar ajuste/i }));
+    await waitFor(() => expect(screen.getByText(/ajuste registrado/i)).toBeInTheDocument());
+    const body = (mockedFetch.mock.calls.at(-1)![1] as { body: Record<string, unknown> }).body;
+    expect(body).toMatchObject({ movementType: 'ADJUSTMENT_IN', unitCost: 12.5 });
+  });
+
+  it('submits an inbound adjustment with no cost and sends no unitCost (server uses the average)', async () => {
+    mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 8 });
+    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    fireEvent.change(screen.getByLabelText(/sucursal/i), { target: { value: 'wh-1' } });
+    fireEvent.change(screen.getByLabelText(/almacén/i), { target: { value: 'loc-1' } });
+    fireEvent.change(screen.getByLabelText(/cantidad/i), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText(/motivo/i), { target: { value: 'conteo' } });
+    fireEvent.click(screen.getByRole('button', { name: /registrar ajuste/i }));
+    await waitFor(() => expect(screen.getByText(/ajuste registrado/i)).toBeInTheDocument());
+    const body = (mockedFetch.mock.calls.at(-1)![1] as { body: Record<string, unknown> }).body;
+    expect(body).not.toHaveProperty('unitCost');
+  });
+
+  it('requires "Costo unitario" for a Recepción (the API rejects it without one)', async () => {
+    mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 8 });
+    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    fireEvent.change(screen.getByLabelText(/sucursal/i), { target: { value: 'wh-1' } });
+    fireEvent.change(screen.getByLabelText(/almacén/i), { target: { value: 'loc-1' } });
+    fireEvent.change(screen.getByLabelText(/^tipo/i), { target: { value: 'RECEIPT' } });
+    fireEvent.change(screen.getByLabelText(/cantidad/i), { target: { value: '3' } });
+    fireEvent.change(screen.getByLabelText(/motivo/i), { target: { value: 'compra' } });
+    expect(screen.getByRole('button', { name: /registrar ajuste/i })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/costo unitario/i), { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: /registrar ajuste/i }));
+    await waitFor(() => expect(screen.getByText(/ajuste registrado/i)).toBeInTheDocument());
+    const body = (mockedFetch.mock.calls.at(-1)![1] as { body: Record<string, unknown> }).body;
+    expect(body).toMatchObject({ movementType: 'RECEIPT', unitCost: 4 });
+  });
+
+  it('hides "Costo unitario" for an outflow (it draws at the average cost) and sends none', async () => {
+    mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 3 });
+    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    fillFixed();
+    expect(screen.queryByLabelText(/costo unitario/i)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /registrar ajuste/i }));
+    await waitFor(() => expect(screen.getByText(/ajuste registrado/i)).toBeInTheDocument());
+    const body = (mockedFetch.mock.calls.at(-1)![1] as { body: Record<string, unknown> }).body;
+    expect(body).not.toHaveProperty('unitCost');
+  });
+
   it('shows a location-authorization message on 403 and does not redirect', async () => {
     mockedFetch.mockRejectedValueOnce(
       new ApiError(403, 'FORBIDDEN', 'You are not authorized to operate on this location.', undefined),

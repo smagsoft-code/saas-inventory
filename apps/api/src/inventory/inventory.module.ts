@@ -97,6 +97,8 @@ import { WarehousesService } from './warehouses/warehouses.service';
     // reserves/commits through StockLedgerService — modules.md's SALES --> INVENTORY edge, the same
     // "reuse the public provider, never a parallel read" posture IMPORT already uses.
     InventoryBalancesRepository,
+    // A sales return values its reingreso at the cost the original SALE drew at (Kardex average).
+    MovingAverageCostService,
   ],
 })
 export class InventoryModule {}

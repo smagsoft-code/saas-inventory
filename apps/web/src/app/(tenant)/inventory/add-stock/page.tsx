@@ -2,6 +2,8 @@ import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { listWarehouses } from '../../../../lib/inventory/warehouses';
 import { listLocations } from '../../../../lib/inventory/locations';
+import { listProductCatalog } from '../../../../lib/catalog/product-catalog';
+import { apiPublicUrl } from '../../../../lib/api/public-url';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { Alert } from '../../../../components/ui/alert';
@@ -53,6 +55,13 @@ export default async function AddStockPage({
 
   const sp = await searchParams;
   const fixedProductVariantId = sp.productVariantId || undefined;
+  // A fixed variant arrives as an id only: resolve its product + code so the form shows names (and the
+  // photo/QR panel knows which product to look up) instead of the raw identifier.
+  const fixedRow =
+    fixedProductVariantId && canViewProducts
+      ? (await listProductCatalog({ variantId: fixedProductVariantId, pageSize: 1 }).catch(() => null))?.data[0]
+      : undefined;
+  const fixedSku = sp.sku || fixedRow?.sku;
 
   const [warehouses, locations] = await Promise.all([
     canViewWarehouses ? listWarehouses({ pageSize: 100, status: 'active' }).catch(() => null) : Promise.resolve(null),
@@ -82,7 +91,10 @@ export default async function AddStockPage({
       )}
       <AddStockForm
         {...(fixedProductVariantId ? { fixedProductVariantId } : {})}
-        {...(fixedProductVariantId && sp.sku ? { fixedVariantLabel: sp.sku } : {})}
+        {...(fixedProductVariantId && fixedSku ? { fixedVariantLabel: fixedSku } : {})}
+        {...(fixedRow ? { fixedProduct: { id: fixedRow.productId, name: fixedRow.productName } } : {})}
+        apiPublicUrl={apiPublicUrl()}
+        canViewQr={checker.can('catalog.qr.manage')}
         warehouses={(warehouses?.data ?? []).map((w) => ({ id: w.id, name: w.name }))}
         locations={(locations?.data ?? []).map((l) => ({ id: l.id, warehouseId: l.warehouseId, name: l.name }))}
       />

@@ -45,7 +45,7 @@ describe('ProductsReportService.listCatalog', () => {
     expect(productsReportRepository.list).toHaveBeenCalledWith(
       expect.anything(),
       't1',
-      { q: 'widg', categoryId: 'c1', status: 'active', productStatus: undefined, stock: 'with' },
+      { q: 'widg', categoryId: 'c1', status: 'active', productStatus: undefined, variantId: undefined, locationId: undefined, stock: 'with' },
       1,
       20,
     );

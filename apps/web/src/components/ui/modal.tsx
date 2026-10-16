@@ -29,6 +29,7 @@ export function Modal({
   open,
   onClose,
   title,
+  subtitle,
   children,
   footer,
   size = 'md',
@@ -36,6 +37,8 @@ export function Modal({
   open: boolean;
   onClose: () => void;
   title: string;
+  /** Muted context shown next to the title (e.g. the sucursal · almacén a sale is made from). */
+  subtitle?: string;
   children: ReactNode;
   footer?: ReactNode;
   size?: Size;
@@ -81,7 +84,10 @@ export function Modal({
         )}
       >
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6">
-          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
+            <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+            {subtitle && <p className="truncate text-xs text-slate-500">{subtitle}</p>}
+          </div>
           <button
             type="button"
             aria-label="Cerrar"

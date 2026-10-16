@@ -23,6 +23,7 @@ import { EVENT_TYPES } from '../../common/events/event-types';
 import { localDayRangeToUtc } from '../../common/reporting/local-day-range';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
+import { MovingAverageCostService } from '../../inventory/kardex/moving-average-cost.service';
 import { LocationsRepository } from '../../inventory/repositories/locations.repository';
 import { InsufficientStockError, StockLedgerService } from '../../inventory/stock-ledger.service';
 import { OrderItemsRepository } from '../repositories/order-items.repository';
@@ -100,6 +101,7 @@ export class ReturnsService {
     private readonly domainEventPublisher: DomainEventPublisher,
     private readonly usersRepository: UsersRepository,
     private readonly tenantSettingsRepository: TenantSettingsRepository,
+    private readonly movingAverageCostService: MovingAverageCostService,
   ) {}
 
   async list(tenantId: string, actorId: string, query: ListReturnsQueryDto): Promise<PaginatedResult<ReturnResponseDto>> {
@@ -189,6 +191,9 @@ export class ReturnsService {
       if (location.status !== 'active') {
         throw new ConflictException('The receiving location is not active.');
       }
+      // Same scope as every read of the return (ADR-0024/0035): without this a restricted user could
+      // register a return at a location they cannot then open (the detail answers 404 outside scope).
+      await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, dto.locationId);
 
       const orderItems = await this.orderItemsRepository.listByOrder(tx, tenantId, order.id);
       const orderItemsById = new Map(orderItems.map((item) => [item.id, item]));
@@ -408,16 +413,28 @@ export class ReturnsService {
         throw new UnprocessableEntityException('Every return line must be inspected before the return can be resolved.');
       }
 
+      const order = await this.ordersRepository.findById(tx, tenantId, ret.orderId);
       for (const item of items) {
         // Re-check location authorization at the moment the physical effect happens (§21, §37).
         await this.locationAuthorizationService.assertAccess(tx, tenantId, actorId, item.dispositionLocationId!);
-        // A RETURN's unit cost is the cost the original SALE actually removed at (order_items'
-        // frozen unit_cost_snapshot), for symmetry with the outflow it reverses — not a freshly
-        // computed average, which may have drifted since the sale. Falls back to leaving unitCost
-        // unset (the Kardex then estimates from the variant's current cost, flagged as such) only
-        // for a legacy order line that predates unit_cost_snapshot being populated.
+        // A RETURN's unit cost is the cost the original SALE actually drew at: the Kardex average
+        // vigente just before that SALE movement at the sale's location (the Costo U its row shows),
+        // so the reingreso reverses the outflow at the same value and does not distort the average.
+        // Not order_items.unit_cost_snapshot — that is the variant's static `cost` field, which differs
+        // from the weighted average the Kardex values outflows with. The snapshot remains only as a
+        // fallback for a legacy order with no SALE movement to read the cost from; with neither,
+        // unitCost stays unset (the Kardex then estimates from the variant's cost, flagged).
+        const saleCost = order
+          ? await this.movingAverageCostService.getSaleUnitCost(tx, tenantId, {
+              productVariantId: item.productVariantId,
+              locationId: order.locationId,
+              orderId: order.id,
+            })
+          : undefined;
         const orderItem = await this.orderItemsRepository.findById(tx, tenantId, item.orderItemId);
-        const unitCost = orderItem?.unitCostSnapshot !== null && orderItem?.unitCostSnapshot !== undefined ? Number(orderItem.unitCostSnapshot) : undefined;
+        const snapshotCost =
+          orderItem?.unitCostSnapshot !== null && orderItem?.unitCostSnapshot !== undefined ? Number(orderItem.unitCostSnapshot) : undefined;
+        const unitCost = saleCost ?? snapshotCost;
         try {
           await this.stockLedgerService.applyMovement(tx, {
             tenantId,

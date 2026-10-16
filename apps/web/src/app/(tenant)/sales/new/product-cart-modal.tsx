@@ -57,6 +57,7 @@ export function ProductCartModal({
   open,
   onClose,
   cart,
+  locationLabel,
   canViewProducts,
   onCartUpdated,
   customerLabel,
@@ -71,6 +72,8 @@ export function ProductCartModal({
   open: boolean;
   onClose: () => void;
   cart: Cart;
+  /** "Sucursal · Almacén" the sale is made from — shown next to the window title. */
+  locationLabel?: string;
   canViewProducts: boolean;
   onCartUpdated: (cart: Cart) => void;
   customerLabel: string | null;
@@ -209,13 +212,13 @@ export function ProductCartModal({
     }
     setSearching(true);
     const timer = setTimeout(() => {
-      void searchProducts(q)
+      void searchProducts(q, cart.locationId)
         .then((rows) => setResults(rows))
         .catch((err: unknown) => setError(httpErrorMessage(err)))
         .finally(() => setSearching(false));
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [query]);
+  }, [query, cart.locationId]);
 
   const inCartVariantIds = new Set(cart.items.map((i) => i.productVariantId));
 
@@ -397,6 +400,7 @@ export function ProductCartModal({
       open={open}
       onClose={onClose}
       title="Nueva venta"
+      {...(locationLabel ? { subtitle: locationLabel } : {})}
       size="xl"
       footer={
         <div className="flex flex-wrap items-center justify-between gap-2">

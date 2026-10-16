@@ -294,6 +294,7 @@ export function NewSale({
         open={productModalOpen}
         onClose={() => setProductModalOpen(false)}
         cart={cart}
+        locationLabel={`${warehouseName ? `${warehouseName} · ` : ''}${locationName}`}
         canViewProducts={canViewProducts}
         onCartUpdated={setCart}
         customerLabel={customerLabel}

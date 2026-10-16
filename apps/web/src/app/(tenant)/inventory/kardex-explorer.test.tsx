@@ -353,4 +353,50 @@ describe('KardexExplorer', () => {
     fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: 'loc-2' } });
     await waitFor(() => expect(mockedGetKardex).toHaveBeenCalledWith({ productVariantId: 'v2', locationId: 'loc-2' }));
   }, 10000);
+  it('"Todos los almacenes" shows the stock / weighted-average cost / total cost across locations, with a collapsible per-sucursal breakdown', async () => {
+    const twoLocations: LocationOption[] = [
+      { id: 'loc-1', name: 'Almacén Principal', warehouseId: 'w-1', warehouseName: 'Sucursal Centro' },
+      { id: 'loc-2', name: 'Almacén Norte', warehouseId: 'w-2', warehouseName: 'Sucursal Norte' },
+    ];
+    mockedFetch
+      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
+      .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }, { locationId: 'loc-2' }] });
+    // loc-1: 10 units @ 5 = 50 ; loc-2: 30 units @ 9 = 270  ->  40 units, 320 total, 8.00 average.
+    mockedGetKardex.mockImplementation((async (query: { locationId: string }) => ({
+      ...KARDEX_RESPONSE,
+      locationId: query.locationId,
+      closing:
+        query.locationId === 'loc-1'
+          ? { stockUnits: 10, averageCost: 5, stockValue: 50 }
+          : { stockUnits: 30, averageCost: 9, stockValue: 270 },
+    })) as never);
+
+    renderExplorer(twoLocations);
+    await selectProductFromSearch('Silla de Comedor');
+    await screen.findByRole('option', { name: 'Todos los almacenes' });
+    fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: '__all__' } });
+
+    const totals = await screen.findByTestId('all-locations-totals');
+    expect(totals).toHaveTextContent('Stock disponible');
+    expect(totals).toHaveTextContent('40');
+    expect(totals).toHaveTextContent('Costo promedio');
+    expect(totals).toHaveTextContent('$8.00');
+    expect(totals).toHaveTextContent('Costo total');
+    expect(totals).toHaveTextContent('$320.00');
+    // The per-location ledger is not merged: no Kardex table in this mode.
+    expect(screen.getByText('Mostrando los totales de todos los almacenes')).toBeInTheDocument();
+
+    // Collapsed by default; opens to the per-sucursal / almacén rows.
+    expect(screen.queryByText('Sucursal Norte')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /existencias por sucursal y almacén/i }));
+    expect(screen.getByText('Sucursal Norte')).toBeInTheDocument();
+    expect(screen.getByText('Almacén Norte')).toBeInTheDocument();
+    expect(screen.getByText('$270.00')).toBeInTheDocument();
+
+    // Back to a single almacén restores its own Kardex.
+    fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: 'loc-2' } });
+    await waitFor(() => expect(mockedGetKardex).toHaveBeenLastCalledWith({ productVariantId: 'v1', locationId: 'loc-2' }));
+    await waitFor(() => expect(screen.queryByTestId('all-locations-totals')).not.toBeInTheDocument());
+  }, 10000);
 });

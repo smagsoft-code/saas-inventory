@@ -139,6 +139,11 @@ describe('ProductCartModal', () => {
     });
   });
 
+  it('shows the sucursal · almacén next to the window title', () => {
+    renderModal(EMPTY_CART, { locationLabel: 'Sucursal Centro · Almacén Principal' });
+    expect(screen.getByText('Sucursal Centro · Almacén Principal')).toBeInTheDocument();
+  });
+
   it('searches GET /reports/product-catalog?q= (debounced) and adds a single-variant product at maxPrice', async () => {
     const { onCartUpdated } = renderModal();
     vi.useFakeTimers();
@@ -150,7 +155,7 @@ describe('ProductCartModal', () => {
     // debounced search awaits the (otherwise fake-timer-frozen) mocked apiFetch promise.
     await vi.advanceTimersByTimeAsync(350);
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/reports/product-catalog', {
-      query: { q: 'blen', status: 'active', productStatus: 'active', pageSize: 8 },
+      query: { q: 'blen', status: 'active', productStatus: 'active', stock: 'available', locationId: 'loc-1', pageSize: 8 },
     });
     // Switch back to real timers before the remaining, non-debounced interactions — mixing fake
     // timers with Testing Library's own polling `waitFor` would hang. The React state update from

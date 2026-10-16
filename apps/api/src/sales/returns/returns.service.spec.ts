@@ -64,6 +64,7 @@ function build() {
   };
   const ordersRepository = {
     lockById: vi.fn().mockResolvedValue(CONFIRMED_ORDER),
+    findById: vi.fn().mockResolvedValue(CONFIRMED_ORDER),
     findNumbersByIds: vi.fn().mockResolvedValue(new Map()),
   };
   const orderItemsRepository = { listByOrder: vi.fn().mockResolvedValue([ORDER_ITEM]), findById: vi.fn().mockResolvedValue(ORDER_ITEM),
@@ -81,6 +82,7 @@ function build() {
   const domainEventPublisher = { append: vi.fn() };
   const usersRepository = { findNamesByIds: vi.fn().mockResolvedValue(new Map()) };
   const tenantSettingsRepository = { find: vi.fn().mockResolvedValue({ timezone: 'America/Guayaquil' }) };
+  const movingAverageCostService = { getSaleUnitCost: vi.fn().mockResolvedValue(undefined) };
 
   const service = new ReturnsService(
     returnsRepository as never,
@@ -95,8 +97,10 @@ function build() {
     domainEventPublisher as never,
     usersRepository as never,
     tenantSettingsRepository as never,
+    movingAverageCostService as never,
   );
   return {
+    movingAverageCostService,
     service,
     usersRepository,
     returnsRepository,
@@ -134,6 +138,22 @@ describe('ReturnsService.create', () => {
       expect.objectContaining({ orderId: 'order-1', status: 'requested', requestedBy: ACTOR }),
     );
     expect(returnItemsRepository.createMany).toHaveBeenCalled();
+  });
+
+  it('refuses a receiving location outside the caller scope (it could not be opened afterwards) and stores nothing', async () => {
+    const { service, returnsRepository, locationAuthorizationService } = build();
+    locationAuthorizationService.assertAccess.mockRejectedValueOnce(new (await import('@nestjs/common')).ForbiddenException('nope'));
+    await expect(
+      service.create(
+        TENANT,
+        ACTOR,
+        { orderId: 'order-1', locationId: 'loc-other', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] },
+        META,
+        KEY,
+      ),
+    ).rejects.toThrow();
+    expect(locationAuthorizationService.assertAccess).toHaveBeenCalledWith(expect.anything(), TENANT, ACTOR, 'loc-other');
+    expect(returnsRepository.create).not.toHaveBeenCalled();
   });
 
   it('rejects a return against a non-confirmed order (§8 / R5)', async () => {
@@ -240,6 +260,40 @@ describe('ReturnsService.resolve', () => {
       }),
     );
     expect(returnsRepository.updateStatus).toHaveBeenCalledWith(expect.anything(), TENANT, 'ret-1', expect.objectContaining({ status: 'resolved' }));
+  });
+
+  it('values the RETURN at the cost the original SALE drew at (Kardex average), not the variant cost snapshot', async () => {
+    const { service, returnsRepository, returnItemsRepository, stockLedgerService, orderItemsRepository, movingAverageCostService } = build();
+    returnsRepository.lockById.mockResolvedValue({ ...RETURN_ROW, status: 'inspecting' });
+    returnItemsRepository.listByReturn.mockResolvedValue([
+      { ...RETURN_ITEM, disposition: 'restock', dispositionLocationId: 'loc-sell', quantityReturned: '1' },
+    ]);
+    orderItemsRepository.findById.mockResolvedValue({ ...ORDER_ITEM, unitCostSnapshot: '8' });
+    movingAverageCostService.getSaleUnitCost.mockResolvedValue(11.73);
+    await service.resolve(TENANT, ACTOR, 'ret-1', META, KEY);
+    expect(movingAverageCostService.getSaleUnitCost).toHaveBeenCalledWith(
+      expect.anything(),
+      TENANT,
+      expect.objectContaining({ orderId: CONFIRMED_ORDER.id, locationId: CONFIRMED_ORDER.locationId }),
+    );
+    expect(stockLedgerService.applyMovement).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ movementType: 'RETURN', unitCost: 11.73 }),
+    );
+  });
+
+  it('falls back to the order line cost snapshot only when the sale has no SALE movement to read', async () => {
+    const { service, returnsRepository, returnItemsRepository, stockLedgerService, orderItemsRepository } = build();
+    returnsRepository.lockById.mockResolvedValue({ ...RETURN_ROW, status: 'inspecting' });
+    returnItemsRepository.listByReturn.mockResolvedValue([
+      { ...RETURN_ITEM, disposition: 'restock', dispositionLocationId: 'loc-sell', quantityReturned: '1' },
+    ]);
+    orderItemsRepository.findById.mockResolvedValue({ ...ORDER_ITEM, unitCostSnapshot: '8' });
+    await service.resolve(TENANT, ACTOR, 'ret-1', META, KEY);
+    expect(stockLedgerService.applyMovement).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ movementType: 'RETURN', unitCost: 8 }),
+    );
   });
 
   it('requires every line to be inspected first', async () => {

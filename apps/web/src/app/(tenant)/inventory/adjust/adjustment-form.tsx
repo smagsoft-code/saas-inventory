@@ -80,6 +80,7 @@ export function AdjustmentForm({
   const [locationId, setLocationId] = useState(fixedLocationId ?? '');
   const [movementType, setMovementType] = useState<AdjustmentMovementType>('ADJUSTMENT_IN');
   const [quantity, setQuantity] = useState('');
+  const [unitCost, setUnitCost] = useState('');
   const [reason, setReason] = useState('');
   const [occurredAt, setOccurredAt] = useState(() => nowForDatetimeLocalInput());
 
@@ -89,6 +90,13 @@ export function AdjustmentForm({
   const [submitting, setSubmitting] = useState(false);
 
   const variantFixed = Boolean(fixedProductVariantId);
+  // Same role as "Costo unitario" in Agregar stock: the cost of the quantity coming IN, which feeds
+  // the variant's weighted-average cost — but OPTIONAL here: left empty, the server uses the current
+  // average cost. An outflow has no cost of its own (it draws at the average).
+  const needsCost = movementType !== 'ADJUSTMENT_OUT';
+  // The API requires the cost for a Recepción (a supplier delivery always has one); for an
+  // Ajuste positivo it is optional.
+  const costRequired = movementType === 'RECEIPT';
   const locationsInWarehouse = useMemo(
     () => locations.filter((l) => l.warehouseId === warehouseId),
     [locations, warehouseId],
@@ -102,8 +110,13 @@ export function AdjustmentForm({
 
   const canSubmit = useMemo(
     () =>
-      productVariantId !== '' && locationId !== '' && quantity !== '' && reason.trim() !== '' && occurredAt !== '',
-    [productVariantId, locationId, quantity, reason, occurredAt],
+      productVariantId !== '' &&
+      locationId !== '' &&
+      quantity !== '' &&
+      (!costRequired || unitCost !== '') &&
+      reason.trim() !== '' &&
+      occurredAt !== '',
+    [productVariantId, locationId, quantity, costRequired, unitCost, reason, occurredAt],
   );
 
   async function onProductChange(nextProductId: string): Promise<void> {
@@ -136,6 +149,12 @@ export function AdjustmentForm({
     if (quantity === '' || Number.isNaN(q) || q <= 0) {
       next['quantity'] = 'Ingresa una cantidad mayor que cero.';
     }
+    if (needsCost && (costRequired || unitCost !== '')) {
+      const cost = Number(unitCost);
+      if (unitCost === '' || Number.isNaN(cost) || cost < 0) {
+        next['unitCost'] = 'Ingresa el costo unitario (0 o mayor).';
+      }
+    }
     if (reason.trim().length < 1 || reason.trim().length > 500) {
       next['reason'] = 'Se requiere un motivo de 1–500 caracteres.';
     }
@@ -161,12 +180,14 @@ export function AdjustmentForm({
         locationId,
         movementType,
         quantity: Number(quantity),
+        ...(needsCost && unitCost !== '' ? { unitCost: Number(unitCost) } : {}),
         reason: reason.trim(),
         occurredAt: new Date(occurredAt).toISOString(),
       };
       const movement = await apiFetch<InventoryMovement>(ADJUSTMENTS_PATH, { method: 'POST', body });
       setResult(movement);
       setQuantity('');
+      setUnitCost('');
       setReason('');
       setOccurredAt(nowForDatetimeLocalInput());
       router.refresh();
@@ -282,6 +303,30 @@ export function AdjustmentForm({
           }}
         />
       </Field>
+
+      {needsCost && (
+        <Field
+          label="Costo unitario"
+          {...(costRequired ? { required: true } : {})}
+          hint={
+            costRequired
+              ? 'Costo por unidad del stock que ingresa — no es el precio de venta.'
+              : 'Opcional. Costo por unidad del stock que ingresa (no es el precio de venta); si lo dejas vacío se usa el costo promedio actual.'
+          }
+          {...(fieldError['unitCost'] ? { error: fieldError['unitCost'] } : {})}
+        >
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            value={unitCost}
+            onChange={(e) => {
+              setUnitCost(e.target.value);
+              setResult(null);
+            }}
+          />
+        </Field>
+      )}
 
       <Field
         label="Motivo"

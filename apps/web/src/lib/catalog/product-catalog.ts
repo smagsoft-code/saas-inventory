@@ -17,6 +17,8 @@ export interface ListProductCatalogQuery {
   pageSize?: number;
   q?: string;
   categoryId?: string;
+  /** Exactly one variant (to resolve a variant id to its code/name). */
+  variantId?: string;
   status?: ProductCatalogStatus;
   stock?: ProductCatalogStockFilter;
 }
@@ -31,6 +33,9 @@ export async function listProductCatalog(query: ListProductCatalogQuery = {}): P
   }
   if (query.categoryId) {
     params['categoryId'] = query.categoryId;
+  }
+  if (query.variantId) {
+    params['variantId'] = query.variantId;
   }
   if (query.status) {
     params['status'] = query.status;

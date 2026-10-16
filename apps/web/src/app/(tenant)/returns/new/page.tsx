@@ -3,6 +3,7 @@ import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { listOrders } from '../../../../lib/sales/orders';
 import { listWarehouses } from '../../../../lib/inventory/warehouses';
+import { getLocationScope, type LocationScope } from '../../../../lib/inventory/location-scope';
 import { buildLocationIndex } from '../../../../lib/inventory/location-index';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
@@ -40,10 +41,11 @@ export default async function NewReturnPage({
   const preselectOrderId = sp.orderId || undefined;
 
   const canViewWarehouses = checker.can('warehouses.view');
-  const [orders, warehouses, index] = await Promise.all([
+  const [orders, warehouses, index, scope] = await Promise.all([
     listOrders({ status: 'confirmed', pageSize: 100 }).catch(() => null),
     canViewWarehouses ? listWarehouses({ pageSize: 100, status: 'active' }).catch(() => null) : Promise.resolve(null),
     buildLocationIndex(canViewWarehouses),
+    getLocationScope().catch((): LocationScope => ({ unrestricted: false, locationIds: [] })),
   ]);
 
   const orderOptions: OrderOption[] = (orders?.data ?? []).map((order) => ({
@@ -51,10 +53,14 @@ export default async function NewReturnPage({
     orderNumber: order.orderNumber,
     customerName: order.customer.name,
   }));
-  const warehouseOptions: WarehouseOption[] = (warehouses?.data ?? []).map((w) => ({ id: w.id, name: w.name }));
+  // Only the almacenes the caller may operate at (ADR-0024/0035) — a return received anywhere else
+  // could not be opened afterwards (the detail is 404 outside scope) and the API now refuses it.
   const locationOptions: LocationOption[] = index.locations
-    .filter((location) => location.status === 'active')
+    .filter((location) => location.status === 'active' && (scope.unrestricted || scope.locationIds.includes(location.id)))
     .map((location) => ({ id: location.id, warehouseId: location.warehouseId, name: location.name }));
+  const warehouseOptions: WarehouseOption[] = (warehouses?.data ?? [])
+    .filter((w) => locationOptions.some((l) => l.warehouseId === w.id))
+    .map((w) => ({ id: w.id, name: w.name }));
 
   return (
     <PageContainer>

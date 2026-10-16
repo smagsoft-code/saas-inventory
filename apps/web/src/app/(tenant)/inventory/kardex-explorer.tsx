@@ -5,6 +5,7 @@ import { apiFetch } from '../../../lib/api/client';
 import { buildKardexExportHref, getKardex } from '../../../lib/inventory/kardex';
 import type { KardexResponse } from '../../../lib/types/kardex';
 import { Button, Card, CardBody, EmptyState, ErrorState, Field, Input, Select, Spinner } from '../../../components/ui';
+import { KardexAllLocations } from './kardex-all-locations';
 import { KardexAllMovements } from './kardex-all-movements';
 import { KardexStockByLocation } from './kardex-stock-by-location';
 import { KardexTable } from './kardex-table';
@@ -23,6 +24,9 @@ export interface LocationOption {
   warehouseId: string;
   warehouseName: string;
 }
+
+/** Sentinel value of the Almacén select: totals across every location holding the variant. */
+const ALL_LOCATIONS = '__all__';
 
 const SEARCH_DEBOUNCE_MS = 250;
 const PICKER_PAGE_SIZE = 10;
@@ -235,6 +239,12 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
     if (!selectedVariantId || !selectedLocationId || dateError) {
       return;
     }
+    if (selectedLocationId === ALL_LOCATIONS) {
+      // The ledger is per location; the all-locations view loads its own per-location totals.
+      setKardexData(null);
+      setKardexError(null);
+      return;
+    }
     setKardexLoading(true);
     setKardexError(null);
     const from = dateFrom ? `${dateFrom}T00:00:00.000Z` : undefined;
@@ -251,7 +261,8 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
 
   const selectedLocation = variantLocations.find((l) => l.id === selectedLocationId) ?? locationsById.get(selectedLocationId);
   const showCost = kardexData ? kardexData.opening.averageCost !== undefined : false;
-  const exportQuery = selectedVariantId && selectedLocationId
+  const allLocationsSelected = selectedLocationId === ALL_LOCATIONS;
+  const exportQuery = selectedVariantId && selectedLocationId && !allLocationsSelected
     ? {
         productVariantId: selectedVariantId,
         locationId: selectedLocationId,
@@ -375,6 +386,7 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
                   <Field label="Almacén">
                     <Select value={selectedLocationId} disabled={locationsLoading} onChange={(event) => setSelectedLocationId(event.target.value)}>
                       <option value="">Elegir un almacén…</option>
+                      <option value={ALL_LOCATIONS}>Todos los almacenes</option>
                       {variantLocations.map((location) => (
                         <option key={location.id} value={location.id}>
                           {location.warehouseName} — {location.name}
@@ -394,7 +406,18 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
               </div>
             </div>
 
-            {kardexData && (
+            {allLocationsSelected && selectedVariantId && (
+              <div className="border-t border-slate-100 pt-4">
+                <KardexAllLocations
+                  productVariantId={selectedVariantId}
+                  locations={variantLocations}
+                  {...(dateFrom ? { from: `${dateFrom}T00:00:00.000Z` } : {})}
+                  {...(dateTo ? { to: nextDayStartUtc(dateTo) } : {})}
+                />
+              </div>
+            )}
+
+            {kardexData && !allLocationsSelected && (
               <div className="flex flex-wrap gap-6 border-t border-slate-100 pt-4">
                 <div>
                   <p className="text-xs uppercase tracking-wide text-slate-500">Stock disponible</p>
@@ -483,7 +506,14 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
           <EmptyState title="Esta variante no tiene almacenes disponibles en este tenant" />
         )}
 
-        {selectedLocationId && kardexLoading && (
+        {allLocationsSelected && (
+          <EmptyState
+            title="Mostrando los totales de todos los almacenes"
+            description="El kardex es por almacén: elige uno para ver sus movimientos."
+          />
+        )}
+
+        {selectedLocationId && !allLocationsSelected && kardexLoading && (
           <div className="flex items-center gap-2 py-6 text-sm text-slate-500">
             <Spinner className="h-4 w-4" /> Cargando kardex…
           </div>

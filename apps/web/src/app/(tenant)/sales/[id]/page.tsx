@@ -378,7 +378,8 @@ export default async function OrderDetailPage({
               <THead>
                 <TR>
                   <TH>Devolución</TH>
-                  <TH className="text-right">Líneas</TH>
+                  <TH>Producto</TH>
+                  <TH>Motivo</TH>
                   <TH>Estado</TH>
                   <TH className="w-0">
                     <span className="sr-only">Acciones</span>
@@ -389,9 +390,17 @@ export default async function OrderDetailPage({
                 {returns.map((ret) => (
                   <TR key={ret.id}>
                     <TD>
-                      <code className="text-xs text-slate-500">{shortId(ret.id)}</code>
+                      <span className="text-sm font-medium text-slate-900">{ret.returnNumber}</span>
                     </TD>
-                    <TD className="text-right text-slate-500">{ret.items.length}</TD>
+                    <TD className="text-slate-700">
+                      {ret.items.map((item) => (
+                        <p key={item.id}>
+                          {item.productName ?? item.sku ?? shortId(item.productVariantId)}
+                          {item.quantityReturned > 1 && <span className="text-slate-500"> × {item.quantityReturned}</span>}
+                        </p>
+                      ))}
+                    </TD>
+                    <TD className="max-w-xs text-slate-600">{ret.reason}</TD>
                     <TD>
                       <Badge tone={returnStatusTone(ret.status)}>
                         {RETURN_STATUS_LABELS[ret.status as ReturnStatus] ?? ret.status}

@@ -10,7 +10,9 @@ const CONTROL =
   'w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ' +
   'placeholder:text-slate-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-0 ' +
   'focus-visible:outline-slate-900 disabled:bg-slate-50 disabled:text-slate-400 ' +
-  'aria-[invalid=true]:border-red-500';
+  'aria-[invalid=true]:border-red-500 ' +
+  // Number fields never show the browser's up/down spinner arrows (typing is the way in here).
+  '[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
   function Input({ className, ...rest }, ref) {

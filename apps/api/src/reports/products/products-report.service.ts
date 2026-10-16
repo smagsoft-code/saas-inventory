@@ -38,6 +38,8 @@ export class ProductsReportService {
       categoryId: query.categoryId,
       status: query.status,
       productStatus: query.productStatus,
+      variantId: query.variantId,
+      locationId: query.locationId,
       stock: query.stock,
     };
 
