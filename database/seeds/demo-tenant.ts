@@ -168,8 +168,8 @@ async function seedTenantScopedData(tenantId: string): Promise<void> {
     await tx.insert(schema.categories).values({
       id: furnitureCategoryId,
       tenantId,
-      name: 'Muebles',
-      slug: 'muebles',
+      name: 'MUEBLES',
+      code: 'CAT-001',
       status: 'active',
     });
 
@@ -288,8 +288,9 @@ async function seedTenantScopedData(tenantId: string): Promise<void> {
     await tx.insert(schema.customers).values({
       id: generateId(),
       tenantId,
-      type: 'individual',
-      displayName: 'Cliente Demo',
+      type: 'cedula',
+      firstName: 'Cliente',
+      lastName: 'Demo',
       status: 'active',
     });
   });
