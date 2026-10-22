@@ -1,4 +1,5 @@
 'use client';
+import { HelpTip } from '../../../../components/ui/help-tip';
 
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
@@ -156,13 +157,15 @@ export function ImportUploadForm({
       <Card>
         <CardBody className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-slate-700">Plantilla</span>
-            <p className="text-xs text-slate-500">
-              ¿No estás seguro del formato? Descarga la plantilla en blanco — sus columnas coinciden con el diseño estándar de abajo.
-            </p>
+            <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+              Plantilla
+              <HelpTip>
+                ¿No estás seguro del formato? Descarga la plantilla en blanco — sus columnas coinciden con el diseño estándar de abajo.
+              </HelpTip>
+            </span>
             <div className="flex flex-wrap items-end gap-3">
               {categories.length > 0 && (
-                <Field label="Para categoría" hint="Agrega las columnas de atributos de esa categoría. Opcional." className="w-56">
+                <Field label="Para categoría" help="Agrega las columnas de atributos de esa categoría. Opcional." className="w-56">
                   <Select value={templateCategoryId} onChange={(e) => setTemplateCategoryId(e.target.value)}>
                     <option value="">General (sin columnas de atributos)</option>
                     {categories.map((c) => (
@@ -186,7 +189,7 @@ export function ImportUploadForm({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <Field label="Archivo Excel" required hint="Una hoja de cálculo .xlsx, hasta 25 MB." error={fileError}>
+          <Field label="Archivo Excel" required help="Una hoja de cálculo .xlsx, hasta 25 MB." error={fileError}>
             <Input
               type="file"
               accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -248,7 +251,7 @@ export function ImportUploadForm({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <Field label="Sucursal predeterminada" hint="Opcional — acota el almacén predeterminado de abajo.">
+          <Field label="Sucursal predeterminada" help="Opcional — acota el almacén predeterminado de abajo.">
             <Select value={defaultWarehouseId} disabled={busy} onChange={(e) => onDefaultWarehouseChange(e.target.value)}>
               <option value="">Sin sucursal predeterminada</option>
               {warehouses.map((w) => (
@@ -261,7 +264,7 @@ export function ImportUploadForm({
 
           <Field
             label="Almacén predeterminado"
-            hint="Se usa para las filas sin columna de almacén. Opcional."
+            help="Se usa para las filas sin columna de almacén. Opcional."
           >
             <Select
               value={defaultLocationId}
@@ -285,7 +288,7 @@ export function ImportUploadForm({
             label="Si un SKU ya existe"
             {...(canUseInventoryMode
               ? {}
-              : { hint: 'Actualizar cantidades de inventario existentes requiere el permiso de import-inventory.' })}
+              : { help: 'Actualizar cantidades de inventario existentes requiere el permiso de import-inventory.' })}
           >
             <Select
               value={duplicateMode}

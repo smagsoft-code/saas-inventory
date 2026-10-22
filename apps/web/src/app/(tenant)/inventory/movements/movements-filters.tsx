@@ -75,7 +75,7 @@ export function MovementsFilters({ initial, locations }: { initial: MovementsFil
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-      <Field label="Desde" hint="Ocurrido en o después de">
+      <Field label="Desde" help="Ocurrido en o después de">
         <Input
           type="date"
           value={from}
@@ -86,7 +86,7 @@ export function MovementsFilters({ initial, locations }: { initial: MovementsFil
           }}
         />
       </Field>
-      <Field label="Hasta" hint="Hasta e incluyendo">
+      <Field label="Hasta" help="Hasta e incluyendo">
         <Input
           type="date"
           value={to}

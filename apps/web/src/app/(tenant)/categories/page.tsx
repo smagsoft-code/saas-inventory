@@ -76,7 +76,7 @@ export default async function CategoriesPage({
     <PageContainer>
       <PageHeader
         title="Categorías"
-        description="Organiza el catálogo. Una categoría define qué atributos llevan sus productos."
+        help="Organiza el catálogo. Una categoría define qué atributos llevan sus productos."
         actions={
           canManage ? <ButtonLink href="/categories/new">Nueva categoría</ButtonLink> : undefined
         }

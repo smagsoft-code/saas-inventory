@@ -32,7 +32,7 @@ export function ImageFilePicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <Field label={label} {...(hint ? { hint } : {})} {...(error ? { error } : {})}>
+      <Field label={label} {...(hint ? { help: hint } : {})} {...(error ? { error } : {})}>
         <Input
           type="file"
           accept={accept}

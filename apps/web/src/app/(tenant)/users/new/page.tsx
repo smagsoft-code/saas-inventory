@@ -32,7 +32,7 @@ export default async function NewUserPage(): Promise<React.JSX.Element> {
 
   return (
     <PageContainer>
-      <PageHeader title="Nuevo usuario" description="Agrega a una persona a este espacio de trabajo." />
+      <PageHeader title="Nuevo usuario" help="Agrega a una persona a este espacio de trabajo." />
       <Card>
         <CardBody>
           <CreateUserForm roles={roles} locationOptions={locationOptions} />

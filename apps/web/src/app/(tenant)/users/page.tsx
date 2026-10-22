@@ -40,7 +40,7 @@ export default async function UsersPage({
     <PageContainer>
       <PageHeader
         title="Usuarios"
-        description="Personas con acceso a este espacio de trabajo."
+        help="Personas con acceso a este espacio de trabajo."
         actions={
           canCreate ? (
             <ButtonLink href="/users/new" size="sm">

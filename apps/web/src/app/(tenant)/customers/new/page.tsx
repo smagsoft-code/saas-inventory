@@ -20,7 +20,7 @@ export default async function NewCustomerPage(): Promise<React.JSX.Element> {
   }
   return (
     <PageContainer>
-      <PageHeader title="Nuevo cliente" description="Agrega a alguien a quien le vendes." />
+      <PageHeader title="Nuevo cliente" help="Agrega a alguien a quien le vendes." />
       <CustomerForm mode="create" />
     </PageContainer>
   );

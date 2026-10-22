@@ -1,4 +1,5 @@
 'use client';
+import { HelpTip } from '../../../../components/ui/help-tip';
 
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -281,7 +282,7 @@ export function MappingTemplates({
               </Field>
 
               {categories.length > 0 && (
-                <Field label="Categoría" hint="Vincula la plantilla al conjunto de atributos de una categoría. Opcional." className="max-w-sm">
+                <Field label="Categoría" help="Vincula la plantilla al conjunto de atributos de una categoría. Opcional." className="max-w-sm">
                   <Select value={categoryId} disabled={busy} onChange={(e) => setCategoryId(e.target.value)}>
                     <option value="">Ninguna</option>
                     {categories.map((c) => (
@@ -294,10 +295,14 @@ export function MappingTemplates({
               )}
 
               <fieldset className="flex flex-col gap-2">
-                <legend className="text-sm font-medium text-slate-700">Columnas</legend>
-                <p className="text-xs text-slate-500">
-                  Asigna cada encabezado de tu hoja de cálculo a un campo del producto. Una columna debe asignarse a «sku».
-                </p>
+                <legend className="text-sm font-medium text-slate-700">
+                  <span className="flex items-center gap-1.5">
+                    Columnas
+                    <HelpTip>
+                      Asigna cada encabezado de tu hoja de cálculo a un campo del producto. Una columna debe asignarse a «sku».
+                    </HelpTip>
+                  </span>
+                </legend>
                 {rows.map((row) => (
                   <div key={row.key} className="flex flex-wrap items-end gap-2">
                     <Field label="Encabezado de Excel" className="w-48">

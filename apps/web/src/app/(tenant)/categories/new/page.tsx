@@ -28,7 +28,7 @@ export default async function NewCategoryPage(): Promise<React.JSX.Element> {
 
   return (
     <PageContainer>
-      <PageHeader title="Nueva categoría" description="Agrega una categoría al catálogo." />
+      <PageHeader title="Nueva categoría" help="Agrega una categoría al catálogo." />
       <CategoryForm
         mode="create"
         parentOptions={parents.data.map((c) => ({ id: c.id, name: c.name }))}

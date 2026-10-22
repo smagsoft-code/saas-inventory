@@ -34,7 +34,7 @@ export default async function BulkQrPage(): Promise<React.JSX.Element> {
     <PageContainer>
       <PageHeader
         title="Generación masiva de códigos QR"
-        description="Genera códigos para varias variantes de producto a la vez. Solo se muestran variantes que todavía no tienen un código QR vigente."
+        help="Genera códigos para varias variantes de producto a la vez. Solo se muestran variantes que todavía no tienen un código QR vigente."
       />
       <BulkQrGenerator initialVariants={initial.data} />
     </PageContainer>

@@ -52,7 +52,7 @@ export default async function AdjustStockPage({
     <PageContainer>
       <PageHeader
         title="Ajustar existencias"
-        description="Registra una recepción o una corrección. Las transferencias y ventas usan sus propios flujos."
+        help="Registra una recepción o una corrección. Las transferencias y ventas usan sus propios flujos."
       />
       {!canViewWarehouses && (
         <Alert tone="warning">

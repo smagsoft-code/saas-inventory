@@ -182,7 +182,7 @@ export default async function QrCodesPage({
     <PageContainer>
       <PageHeader
         title="Códigos QR"
-        description="Códigos imprimibles que resuelven a una variante de producto o a un almacén."
+        help="Códigos imprimibles que resuelven a una variante de producto o a un almacén."
         actions={<ButtonLink href="/qr/new">Generar código QR</ButtonLink>}
       />
 

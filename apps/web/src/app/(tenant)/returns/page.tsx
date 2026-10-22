@@ -150,7 +150,7 @@ export default async function ReturnsPage({
     <PageContainer>
       <PageHeader
         title="Devoluciones"
-        description="Reversos de ventas confirmadas — solicita, inspecciona y resuelve la disposición de la mercancía devuelta."
+        help="Reversos de ventas confirmadas — solicita, inspecciona y resuelve la disposición de la mercancía devuelta."
         actions={canCreate ? <ButtonLink href="/returns/new">Nueva devolución</ButtonLink> : undefined}
       />
 

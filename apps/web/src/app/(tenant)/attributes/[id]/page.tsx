@@ -1,3 +1,4 @@
+import { HelpTip } from '../../../../components/ui/help-tip';
 import { notFound } from 'next/navigation';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
@@ -99,10 +100,12 @@ export default async function AttributeDetailPage({
         <Card>
           <CardBody className="flex flex-col gap-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-900">Opciones</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Los valores seleccionables de este atributo de {definition.dataType === 'multi_select' ? 'selección múltiple' : 'selección única'}.
-              </p>
+              <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+                Opciones
+                <HelpTip>
+                  Los valores seleccionables de este atributo de {definition.dataType === 'multi_select' ? 'selección múltiple' : 'selección única'}.
+                </HelpTip>
+              </h2>
             </div>
             <AttributeOptionsEditor definitionId={definition.id} options={options} canManage={canManage} />
           </CardBody>

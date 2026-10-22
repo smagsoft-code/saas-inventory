@@ -54,7 +54,7 @@ export function AcceptInvitationForm({
         </p>
       </div>
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-        <Field label="Contraseña" required hint="Mínimo 10 caracteres.">
+        <Field label="Contraseña" required help="Mínimo 10 caracteres.">
           <Input
             name="password"
             type="password"

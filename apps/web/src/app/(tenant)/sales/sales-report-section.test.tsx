@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { SalesReportError, SalesSummaryCards, summarizeSales } from './sales-report-section';
 import type { SalesSummary } from '../../../lib/types/reports';
@@ -69,6 +69,7 @@ describe('SalesSummaryCards', () => {
     render(<SalesSummaryCards statusLabel="pendientes" summary={baseSummary()} />);
     expect(screen.getAllByText('0.00 USD')).toHaveLength(3);
     expect(screen.getByText('0')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Ayuda' }));
     expect(screen.getByText(/pedidos pendientes/)).toBeInTheDocument();
     expect(screen.getByText(/No restan devoluciones/)).toBeInTheDocument();
   });

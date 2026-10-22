@@ -138,7 +138,7 @@ export function ProductsFilters({
               </Select>
             </Field>
 
-            <Field label="Estado" hint="Por defecto se ocultan las variantes desactivadas.">
+            <Field label="Estado" help="Por defecto se ocultan las variantes desactivadas.">
               <Select
                 value={status || 'active'}
                 onChange={(e) => {
@@ -155,7 +155,7 @@ export function ProductsFilters({
               </Select>
             </Field>
 
-            <Field label="Stock" hint="Con Stock = más de 1 unidad disponible. Sin Stock = 0.">
+            <Field label="Stock" help="Con Stock = más de 1 unidad disponible. Sin Stock = 0.">
               <Select
                 value={stock}
                 onChange={(e) => {

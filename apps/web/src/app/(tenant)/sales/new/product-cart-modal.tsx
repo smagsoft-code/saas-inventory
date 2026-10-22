@@ -1,4 +1,5 @@
 'use client';
+import { HelpTip } from '../../../../components/ui/help-tip';
 
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
@@ -629,8 +630,11 @@ export function ProductCartModal({
                     Resolver
                   </Button>
                 </div>
-                <p className="text-xs text-slate-500">
-                  Entrada manual por ahora — la misma resolución quedará lista para un lector de cámara más adelante.
+                <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                  Entrada manual
+                  <HelpTip>
+                    Entrada manual por ahora — la misma resolución quedará lista para un lector de cámara más adelante.
+                  </HelpTip>
                 </p>
                 {qrMessage && <p className="text-sm text-slate-700">{qrMessage}</p>}
               </form>

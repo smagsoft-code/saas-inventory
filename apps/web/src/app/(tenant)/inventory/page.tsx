@@ -60,7 +60,7 @@ export default async function InventoryKardexPage(): Promise<React.JSX.Element> 
     <PageContainer>
       <PageHeader
         title="Inventario"
-        description="Kardex de inventario: historial cronológico de movimientos, costo promedio y stock por sucursal."
+        help="Kardex de inventario: historial cronológico de movimientos, costo promedio y stock por sucursal."
         actions={
           canAdjust ? (
             <div className="flex gap-2">

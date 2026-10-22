@@ -26,7 +26,7 @@ export default async function NewAttributePage(): Promise<React.JSX.Element> {
     <PageContainer>
       <PageHeader
         title="Nuevo atributo"
-        description="Define un atributo reutilizable. Asígnalo a categorías después."
+        help="Define un atributo reutilizable. Asígnalo a categorías después."
       />
       <AttributeForm mode="create" units={units} />
     </PageContainer>

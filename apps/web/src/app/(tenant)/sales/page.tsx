@@ -155,7 +155,7 @@ export default async function SalesHistoryPage({
     <PageContainer>
       <PageHeader
         title="Historial de ventas"
-        description="Todos los pedidos de venta de la empresa."
+        help="Todos los pedidos de venta de la empresa."
         actions={<HistoryDateFilters basePath="/sales" initial={filters} today={today} />}
       />
 

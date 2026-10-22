@@ -223,7 +223,7 @@ export function NewSale({
                 ))}
               </Select>
             </Field>
-            <Field label="Almacén" required hint="Desde dónde se hace la venta — determina la disponibilidad de stock.">
+            <Field label="Almacén" required help="Desde dónde se hace la venta — determina la disponibilidad de stock.">
               <Select value={locationId} disabled={!warehouseId} onChange={(e) => setLocationId(e.target.value)}>
                 <option value="">{warehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}</option>
                 {locationsInWarehouse.map((l) => (

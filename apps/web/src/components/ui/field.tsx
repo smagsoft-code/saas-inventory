@@ -1,7 +1,8 @@
 'use client';
 
-import { useId, cloneElement, type ReactElement } from 'react';
+import { useId, cloneElement, type ReactElement, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
+import { HelpTip } from './help-tip';
 
 type WiredControl = ReactElement<{
   id?: string;
@@ -15,6 +16,10 @@ interface FieldProps {
    * callers don't repeat the plumbing (Prompt 016 §29 / §43). */
   children: WiredControl;
   hint?: string;
+  /** Legend shown on demand behind a small "?" icon next to the label, instead of a permanent line
+   * under the control (saves space). Prefer this over `hint` for explanatory text; `hint` stays for
+   * text that must always be visible. */
+  help?: ReactNode;
   error?: string | null;
   required?: boolean;
   className?: string;
@@ -28,6 +33,7 @@ export function Field({
   label,
   children,
   hint,
+  help,
   error,
   required,
   className,
@@ -49,7 +55,7 @@ export function Field({
 
   return (
     <div className={cn('flex flex-col gap-1', className)}>
-      <span className={cn('flex items-baseline gap-0.5', labelClassName)}>
+      <span className={cn('flex items-center gap-0.5', labelClassName)}>
         <label htmlFor={id} className="text-sm font-medium text-slate-700">
           {label}
         </label>
@@ -57,6 +63,11 @@ export function Field({
           <span className="text-red-600" aria-hidden="true">
             *
           </span>
+        )}
+        {help && (
+          <HelpTip className="ml-1">
+            {help}
+          </HelpTip>
         )}
       </span>
       {cloneElement(children, wiredProps)}

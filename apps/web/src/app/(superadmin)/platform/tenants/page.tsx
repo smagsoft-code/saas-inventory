@@ -34,7 +34,7 @@ export default async function PlatformTenantsPage(): Promise<React.JSX.Element> 
     <PageContainer>
       <PageHeader
         title="Empresas"
-        description="Todas las empresas de la plataforma. Suspende o activa una, o accede como soporte, desde su página de detalle."
+        help="Todas las empresas de la plataforma. Suspende o activa una, o accede como soporte, desde su página de detalle."
         actions={
           <ButtonLink href="/platform/tenants/new" size="sm">
             Crear empresa

@@ -102,7 +102,7 @@ export function CreateTenantForm(): React.JSX.Element {
       <Field label="Nombre del administrador" required>
         <Input required minLength={2} value={adminFullName} onChange={(event) => setAdminFullName(event.target.value)} />
       </Field>
-      <Field label="Correo del administrador" required hint="Si ya tiene una cuenta en otra empresa, se reutiliza — no se genera una nueva.">
+      <Field label="Correo del administrador" required help="Si ya tiene una cuenta en otra empresa, se reutiliza — no se genera una nueva.">
         <Input type="email" required value={adminEmail} onChange={(event) => setAdminEmail(event.target.value)} />
       </Field>
       {error && <Alert tone="error">{error}</Alert>}

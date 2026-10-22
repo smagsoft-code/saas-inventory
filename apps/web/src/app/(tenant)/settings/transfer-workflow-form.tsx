@@ -1,4 +1,5 @@
 'use client';
+import { HelpTip } from '../../../components/ui/help-tip';
 
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -117,8 +118,11 @@ export function TransferWorkflowForm({
           </span>
         </label>
       </div>
-      <p className="text-xs text-slate-500">
-        Despachar y recibir siempre requieren una acción manual — son el movimiento físico de stock, no un paso previo.
+      <p className="flex items-center gap-1.5 text-xs text-slate-500">
+        Despachar y recibir
+        <HelpTip>
+          Despachar y recibir siempre requieren una acción manual — son el movimiento físico de stock, no un paso previo.
+        </HelpTip>
       </p>
       {success && <Alert tone="success">Flujo de transferencias guardado.</Alert>}
       {error && <Alert tone="error">{error}</Alert>}

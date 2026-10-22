@@ -116,7 +116,7 @@ export default async function TransfersPage({
     <PageContainer>
       <PageHeader
         title="Transferencias"
-        description="Mueve stock entre almacenes: solicitar, aprobar, preparar, despachar y recibir."
+        help="Mueve stock entre almacenes: solicitar, aprobar, preparar, despachar y recibir."
         actions={canRequest ? <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink> : undefined}
       />
 

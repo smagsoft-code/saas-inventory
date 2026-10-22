@@ -158,7 +158,7 @@ export function CategoryForm({
       <Field
         label="Código"
         required
-        hint="Se propone automáticamente (CAT-001, CAT-002…) y puedes cambiarlo. Letras, números y guiones; único dentro de la empresa."
+        help="Se propone automáticamente (CAT-001, CAT-002…) y puedes cambiarlo. Letras, números y guiones; único dentro de la empresa."
         {...(fieldError.code ? { error: fieldError.code } : {})}
       >
         <Input
@@ -172,7 +172,7 @@ export function CategoryForm({
         />
       </Field>
 
-      <Field label="Categoría padre" hint="Opcional. Deja «Ninguna» para una categoría de nivel superior.">
+      <Field label="Categoría padre" help="Opcional. Deja «Ninguna» para una categoría de nivel superior.">
         <Select
           value={parentId}
           onChange={(e) => {

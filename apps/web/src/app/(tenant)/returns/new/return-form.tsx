@@ -197,7 +197,7 @@ export function ReturnForm({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <Field label="Pedido" required hint="Solo se pueden devolver pedidos confirmados.">
+          <Field label="Pedido" required help="Solo se pueden devolver pedidos confirmados.">
             <Select value={orderId} disabled={busy} onChange={(e) => void loadLines(e.target.value)}>
               <option value="">Elige un pedido…</option>
               {orders.map((order) => (
@@ -218,7 +218,7 @@ export function ReturnForm({
             </Select>
           </Field>
 
-          <Field label="Almacén de recepción" required hint="Dónde se recibe físicamente la mercancía devuelta.">
+          <Field label="Almacén de recepción" required help="Dónde se recibe físicamente la mercancía devuelta.">
             <Select value={locationId} disabled={busy || !warehouseId} onChange={(e) => setLocationId(e.target.value)}>
               {locationsInWarehouse.map((location) => (
                 <option key={location.id} value={location.id}>
@@ -228,7 +228,7 @@ export function ReturnForm({
             </Select>
           </Field>
 
-          <Field label="Motivo" required hint="3–500 caracteres.">
+          <Field label="Motivo" required help="3–500 caracteres.">
             <Textarea maxLength={500} value={reason} disabled={busy} onChange={(e) => setReason(e.target.value)} />
           </Field>
         </CardBody>

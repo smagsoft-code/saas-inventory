@@ -1,3 +1,4 @@
+import { HelpTip } from '../../../../components/ui/help-tip';
 import { notFound } from 'next/navigation';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
@@ -91,11 +92,13 @@ export default async function CategoryDetailPage({
       <Card>
         <CardBody className="flex flex-col gap-4">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Atributos</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Las definiciones de atributos que llevan los productos de esta categoría (ADR-0026). El
-              orden y «obligatorio» aquí determinan el formulario de producto.
-            </p>
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+              Atributos
+              <HelpTip>
+                Las definiciones de atributos que llevan los productos de esta categoría (ADR-0026). El
+                orden y «obligatorio» aquí determinan el formulario de producto.
+              </HelpTip>
+            </h2>
           </div>
           {canViewAttributes ? (
             <CategoryAttributesEditor

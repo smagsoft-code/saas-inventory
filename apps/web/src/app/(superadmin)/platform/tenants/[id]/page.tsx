@@ -1,3 +1,4 @@
+import { HelpTip } from '../../../../../components/ui/help-tip';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { PageContainer } from '../../../../../components/ui/page-container';
@@ -121,12 +122,14 @@ export default async function PlatformTenantDetailPage({
 
       <Card>
         <CardBody className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold text-slate-900">Soporte</h2>
-          <p className="text-sm text-slate-500">
-            Accede temporalmente a esta empresa como administrador de plataforma, en un contexto
-            auditado y limitado a esta empresa. No se usa ni se conoce la contraseña del
-            administrador del Tenant.
-          </p>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+            Soporte
+            <HelpTip>
+              Accede temporalmente a esta empresa como administrador de plataforma, en un contexto
+              auditado y limitado a esta empresa. No se usa ni se conoce la contraseña del
+              administrador del Tenant.
+            </HelpTip>
+          </h2>
           <StartSupportSessionForm
             tenantId={tenant.id}
             existingSession={currentSession && currentSession.tenantId === tenant.id ? currentSession : null}

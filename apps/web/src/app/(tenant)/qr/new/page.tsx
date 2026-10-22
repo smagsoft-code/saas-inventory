@@ -74,7 +74,7 @@ export default async function NewQrCodePage({
     <PageContainer>
       <PageHeader
         title="Generar código QR"
-        description="Vincula una etiqueta impresa a una variante o a un almacén."
+        help="Vincula una etiqueta impresa a una variante o a un almacén."
         actions={
           <ButtonLink href="/qr/bulk" variant="secondary">
             Generar QR masivo

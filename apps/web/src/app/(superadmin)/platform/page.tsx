@@ -1,3 +1,4 @@
+import { HelpTip } from '../../../components/ui/help-tip';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageContainer } from '../../../components/ui/page-container';
@@ -61,9 +62,9 @@ export default async function PlatformHomePage(): Promise<React.JSX.Element> {
 
       <Card>
         <CardBody className="flex flex-col gap-2">
-          <p className="text-sm font-medium text-slate-900">Empresas</p>
-          <p className="text-sm text-slate-500">
-            Lista todas las empresas de la plataforma, y suspende o activa una.
+          <p className="flex items-center gap-1.5 text-sm font-medium text-slate-900">
+            Empresas
+            <HelpTip>Lista todas las empresas de la plataforma, y suspende o activa una.</HelpTip>
           </p>
           <div className="mt-2">
             <Link

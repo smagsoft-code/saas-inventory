@@ -1,4 +1,5 @@
 'use client';
+import { HelpTip } from '../../../../../components/ui/help-tip';
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -316,9 +317,11 @@ export function TransferActions({
 
         {showDispatch && dispatchOpen && (
           <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-            <p className="text-sm font-medium text-slate-700">Cantidades a despachar</p>
-            <p className="text-xs text-slate-500">
-              Por defecto es la cantidad solicitada de cada línea. Reduce el valor solo si vas a despachar menos.
+            <p className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+              Cantidades a despachar
+              <HelpTip>
+                Por defecto es la cantidad solicitada de cada línea. Reduce el valor solo si vas a despachar menos.
+              </HelpTip>
             </p>
             {items.map((item) => (
               <Field key={item.id} label={`${itemLabel(item)} (solicitado ${item.quantityRequested})`}>
@@ -364,7 +367,7 @@ export function TransferActions({
                       />
                     </Field>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <Field label="Incidencia" hint="Opcional.">
+                      <Field label="Incidencia" help="Opcional.">
                         <Select
                           value={receiveIncident[item.id] ?? ''}
                           onChange={(e) => setReceiveIncident((cur) => ({ ...cur, [item.id]: e.target.value }))}
@@ -378,7 +381,7 @@ export function TransferActions({
                         </Select>
                       </Field>
                       {receiveIncident[item.id] && (
-                        <Field label="Notas de la incidencia" hint="Opcional.">
+                        <Field label="Notas de la incidencia" help="Opcional.">
                           <Input
                             maxLength={500}
                             value={receiveIncidentNotes[item.id] ?? ''}
@@ -391,7 +394,7 @@ export function TransferActions({
                 );
               })
             )}
-            <Field label="Notas" hint="Opcional — se registra en el evento de recepción.">
+            <Field label="Notas" help="Opcional — se registra en el evento de recepción.">
               <Textarea maxLength={1000} value={receiveNotes} onChange={(e) => setReceiveNotes(e.target.value)} />
             </Field>
             <div className="flex gap-2">

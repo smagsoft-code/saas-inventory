@@ -35,7 +35,7 @@ export default async function RolesPage(): Promise<React.JSX.Element> {
     <PageContainer>
       <PageHeader
         title="Roles"
-        description="Los roles disponibles en esta empresa y los permisos que otorga cada uno. El almacén donde cada usuario puede operar se define aparte, en su ficha de usuario."
+        help="Los roles disponibles en esta empresa y los permisos que otorga cada uno. El almacén donde cada usuario puede operar se define aparte, en su ficha de usuario."
         actions={
           canManage ? (
             <ButtonLink href="/roles/new" size="sm">

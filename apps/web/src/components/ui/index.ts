@@ -7,6 +7,7 @@ export {
 } from './button';
 export { Input, Select, Textarea } from './input';
 export { Field } from './field';
+export { HelpTip } from './help-tip';
 export { Card, CardBody } from './card';
 export { Alert } from './alert';
 export { Badge, statusTone } from './badge';

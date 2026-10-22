@@ -23,7 +23,7 @@ export default async function NewWarehousePage(): Promise<React.JSX.Element> {
     <PageContainer>
       <PageHeader
         title="Nueva sucursal"
-        description="Agrega un sitio. Su almacén «General» se crea automáticamente."
+        help="Agrega un sitio. Su almacén «General» se crea automáticamente."
       />
       <WarehouseForm mode="create" />
     </PageContainer>

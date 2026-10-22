@@ -1,5 +1,7 @@
 'use client';
 
+import { HelpTip } from '../../../components/ui/help-tip';
+
 /**
  * The two "tracking" switches of a variant, with what each one means (plain language) and the
  * practical consequence today: a serialized or lot-tracked variant cannot be sold yet — the cart and
@@ -19,7 +21,7 @@ export function TrackingOptions({
 }): React.JSX.Element {
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-2">
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -29,11 +31,11 @@ export function TrackingOptions({
           />
           Serializado
         </label>
-        <p className="pl-6 text-xs text-slate-500">
+        <HelpTip>
           Cada unidad lleva su propio número de serie (por ejemplo, un celular o un electrodoméstico con garantía por unidad).
-        </p>
+        </HelpTip>
       </div>
-      <div className="flex flex-col gap-0.5">
+      <div className="flex items-center gap-2">
         <label className="flex items-center gap-2 text-sm text-slate-700">
           <input
             type="checkbox"
@@ -43,9 +45,9 @@ export function TrackingOptions({
           />
           Con seguimiento de lote
         </label>
-        <p className="pl-6 text-xs text-slate-500">
+        <HelpTip>
           Las unidades se controlan por lote, con su fecha de producción o vencimiento (por ejemplo, medicamentos o alimentos).
-        </p>
+        </HelpTip>
       </div>
       {(isSerialized || isLotTracked) && (
         <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800" role="note">

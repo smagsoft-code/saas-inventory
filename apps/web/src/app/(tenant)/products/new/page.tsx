@@ -39,7 +39,7 @@ export default async function NewProductPage(): Promise<React.JSX.Element> {
     <PageContainer>
       <PageHeader
         title="Nuevo producto"
-        description="Agrega un producto y su primera variante. Al crearlo puedes subir una imagen y se genera un código QR automáticamente."
+        help="Agrega un producto y su primera variante. Al crearlo puedes subir una imagen y se genera un código QR automáticamente."
       />
       <ProductForm
         mode="create"

@@ -307,7 +307,7 @@ export function ReturnActions({
                       </Select>
                     </Field>
                   </div>
-                  <Field label="Notas" hint="Opcional.">
+                  <Field label="Notas" help="Opcional.">
                     <Input
                       maxLength={500}
                       value={row.notes}

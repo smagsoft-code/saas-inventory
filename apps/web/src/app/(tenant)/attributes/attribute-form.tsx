@@ -159,7 +159,7 @@ export function AttributeForm({
       <Field
         label="Código"
         required
-        hint="Una clave estable usada en los datos. No se puede cambiar después."
+        help="Una clave estable usada en los datos. No se puede cambiar después."
         {...(fieldError['code'] ? { error: fieldError['code'] } : {})}
       >
         <Input
@@ -197,7 +197,7 @@ export function AttributeForm({
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={'Tipo'} required {...(mode === 'edit' ? { hint: 'No se puede cambiar.' } : {})}>
+        <Field label={'Tipo'} required {...(mode === 'edit' ? { help: 'No se puede cambiar.' } : {})}>
           <Select
             value={dataType}
             disabled={mode === 'edit'}
@@ -214,7 +214,7 @@ export function AttributeForm({
           </Select>
         </Field>
 
-        <Field label={'Aplica a'} required {...(mode === 'edit' ? { hint: 'No se puede cambiar.' } : {})}>
+        <Field label={'Aplica a'} required {...(mode === 'edit' ? { help: 'No se puede cambiar.' } : {})}>
           <Select
             value={appliesTo}
             disabled={mode === 'edit'}
@@ -234,7 +234,7 @@ export function AttributeForm({
 
       {numeric && (
         <div className="grid gap-4 sm:grid-cols-3">
-          <Field label={'Unidad'} hint={mode === 'edit' ? 'No se puede cambiar.' : 'Opcional.'}>
+          <Field label={'Unidad'} help={mode === 'edit' ? 'No se puede cambiar.' : 'Opcional.'}>
             <Select
               value={unitId}
               disabled={mode === 'edit'}

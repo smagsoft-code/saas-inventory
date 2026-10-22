@@ -1,4 +1,5 @@
 'use client';
+import { HelpTip } from '../../../../components/ui/help-tip';
 
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
@@ -106,7 +107,7 @@ export function CreateUserForm({
             autoComplete="name"
           />
         </Field>
-        <Field label="Usuario" required hint="No necesita tener formato de correo.">
+        <Field label="Usuario" required help="No necesita tener formato de correo.">
           <Input
             type="text"
             required
@@ -116,7 +117,7 @@ export function CreateUserForm({
             autoComplete="username"
           />
         </Field>
-        <Field label="Contraseña temporal" required hint="Mínimo 10 caracteres.">
+        <Field label="Contraseña temporal" required help="Mínimo 10 caracteres.">
           <Input
             type="password"
             required
@@ -142,10 +143,12 @@ export function CreateUserForm({
 
       {locationOptions.length > 0 && (
         <div className="flex max-w-md flex-col gap-2">
-          <h2 className="text-sm font-semibold text-slate-900">Almacén / alcance operativo</h2>
-          <p className="text-xs text-slate-500">
-            Define dónde puede operar inventario este usuario (venta, ajustes, transferencias) — separado del rol, que define qué puede hacer.
-          </p>
+          <h2 className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+            Almacén / alcance operativo
+            <HelpTip>
+              Define dónde puede operar inventario este usuario (venta, ajustes, transferencias) — separado del rol, que define qué puede hacer.
+            </HelpTip>
+          </h2>
           {isFoundingAdministrador ? (
             <Alert tone="info">
               El rol Administrador siempre puede operar en cualquier almacén — no necesita asignación (ADR-0035).

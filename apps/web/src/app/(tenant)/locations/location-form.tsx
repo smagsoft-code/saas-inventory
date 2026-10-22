@@ -173,7 +173,7 @@ export function LocationForm({
           </Select>
         </Field>
       ) : (
-        <Field label="Sucursal" hint="Un almacén no se puede mover a otra sucursal.">
+        <Field label="Sucursal" help="Un almacén no se puede mover a otra sucursal.">
           <Input
             readOnly
             value={warehouses.find((w) => w.id === warehouseId)?.name ?? warehouseId}
@@ -197,7 +197,7 @@ export function LocationForm({
       <Field
         label="Código"
         required
-        hint="Mayúsculas y números, opcionalmente separados por guiones. Único dentro de la sucursal."
+        help="Mayúsculas y números, opcionalmente separados por guiones. Único dentro de la sucursal."
         {...(fieldError.code ? { error: fieldError.code } : {})}
       >
         <Input
@@ -211,7 +211,7 @@ export function LocationForm({
         />
       </Field>
 
-      <Field label="Almacén padre" hint="Opcional. Debe estar en la misma sucursal.">
+      <Field label="Almacén padre" help="Opcional. Debe estar en la misma sucursal.">
         <Select
           value={parentLocationId}
           onChange={(e) => {
@@ -228,7 +228,7 @@ export function LocationForm({
         </Select>
       </Field>
 
-      <Field label="Vendible" hint="Desactívalo para almacenes de cuarentena, dañados o descarte.">
+      <Field label="Vendible" help="Desactívalo para almacenes de cuarentena, dañados o descarte.">
         <Select
           value={isSellable ? 'yes' : 'no'}
           onChange={(e) => {

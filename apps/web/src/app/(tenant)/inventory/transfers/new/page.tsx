@@ -52,7 +52,7 @@ export default async function NewTransferPage(): Promise<React.JSX.Element> {
     <PageContainer>
       <PageHeader
         title="Nueva transferencia"
-        description="Solicita un movimiento de stock entre dos almacenes. Empieza como borrador — la aprobación, preparación y despacho se hacen desde el detalle de la transferencia."
+        help="Solicita un movimiento de stock entre dos almacenes. Empieza como borrador — la aprobación, preparación y despacho se hacen desde el detalle de la transferencia."
       />
       {!canViewWarehouses && (
         <Alert tone="warning">

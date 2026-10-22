@@ -160,7 +160,7 @@ export default async function ProductsPage({
     <PageContainer>
       <PageHeader
         title="Productos"
-        description="El catálogo. Cada fila es una variante (código); un producto puede tener varias."
+        help="El catálogo. Cada fila es una variante (código); un producto puede tener varias."
         actions={canManage ? <ButtonLink href="/products/new">Nuevo producto</ButtonLink> : undefined}
       />
 

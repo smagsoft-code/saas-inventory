@@ -19,7 +19,7 @@ export default async function NewPlatformTenantPage(): Promise<React.JSX.Element
     <PageContainer>
       <PageHeader
         title="Crear empresa"
-        description="Provisiona una nueva empresa y su administrador inicial. El administrador establece su propia contraseña mediante un enlace de invitación — nunca la defines tú."
+        help="Provisiona una nueva empresa y su administrador inicial. El administrador establece su propia contraseña mediante un enlace de invitación — nunca la defines tú."
       />
       <Card>
         <CardBody>

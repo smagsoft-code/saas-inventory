@@ -73,7 +73,7 @@ export default async function NewSalePage({
     <PageContainer>
       <PageHeader
         title="Nueva venta"
-        description="Elige la sucursal y el almacén, crea la venta y agrega productos desde la ventana de carrito. El pedido reserva stock — confirmarlo después cierra la venta."
+        help="Elige la sucursal y el almacén, crea la venta y agrega productos desde la ventana de carrito. El pedido reserva stock — confirmarlo después cierra la venta."
       />
       {!canViewLocations && (
         <Alert tone="warning">No puedes listar almacenes, por eso el selector de almacén está vacío.</Alert>

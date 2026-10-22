@@ -1,3 +1,4 @@
+import { HelpTip } from '../../../../components/ui/help-tip';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getSession } from '../../../../lib/auth/session';
@@ -72,14 +73,14 @@ export default async function BalanceDetailPage({
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {quantities.map((q) => (
               <div key={q.label} className="rounded-md border border-slate-200 p-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{q.label}</p>
+                <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-slate-500">
+                  {q.label}
+                  {q.hint && <HelpTip>{q.hint}</HelpTip>}
+                </p>
                 <p className="mt-1 text-lg font-semibold text-slate-900">{q.value}</p>
               </div>
             ))}
           </div>
-          <p className="text-xs text-slate-500">
-            Disponible = físico − reservado − comprometido, calculado por la base de datos.
-          </p>
 
           <dl className="grid max-w-md grid-cols-[8rem_1fr] gap-y-2 text-sm">
             <dt className="text-slate-500">Sucursal</dt>

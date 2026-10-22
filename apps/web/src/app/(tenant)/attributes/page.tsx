@@ -55,7 +55,7 @@ export default async function AttributesPage({
     <PageContainer>
       <PageHeader
         title="Atributos"
-        description="Definiciones de atributos reutilizables. Asígnalas a categorías para dar a los productos campos estructurados."
+        help="Definiciones de atributos reutilizables. Asígnalas a categorías para dar a los productos campos estructurados."
         actions={canManage ? <ButtonLink href="/attributes/new">Nuevo atributo</ButtonLink> : undefined}
       />
 

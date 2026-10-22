@@ -64,7 +64,7 @@ export default async function NewReturnPage({
 
   return (
     <PageContainer>
-      <PageHeader title="Nueva devolución" description="Presenta una devolución contra un pedido confirmado." />
+      <PageHeader title="Nueva devolución" help="Presenta una devolución contra un pedido confirmado." />
 
       {orderOptions.length === 0 ? (
         <Card>

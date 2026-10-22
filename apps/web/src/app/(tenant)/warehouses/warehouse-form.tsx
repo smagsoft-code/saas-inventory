@@ -168,7 +168,7 @@ export function WarehouseForm({
       <Field
         label="Código"
         required
-        hint="Mayúsculas y números, opcionalmente separados por guiones. Único dentro de la empresa."
+        help="Mayúsculas y números, opcionalmente separados por guiones. Único dentro de la empresa."
         {...(fieldError.code ? { error: fieldError.code } : {})}
       >
         <Input

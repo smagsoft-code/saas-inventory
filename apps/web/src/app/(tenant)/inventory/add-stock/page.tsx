@@ -72,7 +72,7 @@ export default async function AddStockPage({
     <PageContainer>
       <PageHeader
         title="Agregar stock"
-        description="Registra el ingreso de nuevas unidades al inventario — producción propia, compra directa, u otro ingreso. Para corregir una existencia ya registrada, usa «Ajustar existencias»."
+        help="Registra el ingreso de nuevas unidades al inventario — producción propia, compra directa, u otro ingreso. Para corregir una existencia ya registrada, usa «Ajustar existencias»."
       />
       {!canViewWarehouses && (
         <Alert tone="warning">

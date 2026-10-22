@@ -78,7 +78,7 @@ export default function RegisterPage(): React.JSX.Element {
             autoComplete="email"
           />
         </Field>
-        <Field label="Contraseña" required hint="Mínimo 10 caracteres.">
+        <Field label="Contraseña" required help="Mínimo 10 caracteres.">
           <Input
             name="password"
             type="password"

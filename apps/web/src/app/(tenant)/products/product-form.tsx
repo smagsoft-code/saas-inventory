@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../lib/api/client';
+import { HelpTip } from '../../../components/ui/help-tip';
 import { httpErrorMessage, isApiError } from '../../../lib/api/errors';
 import {
   loadCategoryAttributeFieldSets,
@@ -476,7 +477,10 @@ export function ProductForm({
         <fieldset disabled={mode === 'create' && createdProduct !== null} className="contents">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
-              <span className="text-sm font-medium text-slate-700">Categoría</span>
+              <span className="flex items-center gap-1 text-sm font-medium text-slate-700">
+                Categoría
+                <HelpTip>Determina los atributos dinámicos de abajo.</HelpTip>
+              </span>
               {/* A search bar, not a dropdown: the categories are already loaded, so the match is a
                   local, case-insensitive "contains" on the name — no extra request. */}
               <SearchSelect<CategoryOption>
@@ -497,7 +501,6 @@ export function ProductForm({
                 emptyText="Ninguna categoría coincide con esa búsqueda."
                 clearLabel="Cambiar"
               />
-              <p className="text-xs text-slate-500">Determina los atributos dinámicos de abajo.</p>
             </div>
 
             <Field
@@ -582,12 +585,13 @@ export function ProductForm({
           {mode === 'create' && (
             <fieldset className="flex flex-col gap-4 rounded-md border border-slate-200 p-3">
               <legend className="px-1 text-xs font-medium text-slate-500">
-                Primera variante (Código)
+                <span className="flex items-center gap-1">
+                  Primera variante (Código)
+                  <HelpTip>
+                    Todo producto tiene al menos una variante. Puedes agregar más desde la página del producto luego.
+                  </HelpTip>
+                </span>
               </legend>
-              <p className="text-xs text-slate-500">
-                Todo producto tiene al menos una variante. Puedes agregar más desde la página del
-                producto luego.
-              </p>
 
               <Field
                 label="Código"
@@ -654,7 +658,7 @@ export function ProductForm({
                 <Field
                   label="Precio base"
                   required
-                  hint="Por debajo de este precio se necesita aprobación."
+                  help="Por debajo de este precio se necesita aprobación."
                   {...(fieldError['basePrice'] ? { error: fieldError['basePrice'] } : {})}
                 >
                   <Input
@@ -668,7 +672,7 @@ export function ProductForm({
                 <Field
                   label="Precio mínimo"
                   required
-                  hint="Piso de referencia del precio."
+                  help="Piso de referencia del precio."
                   {...(fieldError['minPrice'] ? { error: fieldError['minPrice'] } : {})}
                 >
                   <Input
@@ -683,7 +687,7 @@ export function ProductForm({
 
               <Field
                 label="Costo"
-                hint="Opcional. Necesita el permiso de costo para leerse de vuelta."
+                help="Opcional. Necesita el permiso de costo para leerse de vuelta."
                 {...(fieldError['cost'] ? { error: fieldError['cost'] } : {})}
               >
                 <Input

@@ -1,3 +1,4 @@
+import { HelpTip } from '../../../../components/ui/help-tip';
 import { notFound } from 'next/navigation';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
@@ -106,12 +107,15 @@ export default async function UserDetailPage({
       <Card>
         <CardBody>
           {canEditRole && (
-            <p className="mb-4 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              <strong>Rol</strong> define qué puede hacer este usuario (ver productos, vender, ajustar
-              inventario, aprobar transferencias...). <strong>Almacén asignado</strong> define dónde
-              puede hacerlo: el usuario puede consultar la ubicación de productos en otros almacenes
-              para orientar al cliente, pero no puede vender ni operar inventario fuera de su alcance
-              asignado. Son dos configuraciones independientes.
+            <p className="mb-4 flex items-center gap-1.5 text-xs text-slate-600">
+              Rol y almacén asignado
+              <HelpTip>
+                <strong>Rol</strong> define qué puede hacer este usuario (ver productos, vender, ajustar
+                inventario, aprobar transferencias...). <strong>Almacén asignado</strong> define dónde
+                puede hacerlo: el usuario puede consultar la ubicación de productos en otros almacenes
+                para orientar al cliente, pero no puede vender ni operar inventario fuera de su alcance
+                asignado. Son dos configuraciones independientes.
+              </HelpTip>
             </p>
           )}
           <EditUserForm

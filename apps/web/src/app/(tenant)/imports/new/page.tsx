@@ -43,7 +43,7 @@ export default async function NewImportPage(): Promise<React.JSX.Element> {
     <PageContainer>
       <PageHeader
         title="Nueva importación"
-        description="Sube un archivo .xlsx, elige cómo se asignan sus columnas a los campos del producto, luego valida y revisa antes de escribir nada."
+        help="Sube un archivo .xlsx, elige cómo se asignan sus columnas a los campos del producto, luego valida y revisa antes de escribir nada."
       />
 
       <ImportUploadForm

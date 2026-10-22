@@ -62,7 +62,7 @@ export default async function CustomersPage({
     <PageContainer>
       <PageHeader
         title="Clientes"
-        description="Las personas y empresas a las que vendes."
+        help="Las personas y empresas a las que vendes."
         actions={canManage ? <ButtonLink href="/customers/new">Nuevo cliente</ButtonLink> : undefined}
       />
 

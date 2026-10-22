@@ -87,7 +87,7 @@ export default async function LocationsPage({
     <PageContainer>
       <PageHeader
         title="Almacenes"
-        description="Los lugares dentro de una sucursal donde el stock está físicamente."
+        help="Los lugares dentro de una sucursal donde el stock está físicamente."
         actions={canManage ? <ButtonLink href="/locations/new">Nuevo almacén</ButtonLink> : undefined}
       />
 

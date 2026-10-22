@@ -280,7 +280,7 @@ export function AddStockForm({
         {error && <Alert tone="error">{error}</Alert>}
 
         {variantFixed ? (
-          <Field label="Variante" hint="Fija para este ingreso.">
+          <Field label="Variante" help="Fija para este ingreso.">
             <Input readOnly value={fixedVariantLabel ?? productVariantId} />
           </Field>
         ) : (
@@ -372,7 +372,7 @@ export function AddStockForm({
         <Field
           label="Costo unitario"
           required
-          hint="Costo por unidad del stock que estás ingresando — no es el precio de venta."
+          help="Costo por unidad del stock que estás ingresando — no es el precio de venta."
           {...(fieldError['unitCost'] ? { error: fieldError['unitCost'] } : {})}
         >
           <Input
@@ -387,7 +387,7 @@ export function AddStockForm({
         <Field
           label="Motivo del ingreso"
           required
-          hint="Ej: producción propia, compra directa a proveedor, devolución de consignación."
+          help="Ej: producción propia, compra directa a proveedor, devolución de consignación."
           {...(fieldError['reason'] ? { error: fieldError['reason'] } : {})}
         >
           <Textarea

@@ -69,7 +69,7 @@ export default async function TenantSettingsPage(): Promise<React.JSX.Element> {
     <PageContainer>
       <PageHeader
         title="Configuración"
-        description="Configuración de esta empresa. Estos ajustes aplican solo a tu espacio de trabajo."
+        help="Configuración de esta empresa. Estos ajustes aplican solo a tu espacio de trabajo."
       />
 
       <SettingsSection title="Empresa">

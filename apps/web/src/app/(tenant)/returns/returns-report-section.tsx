@@ -1,3 +1,4 @@
+import { HelpTip } from '../../../components/ui/help-tip';
 import type { ReturnsPeriodBucket, ReturnsSummary } from '../../../lib/types/returns-reports';
 
 /** Mirrors `SalesReportError` (F18-02) exactly — a small, honest error surface local to the cards,
@@ -70,8 +71,11 @@ export function ReturnsSummaryCards({ summary, statusLabel }: { summary: Returns
         <KpiTile label="Valor devuelto" value={money(returnedValue, summary.currency)} />
         <KpiTile label="Promedio por devolución" value={money(avgReturnValue, summary.currency)} />
       </div>
-      <p className="text-xs text-slate-500">
-        Las tarjetas cuentan devoluciones {statusLabel} con los filtros activos. El valor devuelto es informativo: no es un reembolso.
+      <p className="flex items-center gap-1.5 text-xs text-slate-500">
+        Cómo se calculan las tarjetas
+        <HelpTip>
+          Las tarjetas cuentan devoluciones {statusLabel} con los filtros activos. El valor devuelto es informativo: no es un reembolso.
+        </HelpTip>
       </p>
     </div>
   );

@@ -1,4 +1,5 @@
 'use client';
+import { HelpTip } from '../../../../components/ui/help-tip';
 
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -114,9 +115,12 @@ export function LocationAccess({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-slate-600">
-        Controla en qué almacenes/ubicaciones puede operar <span className="font-medium">{userName}</span>{' '}
-        (venta, ajustes de inventario, transferencias). Ver el inventario de otros almacenes no se ve afectado.
+      <p className="flex items-center gap-1.5 text-sm text-slate-600">
+        Alcance operativo de <span className="font-medium">{userName}</span>
+        <HelpTip>
+          Controla en qué almacenes/ubicaciones puede operar <span className="font-medium">{userName}</span>{' '}
+          (venta, ajustes de inventario, transferencias). Ver el inventario de otros almacenes no se ve afectado.
+        </HelpTip>
       </p>
 
       {error && <Alert tone="error">{error}</Alert>}

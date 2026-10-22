@@ -1,4 +1,5 @@
 'use client';
+import { HelpTip } from '../../../../../components/ui/help-tip';
 
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
@@ -89,13 +90,16 @@ export function StartSupportSessionForm({
 
   return (
     <form onSubmit={submit} noValidate className="flex max-w-md flex-col gap-4 rounded-md border border-slate-200 bg-slate-50 p-4">
-      <p className="text-sm text-slate-600">
-        Obtienes un contexto temporal y auditado sobre esta empresa. Sigues actuando como
-        administrador de plataforma — nunca como un usuario del Tenant.
-      </p>
-
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium text-slate-700">Modo</legend>
+        <legend className="text-sm font-medium text-slate-700">
+          <span className="flex items-center gap-1.5">
+            Modo
+            <HelpTip>
+              Obtienes un contexto temporal y auditado sobre esta empresa. Sigues actuando como
+              administrador de plataforma — nunca como un usuario del Tenant.
+            </HelpTip>
+          </span>
+        </legend>
         <label className="flex items-start gap-2 text-sm">
           <input
             type="radio"
@@ -132,7 +136,7 @@ export function StartSupportSessionForm({
       <Field
         label="Motivo"
         required
-        hint={mode === 'write' ? 'Obligatorio para intervención.' : 'Recomendado — queda en el log de auditoría.'}
+        help={mode === 'write' ? 'Obligatorio para intervención.' : 'Recomendado — queda en el log de auditoría.'}
       >
         <textarea
           className="min-h-20 rounded-md border border-slate-300 px-3 py-2 text-sm"

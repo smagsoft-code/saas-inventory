@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveAttributeFields } from '../../../lib/catalog/product-attributes';
 import type { AttributeDefinition, CategoryAttribute, MeasurementUnit } from '../../../lib/types/catalog';
@@ -28,7 +28,12 @@ describe('TrackingOptions', () => {
 
   it('explains what each option does', () => {
     setup(false, false);
+    // The explanations live behind "?" icons — hidden until asked for, then shown on click.
+    expect(screen.queryByText(/número de serie/)).not.toBeInTheDocument();
+    const [serializedHelp, lotHelp] = screen.getAllByRole('button', { name: 'Ayuda' });
+    fireEvent.click(serializedHelp!);
     expect(screen.getByText(/número de serie/)).toBeInTheDocument();
+    fireEvent.click(lotHelp!);
     expect(screen.getByText(/se controlan por lote/)).toBeInTheDocument();
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
   });
@@ -55,8 +60,11 @@ describe('Precio base / mínimo legends', () => {
     render(<ProductForm mode="create" categories={[]} definitions={[]} initialFieldSets={{ product: [], variant: [], options: {} }} />);
     const base = screen.getByLabelText(/precio base/i);
     const min = screen.getByLabelText(/precio mínimo/i);
+    const helpOf = (input: HTMLElement) => within(input.closest('div')!).getByRole('button', { name: 'Ayuda' });
+    fireEvent.click(helpOf(base));
     expect(base.closest('div')).toHaveTextContent('Por debajo de este precio se necesita aprobación.');
     expect(min.closest('div')).not.toHaveTextContent(/necesita aprobación/);
+    fireEvent.click(helpOf(min));
     expect(min.closest('div')).toHaveTextContent('Piso de referencia del precio.');
   });
 });

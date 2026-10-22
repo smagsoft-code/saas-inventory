@@ -541,7 +541,7 @@ export function TransferForm({
         })}
       </fieldset>
 
-      <Field label="Notas" hint="Opcional — visible en la transferencia.">
+      <Field label="Notas" help="Opcional — visible en la transferencia.">
         <Textarea maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </Field>
 

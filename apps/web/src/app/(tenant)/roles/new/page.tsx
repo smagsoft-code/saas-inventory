@@ -26,7 +26,7 @@ export default async function NewRolePage(): Promise<React.JSX.Element> {
 
   return (
     <PageContainer>
-      <PageHeader title="Crear rol" description="Nombre, descripción y los permisos que otorga este rol personalizado." />
+      <PageHeader title="Crear rol" help="Nombre, descripción y los permisos que otorga este rol personalizado." />
       <RoleCreateForm catalog={catalog} />
     </PageContainer>
   );

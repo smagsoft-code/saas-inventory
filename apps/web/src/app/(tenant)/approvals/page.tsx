@@ -144,7 +144,7 @@ export default async function ApprovalsPage({
     <PageContainer>
       <PageHeader
         title="Aprobaciones"
-        description="Solicitudes de descuento excepcional: precios bajo el mínimo a la espera de una decisión."
+        help="Solicitudes de descuento excepcional: precios bajo el mínimo a la espera de una decisión."
       />
 
       <HistoryFilters

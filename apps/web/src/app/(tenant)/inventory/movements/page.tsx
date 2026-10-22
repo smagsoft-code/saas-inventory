@@ -102,7 +102,7 @@ export default async function MovementsPage({
     <PageContainer>
       <PageHeader
         title="Movimientos de inventario"
-        description="El libro de movimientos, de solo lectura: cada recepción, venta, transferencia, reserva y ajuste."
+        help="El libro de movimientos, de solo lectura: cada recepción, venta, transferencia, reserva y ajuste."
       />
 
       <h2 className="text-sm font-semibold text-slate-900">Historial de movimientos</h2>

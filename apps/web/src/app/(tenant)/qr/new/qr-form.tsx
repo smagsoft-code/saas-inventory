@@ -324,7 +324,7 @@ export function QrForm({
 
       <Field
         label="Vence el"
-        hint="Opcional. El código deja de resolverse al final de este día (UTC)."
+        help="Opcional. El código deja de resolverse al final de este día (UTC)."
         {...(fieldError['expiresAt'] ? { error: fieldError['expiresAt'] } : {})}
       >
         <Input type="date" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} />

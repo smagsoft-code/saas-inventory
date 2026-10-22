@@ -37,7 +37,7 @@ export default async function MappingTemplatesPage(): Promise<React.JSX.Element>
     <PageContainer>
       <PageHeader
         title="Plantillas de mapeo"
-        description="Mapeos de columnas guardados — reutiliza el formato de hoja de cálculo de un proveedor sin volver a mapear cada importación."
+        help="Mapeos de columnas guardados — reutiliza el formato de hoja de cálculo de un proveedor sin volver a mapear cada importación."
       />
 
       <MappingTemplates

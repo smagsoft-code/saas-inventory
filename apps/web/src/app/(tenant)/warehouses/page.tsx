@@ -81,7 +81,7 @@ export default async function WarehousesPage({
     <PageContainer>
       <PageHeader
         title="Sucursales"
-        description="Sitios físicos que almacenan stock. Toda sucursal tiene al menos un almacén."
+        help="Sitios físicos que almacenan stock. Toda sucursal tiene al menos un almacén."
         actions={canManage ? <ButtonLink href="/warehouses/new">Nueva sucursal</ButtonLink> : undefined}
       />
 

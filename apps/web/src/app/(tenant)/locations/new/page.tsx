@@ -31,7 +31,7 @@ export default async function NewLocationPage(): Promise<React.JSX.Element> {
 
   return (
     <PageContainer>
-      <PageHeader title="Nuevo almacén" description="Agrega un lugar dentro de una sucursal." />
+      <PageHeader title="Nuevo almacén" help="Agrega un lugar dentro de una sucursal." />
       {!canViewWarehouses && (
         <Alert tone="warning">
           No puedes listar sucursales, por eso el selector de sucursal está vacío. Pide a un

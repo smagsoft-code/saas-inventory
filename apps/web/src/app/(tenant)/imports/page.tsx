@@ -125,7 +125,7 @@ export default async function ImportsPage({
     <PageContainer>
       <PageHeader
         title="Importaciones"
-        description="Carga masiva de catálogo e inventario inicial desde un archivo Excel — sube, mapea columnas, valida, revisa y luego confirma."
+        help="Carga masiva de catálogo e inventario inicial desde un archivo Excel — sube, mapea columnas, valida, revisa y luego confirma."
         actions={<ButtonLink href="/imports/new">Nueva importación</ButtonLink>}
       />
 

@@ -207,7 +207,7 @@ export function AdjustmentForm({
   return (
     <form onSubmit={handleSubmit} noValidate className="flex max-w-md flex-col gap-4">
       {variantFixed ? (
-        <Field label="Variante" hint="Fija para este ajuste.">
+        <Field label="Variante" help="Fija para este ajuste.">
           <Input readOnly value={fixedVariantLabel ?? productVariantId} />
         </Field>
       ) : (
@@ -276,7 +276,7 @@ export function AdjustmentForm({
         </Select>
       </Field>
 
-      <Field label="Tipo" required hint="Dirección del cambio.">
+      <Field label="Tipo" required help="Dirección del cambio.">
         <Select value={movementType} onChange={(e) => setMovementType(e.target.value as AdjustmentMovementType)}>
           {ADJUSTMENT_MOVEMENT_TYPES.map((type) => (
             <option key={type} value={type}>
@@ -289,7 +289,7 @@ export function AdjustmentForm({
       <Field
         label="Cantidad"
         required
-        hint="Un monto positivo — la dirección viene del tipo."
+        help="Un monto positivo — la dirección viene del tipo."
         {...(fieldError['quantity'] ? { error: fieldError['quantity'] } : {})}
       >
         <Input
@@ -308,7 +308,7 @@ export function AdjustmentForm({
         <Field
           label="Costo unitario"
           {...(costRequired ? { required: true } : {})}
-          hint={
+          help={
             costRequired
               ? 'Costo por unidad del stock que ingresa — no es el precio de venta.'
               : 'Opcional. Costo por unidad del stock que ingresa (no es el precio de venta); si lo dejas vacío se usa el costo promedio actual.'
@@ -331,7 +331,7 @@ export function AdjustmentForm({
       <Field
         label="Motivo"
         required
-        hint="Por qué cambia el stock (p. ej. corrección de conteo físico)."
+        help="Por qué cambia el stock (p. ej. corrección de conteo físico)."
         {...(fieldError['reason'] ? { error: fieldError['reason'] } : {})}
       >
         <Textarea
@@ -347,7 +347,7 @@ export function AdjustmentForm({
       <Field
         label="Fecha del movimiento"
         required
-        hint="Por defecto, ahora — cámbiala para una corrección retroactiva."
+        help="Por defecto, ahora — cámbiala para una corrección retroactiva."
         {...(fieldError['occurredAt'] ? { error: fieldError['occurredAt'] } : {})}
       >
         <Input

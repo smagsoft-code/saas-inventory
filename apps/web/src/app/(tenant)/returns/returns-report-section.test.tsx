@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { ReturnsReportError, ReturnsSummaryCards, summarizeReturns } from './returns-report-section';
 import type { ReturnsPeriodBucket, ReturnsSummary } from '../../../lib/types/returns-reports';
@@ -44,6 +44,7 @@ describe('ReturnsSummaryCards', () => {
 
   it('names the counted status and says the value is not a refund', () => {
     render(<ReturnsSummaryCards statusLabel="solicitadas" summary={summary([])} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Ayuda' }));
     expect(screen.getByText(/devoluciones solicitadas/)).toBeInTheDocument();
     expect(screen.getByText(/no es un reembolso/)).toBeInTheDocument();
   });

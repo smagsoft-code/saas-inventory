@@ -95,7 +95,7 @@ export function ImportsFilters({ initial }: { initial: ImportsFilterValues }): R
       {panelOpen && (
         <div className="absolute right-0 z-10 mt-2 flex w-80 flex-col gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-lg">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Desde" hint="Inicio de día en la zona horaria del tenant">
+            <Field label="Desde" help="Inicio de día en la zona horaria del tenant">
               <Input
                 type="date"
                 value={from}
@@ -106,7 +106,7 @@ export function ImportsFilters({ initial }: { initial: ImportsFilterValues }): R
                 }}
               />
             </Field>
-            <Field label="Hasta" hint="Exclusivo — sin incluir">
+            <Field label="Hasta" help="Exclusivo — sin incluir">
               <Input
                 type="date"
                 value={to}
@@ -136,7 +136,7 @@ export function ImportsFilters({ initial }: { initial: ImportsFilterValues }): R
             </Select>
           </Field>
 
-          <Field label="Estado" hint="Filtra el reporte y el historial">
+          <Field label="Estado" help="Filtra el reporte y el historial">
             <Select
               value={status}
               onChange={(e) => {

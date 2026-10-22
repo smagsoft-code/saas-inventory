@@ -1,4 +1,5 @@
 'use client';
+import { HelpTip } from '../../../components/ui/help-tip';
 
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
@@ -189,7 +190,8 @@ export function CustomerForm({
         <Field
           label={CUSTOMER_TYPE_LABELS[type]}
           required
-          {...(fieldError['taxId'] ? { error: fieldError['taxId'] } : { hint: CUSTOMER_TAX_ID_HINTS[type] })}
+          help={CUSTOMER_TAX_ID_HINTS[type]}
+          {...(fieldError['taxId'] ? { error: fieldError['taxId'] } : {})}
         >
           <Input
             required
@@ -281,9 +283,12 @@ export function CustomerForm({
         />
       </Field>
 
-      <p className="text-xs text-slate-500">
-        Una venta necesita correo, teléfono y dirección del cliente — complétalos aquí para evitar un
-        error al cerrar la venta.
+      <p className="flex items-center gap-1.5 text-xs text-slate-500">
+        Datos necesarios para vender
+        <HelpTip>
+          Una venta necesita correo, teléfono y dirección del cliente — complétalos aquí para evitar un
+          error al cerrar la venta.
+        </HelpTip>
       </p>
 
       {error && <Alert tone="error">{error}</Alert>}

@@ -1,3 +1,4 @@
+import { HelpTip } from '../../../components/ui/help-tip';
 import { isCustomerBucket, isProductBucket, type SalesSummary } from '../../../lib/types/reports';
 
 /** A small, honest error surface local to the summary cards — never a full-page failure, never a
@@ -99,8 +100,11 @@ export function SalesSummaryCards({
         <KpiTile label="Ventas netas" value={money(net, currency)} />
         <KpiTile label="Cantidad de pedidos" value={String(orderCount)} />
       </div>
-      <p className="text-xs text-slate-500">
-        Las tarjetas cuentan pedidos {statusLabel} con los filtros activos. No restan devoluciones ni reflejan dinero cobrado.
+      <p className="flex items-center gap-1.5 text-xs text-slate-500">
+        Cómo se calculan las tarjetas
+        <HelpTip>
+          Las tarjetas cuentan pedidos {statusLabel} con los filtros activos. No restan devoluciones ni reflejan dinero cobrado.
+        </HelpTip>
       </p>
     </div>
   );
