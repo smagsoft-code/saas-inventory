@@ -7,6 +7,7 @@ import { apiPublicUrl } from '../../../../lib/api/public-url';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { Alert } from '../../../../components/ui/alert';
+import { ButtonLink } from '../../../../components/ui/button';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { AddStockForm } from './add-stock-form';
 
@@ -72,6 +73,11 @@ export default async function AddStockPage({
     <PageContainer>
       <PageHeader
         title="Agregar stock"
+        actions={
+          <ButtonLink href="/inventory/add-stock/bulk" variant="ghost">
+            Carga masiva
+          </ButtonLink>
+        }
         help="Registra el ingreso de nuevas unidades al inventario — producción propia, compra directa, u otro ingreso. Para corregir una existencia ya registrada, usa «Ajustar existencias»."
       />
       {!canViewWarehouses && (

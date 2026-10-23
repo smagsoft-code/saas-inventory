@@ -418,6 +418,26 @@ Legend for support: **A** fully supported · **B** additive backend change recom
   (server CHECK / convoy) → `409`/`422`; location must be authorized (`403`).
 - **F17.**
 
+### `S-INV-ADD-STOCK-BULK` — Carga masiva de stock
+- **Route:** `/inventory/add-stock/bulk` (button "Carga masiva" in the `/inventory/add-stock` header) ·
+  **Permission:** `inventory.adjust` (same as Agregar stock) + ADR-0024 location authorization on the
+  chosen almacén (checked by the backend on every call).
+- **Endpoints** (`apps/api/src/inventory/bulk-receipts/`): `GET /inventory/receipts/bulk/template`
+  (.xlsx: Código, Cantidad, Costo unitario, Motivo), `POST .../preview` (multipart `file`,
+  `locationId`, optional `occurredOn` `YYYY-MM-DD`; writes nothing; returns every row with its
+  Spanish errors), `POST /inventory/receipts/bulk` (same multipart + required `Idempotency-Key`,
+  scope `inventory.receipts.bulk`).
+- **Rules:** max 500 rows / 5 MB; **all-or-nothing** (any invalid row → `422`, nothing written; the
+  rows are re-validated at confirm); one `RECEIPT` per row in one transaction via
+  `MovementsService.createAdjustmentInTx`; motivo and costo mandatory; discontinued, serialized and
+  lot-tracked variants rejected; duplicate codes in the file rejected. Same key + same file replays
+  the stored result, same key + different file → `409`.
+- **Movement date:** one optional `occurredOn` for the whole file (default today, never future →
+  `400`). A past day is stamped at noon of that day in the tenant timezone, which rewrites the
+  derived Kardex (weighted average) from that day on, but not the frozen `unit_cost_snapshot` of
+  past sales. The confirm modal warns when the date is earlier than today.
+- **F17.**
+
 ### `S-WH-LIST` / `S-WH-EDIT` — Warehouses
 - **Route:** `/warehouses` · **Permission:** `warehouses.view` / `warehouses.manage`.
 - **Endpoints:** `GET /api/v1/warehouses` (query `{ page, pageSize, status? }`), `GET /:id`,

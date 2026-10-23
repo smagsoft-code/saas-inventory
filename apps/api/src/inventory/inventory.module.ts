@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { UsersRepository } from '../auth/repositories/users.repository';
 import { AuditLogService } from '../common/audit/audit-log.service';
+import { TenantSettingsRepository } from '../administration/tenant-settings/tenant-settings.repository';
+import { BulkReceiptsController } from './bulk-receipts/bulk-receipts.controller';
+import { BulkReceiptsService } from './bulk-receipts/bulk-receipts.service';
+import { BulkReceiptsLookupRepository } from './repositories/bulk-receipts-lookup.repository';
 import { BalancesController } from './balances/balances.controller';
 import { BalancesService } from './balances/balances.service';
 import { MovingAverageCostService } from './kardex/moving-average-cost.service';
@@ -58,6 +62,7 @@ import { WarehousesService } from './warehouses/warehouses.service';
     LocationScopeController,
     BalancesController,
     MovementsController,
+    BulkReceiptsController,
     ProductsInStockController,
     TransfersController,
   ],
@@ -67,6 +72,9 @@ import { WarehousesService } from './warehouses/warehouses.service';
     LocationAssignmentsService,
     BalancesService,
     MovementsService,
+    BulkReceiptsService,
+    BulkReceiptsLookupRepository,
+    TenantSettingsRepository,
     TransfersService,
     AuditLogService,
     LocationAuthorizationService,

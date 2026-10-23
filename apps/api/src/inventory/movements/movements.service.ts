@@ -134,7 +134,21 @@ export class MovementsService {
     meta: AuditMeta,
     canViewCost: boolean,
   ): Promise<MovementResponseDto> {
-    return withTenantTransaction(tenantId, async (tx) => {
+    return withTenantTransaction(tenantId, (tx) => this.createAdjustmentInTx(tx, tenantId, actorId, dto, meta, canViewCost));
+  }
+
+  /** `createAdjustment`'s body inside a transaction the CALLER owns — so several adjustments can be
+   * written atomically (the bulk stock load: all rows or none). Identical rules, audit and ledger
+   * convoy as the single call. */
+  async createAdjustmentInTx(
+    tx: TenantTransaction,
+    tenantId: string,
+    actorId: string,
+    dto: CreateAdjustmentDto,
+    meta: AuditMeta,
+    canViewCost: boolean,
+  ): Promise<MovementResponseDto> {
+    {
       const variantExists = await this.productVariantsLookup.exists(tx, tenantId, dto.productVariantId);
       if (!variantExists) {
         throw new NotFoundException('Product variant not found.');
@@ -204,7 +218,7 @@ export class MovementsService {
       });
 
       return toResponse(result.movement, canViewCost);
-    });
+    }
   }
 
   private async writeAudit(
