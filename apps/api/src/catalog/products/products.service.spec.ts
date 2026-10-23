@@ -22,7 +22,7 @@ const EXISTING_PRODUCT = {
   supplierId: null,
   name: 'Moto XR',
   description: null,
-  status: 'draft',
+  status: 'discontinued',
   warrantyMonths: null,
   attributes: {},
   createdAt: new Date('2026-01-01T00:00:00Z'),
@@ -183,7 +183,7 @@ describe('ProductsService', () => {
   });
 
   describe('create — initial status', () => {
-    it('a new product starts active (sellable straight away), not draft', async () => {
+    it('a new product starts active (sellable straight away); there is no draft state', async () => {
       const { service, productsRepository } = buildService();
       productsRepository.create.mockResolvedValue(EXISTING_PRODUCT);
       productsRepository.createVariant.mockRejectedValueOnce({ code: '23505' }); // stop after the product insert

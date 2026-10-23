@@ -1,7 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Min } from 'class-validator';
 
-const PRODUCT_STATUSES = ['draft', 'active', 'discontinued'] as const;
+const PRODUCT_STATUSES = ['active', 'discontinued'] as const;
 
 export class UpdateProductDto {
   @ApiPropertyOptional({ type: String, description: 'An existing category id in the current tenant, or omit to leave unchanged.' })

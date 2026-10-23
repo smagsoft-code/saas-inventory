@@ -15,6 +15,14 @@ vi.mock('next/navigation', () => ({
 vi.mock('../../../lib/api/client', () => ({ apiFetch: vi.fn() }));
 const mockedFetch = vi.mocked(apiFetch);
 
+/** Presses "Crear producto" and, when the "sin imagen" confirmation appears (no picture picked),
+ * accepts it — the existing create tests are about the request, not about the picture. */
+function submitCreate(): void {
+  fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+  const proceed = screen.queryByRole('button', { name: 'Guardar de todos modos' });
+  if (proceed) fireEvent.click(proceed);
+}
+
 // jsdom has no real Blob-URL registry — the image preview only needs a stable, harmless string.
 if (!URL.createObjectURL) {
   URL.createObjectURL = vi.fn(() => 'blob:mock-preview-url');
@@ -94,10 +102,41 @@ describe('ProductForm — create', () => {
   });
   afterEach(() => cleanup());
 
-  it('POSTs the real DTO shape with the mandatory defaultVariant and no tenantId', async () => {
+  it('without an image, asks first: "Volver a cargar imagen" closes the dialog and creates nothing', () => {
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
     fillMinimalCreate();
     fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+
+    expect(screen.getByRole('dialog', { name: 'Producto sin imagen' })).toBeInTheDocument();
+    expect(mockedFetch.mock.calls.find(([p]) => p === '/api/v1/products')).toBeUndefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Volver a cargar imagen' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockedFetch.mock.calls.find(([p]) => p === '/api/v1/products')).toBeUndefined();
+  });
+
+  it('"Guardar de todos modos" creates the product without an image', async () => {
+    render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
+    fillMinimalCreate();
+    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar de todos modos' }));
+
+    await waitForCreateToSettle();
+    expect(mockedFetch.mock.calls.filter(([p]) => p === '/api/v1/products')).toHaveLength(1);
+    expect(mockedFetch.mock.calls.some(([p]) => String(p).endsWith('/images'))).toBe(false);
+  });
+
+  it('does not ask while the form is still invalid (validation errors come first)', () => {
+    render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
+    fireEvent.change(screen.getByLabelText(/nombre/i), { target: { value: 'BLENDER' } });
+    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('POSTs the real DTO shape with the mandatory defaultVariant and no tenantId', async () => {
+    render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
+    fillMinimalCreate();
+    submitCreate();
 
     await waitForCreateToSettle();
     const call = mockedFetch.mock.calls.find(([p]) => p === '/api/v1/products')!;
@@ -155,7 +194,7 @@ describe('ProductForm — create', () => {
     fireEvent.change(screen.getByLabelText(/precio máximo/i), { target: { value: '50' } });
     fireEvent.change(screen.getByLabelText(/precio base/i), { target: { value: '40' } });
     fireEvent.change(screen.getByLabelText(/precio mínimo/i), { target: { value: '90' } });
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     expect(screen.getByText(/mínimo ≤ base ≤ máximo/i)).toBeInTheDocument();
     expect(mockedFetch).not.toHaveBeenCalledWith('/api/v1/products', expect.anything());
   });
@@ -167,12 +206,12 @@ describe('ProductForm — create', () => {
     expect(await screen.findByLabelText(/^color/i)).toBeInTheDocument();
 
     fillMinimalCreate();
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     expect(await screen.findByText(/color es obligatorio/i)).toBeInTheDocument();
     expect(mockedFetch).not.toHaveBeenCalledWith('/api/v1/products', expect.anything());
 
     fireEvent.change(screen.getByLabelText(/^color/i), { target: { value: 'red' } });
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     await waitForCreateToSettle();
     const [, opts] = mockedFetch.mock.calls.find(([p]) => p === '/api/v1/products')!;
     expect((opts as { body: Record<string, unknown> }).body).toMatchObject({
@@ -189,7 +228,7 @@ describe('ProductForm — create', () => {
     await waitFor(() => expect(screen.queryByLabelText(/^color/i)).not.toBeInTheDocument());
 
     fillMinimalCreate();
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     await waitForCreateToSettle();
     const [, opts] = mockedFetch.mock.calls.find(([p]) => p === '/api/v1/products')!;
     expect((opts as { body: Record<string, unknown> }).body.attributes).toEqual({});
@@ -230,7 +269,7 @@ describe('ProductForm — create', () => {
     fireEvent.change(screen.getByLabelText(/precio máximo/i), { target: { value: '100' } });
     fireEvent.change(screen.getByLabelText(/precio base/i), { target: { value: '80' } });
     fireEvent.change(screen.getByLabelText(/precio mínimo/i), { target: { value: '60' } });
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     await waitForCreateToSettle();
     const [, opts] = mockedFetch.mock.calls.find(([p]) => p === '/api/v1/products')!;
     const variantBody = (opts as { body: { defaultVariant: Record<string, unknown> } }).body.defaultVariant;
@@ -269,6 +308,9 @@ describe('ProductForm — create', () => {
     fillMinimalCreate();
     const btn = screen.getByRole('button', { name: /crear producto/i });
     fireEvent.click(btn);
+    const proceed = screen.getByRole('button', { name: 'Guardar de todos modos' });
+    fireEvent.click(proceed);
+    fireEvent.click(proceed);
     fireEvent.click(btn);
     expect(mockedFetch.mock.calls.filter(([p]) => p === '/api/v1/products')).toHaveLength(1);
     resolve({ id: 'x' });
@@ -284,7 +326,7 @@ describe('ProductForm — create', () => {
     });
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
     fillMinimalCreate();
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     expect(await screen.findByText(/sku or barcode already exists/i)).toBeInTheDocument();
     expect(replaceMock).not.toHaveBeenCalled();
     expect(screen.queryByRole('link', { name: /ver producto/i })).not.toBeInTheDocument();
@@ -293,7 +335,7 @@ describe('ProductForm — create', () => {
   it('never writes to browser storage', async () => {
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
     fillMinimalCreate();
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     await waitForCreateToSettle();
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
@@ -318,7 +360,7 @@ describe('ProductForm — create', () => {
     const file = new File(['x'], 'photo.png', { type: 'image/png' });
     fireEvent.change(screen.getByLabelText(/elegir imagen/i), { target: { files: [file] } });
     fillMinimalCreate();
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
 
     await waitForCreateToSettle();
 
@@ -342,7 +384,7 @@ describe('ProductForm — create', () => {
     fireEvent.change(screen.getByLabelText(/precio máximo/i), { target: { value: '199.9' } });
     fireEvent.change(screen.getByLabelText(/precio base/i), { target: { value: '150' } });
     fireEvent.change(screen.getByLabelText(/precio mínimo/i), { target: { value: '120' } });
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
 
     await waitFor(() => expect(screen.getByAltText(/código qr/i)).toBeInTheDocument());
     expect(screen.getByText('Precio máximo: 199.90')).toBeInTheDocument();
@@ -356,7 +398,7 @@ describe('ProductForm — create', () => {
     });
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
     fillMinimalCreate();
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
 
     await waitForCreateToSettle();
     expect(await screen.findByText(/no se pudo generar el código qr/i)).toBeInTheDocument();
@@ -365,7 +407,7 @@ describe('ProductForm — create', () => {
   it('disables the form fields once the product has been created', async () => {
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
     fillMinimalCreate();
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     await waitForCreateToSettle();
     expect(screen.getByLabelText(/^nombre/i)).toBeDisabled();
     expect(screen.queryByRole('button', { name: /crear producto/i })).not.toBeInTheDocument();
@@ -376,7 +418,7 @@ describe('ProductForm — create', () => {
       <ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} canAddStock />,
     );
     fillMinimalCreate();
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     await waitForCreateToSettle();
 
     const link = screen.getByRole('link', { name: /agregar stock/i });
@@ -389,7 +431,7 @@ describe('ProductForm — create', () => {
   it('never shows "Agregar stock" without canAddStock, even though the product was created', async () => {
     render(<ProductForm mode="create" categories={CATEGORIES} definitions={DEFS} initialFieldSets={EMPTY_SETS} />);
     fillMinimalCreate();
-    fireEvent.click(screen.getByRole('button', { name: /crear producto/i }));
+    submitCreate();
     await waitForCreateToSettle();
     expect(screen.queryByRole('link', { name: /agregar stock/i })).not.toBeInTheDocument();
   });
@@ -400,7 +442,7 @@ describe('ProductForm — edit', () => {
     id: 'p1',
     name: 'BLENDER',
     description: '',
-    status: 'draft',
+    status: 'discontinued',
     attributes: {},
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',

@@ -160,7 +160,7 @@ export function VariantForm({
 
   // Edit screen: an image picked in the side panel but not saved yet also counts as a change.
   const stagedImage = useStagedImage();
-  const hasStagedImage = mode === 'edit' && stagedImage?.file != null;
+  const hasStagedImage = mode === 'edit' && (stagedImage?.file != null || stagedImage?.qrGenerated === true);
 
   const dirty = useMemo(() => {
     if (mode === 'create') {
@@ -361,6 +361,7 @@ export function VariantForm({
           return;
         }
       }
+      stagedImage?.setQrGenerated(false);
       setSuccess(true);
       router.refresh();
     } catch (err) {

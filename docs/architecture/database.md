@@ -902,7 +902,8 @@ platform-admin (SuperAdmin) endpoints — those are gated structurally (`@Platfo
 | `sales.customers.view` | Listar y ver los clientes del tenant actual | Operativo | Bajo | — |
 | `sales.customers.manage` | Crear y actualizar clientes del tenant actual | Operativo | Medio | `tax_id` único por tenant; soft-delete, nunca borrado físico |
 | `sales.carts.manage` | Operar el carrito de venta (crear, ítems, negociar precio) | Operativo | Bajo | Un carrito abierto por vendedor |
-| `sales.orders.view` | Listar y ver las órdenes de venta del tenant actual | Operativo | Bajo | — |
+| `sales.orders.view` | Listar y ver las órdenes de venta **propias** (`orders.placed_by_user_id` = el usuario) y sus agregados de reporte | Operativo | Bajo | Sin `sales.orders.view_all` un vendedor no ve las ventas de otros (404 en detalle/notificaciones) |
+| `sales.orders.view_all` | Ver las órdenes de venta de **todos** los vendedores del tenant actual (listado, detalle, notificaciones, reporte `sales-summary`) | Operativo / Sensible | Medio | Migración `0044`; solo en la plantilla Administrador (un tenant puede concederlo a otros roles); se suma al alcance por almacén (ADR-0024/0035) |
 | `sales.orders.create` | Checkout y confirmación de una orden (reserva y compromete inventario) | Operativo / Sensible | Alto | Agrupa `POST /orders` y `POST /orders/:id/confirm` |
 | `sales.orders.cancel` | Cancelar una orden antes de la confirmación (libera la reserva) | Operativo | Medio | Una orden `confirmed` sólo se revierte con una devolución |
 

@@ -13,7 +13,7 @@ import type { Product, ProductImage, Variant } from '../types/products';
 export interface ListProductsQuery {
   page?: number;
   pageSize?: number;
-  status?: 'draft' | 'active' | 'discontinued';
+  status?: 'active' | 'discontinued';
   categoryId?: string;
 }
 

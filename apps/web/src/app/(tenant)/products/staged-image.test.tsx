@@ -32,7 +32,7 @@ const VARIANT = {
   updatedAt: '2026-01-01T00:00:00Z',
 };
 
-function renderEditScreen(): void {
+function renderEditScreen(canManageQr = false): void {
   render(
     <StagedImageProvider>
       <VariantForm
@@ -50,7 +50,7 @@ function renderEditScreen(): void {
         variantId="v1"
         apiPublicUrl="http://localhost:4000"
         canManageImage
-        canManageQr={false}
+        canManageQr={canManageQr}
         maxPrice={100}
       />
     </StagedImageProvider>,
@@ -101,6 +101,23 @@ describe('Editing a product image (staged, saved with "Guardar cambios")', () =>
 
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch.mock.calls.map(([p]) => p)).toEqual(['/api/v1/products/p1/variants/v1', '/api/v1/products/p1/images']);
+  });
+
+  it('generating a QR from the edit screen enables "Guardar cambios"; saving it makes no PATCH and disables the button again', async () => {
+    mockedFetch.mockResolvedValue({ code: 'ABC123' });
+    renderEditScreen(true);
+    const save = screen.getByRole('button', { name: 'Guardar cambios' });
+    expect(save).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: /generar código qr/i }));
+    await waitFor(() => expect(screen.getByText('http://localhost:4000/q/ABC123')).toBeInTheDocument());
+    expect(save).toBeEnabled();
+
+    mockedFetch.mockClear();
+    fireEvent.click(save);
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled());
+    expect(mockedFetch).not.toHaveBeenCalled(); // nothing left to send: the QR itself was stored when generated
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeDisabled());
   });
 
   it('"Descartar" drops the staged image and disables the button again', () => {

@@ -12,13 +12,19 @@ import { createContext, useContext, useMemo, useState, type ReactNode } from 're
 interface StagedImage {
   file: File | null;
   setFile: (file: File | null) => void;
+  /** A QR was generated from the edit screen in this session. The QR itself is already stored (it
+   * has to exist to be shown/printed), but the form treats it as a pending change so "Guardar
+   * cambios" is available to confirm the edit. */
+  qrGenerated: boolean;
+  setQrGenerated: (value: boolean) => void;
 }
 
 const StagedImageContext = createContext<StagedImage | null>(null);
 
 export function StagedImageProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [file, setFile] = useState<File | null>(null);
-  const value = useMemo(() => ({ file, setFile }), [file]);
+  const [qrGenerated, setQrGenerated] = useState(false);
+  const value = useMemo(() => ({ file, setFile, qrGenerated, setQrGenerated }), [file, qrGenerated]);
   return <StagedImageContext.Provider value={value}>{children}</StagedImageContext.Provider>;
 }
 

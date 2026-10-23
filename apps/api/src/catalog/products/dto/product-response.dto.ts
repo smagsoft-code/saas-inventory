@@ -19,7 +19,7 @@ export class ProductResponseDto {
   @ApiPropertyOptional({ type: String })
   description?: string | undefined;
 
-  @ApiProperty({ enum: ['draft', 'active', 'discontinued'] })
+  @ApiProperty({ enum: ['active', 'discontinued'] })
   status!: string;
 
   @ApiPropertyOptional({ type: Number })

@@ -113,6 +113,7 @@ export function ProductImageQrPanel({
         body: { targetType: 'product_variant', targetId: variantId },
       });
       setQrValue(`${apiPublicUrl.replace(/\/$/, '')}/q/${created.code}`);
+      staged?.setQrGenerated(true);
     } catch (err) {
       setQrError(httpErrorMessage(err));
     } finally {

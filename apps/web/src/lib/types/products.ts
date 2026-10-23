@@ -16,11 +16,10 @@
 
 // --- products ---------------------------------------------------------------------------------
 
-export const PRODUCT_STATUSES = ['draft', 'active', 'discontinued'] as const;
+export const PRODUCT_STATUSES = ['active', 'discontinued'] as const;
 export type ProductStatus = (typeof PRODUCT_STATUSES)[number];
 
 export const PRODUCT_STATUS_LABELS: Record<ProductStatus, string> = {
-  draft: 'Borrador',
   active: 'Activo',
   discontinued: 'Descontinuado',
 };

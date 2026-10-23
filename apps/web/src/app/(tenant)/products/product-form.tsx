@@ -25,6 +25,7 @@ import { Alert } from '../../../components/ui/alert';
 import { Button, ButtonLink } from '../../../components/ui/button';
 import { Field } from '../../../components/ui/field';
 import { Input, Select, Textarea } from '../../../components/ui/input';
+import { Modal } from '../../../components/ui/modal';
 import { Spinner } from '../../../components/ui/spinner';
 import { QrCodeImage } from '../../../components/qr-code-image';
 import { ImageFilePicker } from '../../../components/image-file-picker';
@@ -159,6 +160,7 @@ export function ProductForm({
 
   // --- OUI-007: right-side image + auto-QR, `create` mode only ---
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [noImageConfirmOpen, setNoImageConfirmOpen] = useState(false);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
   const [createdProduct, setCreatedProduct] = useState<Product | null>(null);
@@ -343,7 +345,7 @@ export function ProductForm({
     );
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
+  function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
     if (submitting || !dirty || attrLoading) {
       return;
@@ -351,6 +353,15 @@ export function ProductForm({
     if (!validate()) {
       return;
     }
+    // Creating without a picture: ask first, once the rest of the form is valid.
+    if (mode === 'create' && !imageFile) {
+      setNoImageConfirmOpen(true);
+      return;
+    }
+    void save();
+  }
+
+  async function save(): Promise<void> {
     setError(null);
     setSuccess(false);
     setSubmitting(true);
@@ -768,6 +779,33 @@ export function ProductForm({
           </div>
         )}
       </form>
+
+      <Modal
+        open={noImageConfirmOpen}
+        onClose={() => setNoImageConfirmOpen(false)}
+        title="Producto sin imagen"
+        size="md"
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="secondary" onClick={() => setNoImageConfirmOpen(false)}>
+              Volver a cargar imagen
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setNoImageConfirmOpen(false);
+                void save();
+              }}
+            >
+              Guardar de todos modos
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-slate-700">
+          No has cargado una imagen para este producto. Puedes guardarlo así y agregarla después, o volver y cargarla ahora.
+        </p>
+      </Modal>
 
       {mode === 'create' && (
         <aside className="flex w-full flex-col gap-4 lg:w-72 lg:shrink-0">

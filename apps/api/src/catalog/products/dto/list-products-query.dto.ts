@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Max, Min } from 'class-validator';
 
-const PRODUCT_STATUSES = ['draft', 'active', 'discontinued'] as const;
+const PRODUCT_STATUSES = ['active', 'discontinued'] as const;
 
 export class ListProductsQueryDto {
   @ApiPropertyOptional({ type: Number, default: 1, minimum: 1 })

@@ -137,9 +137,8 @@ export class ProductsService {
         supplierId: dto.supplierId ?? null,
         name: dto.name,
         description: dto.description,
-        // A new product is sellable straight away (owner decision): it starts `active`, not `draft`.
-        // `draft`/`discontinued` stay available through PATCH. (The column default is still `draft`,
-        // as a safe fallback for any other insert path.)
+        // A new product is sellable straight away (owner decision): it starts `active`. There is no
+        // `draft` state any more (migration 0046) — only `active` and `discontinued`, the latter via PATCH.
         status: 'active',
         warrantyMonths: dto.warrantyMonths,
         attributes: productAttributes,
