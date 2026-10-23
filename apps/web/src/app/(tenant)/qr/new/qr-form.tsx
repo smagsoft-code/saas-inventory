@@ -4,13 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
-import {
-  QR_TARGET_TYPES,
-  QR_TARGET_TYPE_LABELS,
-  type CreateQrCodeInput,
-  type QrCode,
-  type QrTargetType,
-} from '../../../../lib/types/qr';
+import type { CreateQrCodeInput, PendingQrVariant, QrCode, QrTargetType } from '../../../../lib/types/qr';
 import { Alert } from '../../../../components/ui/alert';
 import { Button, ButtonLink } from '../../../../components/ui/button';
 import { Field } from '../../../../components/ui/field';
@@ -33,22 +27,29 @@ interface VariantOption {
 }
 
 const QR_PATH = '/api/v1/qr-codes';
+const PENDING_PATH = '/api/v1/qr-codes/pending-variants';
+const PENDING_PAGE_SIZE = 100;
 
 /**
  * Creates a QR code — `POST /api/v1/qr-codes` (`catalog.qr.manage`). Body is exactly
  * `CreateQrCodeDto` (`targetType`, `targetId`, `expiresAt?`) — never `tenantId`/`code`/`status`.
- * The target is picked as Product → Variant (`GET /products/:id/variants`) or Location. Client
- * validation is a UX mirror; the backend re-validates the target against the caller's tenant and
- * re-authorizes.
+ * Client validation is a UX mirror; the backend re-validates the target against the caller's tenant
+ * and re-authorizes.
  *
- * UI-UX QR block: `initialProductId`/`initialVariantId` (from `/products`' own "Generar" link,
- * `?productId=&variantId=`) pre-select the target instead of leaving the caller to re-pick it.
- * After a successful create, this no longer redirects — it shows the same enlarged view
- * (`QrThumbnailModal`, `defaultOpen`) a click on the `/products` thumbnail already opens, so
- * printing works immediately in the same place, not after a detour through `/qr`.
+ * Picking a product variant is Categoría → Producto → Variante, and the Producto list is fed by
+ * `GET /qr-codes/pending-variants` — i.e. only products that still have at least one variant
+ * *without* an active QR (never a plain product list capped at 100, which hid imported products).
+ * When the chosen product has exactly one variant left without a QR it is selected for the caller.
+ * A QR for an Almacén (location) is still possible through the "almacén" toggle below the form.
+ *
+ * `initialProductId`/`initialVariantId` (from `/products`' own "Generar" link) pre-select the target.
+ * After a successful create, this shows the same enlarged view (`QrThumbnailModal`, `defaultOpen`) a
+ * click on the `/products` thumbnail already opens, so printing works immediately in the same place.
  */
 export function QrForm({
-  products,
+  categories,
+  initialPending,
+  initialPendingTotal,
   warehouses,
   locations,
   variantIdsWithActiveQr,
@@ -57,25 +58,30 @@ export function QrForm({
   initialVariantId,
   publicUrl,
 }: {
-  products: Option[];
+  categories: Option[];
+  /** The first page of variants with no active QR (`pending-variants`, unfiltered). */
+  initialPending: PendingQrVariant[];
+  initialPendingTotal?: number;
   warehouses: Option[];
   locations: LocationOption[];
-  /** OUI-010 — targets that already have an active QR are disabled here so the caller can only
-   * ever pick one that doesn't, instead of only finding out from the backend's 409 after
-   * submitting. Bounded to the first 100 (same convention as everywhere else in this app) — a
-   * target outside that range simply isn't pre-marked; the backend's own check still catches it. */
+  /** Targets that already have an active QR are disabled so the caller can only pick one that
+   * doesn't, instead of only finding out from the backend's 409 after submitting. Bounded to the
+   * first 100 — the backend's own check still catches anything outside that range. */
   variantIdsWithActiveQr: Set<string>;
   locationIdsWithActiveQr: Set<string>;
   initialProductId?: string;
   initialVariantId?: string;
   /** `apiPublicUrl()`, computed server-side and handed down — a Client Component can't read
-   * `API_URL` itself (only `NEXT_PUBLIC_`-prefixed vars reach the browser bundle), same convention
-   * `product-form.tsx` already uses for its own post-create QR panel. */
+   * `API_URL` itself (only `NEXT_PUBLIC_`-prefixed vars reach the browser bundle). */
   publicUrl: string;
 }): React.JSX.Element {
   const router = useRouter();
 
   const [targetType, setTargetType] = useState<QrTargetType>('product_variant');
+  const [categoryId, setCategoryId] = useState('');
+  const [pending, setPending] = useState<PendingQrVariant[]>(initialPending);
+  const [pendingTotal, setPendingTotal] = useState(initialPendingTotal ?? initialPending.length);
+  const [pendingLoading, setPendingLoading] = useState(false);
   const [productId, setProductId] = useState('');
   const [variants, setVariants] = useState<VariantOption[]>([]);
   const [variantsLoading, setVariantsLoading] = useState(false);
@@ -84,6 +90,7 @@ export function QrForm({
   const [locationId, setLocationId] = useState('');
   const [expiresAt, setExpiresAt] = useState('');
   const [created, setCreated] = useState<QrCode | null>(null);
+  const [createdLabel, setCreatedLabel] = useState<string | null>(null);
   const [pendingVariantId, setPendingVariantId] = useState(initialVariantId ?? null);
 
   const locationsInWarehouse = useMemo(
@@ -91,12 +98,55 @@ export function QrForm({
     [locations, warehouseId],
   );
 
+  /** Distinct products that still have a variant without a QR. */
+  const productOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const row of pending) {
+      if (!seen.has(row.productId)) seen.set(row.productId, row.productName);
+    }
+    return [...seen.entries()].map(([id, name]) => ({ id, name }));
+  }, [pending]);
+  const pendingVariantIds = useMemo(() => new Set(pending.map((p) => p.variantId)), [pending]);
+
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
   const targetId = targetType === 'location' ? locationId : productVariantId;
   const canSubmit = targetId !== '' && !submitting;
+
+  /** A variant can be picked only if it has no active QR: it is in the pending list, and not known
+   * (from the server-side bounded list) to already have one. */
+  function variantUnavailableReason(variantId: string): string | null {
+    if (variantIdsWithActiveQr.has(variantId)) return 'ya tiene QR activo';
+    if (!pendingVariantIds.has(variantId)) return 'no disponible';
+    return null;
+  }
+
+  async function loadPending(nextCategoryId: string): Promise<void> {
+    setPendingLoading(true);
+    setError(null);
+    try {
+      const query: Record<string, string | number> = { page: 1, pageSize: PENDING_PAGE_SIZE };
+      if (nextCategoryId) query['categoryId'] = nextCategoryId;
+      const result = await apiFetch<{ data: PendingQrVariant[]; meta?: { total: number } }>(PENDING_PATH, { query });
+      setPending(result.data);
+      setPendingTotal(result.meta?.total ?? result.data.length);
+    } catch (err) {
+      setError(httpErrorMessage(err));
+    } finally {
+      setPendingLoading(false);
+    }
+  }
+
+  function onCategoryChange(nextId: string): void {
+    setCategoryId(nextId);
+    setProductId('');
+    setVariants([]);
+    setProductVariantId('');
+    setFieldError({});
+    void loadPending(nextId);
+  }
 
   async function onProductChange(nextId: string): Promise<void> {
     setProductId(nextId);
@@ -120,25 +170,31 @@ export function QrForm({
 
   // Pre-select the product handed in via `?productId=` (the `/products` "Generar" link) — once,
   // on mount only (empty deps deliberate, same as `products-filters.tsx`'s own debounce effect —
-  // this project's eslint config has no react-hooks rule); the caller is free to change the
-  // selection afterward like any other field.
+  // this project's eslint config has no react-hooks rule).
   useEffect(() => {
-    if (initialProductId && products.some((p) => p.id === initialProductId)) {
+    if (initialProductId && initialPending.some((p) => p.productId === initialProductId)) {
       void onProductChange(initialProductId);
     }
   }, []);
 
-  // Once that product's variants have loaded, apply the pending `?variantId=` — separate effect
-  // because the fetch above is async and `variants` only exists after it resolves.
+  // Once that product's variants have loaded: apply the pending `?variantId=`, otherwise — when
+  // exactly one variant of the product is still available — select it by default.
   useEffect(() => {
+    if (variants.length === 0) return;
     if (pendingVariantId && variants.some((v) => v.id === pendingVariantId)) {
       setProductVariantId(pendingVariantId);
       setPendingVariantId(null);
+      return;
+    }
+    const available = variants.filter((v) => variantUnavailableReason(v.id) === null);
+    if (available.length === 1 && productVariantId === '') {
+      setProductVariantId(available[0]!.id);
     }
   }, [variants, pendingVariantId]);
 
   function resetForAnother(): void {
     setCreated(null);
+    setCreatedLabel(null);
     setTargetType('product_variant');
     setProductId('');
     setVariants([]);
@@ -170,7 +226,7 @@ export function QrForm({
     const next: Record<string, string> = {};
     if (targetType === 'product_variant' && !productVariantId) {
       next['targetId'] = 'Elige un producto y una variante.';
-    } else if (targetType === 'product_variant' && variantIdsWithActiveQr.has(productVariantId)) {
+    } else if (targetType === 'product_variant' && variantUnavailableReason(productVariantId)) {
       next['targetId'] = 'Esta variante ya tiene un código QR activo. Revócalo antes de generar uno nuevo.';
     }
     if (targetType === 'location' && !locationId) {
@@ -199,11 +255,17 @@ export function QrForm({
         body.expiresAt = new Date(`${expiresAt}T23:59:59.999Z`).toISOString();
       }
       const createdQr = await apiFetch<QrCode>(QR_PATH, { method: 'POST', body });
+      if (targetType === 'product_variant') {
+        const productName = productOptions.find((p) => p.id === productId)?.name;
+        const sku = variants.find((v) => v.id === productVariantId)?.sku;
+        setCreatedLabel(sku ? `${productName ?? 'Producto'} — ${sku}` : (productName ?? 'Variante'));
+        // It has a QR now: drop it from the "still without QR" list the pickers read.
+        setPending((cur) => cur.filter((p) => p.variantId !== productVariantId));
+      } else {
+        setCreatedLabel(locations.find((l) => l.id === locationId)?.name ?? 'Almacén');
+      }
       setCreated(createdQr);
       setSubmitting(false);
-      // Refreshes this route's server data (`variantIdsWithActiveQr`/`locationIdsWithActiveQr`)
-      // in place — `created` (local state) is untouched by this, so the success view below stays
-      // put; it just means "Generar otro" immediately sees the target picked here as taken.
       router.refresh();
     } catch (err) {
       if (isApiError(err) && err.status === 403) {
@@ -219,21 +281,13 @@ export function QrForm({
 
   if (created) {
     const variant = variants.find((v) => v.id === productVariantId);
-    const productName = products.find((p) => p.id === productId)?.name;
-    const location = locations.find((l) => l.id === locationId);
-    const label =
-      created.targetType === 'location'
-        ? (location?.name ?? 'Almacén')
-        : variant
-          ? `${productName ?? 'Producto'} — ${variant.sku}`
-          : (productName ?? 'Variante');
     const qrValue = `${publicUrl.replace(/\/$/, '')}/q/${created.code}`;
     return (
       <div className="flex max-w-md flex-col gap-4">
         <Alert tone="success">Código QR generado.</Alert>
         <QrThumbnailModal
           value={qrValue}
-          label={label}
+          label={createdLabel ?? 'Código QR'}
           {...(created.targetType === 'product_variant' && variant ? { maxPrice: variant.maxPrice } : {})}
           defaultOpen
         />
@@ -251,25 +305,32 @@ export function QrForm({
     <form onSubmit={handleSubmit} noValidate className="flex max-w-md flex-col gap-4">
       {error && <Alert tone="error">{error}</Alert>}
 
-      <Field label="Tipo de destino">
-        <Select
-          value={targetType}
-          onChange={(event) => onTargetTypeChange(event.target.value as QrTargetType)}
-        >
-          {QR_TARGET_TYPES.map((type) => (
-            <option key={type} value={type}>
-              {QR_TARGET_TYPE_LABELS[type]}
-            </option>
-          ))}
-        </Select>
-      </Field>
-
       {targetType === 'product_variant' ? (
         <>
-          <Field label="Producto">
-            <Select value={productId} onChange={(event) => void onProductChange(event.target.value)}>
-              <option value="">Selecciona un producto…</option>
-              {products.map((product) => (
+          <Field label="Categoría" {...(pendingLoading ? { hint: 'Cargando productos…' } : {})}>
+            <Select value={categoryId} onChange={(event) => onCategoryChange(event.target.value)}>
+              <option value="">Todas las categorías</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            label="Producto"
+            help="Solo aparecen productos que todavía tienen alguna variante sin código QR."
+            {...(pendingTotal > pending.length ? { hint: `Mostrando ${pending.length} de ${pendingTotal} variantes sin QR — filtra por categoría.` } : {})}
+          >
+            <Select
+              value={productId}
+              disabled={pendingLoading}
+              onChange={(event) => void onProductChange(event.target.value)}
+            >
+              <option value="">
+                {productOptions.length === 0 ? 'No hay productos sin QR' : 'Selecciona un producto…'}
+              </option>
+              {productOptions.map((product) => (
                 <option key={product.id} value={product.id}>
                   {product.name}
                 </option>
@@ -287,14 +348,24 @@ export function QrForm({
               disabled={!productId || variantsLoading}
             >
               <option value="">{productId ? 'Selecciona una variante…' : 'Elige primero un producto'}</option>
-              {variants.map((variant) => (
-                <option key={variant.id} value={variant.id} disabled={variantIdsWithActiveQr.has(variant.id)}>
-                  {variant.sku}
-                  {variantIdsWithActiveQr.has(variant.id) ? ' (ya tiene QR activo)' : ''}
-                </option>
-              ))}
+              {variants.map((variant) => {
+                const reason = variantUnavailableReason(variant.id);
+                return (
+                  <option key={variant.id} value={variant.id} disabled={reason !== null}>
+                    {variant.sku}
+                    {reason ? ` (${reason})` : ''}
+                  </option>
+                );
+              })}
             </Select>
           </Field>
+          <button
+            type="button"
+            onClick={() => onTargetTypeChange('location')}
+            className="w-fit text-sm font-medium text-slate-500 underline-offset-2 hover:underline"
+          >
+            Generar QR de un almacén en lugar de un producto
+          </button>
         </>
       ) : (
         <>
@@ -319,6 +390,13 @@ export function QrForm({
               ))}
             </Select>
           </Field>
+          <button
+            type="button"
+            onClick={() => onTargetTypeChange('product_variant')}
+            className="w-fit text-sm font-medium text-slate-500 underline-offset-2 hover:underline"
+          >
+            Volver a generar QR de un producto
+          </button>
         </>
       )}
 

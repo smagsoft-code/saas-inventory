@@ -89,6 +89,8 @@ export interface PendingQrVariant {
   productName: string;
   variantId: string;
   sku: string;
+  /** `null` when the product has no category. Optional only so older fixtures still type-check. */
+  categoryName?: string | null;
 }
 
 /** `POST /qr-codes/bulk` body — `BulkCreateQrCodesDto`. */

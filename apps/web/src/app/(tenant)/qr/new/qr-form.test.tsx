@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../../lib/api/errors';
 import { apiFetch } from '../../../../lib/api/client';
+import type { PendingQrVariant } from '../../../../lib/types/qr';
 import { QrForm } from './qr-form';
 
 const pushMock = vi.fn();
@@ -11,7 +12,12 @@ vi.mock('next/navigation', () => ({
 vi.mock('../../../../lib/api/client', () => ({ apiFetch: vi.fn() }));
 const mockedFetch = vi.mocked(apiFetch);
 
-const products = [{ id: 'p1', name: 'Fridge' }];
+const categories = [{ id: 'c1', name: 'Línea blanca' }];
+// Variants with no active QR yet — what the Producto picker is fed from.
+const pending = [
+  { productId: 'p1', productName: 'Fridge', variantId: 'v1', sku: 'FRIDGE-A', categoryName: 'Línea blanca' },
+  { productId: 'p1', productName: 'Fridge', variantId: 'v2', sku: 'FRIDGE-B', categoryName: 'Línea blanca' },
+];
 const warehouses = [{ id: 'w1', name: 'Sucursal Central' }];
 const locations = [{ id: 'l1', warehouseId: 'w1', name: 'Main floor' }];
 
@@ -21,11 +27,13 @@ function renderForm(
     locationIdsWithActiveQr?: Set<string>;
     initialProductId?: string;
     initialVariantId?: string;
+    initialPending?: PendingQrVariant[];
   } = {},
 ) {
   return render(
     <QrForm
-      products={products}
+      categories={categories}
+      initialPending={overrides.initialPending ?? pending}
       warehouses={warehouses}
       locations={locations}
       variantIdsWithActiveQr={overrides.variantIdsWithActiveQr ?? new Set()}
@@ -39,7 +47,7 @@ function renderForm(
 
 /** Selects the location target type and drills into its sucursal → almacén cascade. */
 function pickLocation(locationId: string) {
-  fireEvent.change(screen.getByLabelText('Tipo de destino'), { target: { value: 'location' } });
+  fireEvent.click(screen.getByRole('button', { name: /generar qr de un almacén/i }));
   fireEvent.change(screen.getByLabelText('Sucursal'), { target: { value: 'w1' } });
   fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: locationId } });
 }
@@ -102,7 +110,7 @@ describe('QrForm', () => {
   it('switches to a location target, cascading sucursal → almacén, and submits the location id', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'q2', code: 'loc-code', targetType: 'location', targetId: 'l1' });
     renderForm();
-    fireEvent.change(screen.getByLabelText('Tipo de destino'), { target: { value: 'location' } });
+    fireEvent.click(screen.getByRole('button', { name: /generar qr de un almacén/i }));
     expect(screen.getByLabelText('Almacén')).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Sucursal'), { target: { value: 'w1' } });
     expect(screen.getByLabelText('Almacén')).not.toBeDisabled();
@@ -184,8 +192,44 @@ describe('QrForm', () => {
 
   it('disables a location option that already has an active QR', () => {
     renderForm({ locationIdsWithActiveQr: new Set(['l1']) });
-    fireEvent.change(screen.getByLabelText('Tipo de destino'), { target: { value: 'location' } });
+    fireEvent.click(screen.getByRole('button', { name: /generar qr de un almacén/i }));
     fireEvent.change(screen.getByLabelText('Sucursal'), { target: { value: 'w1' } });
     expect(screen.getByRole('option', { name: /main floor \(ya tiene qr activo\)/i })).toBeDisabled();
+  });
+
+  it('offers only products that still have a variant without a QR, and no "Tipo de destino" select', () => {
+    renderForm({ initialPending: [pending[0]!, { productId: 'p9', productName: 'Cocina', variantId: 'v9', sku: 'COC-1', categoryName: null }] });
+    expect(screen.queryByLabelText('Tipo de destino')).not.toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Fridge' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Cocina' })).toBeInTheDocument();
+    expect(screen.getAllByRole('option', { name: 'Fridge' })).toHaveLength(1); // distinct products
+  });
+
+  it('changing the Categoría re-loads the products without QR for that category', async () => {
+    mockedFetch.mockResolvedValueOnce({ data: [pending[0]!], meta: { total: 1 } });
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: 'c1' } });
+    await waitFor(() =>
+      expect(mockedFetch).toHaveBeenCalledWith('/api/v1/qr-codes/pending-variants', { query: { page: 1, pageSize: 100, categoryId: 'c1' } }),
+    );
+  });
+
+  it('selects the variant by default when the product has exactly one variant without a QR', async () => {
+    mockedFetch.mockResolvedValueOnce([{ id: 'v1', sku: 'FRIDGE-A', maxPrice: 199.99 }]);
+    renderForm({ initialPending: [pending[0]!] });
+    fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'p1' } });
+    await waitFor(() => expect(screen.getByLabelText('Variante')).toHaveValue('v1'));
+    expect(screen.getByRole('button', { name: 'Generar' })).toBeEnabled();
+  });
+
+  it('does not pre-select when several variants are still available', async () => {
+    mockedFetch.mockResolvedValueOnce([
+      { id: 'v1', sku: 'FRIDGE-A', maxPrice: 1 },
+      { id: 'v2', sku: 'FRIDGE-B', maxPrice: 1 },
+    ]);
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Producto'), { target: { value: 'p1' } });
+    await screen.findByRole('option', { name: 'FRIDGE-A' });
+    expect(screen.getByLabelText('Variante')).toHaveValue('');
   });
 });

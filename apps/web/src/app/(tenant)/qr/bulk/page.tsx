@@ -1,6 +1,7 @@
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { listPendingQrVariants } from '../../../../lib/catalog/qr-codes';
+import { listCategories } from '../../../../lib/catalog/categories';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { NoAccess } from '../../../../components/ui/no-access';
@@ -28,15 +29,22 @@ export default async function BulkQrPage(): Promise<React.JSX.Element> {
     );
   }
 
-  const initial = await listPendingQrVariants();
+  const [initial, categories] = await Promise.all([
+    listPendingQrVariants(),
+    checker.can('categories.view') ? listCategories({ pageSize: 100 }).catch(() => null) : Promise.resolve(null),
+  ]);
 
   return (
     <PageContainer>
       <PageHeader
         title="Generación masiva de códigos QR"
-        help="Genera códigos para varias variantes de producto a la vez. Solo se muestran variantes que todavía no tienen un código QR vigente."
+        help="Genera códigos para varias variantes de producto a la vez. Solo se muestran variantes que todavía no tienen un código QR vigente; filtra por categoría para encontrarlas más rápido."
       />
-      <BulkQrGenerator initialVariants={initial.data} />
+      <BulkQrGenerator
+        initialVariants={initial.data}
+        initialTotal={initial.meta.total}
+        categories={(categories?.data ?? []).filter((c) => c.status === 'active').map((c) => ({ id: c.id, name: c.name }))}
+      />
     </PageContainer>
   );
 }

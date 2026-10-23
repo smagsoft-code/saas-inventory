@@ -203,13 +203,14 @@ describe('QrCodesService', () => {
     it('maps repository rows to the response shape and paginates', async () => {
       const { service, qrCodesRepository } = buildService();
       qrCodesRepository.findPendingProductVariants.mockResolvedValue({
-        rows: [{ productId: 'p1', productName: 'Fridge', variantId: 'v1', sku: 'FRIDGE-A', totalCount: '1' }],
+        rows: [{ productId: 'p1', productName: 'Fridge', variantId: 'v1', sku: 'FRIDGE-A', categoryName: 'Cocina', totalCount: '1' }],
         total: 1,
       });
 
-      const result = await service.listPendingVariants(TENANT_ID, { page: 1, pageSize: 100 });
+      const result = await service.listPendingVariants(TENANT_ID, { page: 1, pageSize: 100, categoryId: 'cat-1' });
 
-      expect(result.data).toEqual([{ productId: 'p1', productName: 'Fridge', variantId: 'v1', sku: 'FRIDGE-A' }]);
+      expect(qrCodesRepository.findPendingProductVariants).toHaveBeenCalledWith(expect.anything(), TENANT_ID, expect.objectContaining({ categoryId: 'cat-1' }));
+      expect(result.data).toEqual([{ productId: 'p1', productName: 'Fridge', variantId: 'v1', sku: 'FRIDGE-A', categoryName: 'Cocina' }]);
       expect(result.meta).toEqual({ page: 1, pageSize: 100, total: 1, totalPages: 1 });
     });
   });

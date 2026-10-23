@@ -16,4 +16,7 @@ export class PendingVariantResponseDto {
 
   @ApiProperty({ type: String })
   sku!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'Name of the product category, or null when the product has none.' })
+  categoryName!: string | null;
 }

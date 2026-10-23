@@ -174,11 +174,12 @@ export class QrCodesService {
     return withTenantTransaction(tenantId, async (tx) => {
       const { rows, total } = await this.qrCodesRepository.findPendingProductVariants(tx, tenantId, {
         q: query.q,
+        categoryId: query.categoryId,
         page: query.page,
         pageSize: query.pageSize,
       });
       return {
-        data: rows.map((row) => ({ productId: row.productId, productName: row.productName, variantId: row.variantId, sku: row.sku })),
+        data: rows.map((row) => ({ productId: row.productId, productName: row.productName, variantId: row.variantId, sku: row.sku, categoryName: row.categoryName ?? null })),
         meta: {
           page: query.page,
           pageSize: query.pageSize,

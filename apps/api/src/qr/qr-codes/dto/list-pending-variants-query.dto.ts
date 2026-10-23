@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 /**
  * `GET /qr-codes/pending-variants` (bulk-generation candidate list) — bounded to a single page of
@@ -25,10 +25,15 @@ export class ListPendingVariantsQueryDto {
   @Max(100)
   pageSize = 100;
 
-  @ApiPropertyOptional({ type: String, description: 'Substring match on product name or variant SKU (case-insensitive).' })
+  @ApiPropertyOptional({ type: String, description: 'Substring match on product name, variant SKU or category name (case-insensitive).' })
   @IsOptional()
   @IsString()
   @MinLength(1)
   @MaxLength(200)
   q?: string;
+
+  @ApiPropertyOptional({ type: String, format: 'uuid', description: 'Only variants whose product belongs to this category.' })
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
 }

@@ -65,7 +65,7 @@ describe('BulkQrGenerator', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generar 1 QR' }));
 
     expect(mockedFetch).not.toHaveBeenCalled();
-    expect(screen.getByText('Confirmar generación')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Confirmar generación' })).toBeInTheDocument();
     expect(screen.getByText(/está a punto de generar 1 código qr/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Confirmar' })).toBeInTheDocument();
   });
@@ -76,6 +76,7 @@ describe('BulkQrGenerator', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generar 1 QR' }));
     fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
     expect(mockedFetch).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Generar 1 QR' })).toBeInTheDocument();
   });
 
@@ -114,6 +115,11 @@ describe('BulkQrGenerator', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Generar 2 QR' }));
     fireEvent.click(screen.getByRole('button', { name: 'Confirmar' }));
 
+    const report = await screen.findByRole('dialog', { name: 'Generación completada' });
+    expect(report).toBeInTheDocument();
+    // the report names each row (Producto — código), created ones included
+    expect(screen.getAllByText('Refrigeradora LG — REF-001').length).toBeGreaterThan(0);
+    expect(screen.getByText('Generado')).toBeInTheDocument();
     expect(await screen.findByText(/1 código qr generado/i)).toBeInTheDocument();
     expect(screen.getByText(/1 omitido/i)).toBeInTheDocument();
     expect(screen.getByText('This variant already has an active QR code.')).toBeInTheDocument();
@@ -136,16 +142,42 @@ describe('BulkQrGenerator', () => {
     try {
       mockedFetch.mockResolvedValueOnce({ data: [VARIANTS[2]] });
       render(<BulkQrGenerator initialVariants={VARIANTS} />);
-      fireEvent.change(screen.getByLabelText('Buscar producto, variante o SKU'), { target: { value: 'Cocina' } });
+      fireEvent.change(screen.getByLabelText('Buscar producto, código o categoría'), { target: { value: 'Cocina' } });
       expect(mockedFetch).not.toHaveBeenCalled();
 
       // advanceTimersByTimeAsync also flushes the microtask queue in between — required here since
       // fetchVariants awaits the (fake-timer-frozen otherwise) mocked apiFetch promise.
       await vi.advanceTimersByTimeAsync(350);
 
-      expect(mockedFetch).toHaveBeenCalledWith('/api/v1/qr-codes/pending-variants', { query: { q: 'Cocina' } });
+      expect(mockedFetch).toHaveBeenCalledWith('/api/v1/qr-codes/pending-variants', { query: { page: 1, pageSize: 100, q: 'Cocina' } });
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('filters by category: re-fetches with categoryId and shows each row\'s category', async () => {
+    vi.useFakeTimers();
+    try {
+      mockedFetch.mockResolvedValueOnce({ data: [{ ...VARIANTS[2]!, categoryName: 'Cocinas' }], meta: { total: 1 } });
+      render(<BulkQrGenerator initialVariants={VARIANTS} categories={[{ id: 'cat-1', name: 'Cocinas' }]} />);
+      fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: 'cat-1' } });
+      await vi.advanceTimersByTimeAsync(350);
+
+      expect(mockedFetch).toHaveBeenCalledWith('/api/v1/qr-codes/pending-variants', { query: { page: 1, pageSize: 100, categoryId: 'cat-1' } });
+      expect(screen.getAllByText('Cocinas').length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('pages through more than 100 pending variants instead of silently hiding the rest', async () => {
+    mockedFetch.mockResolvedValueOnce({ data: [VARIANTS[2]], meta: { total: 150 } });
+    render(<BulkQrGenerator initialVariants={VARIANTS} initialTotal={150} />);
+    expect(screen.getByText('Página 1 de 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Siguiente' }));
+    await waitFor(() =>
+      expect(mockedFetch).toHaveBeenCalledWith('/api/v1/qr-codes/pending-variants', { query: { page: 2, pageSize: 100 } }),
+    );
+    expect(await screen.findByText('Página 2 de 2')).toBeInTheDocument();
   });
 });

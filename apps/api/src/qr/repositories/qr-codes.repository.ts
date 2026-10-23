@@ -23,6 +23,7 @@ export type PendingVariantRow = {
   productName: string;
   variantId: string;
   sku: string;
+  categoryName: string | null;
   totalCount: string;
 };
 
@@ -150,7 +151,7 @@ export class QrCodesRepository {
   async findPendingProductVariants(
     tx: TenantTransaction,
     tenantId: string,
-    params: { q?: string | undefined; page: number; pageSize: number },
+    params: { q?: string | undefined; categoryId?: string | undefined; page: number; pageSize: number },
   ): Promise<{ rows: PendingVariantRow[]; total: number }> {
     const offset = (params.page - 1) * params.pageSize;
     const rows = await tx.execute<PendingVariantRow>(sql`
@@ -159,9 +160,11 @@ export class QrCodesRepository {
         p.name AS "productName",
         pv.id AS "variantId",
         pv.sku AS sku,
+        c.name AS "categoryName",
         COUNT(*) OVER() AS "totalCount"
       FROM product_variants pv
       JOIN products p ON p.tenant_id = pv.tenant_id AND p.id = pv.product_id
+      LEFT JOIN categories c ON c.tenant_id = p.tenant_id AND c.id = p.category_id
       WHERE pv.tenant_id = ${tenantId}
         AND pv.deleted_at IS NULL
         AND p.deleted_at IS NULL
@@ -173,7 +176,8 @@ export class QrCodesRepository {
             AND qc.target_id = pv.id
             AND qc.status = 'active'
         )
-        ${params.q ? sql`AND (p.name ILIKE '%' || ${params.q} || '%' OR pv.sku ILIKE '%' || ${params.q} || '%')` : sql``}
+        ${params.categoryId ? sql`AND p.category_id = ${params.categoryId}` : sql``}
+        ${params.q ? sql`AND (p.name ILIKE '%' || ${params.q} || '%' OR pv.sku ILIKE '%' || ${params.q} || '%' OR c.name ILIKE '%' || ${params.q} || '%')` : sql``}
       ORDER BY p.name ASC, pv.sku ASC
       LIMIT ${params.pageSize} OFFSET ${offset}
     `);

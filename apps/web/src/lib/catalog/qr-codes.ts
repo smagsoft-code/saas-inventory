@@ -40,12 +40,16 @@ export async function getQrCode(id: string): Promise<QrCode> {
  * always submittable in one `POST /qr-codes/bulk` call — see that DTO's own comment). */
 export interface ListPendingQrVariantsQuery {
   q?: string;
+  categoryId?: string;
 }
 
 export async function listPendingQrVariants(query: ListPendingQrVariantsQuery = {}): Promise<Paginated<PendingQrVariant>> {
   const params: Record<string, string | number> = { pageSize: 100 };
   if (query.q) {
     params['q'] = query.q;
+  }
+  if (query.categoryId) {
+    params['categoryId'] = query.categoryId;
   }
   return serverApiFetch<Paginated<PendingQrVariant>>('/api/v1/qr-codes/pending-variants', { query: params });
 }
