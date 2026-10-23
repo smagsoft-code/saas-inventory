@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { apiFetch } from '../lib/api/client';
-import { HistoryDateFilters, HistoryFilters, type HistoryFilterValues } from './history-filters';
+import { HistoryDateFilters, HistoryFilters, HistoryLocationFilters, type HistoryFilterValues } from './history-filters';
 
 const pushMock = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: pushMock }) }));
@@ -26,7 +26,7 @@ const LOCS = [
 
 function bar(
   initial: Partial<HistoryFilterValues> = {},
-  opts: { canSearchCustomers?: boolean; customerName?: string; locations?: typeof LOCS; allowAll?: boolean; defaultLocationId?: string; noDocType?: boolean; preserve?: Record<string, string> } = {},
+  opts: { canSearchCustomers?: boolean; customerName?: string; locations?: typeof LOCS; allowAll?: boolean; defaultLocationId?: string; noDocType?: boolean; preserve?: Record<string, string>; sellers?: { value: string; label: string }[] } = {},
 ): React.JSX.Element {
   const full: HistoryFilterValues = { dateFrom: TODAY, ...initial };
   return (
@@ -43,6 +43,7 @@ function bar(
         allowAllLocations={opts.allowAll ?? true}
         canSearchCustomers={opts.canSearchCustomers ?? true}
         customerName={opts.customerName}
+        sellerOptions={opts.sellers}
         preserve={opts.preserve}
       />
     </>
@@ -295,6 +296,89 @@ describe('HistoryFilters', () => {
       expect(pushMock).not.toHaveBeenCalled();
       fireEvent.keyDown(hasta, { key: 'Enter' });
       expect(lastUrl().searchParams.has('dateTo')).toBe(false);
+    });
+  });
+
+  describe('Vendedor filter', () => {
+    const SELLERS = [
+      { value: 'u-1', label: 'QA Admin' },
+      { value: 'u-2', label: 'QA Vendedor' },
+    ];
+
+    it('is not rendered unless sellerOptions are given', () => {
+      render(bar());
+      expect(screen.queryByLabelText('Vendedor')).not.toBeInTheDocument();
+    });
+
+    it('offers "Todos los vendedores" plus every given seller and navigates with placedByUserId', () => {
+      pushMock.mockClear();
+      render(bar({}, { sellers: SELLERS }));
+      const select = screen.getByLabelText('Vendedor');
+      expect(Array.from((select as HTMLSelectElement).options).map((o) => o.text)).toEqual(['Todos los vendedores', 'QA Admin', 'QA Vendedor']);
+      fireEvent.change(select, { target: { value: 'u-2' } });
+      expect(lastUrl().searchParams.get('placedByUserId')).toBe('u-2');
+    });
+
+    it('choosing "Todos" drops the param, and a chosen seller counts as a non-default filter', () => {
+      pushMock.mockClear();
+      render(bar({ placedByUserId: 'u-1' }, { sellers: SELLERS }));
+      expect(screen.getByRole('button', { name: /restablecer filtros/i })).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('Vendedor'), { target: { value: '' } });
+      expect(lastUrl().searchParams.has('placedByUserId')).toBe(false);
+    });
+  });
+
+  describe('Sucursal + Almacén (HistoryLocationFilters)', () => {
+    const WAREHOUSES = [
+      { id: 'w-1', name: 'Matriz' },
+      { id: 'w-2', name: 'Norte' },
+    ];
+    const LOCATIONS = [
+      { id: 'l-1', name: 'General', warehouseId: 'w-1' },
+      { id: 'l-2', name: 'Piso', warehouseId: 'w-1' },
+      { id: 'l-3', name: 'General', warehouseId: 'w-2' },
+    ];
+    const renderLoc = (initial: Partial<HistoryFilterValues> = {}, allowAll = true) =>
+      render(
+        <HistoryLocationFilters
+          basePath="/sales"
+          initial={{ dateFrom: TODAY, ...initial }}
+          warehouses={WAREHOUSES}
+          locations={LOCATIONS}
+          allowAll={allowAll}
+        />,
+      );
+    const texts = (el: HTMLElement) => Array.from((el as HTMLSelectElement).options).map((o) => o.text);
+
+    it('offers all sucursales and all almacenes when nothing is chosen (unrestricted)', () => {
+      renderLoc();
+      expect(texts(screen.getByLabelText('Sucursal'))).toEqual(['Todas las sucursales', 'Matriz', 'Norte']);
+      expect(texts(screen.getByLabelText('Almacén'))).toEqual(['Todos los almacenes', 'General', 'Piso', 'General']);
+    });
+
+    it('a chosen Sucursal narrows the Almacén list to its own and navigates with warehouseId (Almacén back to "Todos")', () => {
+      pushMock.mockClear();
+      renderLoc({ warehouseId: 'w-1' });
+      expect(texts(screen.getByLabelText('Almacén'))).toEqual(['Todos los almacenes', 'General', 'Piso']);
+      fireEvent.change(screen.getByLabelText('Sucursal'), { target: { value: 'w-2' } });
+      expect(lastUrl().searchParams.get('warehouseId')).toBe('w-2');
+      expect(lastUrl().searchParams.has('locationId')).toBe(false);
+    });
+
+    it('picking an Almacén keeps its Sucursal coherent in the URL', () => {
+      pushMock.mockClear();
+      renderLoc();
+      fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: 'l-3' } });
+      expect(lastUrl().searchParams.get('locationId')).toBe('l-3');
+      expect(lastUrl().searchParams.get('warehouseId')).toBe('w-2');
+    });
+
+    it('a restricted user has no "Todas/Todos" options and changing Sucursal moves to its first Almacén', () => {
+      pushMock.mockClear();
+      renderLoc({ warehouseId: 'w-1', locationId: 'l-1' }, false);
+      expect(texts(screen.getByLabelText('Sucursal'))).toEqual(['Matriz', 'Norte']);
+      fireEvent.change(screen.getByLabelText('Sucursal'), { target: { value: 'w-2' } });
+      expect(lastUrl().searchParams.get('locationId')).toBe('l-3');
     });
   });
 });

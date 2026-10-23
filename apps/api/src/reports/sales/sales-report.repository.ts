@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { and, count, desc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
-import { orderItems, orders } from '../../database/schema';
+import { locations, orderItems, orders } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
+import { orderColumnFilterConditions, type OrderColumnFilters } from '../../sales/repositories/order-column-filters';
 
 export interface PeriodBucketRow {
   key: string;
@@ -28,6 +29,12 @@ export interface ProductBucketRow {
   quantity: string;
   discountTotal: string;
   total: string;
+}
+
+export interface PeriodCostRow {
+  key: string;
+  costTotal: string;
+  missingCostLines: string;
 }
 
 export type DateTruncUnit = 'day' | 'week' | 'month';
@@ -79,6 +86,9 @@ export class SalesReportRepository {
       locationIds?: string[] | undefined;
       documentType?: string | undefined;
       customerId?: string | undefined;
+      placedByUserId?: string | undefined;
+      warehouseId?: string | undefined;
+      columnFilters?: OrderColumnFilters | undefined;
     },
   ): SQL[] {
     const conditions = [
@@ -101,6 +111,18 @@ export class SalesReportRepository {
     }
     if (range.customerId) {
       conditions.push(eq(orders.customerId, range.customerId));
+    }
+    // Sucursal filter: orders whose location belongs to this warehouse (composes with locationId and the read scope).
+    if (range.warehouseId) {
+      conditions.push(
+        sql`${orders.locationId} in (select ${locations.id} from ${locations} where ${locations.tenantId} = ${tenantId} and ${locations.warehouseId} = ${range.warehouseId})`,
+      );
+    }
+    // The history table's per-column filters, so the cards count exactly the rows the table shows.
+    conditions.push(...orderColumnFilterConditions(tenantId, range.columnFilters ?? {}));
+    // A seller without sales.orders.view_all only aggregates the orders they placed themselves.
+    if (range.placedByUserId) {
+      conditions.push(eq(orders.placedByUserId, range.placedByUserId));
     }
     return conditions;
   }
@@ -140,6 +162,9 @@ export class SalesReportRepository {
       locationIds?: string[] | undefined;
       documentType?: string | undefined;
       customerId?: string | undefined;
+      placedByUserId?: string | undefined;
+      warehouseId?: string | undefined;
+      columnFilters?: OrderColumnFilters | undefined;
     },
   ): Promise<PeriodBucketRow[]> {
     // Bucket boundary is computed in the tenant's own IANA zone (never UTC/server-local), then
@@ -174,6 +199,50 @@ export class SalesReportRepository {
     return rows;
   }
 
+  /**
+   * Frozen cost of the same orders `summaryByPeriod` aggregates, per the same tenant-zone bucket:
+   * `Σ order_items.unit_cost_snapshot × quantity`. A separate query on purpose — joining
+   * `order_items` into `summaryByPeriod` would multiply every `SUM(orders.*)` by the line count;
+   * the two result sets are merged by bucket key in the service. A line with no snapshot
+   * (`unit_cost_snapshot IS NULL`) contributes 0 and is counted in `missingCostLines`, so the
+   * total stays a known-incomplete number instead of a silent undercount. Callers must only run
+   * this for holders of `pricing.cost.view` (ADR-0028).
+   */
+  async costByPeriod(
+    tx: TenantTransaction,
+    tenantId: string,
+    range: {
+      gte: Date;
+      lt: Date;
+      status: string;
+      unit: DateTruncUnit;
+      timezone: string;
+      exceptional: ExceptionalFilter;
+      locationId?: string | undefined;
+      locationIds?: string[] | undefined;
+      documentType?: string | undefined;
+      customerId?: string | undefined;
+      placedByUserId?: string | undefined;
+      warehouseId?: string | undefined;
+      columnFilters?: OrderColumnFilters | undefined;
+    },
+  ): Promise<PeriodCostRow[]> {
+    const bucketKey = sql<string>`to_char(date_trunc(${range.unit}, ${orders.createdAt} AT TIME ZONE ${range.timezone}), 'YYYY-MM-DD')`.as(
+      'bucket_key',
+    );
+    return tx
+      .select({
+        key: bucketKey,
+        costTotal: sql<string>`coalesce(sum(coalesce(${orderItems.unitCostSnapshot}, 0) * ${orderItems.quantity}), 0)`,
+        missingCostLines: sql<string>`count(*) filter (where ${orderItems.unitCostSnapshot} is null)`,
+      })
+      .from(orders)
+      .innerJoin(orderItems, and(eq(orderItems.tenantId, orders.tenantId), eq(orderItems.orderId, orders.id)))
+      .where(and(...this.dateRangeConditions(tenantId, range), this.exceptionalOrdersCondition(range.exceptional)))
+      .groupBy(sql`bucket_key`)
+      .orderBy(sql`bucket_key`);
+  }
+
   async summaryByCustomer(
     tx: TenantTransaction,
     tenantId: string,
@@ -186,6 +255,9 @@ export class SalesReportRepository {
       locationIds?: string[] | undefined;
       documentType?: string | undefined;
       customerId?: string | undefined;
+      placedByUserId?: string | undefined;
+      warehouseId?: string | undefined;
+      columnFilters?: OrderColumnFilters | undefined;
     },
   ): Promise<CustomerBucketRow[]> {
     const rows = await tx
@@ -229,6 +301,9 @@ export class SalesReportRepository {
       locationIds?: string[] | undefined;
       documentType?: string | undefined;
       customerId?: string | undefined;
+      placedByUserId?: string | undefined;
+      warehouseId?: string | undefined;
+      columnFilters?: OrderColumnFilters | undefined;
     },
   ): Promise<ProductBucketRow[]> {
     const rows = await tx

@@ -24,6 +24,18 @@ export interface SalesSummaryQuery {
    * Narrows the aggregate to one Almacén; does not add a location grouping (`GAP-ORDERS-LOCATION`
    * stays open for that half). */
   locationId?: string;
+  /** Orders placed at any Almacén of this Sucursal (warehouse). */
+  warehouseId?: string;
+  /** Only this seller's orders — honoured by the backend only for `sales.orders.view_all` holders. */
+  placedByUserId?: string;
+  /** History-table column filters (substring search / roll-up status). */
+  /** One search box: order number, customer or seller. */
+  q?: string;
+  orderNumber?: string;
+  customerName?: string;
+  sellerName?: string;
+  total?: string;
+  notificationStatus?: string;
 }
 
 export async function getSalesSummary(query: SalesSummaryQuery): Promise<SalesSummary> {
@@ -43,5 +55,16 @@ export async function getSalesSummary(query: SalesSummaryQuery): Promise<SalesSu
   if (query.locationId) {
     params['locationId'] = query.locationId;
   }
+  if (query.warehouseId) {
+    params['warehouseId'] = query.warehouseId;
+  }
+  if (query.placedByUserId) {
+    params['placedByUserId'] = query.placedByUserId;
+  }
+  for (const key of ['q', 'orderNumber', 'customerName', 'sellerName', 'total', 'notificationStatus'] as const) {
+    const value = query[key];
+    if (value) params[key] = value;
+  }
+
   return serverApiFetch<SalesSummary>('/api/v1/reports/sales-summary', { query: params });
 }

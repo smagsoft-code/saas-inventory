@@ -54,6 +54,7 @@ export const PERMISSION_CODES = [
   'sales.customers.manage',
   'sales.carts.manage',
   'sales.orders.view',
+  'sales.orders.view_all',
   'sales.orders.create',
   'sales.orders.cancel',
   'sales.returns.view',

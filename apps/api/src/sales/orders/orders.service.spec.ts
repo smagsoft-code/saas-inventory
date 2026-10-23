@@ -513,3 +513,67 @@ describe('OrdersService.list — business-day filter, seller and notification co
     expect(result.data[1]!.notificationStatus).toBe('none');
   });
 });
+
+describe('OrdersService — a seller only sees their own orders unless they hold sales.orders.view_all', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const query = { page: 1, pageSize: 20 };
+
+  it('list: scopes the query to the caller without view_all, and not with it', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+
+    await service.list(TENANT_ID, ACTOR_ID, ['sales.orders.view'], query);
+    expect(ordersRepository.listByTenant.mock.calls[0]![2]).toMatchObject({ placedByUserId: ACTOR_ID });
+
+    await service.list(TENANT_ID, ACTOR_ID, ['sales.orders.view', 'sales.orders.view_all'], query);
+    expect((ordersRepository.listByTenant.mock.calls[1]![2] as { placedByUserId?: string }).placedByUserId).toBeUndefined();
+  });
+
+  it('list: with view_all a placedByUserId filter narrows to that seller; without it the filter is ignored (always own)', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+
+    await service.list(TENANT_ID, ACTOR_ID, ['sales.orders.view', 'sales.orders.view_all'], { ...query, placedByUserId: 'seller-9' });
+    expect(ordersRepository.listByTenant.mock.calls[0]![2]).toMatchObject({ placedByUserId: 'seller-9' });
+
+    await service.list(TENANT_ID, ACTOR_ID, ['sales.orders.view'], { ...query, placedByUserId: 'seller-9' });
+    expect(ordersRepository.listByTenant.mock.calls[1]![2]).toMatchObject({ placedByUserId: ACTOR_ID });
+  });
+
+  it('list: passes the single search box (q) and the column filters + sort through to the repository', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+    await service.list(TENANT_ID, ACTOR_ID, ['sales.orders.view'], { ...query, q: 'ana', total: '200', sort: 'total', dir: 'asc' });
+    expect(ordersRepository.listByTenant.mock.calls[0]![2]).toMatchObject({
+      columnFilters: expect.objectContaining({ q: 'ana', total: '200' }),
+      sort: 'total',
+      dir: 'asc',
+    });
+  });
+
+  it('list: passes the Sucursal (warehouseId) filter through to the repository', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
+    await service.list(TENANT_ID, ACTOR_ID, ['sales.orders.view'], { ...query, warehouseId: 'wh-1' });
+    expect(ordersRepository.listByTenant.mock.calls[0]![2]).toMatchObject({ warehouseId: 'wh-1' });
+  });
+
+  it('getById: another seller\'s order is a 404 (existence not revealed) without view_all; own order and view_all work', async () => {
+    const { service, ordersRepository, createdOrder } = build();
+    const others = { ...createdOrder, placedByUserId: 'someone-else' };
+    ordersRepository.findById.mockResolvedValue(others);
+
+    await expect(service.getById(TENANT_ID, ACTOR_ID, ['sales.orders.view'], 'order-1')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getById(TENANT_ID, ACTOR_ID, ['sales.orders.view', 'sales.orders.view_all'], 'order-1')).resolves.toMatchObject({ id: 'order-1' });
+
+    ordersRepository.findById.mockResolvedValue(createdOrder); // placed by ACTOR_ID
+    await expect(service.getById(TENANT_ID, ACTOR_ID, ['sales.orders.view'], 'order-1')).resolves.toMatchObject({ id: 'order-1' });
+  });
+
+  it('getNotifications: same rule — 404 for another seller\'s order without view_all', async () => {
+    const { service, ordersRepository, createdOrder } = build();
+    ordersRepository.findById.mockResolvedValue({ ...createdOrder, placedByUserId: 'someone-else' });
+    await expect(service.getNotifications(TENANT_ID, ACTOR_ID, ['sales.orders.view'], 'order-1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});

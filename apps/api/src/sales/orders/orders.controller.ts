@@ -55,9 +55,10 @@ export class OrdersController {
   async notifications(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
+    @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Param('id') id: string,
   ): Promise<OrderNotificationsResponseDto> {
-    return this.ordersService.getNotifications(tenantId, principal.userId, id);
+    return this.ordersService.getNotifications(tenantId, principal.userId, permissions, id);
   }
 
   @Post()

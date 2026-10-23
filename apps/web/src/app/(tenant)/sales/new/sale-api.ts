@@ -16,7 +16,7 @@ export interface ProductSearchResult {
  * Product search for the "Crear venta" cart modal — `GET /reports/product-catalog?q=` (variant
  * grain, `products.view`). `q` matches the product name, the variant's code (SKU) or its barcode
  * (case-insensitive substring), so typing a code finds it directly. Only active variants of ACTIVE
- * products are offered (`status` + `productStatus`): a draft or discontinued product is never put in a
+ * products are offered (`status` + `productStatus`): a discontinued product is never put in a
  * cart, and — given the sale's `locationId` — only variants with stock available there. Each hit carries its code so the picker can show it under the name. Bounded to a handful of
  * results; this is a picker, not the catalog list.
  */

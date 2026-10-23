@@ -1,7 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsUUID, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { CALENDAR_DATE_PATTERN } from '../../../common/reporting/local-day-range';
 import { DOCUMENT_TYPES, ORDER_STATUSES } from '../../../sales/orders/dto/list-orders-query.dto';
+import { NOTIFICATION_STATUS_FILTERS } from '../../../sales/repositories/order-column-filters';
 import { ReportDateRangeQueryDto } from '../../../common/reporting/report-date-range.dto';
 
 export const SALES_SUMMARY_GROUP_BY = ['day', 'week', 'month', 'product', 'customer'] as const;
@@ -75,6 +76,51 @@ export class SalesSummaryQueryDto extends ReportDateRangeQueryDto {
   @IsOptional()
   @IsUUID()
   locationId?: string;
+
+  @ApiPropertyOptional({ type: String, format: 'uuid', description: 'orders.placed_by_user_id — only the orders of this seller. Honoured only for callers holding sales.orders.view_all; everyone else is always scoped to their own orders.' })
+  @IsOptional()
+  @IsUUID()
+  placedByUserId?: string;
+
+  @ApiPropertyOptional({ type: String, maxLength: 120, description: 'One search box: order number, customer name or seller name (substring).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
+
+  @ApiPropertyOptional({ type: String, maxLength: 60, description: 'Substring of the order number.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  orderNumber?: string;
+
+  @ApiPropertyOptional({ type: String, maxLength: 120, description: 'Substring of the (frozen) customer name.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  customerName?: string;
+
+  @ApiPropertyOptional({ type: String, maxLength: 120, description: 'Substring of the seller\'s full name.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  sellerName?: string;
+
+  @ApiPropertyOptional({ type: String, maxLength: 30, description: 'Substring of the order total (as text).' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  total?: string;
+
+  @ApiPropertyOptional({ enum: NOTIFICATION_STATUS_FILTERS, description: 'Rolled-up notification status of the order.' })
+  @IsOptional()
+  @IsIn(NOTIFICATION_STATUS_FILTERS)
+  notificationStatus?: (typeof NOTIFICATION_STATUS_FILTERS)[number];
+
+  @ApiPropertyOptional({ type: String, format: 'uuid', description: 'Only orders placed at a location (Almacén) of this warehouse (Sucursal).' })
+  @IsOptional()
+  @IsUUID()
+  warehouseId?: string;
 
   @ApiPropertyOptional({ enum: DOCUMENT_TYPES, description: 'orders.document_type equality filter.' })
   @IsOptional()

@@ -35,6 +35,13 @@ export interface SalesPeriodBucket {
   discountTotal: number;
   total: number;
   avgTicket: number;
+  /** Frozen cost of the bucket's sold lines. Present only for callers with `pricing.cost.view`
+   * (ADR-0028) — absent otherwise, never a masked 0. Period groupings only. */
+  costTotal?: number;
+  /** `total − costTotal`; present only alongside `costTotal`. */
+  profit?: number;
+  /** Sold lines with no cost snapshot (counted as 0 in `costTotal`); present only alongside it. */
+  missingCostLines?: number;
 }
 
 export interface SalesCustomerBucket {

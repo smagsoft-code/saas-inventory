@@ -180,7 +180,7 @@ export function makeClient(app: NestFastifyApplication) {
       method: 'POST',
       url: '/api/v1/inventory/adjustments',
       headers: writeHeaders(admin),
-      payload: { productVariantId: variantId, locationId, movementType: 'RECEIPT', quantity, reason: 'Test stock' },
+      payload: { productVariantId: variantId, locationId, movementType: 'RECEIPT', quantity, unitCost: 10, reason: 'Test stock' },
     });
     expect(response.statusCode, response.body).toBe(201);
   }
@@ -198,12 +198,14 @@ export function makeClient(app: NestFastifyApplication) {
   const fullCustomer = (suffix: string) => {
     taxIdSeq += 1;
     return {
-      type: 'business',
-      displayName: `Customer ${suffix}`,
-      taxId: `179${String(Date.now()).slice(-7)}${String(taxIdSeq).padStart(3, '0')}`,
+      type: 'cedula',
+      firstName: `Customer`,
+      lastName: suffix,
+      // cedula = exactly 10 digits, unique per tenant (7 time digits + 3 sequence digits).
+      taxId: `${String(Date.now()).slice(-7)}${String(taxIdSeq).padStart(3, '0')}`,
       email: `customer-${suffix}-${taxIdSeq}@example.com`,
       phone: '+59322222222',
-      address: { line1: 'Av. Siempre Viva 742', city: 'Quito', country: 'EC' },
+      address: 'Av. Siempre Viva 742, Quito',
     };
   };
 

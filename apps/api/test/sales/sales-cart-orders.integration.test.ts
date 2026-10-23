@@ -408,9 +408,14 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
         await db
           .delete(rolePermissions)
           .where(and(eq(rolePermissions.tenantId, f.admin.user.tenantId), eq(rolePermissions.roleId, role!.id), eq(rolePermissions.permissionCode, 'pricing.floor.view')));
+        // This test is about floor-price visibility, not seller scope: let the Vendedor read the
+        // Administrador's order (sales.orders.view_all), otherwise it would correctly be a 404.
+        await db.insert(rolePermissions).values({ tenantId: f.admin.user.tenantId, roleId: role!.id, permissionCode: 'sales.orders.view_all' });
       } finally {
         await client.end();
       }
+      // ADR-0035: a user with zero location assignments is denied (404) — give them the order's location.
+      await c.setUserLocations(f.admin, vendedor.user.id, [f.locationId]);
       const relogin = await c.loginAs('vendedor@price-vis.example');
       const read = await c.inject({ method: 'GET', url: `/api/v1/orders/${adminOrder.id}`, headers: c.readHeaders(relogin) });
       expect(read.statusCode).toBe(200);
@@ -467,6 +472,65 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
       // switching this open cart to LOC-B is blocked
       const toB = await c.inject({ method: 'PATCH', url: '/api/v1/cart', headers: c.writeHeaders(vendedor), payload: { locationId: locB } });
       expect(toB.statusCode).toBe(403);
+    });
+  });
+
+  describe('seller scope: sales.orders.view alone = my own sales; sales.orders.view_all = every seller', () => {
+    it('a Vendedor sees only their own orders (list, detail, notifications, report); the Administrador sees all', async () => {
+      const f = await seed('Own Sales Co', 'admin@own-sales.example', { stock: 20 });
+      const vendedor = await c.createAndLoginAs(f.admin, 'vendedor@own-sales.example', 'Vendedor');
+      await c.setUserLocations(f.admin, vendedor.user.id, [f.locationId]);
+
+      const adminOrderCart = await openCartWith(f, f.admin, [{ variantId: f.variantId, quantity: 1 }]);
+      const adminOrder = JSON.parse((await checkout(f.admin, adminOrderCart, 'sales_note')).body) as { id: string };
+      const sellerOrderCart = await openCartWith(f, vendedor, [{ variantId: f.variantId, quantity: 2 }]);
+      const sellerOrderRes = await checkout(vendedor, sellerOrderCart, 'sales_note');
+      expect(sellerOrderRes.statusCode, sellerOrderRes.body).toBe(201);
+      const sellerOrder = JSON.parse(sellerOrderRes.body) as { id: string; total: number };
+
+      const listIds = async (session: Session): Promise<string[]> => {
+        const res = await c.inject({ method: 'GET', url: '/api/v1/orders?pageSize=50', headers: c.readHeaders(session) });
+        expect(res.statusCode, res.body).toBe(200);
+        return (JSON.parse(res.body) as { data: { id: string }[] }).data.map((o) => o.id);
+      };
+      expect(await listIds(vendedor)).toEqual([sellerOrder.id]);
+      expect((await listIds(f.admin)).sort()).toEqual([adminOrder.id, sellerOrder.id].sort());
+
+      // detail + notifications of someone else's order: 404 for the seller (existence not revealed)
+      for (const suffix of ['', '/notifications']) {
+        const others = await c.inject({ method: 'GET', url: `/api/v1/orders/${adminOrder.id}${suffix}`, headers: c.readHeaders(vendedor) });
+        expect(others.statusCode).toBe(404);
+        const own = await c.inject({ method: 'GET', url: `/api/v1/orders/${sellerOrder.id}${suffix}`, headers: c.readHeaders(vendedor) });
+        expect(own.statusCode).toBe(200);
+        const asAdmin = await c.inject({ method: 'GET', url: `/api/v1/orders/${sellerOrder.id}${suffix}`, headers: c.readHeaders(f.admin) });
+        expect(asAdmin.statusCode).toBe(200);
+      }
+
+      // the report aggregates follow the same scope
+      const from = new Date(Date.now() - 3_600_000).toISOString();
+      const to = new Date(Date.now() + 3_600_000).toISOString();
+      const summary = async (session: Session): Promise<number> => {
+        const res = await c.inject({ method: 'GET', url: `/api/v1/reports/sales-summary?from=${from}&to=${to}&groupBy=day&status=pending`, headers: c.readHeaders(session) });
+        expect(res.statusCode, res.body).toBe(200);
+        return (JSON.parse(res.body) as { buckets: { orderCount: number }[] }).buckets.reduce((n, b) => n + b.orderCount, 0);
+      };
+      expect(await summary(vendedor)).toBe(1);
+      expect(await summary(f.admin)).toBe(2);
+    });
+
+    it('the Administrador template carries sales.orders.view_all; Vendedor and Supervisor do not', async () => {
+      const f = await seed('View All Tpl Co', 'admin@view-all-tpl.example');
+      const { client, db } = getMigratorDb();
+      try {
+        const rows = await db
+          .select({ name: roles.name })
+          .from(rolePermissions)
+          .innerJoin(roles, eq(roles.id, rolePermissions.roleId))
+          .where(and(eq(rolePermissions.tenantId, f.admin.user.tenantId), eq(rolePermissions.permissionCode, 'sales.orders.view_all')));
+        expect(rows.map((r) => r.name)).toEqual(['Administrador']);
+      } finally {
+        await client.end();
+      }
     });
   });
 

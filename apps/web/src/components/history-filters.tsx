@@ -25,9 +25,13 @@ export interface HistoryFilterValues {
   dateFrom: string;
   dateTo?: string | undefined;
   locationId?: string | undefined;
+  /** Sucursal (warehouse) — narrows to every Almacén of it when no Almacén is chosen. */
+  warehouseId?: string | undefined;
   status?: string | undefined;
   documentType?: string | undefined;
   customerId?: string | undefined;
+  /** Historial de ventas only: the seller (user who placed the order). */
+  placedByUserId?: string | undefined;
 }
 
 export interface FilterOption {
@@ -41,10 +45,12 @@ function useApply(basePath: string, preserve: Record<string, string> | undefined
     const params = new URLSearchParams();
     params.set('dateFrom', next.dateFrom);
     if (next.dateTo && next.dateTo > next.dateFrom) params.set('dateTo', next.dateTo);
+    if (next.warehouseId) params.set('warehouseId', next.warehouseId);
     if (next.locationId) params.set('locationId', next.locationId);
     if (next.status) params.set('status', next.status);
     if (next.documentType) params.set('documentType', next.documentType);
     if (next.customerId) params.set('customerId', next.customerId);
+    if (next.placedByUserId) params.set('placedByUserId', next.placedByUserId);
     for (const [key, value] of Object.entries(preserve ?? {})) {
       if (value) params.set(key, value);
     }
@@ -176,17 +182,84 @@ export function HistoryDateFilters({
   );
 }
 
+/**
+ * Sucursal + Almacén, rendered in the page header next to Desde/Hasta (Historial de ventas). Choosing
+ * a Sucursal narrows the Almacén list to its own; an unrestricted user can leave Almacén on "Todos los
+ * almacenes" (= every Almacén of that Sucursal), a restricted user is moved to the first Almacén of the
+ * Sucursal. The Almacén list never offers a location outside the user's own scope.
+ */
+export function HistoryLocationFilters({
+  basePath,
+  initial,
+  warehouses,
+  locations,
+  allowAll,
+  preserve,
+}: {
+  basePath: string;
+  initial: HistoryFilterValues;
+  warehouses: { id: string; name: string }[];
+  locations: { id: string; name: string; warehouseId: string }[];
+  allowAll: boolean;
+  preserve?: Record<string, string> | undefined;
+}): React.JSX.Element {
+  const apply = useApply(basePath, preserve);
+  const visibleLocations = initial.warehouseId ? locations.filter((l) => l.warehouseId === initial.warehouseId) : locations;
+  return (
+    <div className="flex items-end gap-3">
+      <Field label="Sucursal">
+        <Select
+          className={CONTROL_HEIGHT}
+          value={initial.warehouseId ?? ''}
+          onChange={(e) => {
+            const warehouseId = e.target.value || undefined;
+            const firstLocation = locations.find((l) => !warehouseId || l.warehouseId === warehouseId);
+            apply({ ...initial, warehouseId, locationId: allowAll ? undefined : firstLocation?.id });
+          }}
+        >
+          {allowAll && <option value="">Todas las sucursales</option>}
+          {warehouses.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <Field label="Almacén">
+        <Select
+          className={CONTROL_HEIGHT}
+          value={initial.locationId ?? ''}
+          onChange={(e) => {
+            const locationId = e.target.value || undefined;
+            apply({ ...initial, locationId, warehouseId: locations.find((l) => l.id === locationId)?.warehouseId ?? initial.warehouseId });
+          }}
+        >
+          {allowAll && <option value="">Todos los almacenes</option>}
+          {visibleLocations.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+    </div>
+  );
+}
+
 export function HistoryFilters({
   basePath,
   initial,
   today,
   defaultLocationId,
+  defaultWarehouseId,
+  hideLocation = false,
   locations,
   allowAllLocations,
   statusOptions,
   documentTypeOptions,
   canSearchCustomers = false,
   customerName,
+  sellerOptions,
   preserve,
   includeDates = false,
 }: {
@@ -196,6 +269,10 @@ export function HistoryFilters({
   today: string;
   /** The Almacén the page selects when none is chosen (undefined = "Todos"). */
   defaultLocationId: string | undefined;
+  /** The Sucursal the page selects when none is chosen (only meaningful with `HistoryLocationFilters`). */
+  defaultWarehouseId?: string | undefined;
+  /** The Almacén select lives elsewhere (`HistoryLocationFilters` in the page header). */
+  hideLocation?: boolean;
   locations: { id: string; name: string }[];
   allowAllLocations: boolean;
   statusOptions: FilterOption[];
@@ -204,6 +281,8 @@ export function HistoryFilters({
   /** Shows the customer picker (Historial de ventas only). */
   canSearchCustomers?: boolean;
   customerName?: string | undefined;
+  /** Shows the Vendedor picker (Historial de ventas, only for callers who may see every seller's sales). */
+  sellerOptions?: FilterOption[] | undefined;
   preserve?: Record<string, string> | undefined;
   /** Put Desde/Hasta inside this bar (same row, after Estado) instead of in the page header. */
   includeDates?: boolean;
@@ -217,25 +296,29 @@ export function HistoryFilters({
     !initial.status &&
     !initial.documentType &&
     !initial.customerId &&
+    !initial.placedByUserId &&
+    initial.warehouseId === defaultWarehouseId &&
     initial.locationId === defaultLocationId;
 
   return (
     <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-white p-4">
       <div className="grid items-end gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Almacén">
-          <Select
-            className={CONTROL_HEIGHT}
-            value={initial.locationId ?? ''}
-            onChange={(e) => apply({ ...initial, locationId: e.target.value || undefined })}
-          >
-            {allowAllLocations && <option value="">Todos los almacenes</option>}
-            {locations.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        {!hideLocation && (
+          <Field label="Almacén">
+            <Select
+              className={CONTROL_HEIGHT}
+              value={initial.locationId ?? ''}
+              onChange={(e) => apply({ ...initial, locationId: e.target.value || undefined })}
+            >
+              {allowAllLocations && <option value="">Todos los almacenes</option>}
+              {locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
 
         {documentTypeOptions && (
           <Field label="Tipo de documento">
@@ -271,6 +354,23 @@ export function HistoryFilters({
 
         {includeDates && <DateFields initial={initial} today={today} apply={apply} />}
 
+        {sellerOptions && (
+          <Field label="Vendedor">
+            <Select
+              className={CONTROL_HEIGHT}
+              value={initial.placedByUserId ?? ''}
+              onChange={(e) => apply({ ...initial, placedByUserId: e.target.value || undefined })}
+            >
+              <option value="">Todos los vendedores</option>
+              {sellerOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+
         {canSearchCustomers && (
           <div className="flex flex-col gap-1">
             <span className="text-sm font-medium text-slate-700">Cliente</span>
@@ -299,7 +399,7 @@ export function HistoryFilters({
             type="button"
             onClick={() => {
               setCustomerLabel('');
-              apply({ dateFrom: today, locationId: defaultLocationId });
+              apply({ dateFrom: today, locationId: defaultLocationId, warehouseId: defaultWarehouseId });
             }}
             className="text-xs font-medium text-slate-500 hover:underline"
           >

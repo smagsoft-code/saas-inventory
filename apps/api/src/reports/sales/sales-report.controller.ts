@@ -1,6 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { AuthPrincipal } from '../../common/context/request-context';
+import { CurrentPermissions } from '../../common/decorators/current-permissions.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
@@ -27,7 +28,10 @@ export class SalesReportController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @Query() query: SalesSummaryQueryDto,
+    @CurrentPermissions() permissions: string[],
   ): Promise<SalesSummaryResponseDto> {
-    return this.salesReportService.getSalesSummary(tenantId, principal.userId, query);
+    // costTotal/profit on period buckets are field-gated on pricing.cost.view (ADR-0028), not on
+    // this route's own permission — same precedent as GET /reports/inventory-summary's totalCostValue.
+    return this.salesReportService.getSalesSummary(tenantId, principal.userId, query, permissions.includes('pricing.cost.view'), permissions.includes('sales.orders.view_all'));
   }
 }

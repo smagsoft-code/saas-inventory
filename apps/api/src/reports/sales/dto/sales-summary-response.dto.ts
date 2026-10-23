@@ -1,4 +1,4 @@
-import { ApiExtraModels, ApiProperty, getSchemaPath } from '@nestjs/swagger';
+import { ApiExtraModels, ApiProperty, ApiPropertyOptional, getSchemaPath } from '@nestjs/swagger';
 import { SALES_SUMMARY_EXCEPTIONAL } from './sales-summary-query.dto';
 
 /**
@@ -25,6 +25,19 @@ export class SalesPeriodBucketDto {
 
   @ApiProperty({ type: Number })
   avgTicket!: number;
+
+  @ApiPropertyOptional({
+    type: Number,
+    description:
+      'Σ order_items.unit_cost_snapshot × quantity of the bucket\'s orders (frozen cost at sale time; lines without a snapshot count as 0 — see missingCostLines). Present only for callers holding pricing.cost.view (ADR-0028), absent otherwise — never a masked 0. Period groupings only.',
+  })
+  costTotal?: number;
+
+  @ApiPropertyOptional({ type: Number, description: 'total − costTotal. Present only alongside costTotal.' })
+  profit?: number;
+
+  @ApiPropertyOptional({ type: Number, description: 'Order lines with no cost snapshot (counted as 0 in costTotal). Present only alongside costTotal.' })
+  missingCostLines?: number;
 }
 
 export class SalesCustomerBucketDto {

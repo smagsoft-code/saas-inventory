@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
-import { orders } from '../../database/schema';
+import { and, count, eq, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { locations, orders } from '../../database/schema';
+import {
+  orderColumnFilterConditions,
+  orderSortExpression,
+  type OrderColumnFilters,
+  type OrderSortColumn,
+} from './order-column-filters';
 import type { TenantTransaction } from '../../database/tenant-context';
 
 export interface OrderRow {
@@ -95,6 +101,14 @@ export class OrdersRepository {
       documentType?: string | undefined;
       locationId?: string | undefined;
       locationIds?: string[] | undefined;
+      /** Only orders placed at a location of this warehouse (Sucursal). */
+      warehouseId?: string | undefined;
+      /** Per-column filters of the history table (shared with the sales-summary report). */
+      columnFilters?: OrderColumnFilters | undefined;
+      sort?: OrderSortColumn | undefined;
+      dir?: 'asc' | 'desc' | undefined;
+      /** Only orders placed by this user (a seller without `sales.orders.view_all`). */
+      placedByUserId?: string | undefined;
       createdFrom?: string | undefined;
       createdTo?: string | undefined;
       /** Half-open business-day range already resolved to UTC instants (`localDayRangeToUtc`). */
@@ -118,6 +132,14 @@ export class OrdersRepository {
     if (params.locationIds) {
       conditions.push(params.locationIds.length > 0 ? inArray(orders.locationId, params.locationIds) : sql`false`);
     }
+    if (params.warehouseId) {
+      conditions.push(
+        sql`${orders.locationId} in (select ${locations.id} from ${locations} where ${locations.tenantId} = ${tenantId} and ${locations.warehouseId} = ${params.warehouseId})`,
+      );
+    }
+    if (params.placedByUserId) {
+      conditions.push(eq(orders.placedByUserId, params.placedByUserId));
+    }
     if (params.createdFrom) {
       conditions.push(gte(orders.createdAt, new Date(params.createdFrom)));
     }
@@ -128,14 +150,18 @@ export class OrdersRepository {
       conditions.push(gte(orders.createdAt, params.dayRange.gte));
       conditions.push(lt(orders.createdAt, params.dayRange.lt));
     }
+    conditions.push(...orderColumnFilterConditions(tenantId, params.columnFilters ?? {}));
     const where = and(...conditions);
+
+    const direction = params.dir === 'asc' ? sql`asc` : sql`desc`;
+    const orderBy = [sql`${orderSortExpression(params.sort ?? 'createdAt')} ${direction}`, sql`orders.id ${direction}`];
 
     const [totalRow] = await tx.select({ total: count() }).from(orders).where(where);
     const rows = await tx
       .select()
       .from(orders)
       .where(where)
-      .orderBy(desc(orders.createdAt))
+      .orderBy(...orderBy)
       .limit(params.pageSize)
       .offset((params.page - 1) * params.pageSize);
 

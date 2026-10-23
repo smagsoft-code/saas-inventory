@@ -42,7 +42,17 @@ export class SalesReportService {
     return row?.timezone ?? DEFAULT_TIMEZONE;
   }
 
-  async getSalesSummary(tenantId: string, actorId: string, query: SalesSummaryQueryDto): Promise<SalesSummaryResponseDto> {
+  async getSalesSummary(
+    tenantId: string,
+    actorId: string,
+    query: SalesSummaryQueryDto,
+    canViewCost = false,
+    canViewAllSellers = false,
+  ): Promise<SalesSummaryResponseDto> {
+    // Without sales.orders.view_all the aggregates only cover the caller's own orders — the same
+    // scope as GET /orders, so a seller's report can never reveal other sellers' totals.
+    // With it, the optional `placedByUserId` query param narrows to one seller.
+    const placedByUserId = canViewAllSellers ? query.placedByUserId : actorId;
     // ReportDateRangeQueryDto leaves from/to optional (F18-01); this report requires both — see
     // the DTO's own comment for why that is enforced here rather than by the DTO's type.
     // Business-day mode (`dateFrom`/`dateTo`, tenant timezone) replaces from/to when present.
@@ -85,6 +95,9 @@ export class SalesReportService {
           locationIds: readScope.locationIds,
           documentType: query.documentType,
           customerId: query.customerId,
+          placedByUserId,
+          warehouseId: query.warehouseId,
+          columnFilters: { q: query.q, orderNumber: query.orderNumber, customerName: query.customerName, sellerName: query.sellerName, total: query.total, notificationStatus: query.notificationStatus },
         });
         const buckets: SalesCustomerBucketDto[] = rows.map((row) => {
           const subtotal = Number(row.subtotal);
@@ -113,6 +126,9 @@ export class SalesReportService {
           locationIds: readScope.locationIds,
           documentType: query.documentType,
           customerId: query.customerId,
+          placedByUserId,
+          warehouseId: query.warehouseId,
+          columnFilters: { q: query.q, orderNumber: query.orderNumber, customerName: query.customerName, sellerName: query.sellerName, total: query.total, notificationStatus: query.notificationStatus },
         });
         const buckets: SalesProductBucketDto[] = rows.map((row) => ({
           key: row.key,
@@ -145,11 +161,35 @@ export class SalesReportService {
           locationIds: readScope.locationIds,
         documentType: query.documentType,
         customerId: query.customerId,
+          placedByUserId,
+          warehouseId: query.warehouseId,
+          columnFilters: { q: query.q, orderNumber: query.orderNumber, customerName: query.customerName, sellerName: query.sellerName, total: query.total, notificationStatus: query.notificationStatus },
       });
+      // Cost/profit are field-gated on pricing.cost.view (ADR-0028): without it the keys are absent.
+      const costRows = canViewCost
+        ? await this.salesReportRepository.costByPeriod(tx, tenantId, {
+            gte: range.gte,
+            lt: range.lt,
+            status,
+            unit,
+            timezone,
+            exceptional,
+            locationId: readScope.locationId,
+            locationIds: readScope.locationIds,
+            documentType: query.documentType,
+            customerId: query.customerId,
+          placedByUserId,
+          warehouseId: query.warehouseId,
+          columnFilters: { q: query.q, orderNumber: query.orderNumber, customerName: query.customerName, sellerName: query.sellerName, total: query.total, notificationStatus: query.notificationStatus },
+          })
+        : [];
+      const costByKey = new Map(costRows.map((c) => [c.key, c]));
       const buckets: SalesPeriodBucketDto[] = rows.map((row) => {
         const subtotal = Number(row.subtotal);
         const discountTotal = Number(row.discountTotal);
         const total = Number(row.total);
+        const cost = costByKey.get(row.key);
+        const costTotal = canViewCost ? roundMoney(Number(cost?.costTotal ?? 0)) : undefined;
         return {
           key: row.key,
           orderCount: row.orderCount,
@@ -157,6 +197,9 @@ export class SalesReportService {
           discountTotal,
           total,
           avgTicket: row.orderCount > 0 ? roundMoney(total / row.orderCount) : 0,
+          ...(costTotal !== undefined
+            ? { costTotal, profit: roundMoney(total - costTotal), missingCostLines: Number(cost?.missingCostLines ?? 0) }
+            : {}),
         };
       });
       return { from: range.gte.toISOString(), to: range.lt.toISOString(), timezone, currency: DEFAULT_CURRENCY, groupBy: query.groupBy, exceptional, buckets };

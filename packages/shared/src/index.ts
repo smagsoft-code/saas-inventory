@@ -161,6 +161,7 @@ export const DEFAULT_ROLE_TEMPLATES: Record<DefaultRoleTemplateName, { descripti
       'sales.customers.manage',
       'sales.carts.manage',
       'sales.orders.view',
+      'sales.orders.view_all',
       'sales.orders.create',
       'sales.orders.cancel',
       'sales.returns.view',

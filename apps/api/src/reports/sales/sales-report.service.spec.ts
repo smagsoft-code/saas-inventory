@@ -15,6 +15,7 @@ function buildService() {
     summaryByPeriod: vi.fn().mockResolvedValue([]),
     summaryByCustomer: vi.fn().mockResolvedValue([]),
     summaryByProduct: vi.fn().mockResolvedValue([]),
+    costByPeriod: vi.fn().mockResolvedValue([]),
   };
   const tenantSettingsRepository = { find: vi.fn().mockResolvedValue(undefined) };
   const service = new SalesReportService(salesReportRepository as never, tenantSettingsRepository as never, { resolveReadScope: vi.fn((_tx: unknown, _t: string, _u: string, loc?: string) => Promise.resolve(loc ? { locationId: loc } : {})) } as never);
@@ -40,6 +41,21 @@ function query(overrides: QueryOverrides = {}): SalesSummaryQueryDto {
 }
 
 describe('SalesReportService.getSalesSummary', () => {
+  it('adds costTotal/profit/missingCostLines to period buckets only for a caller who can view cost', async () => {
+    const { service, salesReportRepository } = buildService();
+    salesReportRepository.summaryByPeriod.mockResolvedValue([{ key: '2026-09-01', orderCount: 2, subtotal: '300', discountTotal: '0', total: '300' }]);
+    salesReportRepository.costByPeriod.mockResolvedValue([{ key: '2026-09-01', costTotal: '180.50', missingCostLines: '1' }]);
+
+    const withCost = await service.getSalesSummary('t1', 'u1', query(), true);
+    expect(withCost.buckets[0]).toMatchObject({ total: 300, costTotal: 180.5, profit: 119.5, missingCostLines: 1 });
+
+    salesReportRepository.costByPeriod.mockClear();
+    const withoutCost = await service.getSalesSummary('t1', 'u1', query(), false);
+    expect(withoutCost.buckets[0]).not.toHaveProperty('costTotal');
+    expect(withoutCost.buckets[0]).not.toHaveProperty('profit');
+    expect(salesReportRepository.costByPeriod).not.toHaveBeenCalled(); // never even queried
+  });
+
   it('rejects when `from` is missing', async () => {
     const { service } = buildService();
     await expect(service.getSalesSummary('t1', 'u1', query({ from: undefined }))).rejects.toThrow(BadRequestException);
@@ -274,5 +290,61 @@ describe('SalesReportService.getSalesSummary — business-day mode and new filte
       't1',
       expect.objectContaining({ documentType: 'invoice', customerId: '0190b2c4-0000-7000-8000-000000000001' }),
     );
+  });
+});
+
+describe('SalesReportService.getSalesSummary — seller scope', () => {
+  it('aggregates only the caller\'s own orders without sales.orders.view_all, every grouping', async () => {
+    for (const groupBy of ['day', 'customer', 'product'] as const) {
+      const { service, salesReportRepository } = buildService();
+      await service.getSalesSummary('t1', 'seller-1', query({ groupBy }), false, false);
+      const fn = groupBy === 'day' ? salesReportRepository.summaryByPeriod : groupBy === 'customer' ? salesReportRepository.summaryByCustomer : salesReportRepository.summaryByProduct;
+      expect(fn).toHaveBeenCalledWith(expect.anything(), 't1', expect.objectContaining({ placedByUserId: 'seller-1' }));
+    }
+  });
+
+  it('a placedByUserId filter is honoured only with sales.orders.view_all', async () => {
+    const withAll = buildService();
+    await withAll.service.getSalesSummary('t1', 'admin-1', { ...query(), placedByUserId: 'seller-9' }, false, true);
+    expect(withAll.salesReportRepository.summaryByPeriod).toHaveBeenCalledWith(expect.anything(), 't1', expect.objectContaining({ placedByUserId: 'seller-9' }));
+
+    const without = buildService();
+    await without.service.getSalesSummary('t1', 'seller-1', { ...query(), placedByUserId: 'seller-9' }, false, false);
+    expect(without.salesReportRepository.summaryByPeriod).toHaveBeenCalledWith(expect.anything(), 't1', expect.objectContaining({ placedByUserId: 'seller-1' }));
+  });
+
+  it('passes the column filters (incl. the q search box) to every grouping so the cards match the table', async () => {
+    for (const groupBy of ['day', 'customer', 'product'] as const) {
+      const { service, salesReportRepository } = buildService();
+      await service.getSalesSummary('t1', 'u1', { ...query({ groupBy }), q: 'ana', sellerName: 'qa', notificationStatus: 'pending' }, false, true);
+      const fn = groupBy === 'day' ? salesReportRepository.summaryByPeriod : groupBy === 'customer' ? salesReportRepository.summaryByCustomer : salesReportRepository.summaryByProduct;
+      expect(fn).toHaveBeenCalledWith(
+        expect.anything(),
+        't1',
+        expect.objectContaining({ columnFilters: expect.objectContaining({ q: 'ana', sellerName: 'qa', notificationStatus: 'pending' }) }),
+      );
+    }
+  });
+
+  it('passes the Sucursal (warehouseId) filter to every grouping', async () => {
+    for (const groupBy of ['day', 'customer', 'product'] as const) {
+      const { service, salesReportRepository } = buildService();
+      await service.getSalesSummary('t1', 'u1', { ...query({ groupBy }), warehouseId: 'wh-1' }, false, true);
+      const fn = groupBy === 'day' ? salesReportRepository.summaryByPeriod : groupBy === 'customer' ? salesReportRepository.summaryByCustomer : salesReportRepository.summaryByProduct;
+      expect(fn).toHaveBeenCalledWith(expect.anything(), 't1', expect.objectContaining({ warehouseId: 'wh-1' }));
+    }
+  });
+
+  it('does not restrict by seller with sales.orders.view_all', async () => {
+    const { service, salesReportRepository } = buildService();
+    await service.getSalesSummary('t1', 'admin-1', query(), false, true);
+    expect((salesReportRepository.summaryByPeriod.mock.calls[0]![2] as { placedByUserId?: string }).placedByUserId).toBeUndefined();
+  });
+
+  it('the cost aggregate is scoped the same way', async () => {
+    const { service, salesReportRepository } = buildService();
+    salesReportRepository.summaryByPeriod.mockResolvedValue([{ key: '2026-09-01', orderCount: 1, subtotal: '10', discountTotal: '0', total: '10' }]);
+    await service.getSalesSummary('t1', 'seller-1', query(), true, false);
+    expect(salesReportRepository.costByPeriod).toHaveBeenCalledWith(expect.anything(), 't1', expect.objectContaining({ placedByUserId: 'seller-1' }));
   });
 });

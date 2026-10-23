@@ -18,6 +18,20 @@ export interface ListOrdersQuery {
   documentType?: DocumentType;
   /** `orders.location_id` equality (Almacén). */
   locationId?: string;
+  /** Orders placed at any Almacén of this Sucursal (warehouse). */
+  warehouseId?: string;
+  /** Only this seller's orders — honoured by the backend only for `sales.orders.view_all` holders. */
+  placedByUserId?: string;
+  /** History-table column filters (substring search / roll-up status). */
+  /** One search box: order number, customer or seller. */
+  q?: string;
+  orderNumber?: string;
+  customerName?: string;
+  sellerName?: string;
+  total?: string;
+  notificationStatus?: string;
+  sort?: string;
+  dir?: 'asc' | 'desc';
   createdFrom?: string;
   createdTo?: string;
   /** Business-day filter (`YYYY-MM-DD`, tenant timezone, whole final day inclusive). Takes
@@ -42,6 +56,22 @@ export async function listOrders(query: ListOrdersQuery = {}): Promise<Paginated
   }
   if (query.locationId) {
     params['locationId'] = query.locationId;
+  }
+  if (query.warehouseId) {
+    params['warehouseId'] = query.warehouseId;
+  }
+  if (query.placedByUserId) {
+    params['placedByUserId'] = query.placedByUserId;
+  }
+  for (const key of ['q', 'orderNumber', 'customerName', 'sellerName', 'total', 'notificationStatus'] as const) {
+    const value = query[key];
+    if (value) params[key] = value;
+  }
+  if (query.sort) {
+    params['sort'] = query.sort;
+  }
+  if (query.dir) {
+    params['dir'] = query.dir;
   }
   if (query.createdFrom) {
     params['createdFrom'] = query.createdFrom;

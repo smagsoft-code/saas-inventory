@@ -47,6 +47,9 @@ const IDEMPOTENCY_TTL_MS = 48 * 60 * 60 * 1000;
  * revisited if/when multi-currency or a tenant currency config is introduced. Exported so
  * `SalesReportService` (F18-02) echoes the same constant on `GET /reports/sales-summary` rather
  * than a second, potentially-drifting 'USD' literal. */
+/** Extra permission over `sales.orders.view`: see the orders of every seller, not just your own. */
+export const VIEW_ALL_ORDERS_PERMISSION = 'sales.orders.view_all';
+
 export const DEFAULT_CURRENCY = 'USD';
 
 function hashRequest(body: unknown): string {
@@ -145,6 +148,20 @@ export class OrdersService {
         documentType: query.documentType,
         locationId: readScope.locationId,
         locationIds: readScope.locationIds,
+        warehouseId: query.warehouseId,
+        columnFilters: {
+          q: query.q,
+          orderNumber: query.orderNumber,
+          customerName: query.customerName,
+          sellerName: query.sellerName,
+          total: query.total,
+          notificationStatus: query.notificationStatus,
+        },
+        sort: query.sort,
+        dir: query.dir,
+        // Without `sales.orders.view_all` a seller only ever sees the orders they placed themselves.
+        // With it, the optional `placedByUserId` query param narrows to one seller.
+        placedByUserId: permissions.includes(VIEW_ALL_ORDERS_PERMISSION) ? query.placedByUserId : actorId,
         createdFrom: query.createdFrom,
         createdTo: query.createdTo,
         dayRange,
@@ -173,11 +190,21 @@ export class OrdersService {
     });
   }
 
+  /** Whether the caller may see this order given WHO placed it: everything with
+   * `sales.orders.view_all`, otherwise only their own. A hidden order answers 404 like any other. */
+  private canSeeSellerOf(order: { placedByUserId: string | null }, actorId: string, permissions: string[]): boolean {
+    return permissions.includes(VIEW_ALL_ORDERS_PERMISSION) || order.placedByUserId === actorId;
+  }
+
   async getById(tenantId: string, actorId: string, permissions: string[], id: string): Promise<OrderResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const order = await this.ordersRepository.findById(tx, tenantId, id);
       // 404, not 403, for an order outside the caller's locations - its existence is not revealed.
-      if (!order || !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, order.locationId))) {
+      if (
+        !order ||
+        !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, order.locationId)) ||
+        !this.canSeeSellerOf(order, actorId, permissions)
+      ) {
         throw new NotFoundException('Order not found.');
       }
       return this.toResponse(tx, tenantId, order, permissions);
@@ -190,10 +217,14 @@ export class OrdersService {
    * not in the caller's tenant (same shape as `getById`). A deployment with outbound notifications
    * disabled legitimately reports every event `pending` — nothing claims the rows.
    */
-  async getNotifications(tenantId: string, actorId: string, id: string): Promise<OrderNotificationsResponseDto> {
+  async getNotifications(tenantId: string, actorId: string, permissions: string[], id: string): Promise<OrderNotificationsResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const order = await this.ordersRepository.findById(tx, tenantId, id);
-      if (!order || !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, order.locationId))) {
+      if (
+        !order ||
+        !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, order.locationId)) ||
+        !this.canSeeSellerOf(order, actorId, permissions)
+      ) {
         throw new NotFoundException('Order not found.');
       }
       const rows = await this.orderNotificationsRepository.listByOrder(tx, tenantId, id);
