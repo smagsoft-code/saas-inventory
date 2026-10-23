@@ -66,3 +66,35 @@ export function tenantStartOfDayUtc(timeZone: string, now: Date = new Date()): s
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
   }
 }
+
+/** `{ year, month, day }` of "now" as a wall-clock date in `timeZone` (month 1-12). Falls back to
+ * the UTC date for an unknown zone, same posture as `tenantStartOfDayUtc`. */
+export function tenantDateParts(timeZone: string, now: Date = new Date()): { year: number; month: number; day: number } {
+  try {
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+    const get = (type: string): number => Number(parts.find((p) => p.type === type)?.value);
+    return { year: get('year'), month: get('month'), day: get('day') };
+  } catch {
+    return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, day: now.getUTCDate() };
+  }
+}
+
+/** ISO-8601 UTC instant of the first instant of the current tenant-local month. */
+export function tenantStartOfMonthUtc(timeZone: string, now: Date = new Date()): string {
+  const { year, month } = tenantDateParts(timeZone, now);
+  try {
+    return zonedMidnightToUtc(timeZone, year, month, 1).toISOString();
+  } catch {
+    return new Date(Date.UTC(year, month - 1, 1)).toISOString();
+  }
+}
+
+/** ISO-8601 UTC instant of the first instant of the current tenant-local year. */
+export function tenantStartOfYearUtc(timeZone: string, now: Date = new Date()): string {
+  const { year } = tenantDateParts(timeZone, now);
+  try {
+    return zonedMidnightToUtc(timeZone, year, 1, 1).toISOString();
+  } catch {
+    return new Date(Date.UTC(year, 0, 1)).toISOString();
+  }
+}

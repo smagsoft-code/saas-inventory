@@ -1,111 +1,128 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import { HomeKpiCard, HomeKpiGrid, HomeTopProducts } from './home-dashboard';
-import type { HomeTile, HomeTopProductsCard } from '../../lib/home/dashboard';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { HomeHighlightCard, HomeHighlights, HomeKpiCard, HomeKpiGrid, HomeTopProducts } from './home-dashboard';
+import { HomeLocationFilter } from './home-location-filter';
+import type { HomeHighlight, HomeTile, HomeTopProductsCard } from '../../lib/home/dashboard';
 
+const pushMock = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: pushMock }) }));
 vi.mock('next/link', () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
-    <a href={href}>{children}</a>
+  default: ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
   ),
 }));
 
 function baseTile(overrides: Partial<HomeTile>): HomeTile {
-  return {
-    key: 'k',
-    label: 'Ventas del día',
-    href: '/sales',
-    state: 'ready',
-    value: 0,
-    format: 'count',
-    ...overrides,
-  };
+  return { key: 'k', label: 'Total productos', href: '/products', state: 'ready', value: 0, format: 'count', ...overrides };
 }
 
+function baseHighlight(overrides: Partial<HomeHighlight>): HomeHighlight {
+  return { key: 'h', label: 'Ventas de hoy', href: '/sales', state: 'ready', value: 0, accent: 'emerald', ...overrides };
+}
+
+afterEach(() => cleanup());
+
 describe('HomeKpiCard', () => {
-  it('shows a plain count for a ready count tile', () => {
-    render(<HomeKpiCard tile={baseTile({ state: 'ready', value: 12, format: 'count' })} />);
-    expect(screen.getByText('12')).toBeInTheDocument();
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/sales');
+  it('shows a plain count and links to its module', () => {
+    render(<HomeKpiCard tile={baseTile({ value: 33, icon: 'box', tone: 'indigo' })} />);
+    expect(screen.getByText('33')).toBeInTheDocument();
+    expect(screen.getByRole('link')).toHaveAttribute('href', '/products');
   });
 
   it('renders a real zero, not a dash', () => {
-    render(<HomeKpiCard tile={baseTile({ state: 'ready', value: 0, format: 'count' })} />);
+    render(<HomeKpiCard tile={baseTile({ value: 0 })} />);
     expect(screen.getByText('0')).toBeInTheDocument();
     expect(screen.queryByText('—')).not.toBeInTheDocument();
   });
 
-  it('formats a currency tile with the given currency code', () => {
-    render(<HomeKpiCard tile={baseTile({ state: 'ready', value: 480.5, format: 'currency', currency: 'USD' })} />);
-    expect(screen.getByText('480.50 USD')).toBeInTheDocument();
+  it('formats money like $48.668,50', () => {
+    render(<HomeKpiCard tile={baseTile({ value: 48668.5, format: 'currency', currency: 'USD' })} />);
+    expect(screen.getByText('$48.668,50')).toBeInTheDocument();
   });
 
-  it('renders a currency tile without a suffix when no currency is known', () => {
-    render(<HomeKpiCard tile={baseTile({ state: 'ready', value: 999, format: 'currency' })} />);
-    expect(screen.getByText('999.00')).toBeInTheDocument();
+  it('shows the secondary line (ganancia) and the note', () => {
+    render(<HomeKpiCard tile={baseTile({ format: 'currency', value: 10, sub: 'Ganancia: $5,00', note: '2 línea(s) sin costo' })} />);
+    expect(screen.getByText('Ganancia: $5,00')).toBeInTheDocument();
+    expect(screen.getByText('2 línea(s) sin costo')).toBeInTheDocument();
   });
 
-  it('shows "—" and a note for an unavailable tile — never a fake 0', () => {
-    render(<HomeKpiCard tile={baseTile({ state: 'unavailable', value: 0 })} />);
+  it('shows "No disponible por ahora" (never 0) when the read failed', () => {
+    render(<HomeKpiCard tile={baseTile({ state: 'unavailable' })} />);
     expect(screen.getByText('—')).toBeInTheDocument();
-    expect(screen.getByText(/no disponible/i)).toBeInTheDocument();
-  });
-
-  it('shows a note for a ready tile when one is provided (e.g. missing costs)', () => {
-    render(
-      <HomeKpiCard
-        tile={baseTile({ state: 'ready', value: 500, format: 'currency', note: '3 variante(s) sin costo cargado, excluida(s) del total.' })}
-      />,
-    );
-    expect(screen.getByText(/3 variante\(s\) sin costo cargado/)).toBeInTheDocument();
+    expect(screen.getByText('No disponible por ahora')).toBeInTheDocument();
   });
 });
 
 describe('HomeKpiGrid', () => {
   it('renders one card per tile', () => {
-    render(
-      <HomeKpiGrid
-        tiles={[baseTile({ key: 'a', label: 'A' }), baseTile({ key: 'b', label: 'B' })]}
-      />,
-    );
-    expect(screen.getByText('A')).toBeInTheDocument();
-    expect(screen.getByText('B')).toBeInTheDocument();
+    render(<HomeKpiGrid tiles={[baseTile({ key: 'a', label: 'A' }), baseTile({ key: 'b', label: 'B' })]} />);
+    expect(screen.getAllByRole('link')).toHaveLength(2);
   });
 
-  it('shows a friendly empty state when the user can see no tiles', () => {
+  it('shows an explanatory empty state when the role sees no cards', () => {
     render(<HomeKpiGrid tiles={[]} />);
-    expect(screen.getByText(/sin módulos operativos/i)).toBeInTheDocument();
+    expect(screen.getByText('Sin módulos operativos para tu rol')).toBeInTheDocument();
   });
 });
 
-function topCard(overrides: Partial<HomeTopProductsCard> = {}): HomeTopProductsCard {
-  return { state: 'ready', items: [], ...overrides };
-}
+describe('Highlight cards (hoy / mes / año)', () => {
+  it('renders the label and the formatted amount', () => {
+    render(<HomeHighlightCard highlight={baseHighlight({ label: 'Ventas del 2026', value: 9965.5, currency: 'USD', accent: 'orange' })} />);
+    expect(screen.getByText('Ventas del 2026')).toBeInTheDocument();
+    expect(screen.getByText('$9.965,50')).toBeInTheDocument();
+  });
+
+  it('shows a real zero for no sales, and "No disponible" when the read failed', () => {
+    const { rerender } = render(<HomeHighlightCard highlight={baseHighlight({ value: 0, currency: 'USD' })} />);
+    expect(screen.getByText('$0,00')).toBeInTheDocument();
+    rerender(<HomeHighlightCard highlight={baseHighlight({ state: 'unavailable' })} />);
+    expect(screen.getByText('No disponible por ahora')).toBeInTheDocument();
+  });
+
+  it('renders nothing for an empty list', () => {
+    const { container } = render(<HomeHighlights highlights={[]} />);
+    expect(container).toBeEmptyDOMElement();
+  });
+});
 
 describe('HomeTopProducts', () => {
-  it('lists items ranked in the given order with quantity sold', () => {
-    render(
-      <HomeTopProducts
-        card={topCard({
-          items: [
-            { variantId: 'v1', sku: 'SKU-1', productName: 'Widget', quantity: 14 },
-            { variantId: 'v2', sku: 'SKU-2', productName: 'Gadget', quantity: 9 },
-          ],
-        })}
-      />,
-    );
+  it('shows a ranked list', () => {
+    const card: HomeTopProductsCard = { state: 'ready', items: [{ variantId: 'v1', sku: 'A-1', productName: 'Widget', quantity: 7 }] };
+    render(<HomeTopProducts card={card} />);
     expect(screen.getByText('Widget')).toBeInTheDocument();
-    expect(screen.getByText('14')).toBeInTheDocument();
-    expect(screen.getByText('Gadget')).toBeInTheDocument();
-    expect(screen.getByText('9')).toBeInTheDocument();
+    expect(screen.getByText('7')).toBeInTheDocument();
   });
 
-  it('shows a calm message when nothing sold today, not an empty table', () => {
-    render(<HomeTopProducts card={topCard({ items: [] })} />);
-    expect(screen.getByText(/aún no hay ventas registradas hoy/i)).toBeInTheDocument();
+  it('shows an honest empty message', () => {
+    render(<HomeTopProducts card={{ state: 'ready', items: [] }} />);
+    expect(screen.getByText('Aún no hay ventas registradas hoy.')).toBeInTheDocument();
   });
 
-  it('shows an honest unavailable message rather than an empty list', () => {
-    render(<HomeTopProducts card={topCard({ state: 'unavailable', items: [] })} />);
+  it('shows an unavailable message when the read failed', () => {
+    render(<HomeTopProducts card={{ state: 'unavailable', items: [] }} />);
     expect(screen.getByText(/no se pudo determinar/i)).toBeInTheDocument();
+  });
+});
+
+describe('HomeLocationFilter', () => {
+  const options = [
+    { id: 'l1', name: 'Matriz · General' },
+    { id: 'l2', name: 'Norte · Bodega' },
+  ];
+
+  it('offers "Todos" plus only the options it was given', () => {
+    render(<HomeLocationFilter options={options} />);
+    expect(screen.getAllByRole('option').map((o) => o.textContent)).toEqual(['Todos los almacenes', 'Matriz · General', 'Norte · Bodega']);
+  });
+
+  it('navigates with the chosen locationId, and back to the bare URL for "Todos"', () => {
+    pushMock.mockClear();
+    render(<HomeLocationFilter options={options} selectedLocationId="l1" />);
+    fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: 'l2' } });
+    expect(pushMock).toHaveBeenLastCalledWith('/?locationId=l2');
+    fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: '' } });
+    expect(pushMock).toHaveBeenLastCalledWith('/');
   });
 });
