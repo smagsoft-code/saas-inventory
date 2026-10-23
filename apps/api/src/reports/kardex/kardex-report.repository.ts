@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { resolveImportJobNumbers } from '../../inventory/import-job-numbers';
 import { and, asc, eq, gte, inArray, lt } from 'drizzle-orm';
 import {
   inventoryBalances,
@@ -105,6 +106,10 @@ export class KardexReportRepository {
       .from(productVariants)
       .where(and(eq(productVariants.tenantId, tenantId), eq(productVariants.id, productVariantId)));
     return row?.cost !== null && row?.cost !== undefined ? Number(row.cost) : null;
+  }
+
+  async resolveImportJobNumbers(tx: TenantTransaction, tenantId: string, jobIds: string[]): Promise<Map<string, number>> {
+    return resolveImportJobNumbers(tx, tenantId, jobIds);
   }
 
   /** referenceType='order' (SALE) → order_number, e.g. "ORD-000123". */

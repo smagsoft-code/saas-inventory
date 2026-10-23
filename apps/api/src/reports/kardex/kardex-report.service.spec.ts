@@ -30,6 +30,7 @@ function buildService() {
     listMovements: vi.fn().mockResolvedValue([]),
     getVariantCost: vi.fn().mockResolvedValue(null),
     resolveOrderNumbers: vi.fn().mockResolvedValue(new Map()),
+    resolveImportJobNumbers: vi.fn().mockResolvedValue(new Map()),
     resolveReturnOrderNumbers: vi.fn().mockResolvedValue(new Map()),
     resolveReceiptTransferIds: vi.fn().mockResolvedValue(new Map()),
     resolveTransferCodes: vi.fn().mockResolvedValue(new Map()),
@@ -86,6 +87,29 @@ describe('KardexReportService.getKardex', () => {
 
     expect(result.opening).toEqual({ stockUnits: 10, averageCost: 5, stockValue: 50, estimated: false });
     expect(result.rows[0]).toMatchObject({ averageCostAfter: 6, stockAfter: 20, stockValueAfter: 120 });
+  });
+
+  it('labels an Excel-import INITIAL_STOCK row "Stock inicial: Importación #N", never with the job uuid', async () => {
+    const { service, repository } = buildService();
+    repository.listMovements.mockResolvedValueOnce([
+      movementRow({ movementType: 'INITIAL_STOCK', quantity: '6', unitCost: '100', referenceType: 'import_job', referenceId: 'job-1', reason: 'Excel import job 01a16553-0363-7f0c-81a0-eb76c8ac38a0' }),
+    ]);
+    repository.resolveImportJobNumbers.mockResolvedValueOnce(new Map([['job-1', 2]]));
+
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+
+    expect(repository.resolveImportJobNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['job-1']);
+    expect(result.rows[0]!.label).toBe('Stock inicial: Importación #2');
+    expect(result.rows[0]!.label).not.toMatch(/01a16553/);
+  });
+
+  it('falls back to a neutral "Importación de Excel" (still no uuid) when the job number cannot be resolved', async () => {
+    const { service, repository } = buildService();
+    repository.listMovements.mockResolvedValueOnce([
+      movementRow({ movementType: 'INITIAL_STOCK', quantity: '1', unitCost: '1', referenceType: 'import_job', referenceId: 'gone', reason: 'Excel import job gone-uuid' }),
+    ]);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+    expect(result.rows[0]!.label).toBe('Stock inicial: Importación de Excel');
   });
 
   it('labels a SALE row with the order number resolved from the reference chain', async () => {

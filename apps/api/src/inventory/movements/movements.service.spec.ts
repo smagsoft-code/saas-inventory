@@ -37,6 +37,7 @@ function buildService() {
   const movementsRepository = {
     listByTenant: vi.fn(),
     resolveOrderNumbers: vi.fn().mockResolvedValue(new Map()),
+    resolveImportJobNumbers: vi.fn().mockResolvedValue(new Map()),
     resolveReceiptTransferIds: vi.fn().mockResolvedValue(new Map()),
     resolveTransferCodes: vi.fn().mockResolvedValue(new Map()),
   };
@@ -153,6 +154,21 @@ describe('MovementsService', () => {
 
         expect(movementsRepository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['order-1']);
         expect(result.data[0]!.referenceLabel).toBe('Venta #ORD-000123');
+      });
+
+      it('labels an Excel-import movement "Importación #N" and never returns the raw reason (it embeds the job uuid)', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({
+          rows: [{ ...EXISTING_MOVEMENT, movementType: 'INITIAL_STOCK', referenceType: 'import_job', referenceId: 'job-1', reason: 'Excel import job job-1' }],
+          total: 1,
+        });
+        movementsRepository.resolveImportJobNumbers.mockResolvedValue(new Map([['job-1', 3]]));
+
+        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(movementsRepository.resolveImportJobNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['job-1']);
+        expect(result.data[0]!.referenceLabel).toBe('Importación #3');
+        expect(result.data[0]!.reason).toBeUndefined();
       });
 
       it('omits referenceLabel for a SALE whose order number could not be resolved', async () => {

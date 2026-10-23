@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
+import { ProductSearchSelect } from '../../../../components/product-search-select';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
 import {
   ADJUSTMENT_MOVEMENT_TYPES,
@@ -54,7 +55,6 @@ export function AdjustmentForm({
   fixedProductVariantId,
   fixedVariantLabel,
   fixedLocationId,
-  products,
   warehouses,
   locations,
 }: {
@@ -62,13 +62,14 @@ export function AdjustmentForm({
   /** A human label (SKU) for the fixed variant when the caller knows it — display only. */
   fixedVariantLabel?: string;
   fixedLocationId?: string;
-  products: ProductOption[];
   warehouses: WarehouseOption[];
   locations: LocationOption[];
 }): React.JSX.Element {
   const router = useRouter();
 
-  const [productId, setProductId] = useState('');
+  // The product picked in the search bar (id + name); the variant is then chosen among its own.
+  const [selectedProduct, setSelectedProduct] = useState<{ id: string; name: string } | null>(null);
+  const productId = selectedProduct?.id ?? '';
   const [variants, setVariants] = useState<VariantOption[]>([]);
   const [variantsLoading, setVariantsLoading] = useState(false);
   const [productVariantId, setProductVariantId] = useState(fixedProductVariantId ?? '');
@@ -119,20 +120,24 @@ export function AdjustmentForm({
     [productVariantId, locationId, quantity, costRequired, unitCost, reason, occurredAt],
   );
 
-  async function onProductChange(nextProductId: string): Promise<void> {
-    setProductId(nextProductId);
+  async function onProductChange(next: { id: string; name: string } | null, preferredVariantId?: string): Promise<void> {
+    setSelectedProduct(next);
     setProductVariantId('');
     setVariants([]);
     setResult(null);
-    if (!nextProductId) {
+    if (!next) {
       return;
     }
     setVariantsLoading(true);
     try {
       const rows = await apiFetch<{ id: string; sku: string }[]>(
-        `/api/v1/products/${nextProductId}/variants`,
+        `/api/v1/products/${next.id}/variants`,
       );
       setVariants(rows.map((r) => ({ id: r.id, sku: r.sku })));
+      // The variant the search hit named is selected for the user.
+      if (preferredVariantId && rows.some((r) => r.id === preferredVariantId)) {
+        setProductVariantId(preferredVariantId);
+      }
     } catch (err) {
       setError(httpErrorMessage(err));
     } finally {
@@ -212,16 +217,18 @@ export function AdjustmentForm({
         </Field>
       ) : (
         <>
-          <Field label="Producto" required>
-            <Select value={productId} onChange={(e) => void onProductChange(e.target.value)}>
-              <option value="">Elegir un producto…</option>
-              {products.map((product) => (
-                <option key={product.id} value={product.id}>
-                  {product.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          {/* A search bar (name, code or barcode) over the whole catalog — not a drop-down capped at the
+              first 100 products, which hid every product beyond that. */}
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-medium text-slate-700">
+              Producto <span aria-hidden="true" className="text-red-600">*</span>
+            </span>
+            <ProductSearchSelect
+              selected={selectedProduct ? { id: selectedProduct.id, label: selectedProduct.name } : null}
+              onSelect={(hit) => void onProductChange({ id: hit.id, name: hit.name }, hit.variantId)}
+              onClear={() => void onProductChange(null)}
+            />
+          </div>
           <Field
             label="Variante"
             required

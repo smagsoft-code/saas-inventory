@@ -85,7 +85,7 @@ export function AddStockForm({
   const selectedWarehouse = warehouses.find((w) => w.id === warehouseId);
   const selectedLocation = locations.find((l) => l.id === locationId);
 
-  async function onProductChange(next: { id: string; name: string } | null): Promise<void> {
+  async function onProductChange(next: { id: string; name: string } | null, preferredVariantId?: string): Promise<void> {
     setSelectedProduct(next);
     setProductVariantId('');
     setVariants([]);
@@ -100,8 +100,10 @@ export function AddStockForm({
       );
       const options = rows.map((r) => ({ id: r.id, sku: r.sku }));
       setVariants(options);
-      // A product with a single variant: it is the only possible choice, so it comes preselected.
-      if (options.length === 1) {
+      // The variant the search hit named wins; otherwise a product with a single variant comes preselected.
+      if (preferredVariantId && options.some((o) => o.id === preferredVariantId)) {
+        setProductVariantId(preferredVariantId);
+      } else if (options.length === 1) {
         setProductVariantId(options[0]!.id);
       }
     } catch (err) {
@@ -291,7 +293,7 @@ export function AddStockForm({
                 selected={
                   selectedProduct ? { id: selectedProduct.id, label: selectedProduct.name } : null
                 }
-                onSelect={(product) => void onProductChange({ id: product.id, name: product.name })}
+                onSelect={(hit) => void onProductChange({ id: hit.id, name: hit.name }, hit.variantId)}
                 onClear={() => void onProductChange(null)}
               />
             </div>

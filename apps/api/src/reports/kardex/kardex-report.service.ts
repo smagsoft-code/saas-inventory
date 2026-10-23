@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { withTenantTransaction } from '../../database/tenant-context';
+import { importLabel } from '../../inventory/import-job-numbers';
 import { foldKardexLedger, isPhysicalMovementType, ZERO_BALANCE, type KardexBalanceState, type KardexSourceMovement } from '../../inventory/kardex/kardex-costing';
 import type { KardexQueryDto } from './dto/kardex-query.dto';
 import type { KardexBalanceDto, KardexResponseDto, KardexRowDto } from './dto/kardex-response.dto';
@@ -41,7 +42,10 @@ function labelFor(
   orderNumbersByReturnItem: Map<string, string>,
   transferIdsByReceipt: Map<string, string>,
   transferCodesByTransferId: Map<string, string>,
+  importJobNumbers: Map<string, number>,
 ): string {
+  // An import's reason text embeds the job's uuid: show "Importación #N" instead, never the id.
+  const reason = row.referenceType === 'import_job' ? importLabel(row.referenceId, importJobNumbers) : row.reason;
   switch (row.movementType) {
     case 'SALE': {
       const orderNumber = row.referenceId ? orderNumbersBySaleReference.get(row.referenceId) : undefined;
@@ -61,13 +65,13 @@ function labelFor(
       return code ? `Transferencia #${code} (entrada)` : 'Transferencia (entrada)';
     }
     case 'RECEIPT':
-      return row.reason ? `Ingreso de stock: ${row.reason}` : 'Ingreso de stock';
+      return reason ? `Ingreso de stock: ${reason}` : 'Ingreso de stock';
     case 'ADJUSTMENT_IN':
-      return row.reason ? `Ajuste (entrada): ${row.reason}` : 'Ajuste (entrada)';
+      return reason ? `Ajuste (entrada): ${reason}` : 'Ajuste (entrada)';
     case 'ADJUSTMENT_OUT':
-      return row.reason ? `Ajuste (salida): ${row.reason}` : 'Ajuste (salida)';
+      return reason ? `Ajuste (salida): ${reason}` : 'Ajuste (salida)';
     case 'INITIAL_STOCK':
-      return row.reason ? `Stock inicial: ${row.reason}` : 'Stock inicial';
+      return reason ? `Stock inicial: ${reason}` : 'Stock inicial';
     default:
       return row.movementType;
   }
@@ -138,10 +142,12 @@ export class KardexReportService {
       const transferOutIds = physicalRows.filter((row) => row.movementType === 'TRANSFER_OUT' && row.referenceId).map((row) => row.referenceId!);
       const receiptIds = physicalRows.filter((row) => row.movementType === 'TRANSFER_IN' && row.referenceId).map((row) => row.referenceId!);
 
-      const [orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt] = await Promise.all([
+      const importJobIds = physicalRows.filter((row) => row.referenceType === 'import_job' && row.referenceId).map((row) => row.referenceId!);
+      const [orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt, importJobNumbers] = await Promise.all([
         this.repository.resolveOrderNumbers(tx, tenantId, saleReferenceIds),
         this.repository.resolveReturnOrderNumbers(tx, tenantId, returnItemIds),
         this.repository.resolveReceiptTransferIds(tx, tenantId, receiptIds),
+        this.repository.resolveImportJobNumbers(tx, tenantId, importJobIds),
       ]);
       // TRANSFER_OUT's own referenceId already IS the transfer id; TRANSFER_IN's only resolves to
       // one via the receipt lookup above — union both before the single, batched code lookup.
@@ -157,7 +163,7 @@ export class KardexReportService {
           movementId: row.movementId,
           occurredAt: row.occurredAt.toISOString(),
           movementType: row.movementType,
-          label: labelFor(source, orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt, transferCodesByTransferId),
+          label: labelFor(source, orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt, transferCodesByTransferId, importJobNumbers),
           entrada: row.entrada,
           salida: row.salida,
           ...(canViewCost

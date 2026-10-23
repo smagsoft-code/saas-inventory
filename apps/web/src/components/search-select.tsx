@@ -25,6 +25,7 @@ export function SearchSelect<T>({
   placeholder,
   emptyText,
   clearLabel = 'Quitar',
+  compact = false,
 }: {
   selected: { id: string; label: string } | null;
   search: (query: string) => Promise<T[]>;
@@ -37,6 +38,8 @@ export function SearchSelect<T>({
   placeholder: string;
   emptyText: string;
   clearLabel?: string;
+  /** One tight row per option (e.g. `CODE  Name`) instead of stacked, roomy rows. */
+  compact?: boolean;
 }): React.JSX.Element {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<T[]>([]);
@@ -116,7 +119,11 @@ export function SearchSelect<T>({
                     type="button"
                     role="option"
                     aria-selected={false}
-                    className="flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    className={
+                      compact
+                        ? 'flex w-full items-center gap-1.5 px-2 py-0.5 text-left text-sm leading-5 hover:bg-slate-50'
+                        : 'flex w-full flex-col items-start px-3 py-2 text-left text-sm hover:bg-slate-50'
+                    }
                     onClick={() => {
                       setQuery('');
                       setResults([]);

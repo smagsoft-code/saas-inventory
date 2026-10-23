@@ -56,7 +56,7 @@ async function selectProductFromSearch(name: string): Promise<void> {
   fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: name } });
   // A real <button>, not plain text — "Ver todos"'s own Producto column can show the same name as
   // inert table-cell text at the same time, so matching by role avoids that ambiguity.
-  fireEvent.click(await screen.findByRole('button', { name }, { timeout: 2000 }));
+  fireEvent.click(await screen.findByRole('button', { name: new RegExp(name) }, { timeout: 2000 }));
 }
 
 describe('KardexExplorer', () => {
@@ -71,12 +71,12 @@ describe('KardexExplorer', () => {
   });
 
   it('opens the picker as "Ver todos" the instant the search box is focused, with an empty query', async () => {
-    mockedFetch.mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } });
+    mockedFetch.mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } });
     renderExplorer();
 
     fireEvent.focus(screen.getByLabelText('Buscar producto'));
 
-    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products', { query: { page: 1, pageSize: 10 } }));
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith('/api/v1/reports/product-catalog', { query: { page: 1, pageSize: 10 } }));
     expect(await screen.findByText('Silla de Comedor')).toBeInTheDocument();
     // No "Seleccionar" confirming button anywhere — the panel itself is the browse view, and its
     // rows select on click. ("Ver todos" itself is a real, separate button — the tenant-wide
@@ -112,7 +112,7 @@ describe('KardexExplorer', () => {
 
     // Selecting a product from then on exits "Ver todos" back to the normal per-product Kardex.
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } })
       .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
       .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }] });
     mockedGetKardex.mockResolvedValueOnce(KARDEX_RESPONSE);
@@ -166,19 +166,50 @@ describe('KardexExplorer', () => {
   });
 
   it('debounces typed input and calls GET /products with q, narrowing the same panel', async () => {
-    mockedFetch.mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } });
+    mockedFetch.mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } });
     renderExplorer();
 
     fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'Silla' } });
     expect(mockedFetch).not.toHaveBeenCalled(); // not yet — still debouncing
 
-    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products', { query: { page: 1, pageSize: 10, q: 'Silla' } }), { timeout: 2000 });
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith('/api/v1/reports/product-catalog', { query: { page: 1, pageSize: 10, q: 'Silla' } }), { timeout: 2000 });
     expect(await screen.findByText('Silla de Comedor')).toBeInTheDocument();
+  }, 10000);
+
+  it('each search result shows the variant code at the LEFT of the product name, in one compact line', async () => {
+    mockedFetch.mockResolvedValueOnce({
+      data: [
+        { productId: 'p1', productName: 'PEINADORA MODERNA CON ESPEJO Y LUCES LED', variantId: 'v1', sku: 'PEI-021' },
+        { productId: 'p2', productName: 'PEINADORA DOBLE', variantId: 'v2', sku: 'PEI-022' },
+      ],
+      meta: { total: 2, totalPages: 1 },
+    });
+    renderExplorer();
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'pei' } });
+    const option = await screen.findByRole('button', { name: /PEI-021/ }, { timeout: 2000 });
+    const [code, name] = Array.from(option.querySelectorAll('span'));
+    expect(code).toHaveTextContent('PEI-021');
+    expect(name).toHaveTextContent('PEINADORA MODERNA CON ESPEJO Y LUCES LED');
+    expect(option.textContent!.indexOf('PEI-021')).toBeLessThan(option.textContent!.indexOf('PEINADORA'));
+    // compact: a single flex row with tight vertical padding, the name truncates instead of wrapping
+    expect(option).toHaveClass('flex', 'items-center', 'py-0.5', 'gap-1.5');
+    expect(name).toHaveClass('truncate');
+  }, 10000);
+
+  it('picking a result that names a variant selects THAT variant (even when its product has several)', async () => {
+    mockedFetch
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v2', sku: 'SILLA-2' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }, { id: 'v2', sku: 'SILLA-2' }]) // variants of the product
+      .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }] }); // balances
+    mockedGetKardex.mockResolvedValueOnce(KARDEX_RESPONSE);
+    renderExplorer();
+    await selectProductFromSearch('SILLA-2');
+    await waitFor(() => expect(mockedGetKardex).toHaveBeenCalledWith({ productVariantId: 'v2', locationId: 'loc-1' }));
   }, 10000);
 
   it('selecting a result is a single click — no confirming button', async () => {
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } }) // search
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } }) // search
       .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }]) // variants
       .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }] }); // balances
     mockedGetKardex.mockResolvedValueOnce(KARDEX_RESPONSE);
@@ -195,7 +226,7 @@ describe('KardexExplorer', () => {
 
   it('shows the closing balance (Stock disponible, with $ costs) in the "producto seleccionado" card, and never the word "estimado"', async () => {
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } })
       .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
       .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }] });
     mockedGetKardex.mockResolvedValueOnce(KARDEX_RESPONSE); // opening/closing both flagged estimated:true
@@ -222,7 +253,7 @@ describe('KardexExplorer', () => {
 
   it('toggles sort order with a single click on the icon button inside the "Fecha del movimiento" header cell', async () => {
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } })
       .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
       .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }] });
     mockedGetKardex.mockResolvedValueOnce(KARDEX_RESPONSE);
@@ -242,7 +273,7 @@ describe('KardexExplorer', () => {
 
   it('rejects a fecha inicio after fecha fin and skips the kardex fetch for that invalid range', async () => {
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } })
       .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
       .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }] });
     // Persistent (not `Once`) — an intermediate valid state (fecha inicio alone, before fecha fin
@@ -263,7 +294,7 @@ describe('KardexExplorer', () => {
 
   it('refetches the kardex immediately with the [from, to) range converted from the date pickers', async () => {
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } })
       .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
       .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }] });
     mockedGetKardex.mockResolvedValue(KARDEX_RESPONSE);
@@ -287,7 +318,7 @@ describe('KardexExplorer', () => {
 
   it('shows an ErrorState with retry when the kardex call fails', async () => {
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } })
       .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
       .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }] });
     mockedGetKardex.mockRejectedValueOnce(new ApiError(500, 'INTERNAL', 'boom', 'corr-1'));
@@ -304,7 +335,7 @@ describe('KardexExplorer', () => {
 
   it('renders Stock por sucursal after the Kardex, with icon-only export links (top of the table) carrying the current filters', async () => {
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } })
       .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
       .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }] });
     mockedGetKardex.mockResolvedValueOnce(KARDEX_RESPONSE);
@@ -333,18 +364,23 @@ describe('KardexExplorer', () => {
       { id: 'loc-2', name: 'Almacén Norte', warehouseId: 'w-2', warehouseName: 'Sucursal Norte' },
     ];
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } })
       .mockResolvedValueOnce([
         { id: 'v1', sku: 'SILLA-1-ROJA' },
         { id: 'v2', sku: 'SILLA-1-AZUL' },
-      ]);
+      ])
+      .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }, { locationId: 'loc-2' }] }); // balances of v1
 
     renderExplorer(twoLocations);
     await selectProductFromSearch('Silla de Comedor');
 
-    expect(await screen.findByText('Elige una variante para ver su kardex')).toBeInTheDocument();
+    // The hit names variant v1, so it is selected for the user (no "elige una variante" dead end) and, with
+    // stock in two almacenes, only the almacén is left to choose.
+    expect(await screen.findByText('Elige un almacén para ver su kardex')).toBeInTheDocument();
+    expect(screen.getByLabelText('Variante')).toHaveValue('v1');
     expect(mockedGetKardex).not.toHaveBeenCalled();
 
+    // The variant picker is still there to switch to the product's other variant.
     mockedFetch.mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }, { locationId: 'loc-2' }] });
     mockedGetKardex.mockResolvedValueOnce(KARDEX_RESPONSE);
     fireEvent.change(screen.getByLabelText('Variante'), { target: { value: 'v2' } });
@@ -359,7 +395,7 @@ describe('KardexExplorer', () => {
       { id: 'loc-2', name: 'Almacén Norte', warehouseId: 'w-2', warehouseName: 'Sucursal Norte' },
     ];
     mockedFetch
-      .mockResolvedValueOnce({ data: [{ id: 'p1', name: 'Silla de Comedor' }], meta: { total: 1, totalPages: 1 } })
+      .mockResolvedValueOnce({ data: [{ productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' }], meta: { total: 1, totalPages: 1 } })
       .mockResolvedValueOnce([{ id: 'v1', sku: 'SILLA-1' }])
       .mockResolvedValueOnce({ data: [{ locationId: 'loc-1' }, { locationId: 'loc-2' }] });
     // loc-1: 10 units @ 5 = 50 ; loc-2: 30 units @ 9 = 270  ->  40 units, 320 total, 8.00 average.

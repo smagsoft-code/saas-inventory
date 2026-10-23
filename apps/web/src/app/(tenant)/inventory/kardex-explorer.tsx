@@ -14,6 +14,13 @@ interface ProductOption {
   id: string;
   name: string;
 }
+/** One search hit = one variant (its code + its product's name), from the variant-grain catalog. */
+interface PickerHit {
+  productId: string;
+  productName: string;
+  variantId: string;
+  sku: string;
+}
 interface VariantOption {
   id: string;
   sku: string;
@@ -84,7 +91,7 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
   const [query, setQuery] = useState('');
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerPage, setPickerPage] = useState(1);
-  const [pickerResults, setPickerResults] = useState<{ data: ProductOption[]; meta: { total: number; totalPages: number } } | null>(null);
+  const [pickerResults, setPickerResults] = useState<{ data: PickerHit[]; meta: { total: number; totalPages: number } } | null>(null);
   const [pickerLoading, setPickerLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -116,7 +123,7 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
 
   function fetchPickerPage(page: number): void {
     setPickerLoading(true);
-    apiFetch<{ data: ProductOption[]; meta: { total: number; totalPages: number } }>('/api/v1/products', {
+    apiFetch<{ data: PickerHit[]; meta: { total: number; totalPages: number } }>('/api/v1/reports/product-catalog', {
       query: { page, pageSize: PICKER_PAGE_SIZE, ...(query.trim() ? { q: query.trim() } : {}) },
     })
       .then((res) => {
@@ -198,19 +205,19 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
       .finally(() => setLocationsLoading(false));
   }
 
-  function selectProduct(product: ProductOption): void {
+  /** A search hit already names its variant: select that product AND that variant in one go (even when
+   * the product has several), instead of making the user pick it again. */
+  function selectHit(hit: PickerHit): void {
     resetSelection();
     setAllMovementsMode(false);
-    setSelectedProduct(product);
+    setSelectedProduct({ id: hit.productId, name: hit.productName });
     setPickerOpen(false);
     setQuery('');
     setVariantsLoading(true);
-    apiFetch<VariantOption[]>(`/api/v1/products/${product.id}/variants`)
+    apiFetch<VariantOption[]>(`/api/v1/products/${hit.productId}/variants`)
       .then((rows) => {
         setVariants(rows);
-        if (rows.length === 1 && rows[0]) {
-          selectVariant(rows[0].id);
-        }
+        selectVariant(hit.variantId);
       })
       .catch(() => setVariants([]))
       .finally(() => setVariantsLoading(false));
@@ -289,7 +296,9 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
           </Field>
           {pickerOpen && (
             <Card className="absolute z-10 mt-1 max-h-80 w-full overflow-auto shadow-lg">
-              <CardBody className="flex flex-col gap-1 p-2">
+              {/* A plain div, not CardBody: CardBody carries p-4 sm:p-6 and this project has no tailwind-merge, so a `p-*` override
+                  never wins — that padding was most of the dropdown's height. */}
+              <div className="flex flex-col p-1">
                 {pickerLoading && (
                   <div className="flex items-center gap-2 px-2 py-1 text-sm text-slate-500">
                     <Spinner className="h-4 w-4" /> Cargando…
@@ -301,18 +310,19 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
                   </p>
                 )}
                 {!pickerLoading &&
-                  pickerResults?.data.map((product) => (
+                  pickerResults?.data.map((hit) => (
                     <button
-                      key={product.id}
+                      key={hit.variantId}
                       type="button"
-                      onClick={() => selectProduct(product)}
-                      className="rounded-md px-2 py-1.5 text-left text-sm text-slate-800 hover:bg-slate-50"
+                      onClick={() => selectHit(hit)}
+                      className="flex items-center gap-1.5 rounded px-2 py-0.5 text-left text-sm leading-5 text-slate-800 hover:bg-slate-50"
                     >
-                      {product.name}
+                      <span className="shrink-0 whitespace-nowrap font-mono text-xs text-slate-500">{hit.sku}</span>
+                      <span className="min-w-0 truncate">{hit.productName}</span>
                     </button>
                   ))}
                 {!pickerLoading && pickerResults && pickerResults.meta.totalPages > 1 && (
-                  <div className="mt-1 flex items-center justify-between border-t border-slate-100 pt-2 text-xs text-slate-500">
+                  <div className="mt-1 flex items-center justify-between border-t border-slate-100 pt-1 text-xs text-slate-500">
                     <span>
                       Página {pickerPage} de {pickerResults.meta.totalPages}
                     </span>
@@ -332,7 +342,7 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
                     </div>
                   </div>
                 )}
-              </CardBody>
+              </div>
             </Card>
           )}
         </div>

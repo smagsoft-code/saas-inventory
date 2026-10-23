@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, gte, inArray, lt } from 'drizzle-orm';
 import { inventoryMovements, inventoryTransferReceipts, inventoryTransfers, orders } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
+import { resolveImportJobNumbers } from '../import-job-numbers';
 
 export interface InventoryMovementRow {
   id: string;
@@ -142,6 +143,10 @@ export class InventoryMovementsRepository {
    * duplicated here rather than shared across the transactional/reporting boundary (that module's
    * own convention: reporting never reaches into this repository, so this repository doesn't reach
    * into it either). */
+  async resolveImportJobNumbers(tx: TenantTransaction, tenantId: string, jobIds: string[]): Promise<Map<string, number>> {
+    return resolveImportJobNumbers(tx, tenantId, jobIds);
+  }
+
   async resolveOrderNumbers(tx: TenantTransaction, tenantId: string, orderIds: string[]): Promise<Map<string, string>> {
     if (orderIds.length === 0) return new Map();
     const rows = await tx

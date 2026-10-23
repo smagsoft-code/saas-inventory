@@ -3,6 +3,7 @@ import type { PaginatedResult } from '@saas-inventory/types';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import type { AuditMeta } from '../inventory-audit-meta';
+import { importLabel } from '../import-job-numbers';
 import { LocationAuthorizationService } from '../location-authorization.service';
 import { ProductVariantsLookupRepository } from '../repositories/product-variants-lookup.repository';
 import { LocationsRepository } from '../repositories/locations.repository';
@@ -22,7 +23,12 @@ function referenceLabelFor(
   orderNumbersBySaleReference: Map<string, string>,
   transferIdsByReceipt: Map<string, string>,
   transferCodesByTransferId: Map<string, string>,
+  importJobNumbers: Map<string, number>,
 ): string | undefined {
+  // Excel import → "Importación #N" (the raw reason embeds the job's uuid and is not returned).
+  if (movement.referenceType === 'import_job') {
+    return importLabel(movement.referenceId, importJobNumbers);
+  }
   switch (movement.movementType) {
     case 'SALE': {
       const orderNumber = movement.referenceId ? orderNumbersBySaleReference.get(movement.referenceId) : undefined;
@@ -53,7 +59,7 @@ function toResponse(movement: InventoryMovementRow, canViewCost: boolean, refere
     ...(canViewCost && movement.unitCost !== null ? { unitCost: Number(movement.unitCost) } : {}),
     ...(movement.referenceType ? { referenceType: movement.referenceType } : {}),
     ...(movement.referenceId ? { referenceId: movement.referenceId } : {}),
-    ...(movement.reason ? { reason: movement.reason } : {}),
+    ...(movement.reason && movement.referenceType !== 'import_job' ? { reason: movement.reason } : {}),
     ...(referenceLabel ? { referenceLabel } : {}),
     actorType: movement.actorType,
     ...(movement.actorId ? { actorId: movement.actorId } : {}),
@@ -104,9 +110,11 @@ export class MovementsService {
       const saleReferenceIds = rows.filter((row) => row.movementType === 'SALE' && row.referenceId).map((row) => row.referenceId!);
       const transferOutIds = rows.filter((row) => row.movementType === 'TRANSFER_OUT' && row.referenceId).map((row) => row.referenceId!);
       const receiptIds = rows.filter((row) => row.movementType === 'TRANSFER_IN' && row.referenceId).map((row) => row.referenceId!);
-      const [orderNumbersBySaleReference, transferIdsByReceipt] = await Promise.all([
+      const importJobIds = rows.filter((row) => row.referenceType === 'import_job' && row.referenceId).map((row) => row.referenceId!);
+      const [orderNumbersBySaleReference, transferIdsByReceipt, importJobNumbers] = await Promise.all([
         this.movementsRepository.resolveOrderNumbers(tx, tenantId, saleReferenceIds),
         this.movementsRepository.resolveReceiptTransferIds(tx, tenantId, receiptIds),
+        this.movementsRepository.resolveImportJobNumbers(tx, tenantId, importJobIds),
       ]);
       // TRANSFER_OUT's own referenceId already IS the transfer id; TRANSFER_IN's only resolves to
       // one via the receipt lookup above — union both before the single, batched code lookup.
@@ -116,7 +124,7 @@ export class MovementsService {
       ]);
 
       return {
-        data: rows.map((row) => toResponse(row, canViewCost, referenceLabelFor(row, orderNumbersBySaleReference, transferIdsByReceipt, transferCodesByTransferId))),
+        data: rows.map((row) => toResponse(row, canViewCost, referenceLabelFor(row, orderNumbersBySaleReference, transferIdsByReceipt, transferCodesByTransferId, importJobNumbers))),
         meta: {
           page: query.page,
           pageSize: query.pageSize,

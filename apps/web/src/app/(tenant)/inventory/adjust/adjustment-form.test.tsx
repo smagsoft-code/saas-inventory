@@ -40,7 +40,7 @@ describe('AdjustmentForm', () => {
   it('POSTs exactly CreateAdjustmentDto (plus occurredAt) and never a tenantId', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 3 });
     render(
-      <AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />,
+      <AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />,
     );
     fillFixed();
     fireEvent.click(screen.getByRole('button', { name: /registrar ajuste/i }));
@@ -65,7 +65,7 @@ describe('AdjustmentForm', () => {
   });
 
   it('only offers locations belonging to the chosen sucursal, and resets almacén when it changes', () => {
-    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    render(<AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />);
     fireEvent.change(screen.getByLabelText(/sucursal/i), { target: { value: 'wh-1' } });
     expect(screen.getByRole('option', { name: 'Central / General' })).toBeInTheDocument();
     expect(screen.queryByRole('option', { name: 'Norte / General' })).not.toBeInTheDocument();
@@ -82,7 +82,7 @@ describe('AdjustmentForm', () => {
       <AdjustmentForm
         fixedProductVariantId="var-1"
         fixedLocationId="loc-2"
-        products={[]}
+       
         warehouses={WAREHOUSES}
         locations={LOCATIONS}
       />,
@@ -92,7 +92,7 @@ describe('AdjustmentForm', () => {
   });
 
   it('defaults "Fecha del movimiento" to now, and disables submit (required) if cleared', () => {
-    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    render(<AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />);
     const dateInput = screen.getByLabelText(/fecha del movimiento/i) as HTMLInputElement;
     expect(dateInput.value).not.toBe('');
 
@@ -104,7 +104,7 @@ describe('AdjustmentForm', () => {
   });
 
   it('blocks a non-positive quantity and a missing reason client-side', () => {
-    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    render(<AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />);
     fireEvent.change(screen.getByLabelText(/sucursal/i), { target: { value: 'wh-1' } });
     fireEvent.change(screen.getByLabelText(/almacén/i), { target: { value: 'loc-1' } });
     fireEvent.change(screen.getByLabelText(/cantidad/i), { target: { value: '0' } });
@@ -117,7 +117,7 @@ describe('AdjustmentForm', () => {
 
   it('offers an OPTIONAL "Costo unitario" for an inbound adjustment: sent when filled, omitted when empty', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 8 });
-    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    render(<AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />);
     fireEvent.change(screen.getByLabelText(/sucursal/i), { target: { value: 'wh-1' } });
     fireEvent.change(screen.getByLabelText(/almacén/i), { target: { value: 'loc-1' } });
     fireEvent.change(screen.getByLabelText(/cantidad/i), { target: { value: '3' } });
@@ -133,7 +133,7 @@ describe('AdjustmentForm', () => {
 
   it('submits an inbound adjustment with no cost and sends no unitCost (server uses the average)', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 8 });
-    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    render(<AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />);
     fireEvent.change(screen.getByLabelText(/sucursal/i), { target: { value: 'wh-1' } });
     fireEvent.change(screen.getByLabelText(/almacén/i), { target: { value: 'loc-1' } });
     fireEvent.change(screen.getByLabelText(/cantidad/i), { target: { value: '3' } });
@@ -146,7 +146,7 @@ describe('AdjustmentForm', () => {
 
   it('requires "Costo unitario" for a Recepción (the API rejects it without one)', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 8 });
-    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    render(<AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />);
     fireEvent.change(screen.getByLabelText(/sucursal/i), { target: { value: 'wh-1' } });
     fireEvent.change(screen.getByLabelText(/almacén/i), { target: { value: 'loc-1' } });
     fireEvent.change(screen.getByLabelText(/^tipo/i), { target: { value: 'RECEIPT' } });
@@ -162,7 +162,7 @@ describe('AdjustmentForm', () => {
 
   it('hides "Costo unitario" for an outflow (it draws at the average cost) and sends none', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 3 });
-    render(<AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    render(<AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />);
     fillFixed();
     expect(screen.queryByLabelText(/costo unitario/i)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /registrar ajuste/i }));
@@ -176,7 +176,7 @@ describe('AdjustmentForm', () => {
       new ApiError(403, 'FORBIDDEN', 'You are not authorized to operate on this location.', undefined),
     );
     render(
-      <AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />,
+      <AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />,
     );
     fillFixed();
     fireEvent.click(screen.getByRole('button', { name: /registrar ajuste/i }));
@@ -187,7 +187,7 @@ describe('AdjustmentForm', () => {
   it('surfaces an insufficient-stock 409 safely', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(409, 'CONFLICT', 'Insufficient stock at this location.', undefined));
     render(
-      <AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />,
+      <AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />,
     );
     fillFixed();
     fireEvent.click(screen.getByRole('button', { name: /registrar ajuste/i }));
@@ -198,7 +198,7 @@ describe('AdjustmentForm', () => {
     let resolve: (v: unknown) => void = () => {};
     mockedFetch.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
     render(
-      <AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />,
+      <AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />,
     );
     fillFixed();
     const btn = screen.getByRole('button', { name: /registrar ajuste/i });
@@ -214,32 +214,42 @@ describe('AdjustmentForm', () => {
       <AdjustmentForm
         fixedProductVariantId="var-1"
         fixedVariantLabel="SKU-1"
-        products={[]}
+       
         warehouses={WAREHOUSES}
         locations={LOCATIONS}
       />,
     );
     expect((screen.getByLabelText(/^variante/i) as HTMLInputElement).value).toBe('SKU-1');
     rerender(
-      <AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />,
+      <AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />,
     );
     expect((screen.getByLabelText(/^variante/i) as HTMLInputElement).value).toBe('var-1');
   });
 
-  it('loads a product\'s variants when picking a product (no fixed variant)', async () => {
-    mockedFetch.mockResolvedValueOnce([{ id: 'var-9', sku: 'SKU-9' }]);
-    render(
-      <AdjustmentForm products={[{ id: 'prod-1', name: 'Blender' }]} warehouses={WAREHOUSES} locations={LOCATIONS} />,
-    );
-    fireEvent.change(screen.getByLabelText(/producto/i), { target: { value: 'prod-1' } });
+  it('uses a search bar (no capped drop-down) for the product, then loads its variants (no fixed variant)', async () => {
+    mockedFetch.mockImplementation(async (url: string) => {
+      if (url === '/api/v1/reports/product-catalog') return { data: [{ productId: 'prod-1', productName: 'Blender', variantId: 'var-9', sku: 'SKU-9' }] };
+      return [{ id: 'var-9', sku: 'SKU-9' }];
+    });
+    render(<AdjustmentForm warehouses={WAREHOUSES} locations={LOCATIONS} />);
+    const search = screen.getByLabelText('Buscar producto');
+    expect(search).toHaveAttribute('type', 'search');
+    expect(mockedFetch).not.toHaveBeenCalled(); // nothing is preloaded (and so nothing is capped at 100)
+    fireEvent.change(search, { target: { value: 'blend' } });
+    fireEvent.click(await screen.findByRole('option', { name: /Blender/ }));
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/reports/product-catalog', {
+      query: { q: 'blend', status: 'active', productStatus: 'active', pageSize: 20 },
+    });
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products/prod-1/variants');
     expect(await screen.findByRole('option', { name: 'SKU-9' })).toBeInTheDocument();
+    // the result named variant SKU-9, so it is already selected
+    await waitFor(() => expect(screen.getByLabelText(/^variante/i)).toHaveValue('var-9'));
   });
 
   it('never writes to browser storage', async () => {
     mockedFetch.mockResolvedValueOnce({ id: 'm1', productVariantId: 'var-1', balanceAfter: 1 });
     render(
-      <AdjustmentForm fixedProductVariantId="var-1" products={[]} warehouses={WAREHOUSES} locations={LOCATIONS} />,
+      <AdjustmentForm fixedProductVariantId="var-1" warehouses={WAREHOUSES} locations={LOCATIONS} />,
     );
     fillFixed();
     fireEvent.click(screen.getByRole('button', { name: /registrar ajuste/i }));

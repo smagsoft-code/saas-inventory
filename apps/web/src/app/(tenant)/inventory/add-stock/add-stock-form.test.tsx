@@ -21,13 +21,12 @@ const MOVEMENT = { id: 'm1', productVariantId: 'v1', locationId: 'l1', movementT
 /** Routes by path: product search, variants of the chosen product, and the adjustments POST. */
 function routeFetch(opts: { products?: unknown[]; adjustment?: unknown } = {}): void {
   mockedFetch.mockImplementation((async (path: string) => {
-    if (path === '/api/v1/products') {
+    if (path === '/api/v1/reports/product-catalog') {
       return {
         data: opts.products ?? [
-          { id: 'p1', name: 'Silla de Comedor', status: 'active' },
-          { id: 'p2', name: 'Silla vieja', status: 'discontinued' },
-          { id: 'p3', name: 'Silla nueva', status: 'draft' },
-          { id: 'p4', name: 'Mesa de centro', status: 'active' },
+          { productId: 'p1', productName: 'Silla de Comedor', variantId: 'v1', sku: 'SILLA-1' },
+          { productId: 'p3', productName: 'Silla nueva', variantId: 'v3', sku: 'SILLA-3' },
+          { productId: 'p4', productName: 'Mesa de centro', variantId: 'v4a', sku: 'MESA-1' },
         ],
       };
     }
@@ -77,17 +76,29 @@ describe('AddStockForm', () => {
     expect(mockedFetch).not.toHaveBeenCalled(); // nothing is preloaded
     fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'silla' } });
     await screen.findByRole('option', { name: /Silla de Comedor/ });
-    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/products', { query: { q: 'silla', pageSize: 20 } });
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/reports/product-catalog', {
+      query: { q: 'silla', status: 'active', productStatus: 'active', pageSize: 20 },
+    });
     expect(mockedFetch).toHaveBeenCalledTimes(1); // debounced: one request for the whole word
   });
 
-  it('offers every product except discontinued ones (drafts included, tagged)', async () => {
+  it('asks the server for active products only (discontinued ones are never offered)', async () => {
     renderForm();
     fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'silla' } });
     await screen.findByRole('option', { name: /Silla de Comedor/ });
     expect(screen.getByRole('option', { name: /Silla nueva/ })).toBeInTheDocument();
-    expect(screen.getByText('Borrador')).toBeInTheDocument();
-    expect(screen.queryByRole('option', { name: /Silla vieja/ })).not.toBeInTheDocument();
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/reports/product-catalog', expect.objectContaining({ query: expect.objectContaining({ productStatus: 'active', status: 'active' }) }));
+  });
+
+  it('each result is one compact row with the code at the LEFT of the name', async () => {
+    renderForm();
+    fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'silla' } });
+    const option = await screen.findByRole('option', { name: /Silla de Comedor/ });
+    const [code, name] = Array.from(option.querySelectorAll('span'));
+    expect(code).toHaveTextContent('SILLA-1');
+    expect(name).toHaveTextContent('Silla de Comedor');
+    expect(option.textContent!.indexOf('SILLA-1')).toBeLessThan(option.textContent!.indexOf('Silla de Comedor'));
+    expect(option).toHaveClass('flex', 'items-center', 'py-0.5', 'gap-1.5');
   });
 
   it('shows an empty-result message', async () => {
@@ -108,7 +119,7 @@ describe('AddStockForm', () => {
     expect(screen.getByLabelText('Variante')).toBeDisabled();
   });
 
-  it('preselects the variant when the product has only one, and leaves the choice open when it has several', async () => {
+  it('preselects the variant the result names — even when its product has several (the other stays selectable)', async () => {
     renderForm({ canViewQr: true, apiPublicUrl: 'http://api.test' });
     await pickProduct();
     await waitFor(() => expect(screen.getByLabelText('Variante')).toHaveValue('v1'));
@@ -117,7 +128,7 @@ describe('AddStockForm', () => {
     fireEvent.change(screen.getByLabelText('Buscar producto'), { target: { value: 'mesa' } });
     fireEvent.click(await screen.findByRole('option', { name: /Mesa de centro/ }));
     await screen.findByRole('option', { name: 'MESA-2' });
-    expect(screen.getByLabelText('Variante')).toHaveValue('');
+    await waitFor(() => expect(screen.getByLabelText('Variante')).toHaveValue('v4a'));
   });
 
   it('shows the product photo and the variant QR in a side panel', async () => {

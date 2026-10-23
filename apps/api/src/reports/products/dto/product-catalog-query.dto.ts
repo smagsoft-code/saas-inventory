@@ -74,12 +74,12 @@ export class ProductCatalogQueryDto {
   status?: ProductCatalogStatus;
 
   @ApiPropertyOptional({
-    enum: ['draft', 'active', 'discontinued'],
-    description: "The parent product's own status (as opposed to `status`, the variant's). The sales picker asks for `active` so draft products never show up for sale.",
+    enum: ['active', 'discontinued'],
+    description: "The parent product's own status (as opposed to `status`, the variant's). The sales picker asks for `active` so a discontinued product never shows up for sale.",
   })
   @IsOptional()
-  @IsIn(['draft', 'active', 'discontinued'])
-  productStatus?: 'draft' | 'active' | 'discontinued';
+  @IsIn(['active', 'discontinued'])
+  productStatus?: 'active' | 'discontinued';
 
   @ApiPropertyOptional({
     enum: PRODUCT_CATALOG_STOCK_FILTERS,
