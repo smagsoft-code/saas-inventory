@@ -12,6 +12,8 @@ import {
   type ImportJobStatus,
 } from '../../../../lib/types/imports';
 import { shortId } from '../../../../lib/inventory/location-index';
+import { getLocation } from '../../../../lib/inventory/locations';
+import { getWarehouse } from '../../../../lib/inventory/warehouses';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { Card, CardBody } from '../../../../components/ui/card';
@@ -59,6 +61,23 @@ export default async function ImportDetailPage({
 
   const mappedColumns = Object.entries(job.columnMapping);
 
+  // Default Sucursal · Almacén as names, not ids. Needs locations.view / warehouses.view — without
+  // them (or if the lookup fails) the short id is shown instead, never an error.
+  let defaultLocationLabel: string | null = null;
+  if (job.defaultLocationId) {
+    try {
+      const location = checker.can('locations.view') ? await getLocation(job.defaultLocationId) : null;
+      if (location) {
+        const warehouse = checker.can('warehouses.view')
+          ? await getWarehouse(location.warehouseId).catch(() => null)
+          : null;
+        defaultLocationLabel = warehouse ? `${warehouse.name} · ${location.name}` : location.name;
+      }
+    } catch {
+      defaultLocationLabel = null;
+    }
+  }
+
   return (
     <PageContainer>
       <PageHeader
@@ -85,7 +104,7 @@ export default async function ImportDetailPage({
               <>
                 <dt className="text-slate-500">Almacén predeterminado</dt>
                 <dd className="text-slate-900">
-                  <code className="text-xs">{shortId(job.defaultLocationId)}</code>
+                  {defaultLocationLabel ?? <code className="text-xs">{shortId(job.defaultLocationId)}</code>}
                 </dd>
               </>
             )}
@@ -127,7 +146,7 @@ export default async function ImportDetailPage({
         canUseInventoryMode={checker.can('import.inventory')}
       />
 
-      <ImportRows jobId={job.id} />
+      <ImportRows jobId={job.id} columnMapping={job.columnMapping} />
 
       <Link href="/imports" className="text-sm font-medium text-slate-500 hover:underline">
         Volver a importaciones

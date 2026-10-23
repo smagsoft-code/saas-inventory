@@ -1,18 +1,11 @@
 'use client';
-import { HelpTip } from '../../../../components/ui/help-tip';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
-import {
-  DUPLICATE_HANDLING_MODES,
-  DUPLICATE_HANDLING_MODE_LABELS,
-  INVENTORY_DUPLICATE_MODE,
-  STANDARD_TEMPLATE_MAPPING,
-  type DuplicateHandlingMode,
-  type ImportJob,
-} from '../../../../lib/types/imports';
+import { STANDARD_TEMPLATE_MAPPING, type ImportJob } from '../../../../lib/types/imports';
 import { Alert } from '../../../../components/ui/alert';
 import { Button } from '../../../../components/ui/button';
 import { Card, CardBody } from '../../../../components/ui/card';
@@ -47,17 +40,13 @@ type MappingSource = 'standard' | 'template';
  * header→field pairs `GET /imports/template` writes.
  */
 export function ImportUploadForm({
-  canUseInventoryMode,
   templates,
   warehouses,
   locations,
-  categories,
 }: {
-  canUseInventoryMode: boolean;
   templates: Option[];
   warehouses: Option[];
   locations: LocationOption[];
-  categories: Option[];
 }): React.JSX.Element {
   const router = useRouter();
 
@@ -74,17 +63,10 @@ export function ImportUploadForm({
     setDefaultWarehouseId(nextWarehouseId);
     setDefaultLocationId('');
   }
-  const [duplicateMode, setDuplicateMode] = useState<DuplicateHandlingMode>('update_catalog_only');
-  const [templateCategoryId, setTemplateCategoryId] = useState('');
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
-
-  const availableModes = useMemo(
-    () => DUPLICATE_HANDLING_MODES.filter((m) => m !== INVENTORY_DUPLICATE_MODE || canUseInventoryMode),
-    [canUseInventoryMode],
-  );
 
   function onPickFile(next: File | null): void {
     setError(null);
@@ -111,9 +93,6 @@ export function ImportUploadForm({
     setFile(next);
   }
 
-  const templateDownloadHref =
-    '/api/v1/imports/template' + (templateCategoryId ? `?categoryId=${encodeURIComponent(templateCategoryId)}` : '');
-
   const canSubmit =
     file !== null && !busy && (mappingSource === 'standard' || (mappingSource === 'template' && templateId !== ''));
 
@@ -135,7 +114,8 @@ export function ImportUploadForm({
     if (defaultLocationId) {
       form.set('defaultLocationId', defaultLocationId);
     }
-    form.set('duplicateHandlingMode', duplicateMode);
+    // A code that already exists is never touched: the row is rejected until its code is changed.
+    form.set('duplicateHandlingMode', 'reject_on_duplicate');
 
     try {
       const job = await apiFetch<ImportJob>('/api/v1/imports', { method: 'POST', body: form });
@@ -153,39 +133,6 @@ export function ImportUploadForm({
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       {error && <Alert tone="error">{error}</Alert>}
-
-      <Card>
-        <CardBody className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-              Plantilla
-              <HelpTip>
-                ¿No estás seguro del formato? Descarga la plantilla en blanco — sus columnas coinciden con el diseño estándar de abajo.
-              </HelpTip>
-            </span>
-            <div className="flex flex-wrap items-end gap-3">
-              {categories.length > 0 && (
-                <Field label="Para categoría" help="Agrega las columnas de atributos de esa categoría. Opcional." className="w-56">
-                  <Select value={templateCategoryId} onChange={(e) => setTemplateCategoryId(e.target.value)}>
-                    <option value="">General (sin columnas de atributos)</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              )}
-              <a
-                href={templateDownloadHref}
-                className="inline-flex h-10 items-center rounded-md border border-slate-300 bg-white px-4 text-sm font-medium text-slate-800 hover:bg-slate-50"
-              >
-                Descargar plantilla (.xlsx)
-              </a>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
 
       <Card>
         <CardBody className="flex flex-col gap-4">
@@ -212,7 +159,7 @@ export function ImportUploadForm({
               <span>
                 Completé la plantilla descargada
                 <span className="block text-xs text-slate-500">
-                  Usa el diseño estándar SKU / Nombre / Precio… → campo.
+                  Usa el diseño estándar Código / Nombre / Precio… → campo.
                 </span>
               </span>
             </label>
@@ -229,7 +176,11 @@ export function ImportUploadForm({
                 Usar una plantilla de mapeo guardada
                 {templates.length === 0 && (
                   <span className="block text-xs text-slate-500">
-                    Aún no hay ninguna guardada — crea una en «Plantillas de mapeo».
+                    Aún no hay ninguna guardada —{' '}
+                    <Link href="/imports/templates" className="font-medium underline-offset-2 hover:underline">
+                      crea una en «Plantillas de mapeo»
+                    </Link>
+                    .
                   </span>
                 )}
               </span>
@@ -251,7 +202,7 @@ export function ImportUploadForm({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <Field label="Sucursal predeterminada" help="Opcional — acota el almacén predeterminado de abajo.">
+          <Field label="Sucursal predeterminada" help="Opcional — se usa para las filas que no traen su propia Sucursal en el Excel.">
             <Select value={defaultWarehouseId} disabled={busy} onChange={(e) => onDefaultWarehouseChange(e.target.value)}>
               <option value="">Sin sucursal predeterminada</option>
               {warehouses.map((w) => (
@@ -264,7 +215,7 @@ export function ImportUploadForm({
 
           <Field
             label="Almacén predeterminado"
-            help="Se usa para las filas sin columna de almacén. Opcional."
+            help="Se usa para las filas sin Almacén en el Excel (y sin Sucursal propia). Si una fila indica su Sucursal, manda la del Excel. Opcional."
           >
             <Select
               value={defaultLocationId}
@@ -273,31 +224,12 @@ export function ImportUploadForm({
             >
               <option value="">
                 {defaultWarehouseId
-                  ? 'Sin predeterminado — cada fila de inventario necesita una columna de almacén'
+                  ? 'Sin predeterminado — cada fila con cantidad necesita su Sucursal y Almacén en el Excel'
                   : 'Elige primero una sucursal predeterminada'}
               </option>
               {defaultLocationsInWarehouse.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-
-          <Field
-            label="Si un SKU ya existe"
-            {...(canUseInventoryMode
-              ? {}
-              : { help: 'Actualizar cantidades de inventario existentes requiere el permiso de import-inventory.' })}
-          >
-            <Select
-              value={duplicateMode}
-              disabled={busy}
-              onChange={(e) => setDuplicateMode(e.target.value as DuplicateHandlingMode)}
-            >
-              {availableModes.map((m) => (
-                <option key={m} value={m}>
-                  {DUPLICATE_HANDLING_MODE_LABELS[m]}
                 </option>
               ))}
             </Select>

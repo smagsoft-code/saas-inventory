@@ -3,6 +3,15 @@ import { and, eq, ilike, inArray, isNull } from 'drizzle-orm';
 import { brands, categories, locations, productLots, products, productSerials, productVariants, suppliers, warehouses } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
+/** Outcome of turning a row's Sucursal / Almacén cells (plus the job's default location) into one
+ * concrete location — the single implementation both validation and commit call. */
+export type LocationResolution =
+  | { kind: 'resolved'; locationId: string | null }
+  | { kind: 'warehouse_not_found' }
+  | { kind: 'location_not_found' }
+  | { kind: 'location_ambiguous' }
+  | { kind: 'location_required_in_warehouse' };
+
 export interface VariantMatchRow {
   variantId: string;
   productId: string;
@@ -63,6 +72,83 @@ export class ImportCatalogLookupRepository {
       .from(locations)
       .where(and(eq(locations.tenantId, tenantId), isNull(locations.deletedAt), ilike(locations.code, value)));
     return byCode;
+  }
+
+  async findWarehouseByName(tx: TenantTransaction, tenantId: string, name: string): Promise<{ id: string } | undefined> {
+    const [row] = await tx
+      .select({ id: warehouses.id })
+      .from(warehouses)
+      .where(and(eq(warehouses.tenantId, tenantId), isNull(warehouses.deletedAt), ilike(warehouses.name, name)));
+    return row;
+  }
+
+  async findLocationById(tx: TenantTransaction, tenantId: string, id: string): Promise<{ id: string; warehouseId: string } | undefined> {
+    const [row] = await tx
+      .select({ id: locations.id, warehouseId: locations.warehouseId })
+      .from(locations)
+      .where(and(eq(locations.tenantId, tenantId), eq(locations.id, id), isNull(locations.deletedAt)));
+    return row;
+  }
+
+  /** Every location matching by name, else by code, optionally inside one warehouse. */
+  async findLocationsByNameOrCode(
+    tx: TenantTransaction,
+    tenantId: string,
+    value: string,
+    warehouseId?: string,
+  ): Promise<Array<{ id: string; warehouseId: string }>> {
+    const scope = warehouseId ? [eq(locations.warehouseId, warehouseId)] : [];
+    const byName = await tx
+      .select({ id: locations.id, warehouseId: locations.warehouseId })
+      .from(locations)
+      .where(and(eq(locations.tenantId, tenantId), isNull(locations.deletedAt), ilike(locations.name, value), ...scope));
+    if (byName.length > 0) return byName;
+    return tx
+      .select({ id: locations.id, warehouseId: locations.warehouseId })
+      .from(locations)
+      .where(and(eq(locations.tenantId, tenantId), isNull(locations.deletedAt), ilike(locations.code, value), ...scope));
+  }
+
+  /**
+   * Sucursal (warehouse) + Almacén (location) resolution, shared by validation and commit:
+   *  - Sucursal given → that sucursal is authoritative; Almacén is looked up inside it. Without an
+   *    Almacén, only the job's default location can stand in, and only if it belongs to that sucursal.
+   *  - Sucursal empty → the job's default sucursal (the one of its default location) scopes the
+   *    Almacén lookup, falling back to the whole tenant; an Almacén that is still ambiguous there is an
+   *    error, never a silent pick. No Almacén either → the job's default location (or none).
+   */
+  async resolveLocation(
+    tx: TenantTransaction,
+    tenantId: string,
+    input: { warehouseText?: string | undefined; locationText?: string | undefined; defaultLocationId?: string | null | undefined },
+  ): Promise<LocationResolution> {
+    const defaultLocation = input.defaultLocationId ? await this.findLocationById(tx, tenantId, input.defaultLocationId) : undefined;
+
+    let warehouseId: string | undefined;
+    if (input.warehouseText) {
+      const warehouse = await this.findWarehouseByName(tx, tenantId, input.warehouseText);
+      if (!warehouse) return { kind: 'warehouse_not_found' };
+      warehouseId = warehouse.id;
+    } else {
+      warehouseId = defaultLocation?.warehouseId;
+    }
+
+    if (!input.locationText) {
+      if (input.warehouseText) {
+        return defaultLocation && defaultLocation.warehouseId === warehouseId
+          ? { kind: 'resolved', locationId: defaultLocation.id }
+          : { kind: 'location_required_in_warehouse' };
+      }
+      return { kind: 'resolved', locationId: defaultLocation?.id ?? null };
+    }
+
+    let matches = await this.findLocationsByNameOrCode(tx, tenantId, input.locationText, warehouseId);
+    if (matches.length === 0 && !input.warehouseText && warehouseId) {
+      matches = await this.findLocationsByNameOrCode(tx, tenantId, input.locationText);
+    }
+    if (matches.length === 0) return { kind: 'location_not_found' };
+    if (matches.length > 1) return { kind: 'location_ambiguous' };
+    return { kind: 'resolved', locationId: matches[0]!.id };
   }
 
   async listWarehouseNames(tx: TenantTransaction, tenantId: string): Promise<Array<{ id: string; name: string }>> {

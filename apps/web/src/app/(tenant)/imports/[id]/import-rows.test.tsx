@@ -47,6 +47,31 @@ describe('ImportRows', () => {
     expect(document.querySelector('[data-testid]')).toBeNull();
   });
 
+  it('names the field, the Excel column and the received value so the user can fix the cell', async () => {
+    mockedFetch.mockResolvedValueOnce(
+      page([
+        {
+          rowNumber: 5,
+          status: 'invalid',
+          rawData: { CATEG: 'Televisores', Cant: 'abc' },
+          errors: [
+            { field: 'category', code: 'CATEGORY_NOT_FOUND', message: 'La categoría "Televisores" no existe.' },
+            { field: 'quantity', code: 'QUANTITY_INVALID', message: 'La cantidad debe ser un número.' },
+          ],
+          warnings: [],
+        },
+      ]),
+    );
+    render(<ImportRows jobId="job-1" columnMapping={{ CATEG: 'category', Cant: 'quantity' }} />);
+
+    expect(await screen.findByText('Categoría')).toBeInTheDocument();
+    expect(screen.getByText(/columna «CATEG»/)).toBeInTheDocument();
+    expect(screen.getByText(/columna «Cant»/)).toBeInTheDocument();
+    // value only echoed when the message does not already quote it
+    expect(screen.getByText(/Valor recibido: «abc»/)).toBeInTheDocument();
+    expect(screen.queryByText(/Valor recibido: «Televisores»/)).not.toBeInTheDocument();
+  });
+
   it('re-fetches with the real status query param when the filter changes', async () => {
     mockedFetch.mockResolvedValue(page(ROWS));
     render(<ImportRows jobId="job-1" />);

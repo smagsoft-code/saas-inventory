@@ -4,7 +4,7 @@ import { TenantsPlatformRepository } from '../../auth/repositories/tenants-platf
 import { AttributeValidationService } from '../../catalog/products/attribute-validation.service';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
-import { analyzeNewSkuGroup, applyColumnMapping, type NewSkuGroupInfo } from '../import-fields';
+import { analyzeNewSkuGroup, applyColumnMapping, importFieldLabel, type NewSkuGroupInfo } from '../import-fields';
 import type { ImportRowError } from '../repositories/import-job-rows.repository';
 import { ImportJobRowsRepository } from '../repositories/import-job-rows.repository';
 import { ImportJobsRepository } from '../repositories/import-jobs.repository';
@@ -174,7 +174,7 @@ export class ImportValidationService {
 
     const sku = asText(mapped['sku']);
     if (!sku) {
-      errors.push({ field: 'sku', code: 'SKU_REQUIRED', message: 'SKU is required.' });
+      errors.push({ field: 'sku', code: 'SKU_REQUIRED', message: 'El código es obligatorio: la fila no tiene valor en esa columna.' });
       return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
     }
     // PROMPT 010-A §4/§5/§9 — a SKU repeated in the file is only ever a plain duplicate when it
@@ -184,26 +184,26 @@ export class ImportValidationService {
     if ((fileWideMaps.skuRowCounts.get(sku) ?? 0) > 1) {
       const group = fileWideMaps.newSkuGroups.get(sku);
       if (!group) {
-        errors.push({ field: 'sku', code: 'DUPLICATE_SKU_IN_FILE', message: `SKU "${sku}" appears more than once in this file.` });
+        errors.push({ field: 'sku', code: 'DUPLICATE_SKU_IN_FILE', message: `El código "${sku}" aparece más de una vez en este archivo. Deja solo una fila por código.` });
         return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
       }
       if (group.trackingModeConflict) {
         errors.push({
           field: 'sku',
           code: 'SKU_GROUP_TRACKING_MODE_INCONSISTENT',
-          message: `SKU "${sku}" is repeated with inconsistent serial/lot tracking across rows — every row for a new serialized SKU must declare a serial number, or every row must declare a lot number, never a mix.`,
+          message: `El código "${sku}" se repite con seguimiento inconsistente: todas sus filas deben traer número de serie, o todas número de lote, sin mezclar.`,
         });
         return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
       }
       if (!group.isLegitimateUnitGroup) {
-        errors.push({ field: 'sku', code: 'DUPLICATE_SKU_IN_FILE', message: `SKU "${sku}" appears more than once in this file.` });
+        errors.push({ field: 'sku', code: 'DUPLICATE_SKU_IN_FILE', message: `El código "${sku}" aparece más de una vez en este archivo. Deja solo una fila por código.` });
         return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
       }
       if (group.mismatchedFields.length > 0) {
         errors.push({
           field: 'sku',
           code: 'SKU_GROUP_INCONSISTENT_METADATA',
-          message: `SKU "${sku}" is repeated across multiple physical units, but these fields disagree between rows: ${group.mismatchedFields.join(', ')}.`,
+          message: `El código "${sku}" se repite en varias unidades pero estas columnas no coinciden entre filas: ${group.mismatchedFields.map((f) => importFieldLabel(f)).join(', ')}.`,
         });
         return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
       }
@@ -215,7 +215,7 @@ export class ImportValidationService {
     let matchAction: 'create' | 'update' | 'skip';
     if (existingVariant) {
       if (duplicateHandlingMode === 'reject_on_duplicate') {
-        errors.push({ field: 'sku', code: 'DUPLICATE_SKU_REJECTED', message: `SKU "${sku}" already exists.` });
+        errors.push({ field: 'sku', code: 'DUPLICATE_SKU_REJECTED', message: `El código "${sku}" ya existe en el catálogo. Cambia el código para poder importar esta fila; el catálogo existente no se modifica.` });
         return { status: 'invalid', matchAction: null, matchedProductVariantId: null, errors, warnings };
       }
       matchAction = duplicateHandlingMode === 'skip_existing' ? 'skip' : 'update';
@@ -229,7 +229,7 @@ export class ImportValidationService {
     if (categoryText) {
       const category = await this.catalogLookup.findCategoryByName(tx, tenantId, categoryText);
       if (!category) {
-        errors.push({ field: 'category', code: 'CATEGORY_NOT_FOUND', message: `Category "${categoryText}" not found.` });
+        errors.push({ field: 'category', code: 'CATEGORY_NOT_FOUND', message: `La categoría "${categoryText}" no existe. Escríbela exactamente como está en el sistema (revisa mayúsculas y tildes).` });
       } else {
         categoryId = category.id;
       }
@@ -237,18 +237,18 @@ export class ImportValidationService {
     const brandText = asText(mapped['brand']);
     if (brandText) {
       const brand = await this.catalogLookup.findBrandByName(tx, tenantId, brandText);
-      if (!brand) errors.push({ field: 'brand', code: 'BRAND_NOT_FOUND', message: `Brand "${brandText}" not found.` });
+      if (!brand) errors.push({ field: 'brand', code: 'BRAND_NOT_FOUND', message: `La marca "${brandText}" no existe en el sistema.` });
     }
     const supplierText = asText(mapped['supplier']);
     if (supplierText) {
       const supplier = await this.catalogLookup.findSupplierByName(tx, tenantId, supplierText);
-      if (!supplier) errors.push({ field: 'supplier', code: 'SUPPLIER_NOT_FOUND', message: `Supplier "${supplierText}" not found.` });
+      if (!supplier) errors.push({ field: 'supplier', code: 'SUPPLIER_NOT_FOUND', message: `El proveedor "${supplierText}" no existe en el sistema.` });
     }
 
     // Name — required on create.
     const name = asText(mapped['name']);
     if (matchAction === 'create' && !name) {
-      errors.push({ field: 'name', code: 'NAME_REQUIRED', message: 'Name is required for a new product.' });
+      errors.push({ field: 'name', code: 'NAME_REQUIRED', message: 'El nombre es obligatorio para un producto nuevo.' });
     }
 
     // Prices.
@@ -260,31 +260,48 @@ export class ImportValidationService {
     // Quantity / location / initial stock.
     const quantity = asNumber(mapped['quantity']);
     if (quantity === 'invalid') {
-      errors.push({ field: 'quantity', code: 'QUANTITY_INVALID', message: 'Quantity must be a number.' });
+      errors.push({ field: 'quantity', code: 'QUANTITY_INVALID', message: 'La cantidad debe ser un número.' });
     } else if (quantity !== undefined && quantity < 0) {
-      errors.push({ field: 'quantity', code: 'QUANTITY_NEGATIVE', message: 'Quantity cannot be negative.' });
+      errors.push({ field: 'quantity', code: 'QUANTITY_NEGATIVE', message: 'La cantidad no puede ser negativa.' });
     }
 
-    let locationId: string | null = defaultLocationId;
+    // Sucursal + Almacén (or, failing both, the job's defaults) — one shared resolver, same one commit uses.
+    const warehouseText = asText(mapped['warehouse']);
     const locationText = asText(mapped['location']);
-    if (locationText) {
-      const location = await this.catalogLookup.findLocationByNameOrCode(tx, tenantId, locationText);
-      if (!location) {
-        errors.push({ field: 'location', code: 'LOCATION_NOT_FOUND', message: `Location "${locationText}" not found.` });
-      } else {
-        locationId = location.id;
-      }
+    const resolution = await this.catalogLookup.resolveLocation(tx, tenantId, { warehouseText, locationText, defaultLocationId });
+    let locationId: string | null = null;
+    let locationFailed = false;
+    switch (resolution.kind) {
+      case 'resolved':
+        locationId = resolution.locationId;
+        break;
+      case 'warehouse_not_found':
+        locationFailed = true;
+        errors.push({ field: 'warehouse', code: 'WAREHOUSE_NOT_FOUND', message: `La sucursal "${warehouseText}" no existe. Usa el nombre exacto (hoja «Referencia» de la plantilla).` });
+        break;
+      case 'location_not_found':
+        locationFailed = true;
+        errors.push({ field: 'location', code: 'LOCATION_NOT_FOUND', message: `El almacén "${locationText}" no existe${warehouseText ? ` en la sucursal "${warehouseText}"` : ''}. Usa el nombre o código exacto (hoja «Referencia» de la plantilla).` });
+        break;
+      case 'location_ambiguous':
+        locationFailed = true;
+        errors.push({ field: 'location', code: 'LOCATION_AMBIGUOUS', message: `Hay varios almacenes llamados "${locationText}". Indica la Sucursal en su columna para elegir el correcto.` });
+        break;
+      case 'location_required_in_warehouse':
+        locationFailed = true;
+        errors.push({ field: 'location', code: 'LOCATION_REQUIRED', message: `Indicaste la sucursal "${warehouseText}" pero no el almacén: llena la columna Almacén.` });
+        break;
     }
     const wantsInventory = matchAction === 'create' ? typeof quantity === 'number' && quantity > 0 : duplicateHandlingMode === 'update_catalog_and_inventory' && typeof quantity === 'number' && quantity > 0;
-    if (wantsInventory) {
+    if (wantsInventory && !locationFailed) {
       if (!locationId) {
-        errors.push({ field: 'location', code: 'LOCATION_REQUIRED', message: 'A location (row column or job default) is required when importing a quantity.' });
+        errors.push({ field: 'location', code: 'LOCATION_REQUIRED', message: 'Para importar una cantidad se necesita un almacén: llena las columnas Sucursal y Almacén, o elige uno predeterminado al subir el archivo.' });
       } else {
         try {
           await this.locationAuthorizationService.assertAccess(tx, tenantId, actorUserId, locationId);
         } catch (error) {
           if (error instanceof ForbiddenException) {
-            errors.push({ field: 'location', code: 'LOCATION_NOT_AUTHORIZED', message: 'You are not authorized to import stock into this location.' });
+            errors.push({ field: 'location', code: 'LOCATION_NOT_AUTHORIZED', message: 'No tienes autorización para cargar inventario en este almacén.' });
           } else {
             throw error;
           }
@@ -299,40 +316,40 @@ export class ImportValidationService {
     const isLotTracked = matchAction === 'create' ? Boolean(lotNumber) : (existingVariant?.isLotTracked ?? false);
 
     if (isSerialized && isLotTracked) {
-      errors.push({ field: 'serialNumber', code: 'SERIAL_AND_LOT_MUTUALLY_EXCLUSIVE', message: 'A variant cannot be both serialized and lot-tracked.' });
+      errors.push({ field: 'serialNumber', code: 'SERIAL_AND_LOT_MUTUALLY_EXCLUSIVE', message: 'Una variante no puede tener número de serie y número de lote a la vez. Llena solo uno.' });
     }
 
     if (isSerialized) {
       if (!serialNumber) {
-        errors.push({ field: 'serialNumber', code: 'SERIAL_NUMBER_REQUIRED', message: 'This variant is serialized — a serial number is required.' });
+        errors.push({ field: 'serialNumber', code: 'SERIAL_NUMBER_REQUIRED', message: 'Esta variante se controla por número de serie: el número de serie es obligatorio.' });
       } else {
         if ((fileWideMaps.serialRowCounts.get(serialNumber) ?? 0) > 1) {
-          errors.push({ field: 'serialNumber', code: 'DUPLICATE_SERIAL_IN_FILE', message: `Serial "${serialNumber}" appears more than once in this file.` });
+          errors.push({ field: 'serialNumber', code: 'DUPLICATE_SERIAL_IN_FILE', message: `El número de serie "${serialNumber}" aparece más de una vez en este archivo.` });
         }
         if (await this.catalogLookup.serialNumberExists(tx, tenantId, serialNumber)) {
-          errors.push({ field: 'serialNumber', code: 'SERIAL_NUMBER_EXISTS', message: `Serial "${serialNumber}" already exists.` });
+          errors.push({ field: 'serialNumber', code: 'SERIAL_NUMBER_EXISTS', message: `El número de serie "${serialNumber}" ya existe en el sistema.` });
         }
       }
       if (typeof quantity === 'number' && quantity !== 1) {
-        errors.push({ field: 'quantity', code: 'SERIAL_QUANTITY_MUST_BE_ONE', message: 'A serialized row represents exactly one physical unit — quantity must be 1 (or omitted).' });
+        errors.push({ field: 'quantity', code: 'SERIAL_QUANTITY_MUST_BE_ONE', message: 'Una fila con número de serie es exactamente una unidad: la cantidad debe ser 1 (o dejarse vacía).' });
       }
-      if (!locationId) {
-        errors.push({ field: 'location', code: 'LOCATION_REQUIRED', message: 'A location is required for a serialized unit.' });
+      if (!locationId && !locationFailed) {
+        errors.push({ field: 'location', code: 'LOCATION_REQUIRED', message: 'Una unidad con número de serie necesita un almacén (columna Almacén o almacén predeterminado).' });
       }
     } else if (matchAction !== 'create' && serialNumber) {
-      warnings.push({ field: 'serialNumber', code: 'SERIAL_IGNORED', message: 'This variant is not serialized — the serial number was ignored.' });
+      warnings.push({ field: 'serialNumber', code: 'SERIAL_IGNORED', message: 'Esta variante no se controla por número de serie: el número de serie se ignoró.' });
     }
 
     if (isLotTracked) {
       if (!lotNumber) {
-        errors.push({ field: 'lotNumber', code: 'LOT_NUMBER_REQUIRED', message: 'This variant is lot-tracked — a lot number is required.' });
+        errors.push({ field: 'lotNumber', code: 'LOT_NUMBER_REQUIRED', message: 'Esta variante se controla por lote: el número de lote es obligatorio.' });
       } else {
         const key = `${sku}::${lotNumber}`;
         if ((fileWideMaps.skuLotRowCounts.get(key) ?? 0) > 1) {
-          errors.push({ field: 'lotNumber', code: 'DUPLICATE_LOT_IN_FILE', message: `Lot "${lotNumber}" for SKU "${sku}" appears more than once in this file.` });
+          errors.push({ field: 'lotNumber', code: 'DUPLICATE_LOT_IN_FILE', message: `El lote "${lotNumber}" del código "${sku}" aparece más de una vez en este archivo.` });
         }
         if (existingVariant && (await this.catalogLookup.lotExists(tx, tenantId, existingVariant.variantId, lotNumber))) {
-          errors.push({ field: 'lotNumber', code: 'LOT_NUMBER_EXISTS', message: `Lot "${lotNumber}" already exists for this variant.` });
+          errors.push({ field: 'lotNumber', code: 'LOT_NUMBER_EXISTS', message: `El lote "${lotNumber}" ya existe para esta variante.` });
         }
       }
       for (const [field, target] of [
@@ -341,11 +358,11 @@ export class ImportValidationService {
       ] as const) {
         const value = asText(mapped[target]);
         if (value && !DATE_PATTERN.test(value)) {
-          errors.push({ field, code: 'DATE_FORMAT_INVALID', message: `${field} must be in YYYY-MM-DD format.` });
+          errors.push({ field, code: 'DATE_FORMAT_INVALID', message: `${importFieldLabel(field)} debe tener el formato AAAA-MM-DD (por ejemplo 2026-12-31).` });
         }
       }
     } else if (matchAction !== 'create' && lotNumber) {
-      warnings.push({ field: 'lotNumber', code: 'LOT_IGNORED', message: 'This variant is not lot-tracked — the lot number was ignored.' });
+      warnings.push({ field: 'lotNumber', code: 'LOT_IGNORED', message: 'Esta variante no se controla por lote: el número de lote se ignoró.' });
     }
 
     const status: 'valid' | 'warning' | 'invalid' = errors.length > 0 ? 'invalid' : warnings.length > 0 ? 'warning' : 'valid';
@@ -364,20 +381,20 @@ export class ImportValidationService {
     for (const field of fields) {
       const parsed = asNumber(mapped[field]);
       if (parsed === 'invalid') {
-        errors.push({ field, code: 'PRICE_INVALID', message: `${field} must be a number.` });
+        errors.push({ field, code: 'PRICE_INVALID', message: `${importFieldLabel(field)} debe ser un número.` });
       } else if (parsed !== undefined) {
         if (parsed < 0) {
-          errors.push({ field, code: 'PRICE_NEGATIVE', message: `${field} cannot be negative.` });
+          errors.push({ field, code: 'PRICE_NEGATIVE', message: `${importFieldLabel(field)} no puede ser negativo.` });
         } else {
           values[field] = parsed;
         }
       } else if (matchAction === 'create') {
-        errors.push({ field, code: 'PRICE_REQUIRED', message: `${field} is required for a new product.` });
+        errors.push({ field, code: 'PRICE_REQUIRED', message: `${importFieldLabel(field)} es obligatorio para un producto nuevo.` });
       }
     }
     if (values.minPrice !== undefined && values.basePrice !== undefined && values.maxPrice !== undefined) {
       if (!(values.minPrice <= values.basePrice && values.basePrice <= values.maxPrice)) {
-        errors.push({ field: 'basePrice', code: 'PRICE_TIER_INVALID', message: 'Prices must satisfy minPrice <= basePrice <= maxPrice.' });
+        errors.push({ field: 'basePrice', code: 'PRICE_TIER_INVALID', message: 'Los precios deben cumplir: Precio mínimo ≤ Precio base ≤ Precio máximo.' });
       }
     }
   }
@@ -393,7 +410,7 @@ export class ImportValidationService {
     if (Object.keys(productAttrs).length === 0 && Object.keys(variantAttrs).length === 0 && unrouted.length === 0) return;
 
     for (const code of unrouted) {
-      errors.push({ field: `attr:${code}`, code: 'ATTRIBUTE_NOT_GOVERNED', message: `"${code}" is not a governed attribute for this category.` });
+      errors.push({ field: `attr:${code}`, code: 'ATTRIBUTE_NOT_GOVERNED', message: `El atributo "${code}" no pertenece a la categoría de este producto.` });
     }
 
     // Required attributes this row omitted entirely never reach `submitted` — validate() itself

@@ -15,8 +15,9 @@ import {
 } from '../../../../lib/types/imports';
 import type { Paginated } from '../../../../lib/types/pagination';
 import { Alert } from '../../../../components/ui/alert';
-import { Button } from '../../../../components/ui/button';
+import { Button, ButtonLink } from '../../../../components/ui/button';
 import { Card, CardBody } from '../../../../components/ui/card';
+import { Modal } from '../../../../components/ui/modal';
 import { Field } from '../../../../components/ui/field';
 import { Select } from '../../../../components/ui/input';
 
@@ -60,6 +61,10 @@ export function ImportPipeline({
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [completionOpen, setCompletionOpen] = useState(false);
+  /** Set when *this* page session pressed «Confirmar importación» — the "process completed" modal is only
+   * for that, never for someone merely opening an already-finished job. */
+  const confirmedHere = useRef(false);
 
   useEffect(() => setJob(initialJob), [initialJob]);
 
@@ -100,6 +105,15 @@ export function ImportPipeline({
         .catch(() => setTemplates([]));
     }
   }, [job.status, templates]);
+
+  // When a job this session confirmed reaches a terminal state (right after the call for small files,
+  // via polling for large ones handled by the worker), tell the user the process finished.
+  useEffect(() => {
+    if (confirmedHere.current && (job.status === 'completed' || job.status === 'completed_with_errors' || job.status === 'failed')) {
+      confirmedHere.current = false;
+      setCompletionOpen(true);
+    }
+  }, [job.status]);
 
   // Light polling while the job is processed off-request.
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -144,6 +158,21 @@ export function ImportPipeline({
     }
   }
 
+  /** Fix-and-re-upload path: a *ready* job with invalid rows is cancelled first (nothing was written
+   * yet) so the corrected file starts from a clean slate instead of leaving a stale half-job. */
+  async function cancelAndReupload(): Promise<void> {
+    if (busy) return;
+    setBusy('cancel');
+    setError(null);
+    try {
+      await apiFetch(`${base}/cancel`, { method: 'POST' });
+      router.push('/imports/new');
+    } catch (err) {
+      setError(friendlyError(err));
+      setBusy(null);
+    }
+  }
+
   async function applyMapping(): Promise<void> {
     const body =
       mappingChoice === STANDARD_MAPPING_OPTION
@@ -163,7 +192,7 @@ export function ImportPipeline({
       <CardBody className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold text-slate-900">Proceso</h2>
 
-        {error && <Alert tone="error">{error}</Alert>}
+        {error && !(confirmOpen && actions.confirm) && <Alert tone="error">{error}</Alert>}
 
         {/* Counters — real values from the job / preview, never a progress bar or percentage. */}
         <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
@@ -216,6 +245,30 @@ export function ImportPipeline({
           </p>
         )}
 
+        {(job.invalidRows ?? 0) > 0 && (job.status === 'ready' || job.status === 'completed_with_errors') && (
+          <Alert tone="warning">
+            <div className="flex flex-col gap-2">
+              <span>
+                {job.invalidRows} fila(s) tienen errores (mira «Hallazgos» abajo o descarga el reporte de errores).
+                {job.status === 'ready'
+                  ? ' Corrige tu Excel y súbelo de nuevo; también puedes importar ahora solo las filas válidas.'
+                  : ' Las filas válidas ya se importaron: corrige las que fallaron y sube un archivo solo con esas filas.'}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {job.status === 'ready' && actions.cancel ? (
+                  <Button size="sm" variant="secondary" loading={busy === 'cancel'} disabled={busy !== null} onClick={() => void cancelAndReupload()}>
+                    Cancelar y subir archivo corregido
+                  </Button>
+                ) : (
+                  <ButtonLink href="/imports/new" size="sm" variant="secondary">
+                    Subir archivo corregido
+                  </ButtonLink>
+                )}
+              </div>
+            </div>
+          </Alert>
+        )}
+
         {job.status === 'failed' && (
           <Alert tone="error">Esta importación falló. Revisa las filas de abajo y reintenta el trabajo pendiente.</Alert>
         )}
@@ -260,27 +313,81 @@ export function ImportPipeline({
           </Button>
         </div>
 
-        {confirmOpen && actions.confirm && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            <span>
-              ¿Importar ahora {committableRows} fila{committableRows === 1 ? '' : 's'} válida{committableRows === 1 ? '' : 's'}/con
-              advertencia? Esto escribe registros de catálogo
-              {job.duplicateHandlingMode === 'update_catalog_and_inventory' ? ' e inventario' : ''} por la vía validada
-              normal. No se puede deshacer desde aquí.
-            </span>
-            <Button
-              size="sm"
-              loading={busy === 'confirm'}
-              disabled={busy !== null}
-              onClick={() => void run('confirm', () => apiFetch(`${base}/confirm`, { method: 'POST' }))}
-            >
-              Confirmar importación
-            </Button>
-            <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setConfirmOpen(false)}>
-              Cancelar
-            </Button>
+        <Modal
+          open={confirmOpen && actions.confirm}
+          onClose={() => {
+            if (busy === null) setConfirmOpen(false);
+          }}
+          title="Confirmar importación"
+          footer={
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="ghost" disabled={busy !== null} onClick={() => setConfirmOpen(false)}>
+                Cancelar
+              </Button>
+              <Button
+                loading={busy === 'confirm'}
+                disabled={busy !== null}
+                onClick={() => {
+                  confirmedHere.current = true;
+                  void run('confirm', () => apiFetch(`${base}/confirm`, { method: 'POST' }));
+                }}
+              >
+                Confirmar importación
+              </Button>
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-3 text-sm text-slate-700">
+            {error && <Alert tone="error">{error}</Alert>}
+            <p className="text-base font-medium text-slate-900">
+              ¿Se cargarán {committableRows} producto{committableRows === 1 ? '' : 's'}?
+            </p>
+            {(job.invalidRows ?? 0) > 0 && (
+              <p className="text-slate-500">
+                {job.invalidRows} fila{job.invalidRows === 1 ? '' : 's'} inválida{job.invalidRows === 1 ? '' : 's'} quedarán fuera.
+              </p>
+            )}
           </div>
-        )}
+        </Modal>
+
+        <Modal
+          open={completionOpen}
+          onClose={() => setCompletionOpen(false)}
+          title={
+            job.status === 'failed'
+              ? 'La importación falló'
+              : job.status === 'completed_with_errors'
+                ? 'Importación completada con errores'
+                : 'Importación completada'
+          }
+          footer={
+            <div className="flex flex-wrap justify-end gap-2">
+              <ButtonLink href="/imports" variant="ghost">
+                Volver a importaciones
+              </ButtonLink>
+              <Button onClick={() => setCompletionOpen(false)}>Cerrar</Button>
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-3 text-sm text-slate-700">
+            <Alert tone={job.status === 'completed' ? 'success' : job.status === 'failed' ? 'error' : 'warning'}>
+              {job.status === 'completed' && 'El proceso terminó correctamente.'}
+              {job.status === 'completed_with_errors' && 'El proceso terminó, pero algunas filas no se pudieron importar.'}
+              {job.status === 'failed' && 'El proceso no pudo completarse. Revisa las filas y reintenta.'}
+            </Alert>
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-1">
+              <Counter label="Filas importadas" value={job.importedRows ?? preview?.importedRows} />
+              <Counter label="Filas inválidas" value={job.invalidRows ?? preview?.invalidRows} />
+              <Counter label="Filas totales" value={job.totalRows ?? preview?.totalRows} />
+              <Counter label="Advertencias" value={job.warningRows ?? preview?.warningRows} />
+            </dl>
+            {importHasErrorReport(job) && (
+              <a href={errorReportHref} className="w-fit font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900">
+                Descargar reporte de errores (.xlsx)
+              </a>
+            )}
+          </div>
+        </Modal>
 
         {cancelOpen && actions.cancel && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">

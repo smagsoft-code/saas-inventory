@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { describe, expect, it } from 'vitest';
-import { analyzeNewSkuGroup, applyColumnMapping, assertValidColumnMapping, attributeCodeOf, extractAttributeValues, isAttributeField, isKnownTargetField, normalizeForGroupComparison } from './import-fields';
+import { analyzeNewSkuGroup, applyColumnMapping, autoMapAttributeHeaders, assertValidColumnMapping, attributeCodeOf, extractAttributeValues, isAttributeField, isKnownTargetField, normalizeForGroupComparison } from './import-fields';
 
 describe('import-fields', () => {
   describe('isKnownTargetField / isAttributeField / attributeCodeOf', () => {
@@ -178,5 +178,28 @@ describe('import-fields', () => {
       expect(result.isLegitimateUnitGroup).toBe(true);
       expect(result.mismatchedFields).toEqual([]);
     });
+  });
+});
+
+describe('autoMapAttributeHeaders', () => {
+  const defs = [
+    { code: 'color', name: 'Color' },
+    { code: 'cilindraje', name: 'Cilindraje' },
+    { code: 'capacidad', name: 'Capacidad' },
+  ];
+
+  it('maps headers that match an attribute name, ignoring case, accents and the template markers', () => {
+    const result = autoMapAttributeHeaders({ 'Código': 'sku' }, ['Código', 'COLOR', 'Cilindraje (obligatorio)', 'Capacidad (atributo)'], defs);
+    expect(result).toEqual({ 'Código': 'sku', COLOR: 'attr:color', 'Cilindraje (obligatorio)': 'attr:cilindraje', 'Capacidad (atributo)': 'attr:capacidad' });
+  });
+
+  it('never overrides an existing mapping entry nor maps one attribute twice', () => {
+    const result = autoMapAttributeHeaders({ Tono: 'attr:color' }, ['Tono', 'Color'], defs);
+    expect(result).toEqual({ Tono: 'attr:color' });
+  });
+
+  it('leaves ambiguous attribute names and unknown headers unmapped', () => {
+    const dup = [...defs, { code: 'color2', name: 'color' }];
+    expect(autoMapAttributeHeaders({}, ['Color', 'Otra'], dup)).toEqual({});
   });
 });

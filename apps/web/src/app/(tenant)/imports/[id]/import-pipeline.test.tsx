@@ -6,7 +6,8 @@ import type { ImportJob } from '../../../../lib/types/imports';
 import { ImportPipeline } from './import-pipeline';
 
 const refreshMock = vi.fn();
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn(), refresh: refreshMock }) }));
+const pushMock = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: pushMock, refresh: refreshMock }) }));
 vi.mock('../../../../lib/api/client', () => ({ apiFetch: vi.fn() }));
 const mockedFetch = vi.mocked(apiFetch);
 
@@ -66,6 +67,49 @@ describe('ImportPipeline', () => {
     await waitFor(() =>
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/imports/job-1/confirm', { method: 'POST' }),
     );
+  });
+
+  it('a ready job with invalid rows offers "Cancelar y subir archivo corregido": cancels, then goes to /imports/new', async () => {
+    mockedFetch.mockResolvedValue(job({ status: 'cancelled' }));
+    render(<ImportPipeline job={job({ status: 'ready' })} canUseInventoryMode={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /cancelar y subir archivo corregido/i }));
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith('/api/v1/imports/job-1/cancel', { method: 'POST' }));
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/imports/new'));
+  });
+
+  it('a completed_with_errors job links to /imports/new to re-upload only the failed rows', () => {
+    render(<ImportPipeline job={job({ status: 'completed_with_errors', invalidRows: 2 })} canUseInventoryMode={false} />);
+    expect(screen.getByRole('link', { name: /subir archivo corregido/i })).toHaveAttribute('href', '/imports/new');
+  });
+
+  it('shows no re-upload prompt when there are no invalid rows', () => {
+    render(<ImportPipeline job={job({ status: 'ready', invalidRows: 0 })} canUseInventoryMode={false} />);
+    expect(screen.queryByText(/subir archivo corregido/i)).not.toBeInTheDocument();
+  });
+
+  it('asks for confirmation in a modal, and a "proceso completado" modal appears once the confirmed job finishes', async () => {
+    mockedFetch.mockImplementation(async (url: string, opts?: { method?: string }) => {
+      if (url.endsWith('/preview')) {
+        return { status: 'completed', totalRows: 10, validRows: 8, invalidRows: 1, warningRows: 1, importedRows: 9, pendingRows: 0, skippedRows: 0, newProducts: 6, existingProducts: 2 };
+      }
+      if (opts?.method === 'POST') return job({ status: 'completed', importedRows: 9 });
+      return job({ status: 'completed', importedRows: 9, invalidRows: 0 });
+    });
+    render(<ImportPipeline job={job({ status: 'ready' })} canUseInventoryMode={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /importar 9 filas/i }));
+    expect(screen.getByRole('dialog', { name: 'Confirmar importación' })).toBeInTheDocument();
+    expect(screen.getByText('¿Se cargarán 9 productos?')).toBeInTheDocument();
+    expect(screen.queryByText(/vía validada/i)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Confirmar importación' }).at(-1)!);
+    expect(await screen.findByRole('dialog', { name: 'Importación completada' })).toBeInTheDocument();
+    expect(screen.getByText('El proceso terminó correctamente.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /volver a importaciones/i })).toHaveAttribute('href', '/imports');
+  });
+
+  it('does not show the "completado" modal for a job that was already finished when the page opened', () => {
+    render(<ImportPipeline job={job({ status: 'completed' })} canUseInventoryMode={false} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('warns before confirm when the mode needs import.inventory and the user lacks it', () => {

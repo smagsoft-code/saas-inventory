@@ -5,7 +5,8 @@ import type { PaginatedResult } from '@saas-inventory/types';
 import { withTenantTransaction } from '../../database/tenant-context';
 import type { ImportJobResponseDto } from '../dto/import-job-response.dto';
 import { assertTransition } from '../import-job-state-machine';
-import { assertValidColumnMapping } from '../import-fields';
+import { assertValidColumnMapping, autoMapAttributeHeaders } from '../import-fields';
+import { AttributesRepository } from '../../catalog/repositories/attributes.repository';
 import type { ImportJobRow, ImportJobStatus } from '../repositories/import-jobs.repository';
 import { ImportJobsRepository } from '../repositories/import-jobs.repository';
 import { ImportJobRowsRepository } from '../repositories/import-job-rows.repository';
@@ -67,6 +68,7 @@ export class ImportJobService {
     private readonly executionService: ImportExecutionService,
     private readonly auditService: ImportAuditService,
     private readonly mappingTemplatesRepository: ImportMappingTemplatesRepository,
+    private readonly attributesRepository: AttributesRepository,
   ) {}
 
   async list(tenantId: string, params: { page: number; pageSize: number; status?: string | undefined }): Promise<PaginatedResult<ImportJobResponseDto>> {
@@ -122,6 +124,9 @@ export class ImportJobService {
           resolvedMapping = template.columnMapping as Record<string, string>;
         }
         assertValidColumnMapping(resolvedMapping);
+        // Attribute columns of the downloaded template are matched by name (see autoMapAttributeHeaders).
+        const attributeDefinitions = await this.attributesRepository.listDefinitionsByTenant(tx, tenantId, 'active');
+        resolvedMapping = autoMapAttributeHeaders(resolvedMapping, parsed.headers, attributeDefinitions);
         assertTransition('uploaded', 'mapping');
         const updated = await this.importJobsRepository.update(tx, tenantId, jobId, {
           status: 'mapping',

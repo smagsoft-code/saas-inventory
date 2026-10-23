@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { withTenantTransaction } from '../../database/tenant-context';
+import { importFieldLabel } from '../import-fields';
 import { ImportFileStorage } from './import-file.service';
 import { ImportJobRowsRepository } from '../repositories/import-job-rows.repository';
 import { ImportJobsRepository } from '../repositories/import-jobs.repository';
@@ -14,6 +15,16 @@ export function sanitizeForSpreadsheet(value: unknown): string {
   if (value === null || value === undefined) return '';
   const text = String(value);
   return text.length > 0 && FORMULA_LEADING_CHARS.has(text[0]!) ? `'${text}` : text;
+}
+
+/** The Excel header the user's file uses for a target field (reverse lookup of `columnMapping`,
+ * which is `{ "<Excel header>": "<field>" }`), or `''` when no column was mapped to it (e.g. the
+ * location comes from the job default). */
+export function headerForField(columnMapping: Record<string, string> | null | undefined, field: string): string {
+  for (const [header, target] of Object.entries(columnMapping ?? {})) {
+    if (target === field) return header;
+  }
+  return '';
 }
 
 /**
@@ -38,14 +49,21 @@ export class ImportErrorReportService {
       const job = await this.importJobsRepository.findById(tx, tenantId, jobId);
       if (!job) throw new NotFoundException('Import job not found.');
 
-      const collected: Array<{ rowNumber: number; field: string; code: string; message: string; severity: 'error' | 'warning'; value: unknown }> = [];
+      const columnMapping = (job.columnMapping ?? {}) as Record<string, string>;
+      const collected: Array<{ rowNumber: number; field: string; column: string; code: string; message: string; severity: 'error' | 'warning'; value: unknown }> = [];
+      const entryFor = (row: { rowNumber: number; rawData: unknown; mappedData: unknown }, issue: { field: string; code: string; message: string }, severity: 'error' | 'warning') => {
+        const column = headerForField(columnMapping, issue.field);
+        const raw = (row.rawData as Record<string, unknown> | null) ?? {};
+        const mapped = (row.mappedData as Record<string, unknown> | null) ?? {};
+        return { rowNumber: row.rowNumber, field: importFieldLabel(issue.field), column, code: issue.code, message: issue.message, severity, value: column && column in raw ? raw[column] : mapped[issue.field] };
+      };
       let page = 1;
       const pageSize = 500;
       for (;;) {
         const { rows: batch, total } = await this.importJobRowsRepository.listByJob(tx, tenantId, jobId, { page, pageSize, status: 'invalid' });
         for (const row of batch) {
           for (const error of row.errors) {
-            collected.push({ rowNumber: row.rowNumber, field: error.field, code: error.code, message: error.message, severity: 'error', value: (row.mappedData as Record<string, unknown> | null)?.[error.field] });
+            collected.push(entryFor(row, error, 'error'));
           }
         }
         if (page * pageSize >= total) break;
@@ -58,7 +76,7 @@ export class ImportErrorReportService {
           const { rows: batch, total } = await this.importJobRowsRepository.listByJob(tx, tenantId, jobId, { page, pageSize, status: 'warning' });
           for (const row of batch) {
             for (const warning of row.warnings) {
-              collected.push({ rowNumber: row.rowNumber, field: warning.field, code: warning.code, message: warning.message, severity: 'warning', value: (row.mappedData as Record<string, unknown> | null)?.[warning.field] });
+              collected.push(entryFor(row, warning, 'warning'));
             }
           }
           if (page * pageSize >= total) break;
@@ -72,20 +90,22 @@ export class ImportErrorReportService {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet('Errores');
     sheet.columns = [
-      { header: 'Fila', key: 'rowNumber', width: 10 },
-      { header: 'Campo', key: 'field', width: 20 },
-      { header: 'Codigo', key: 'code', width: 28 },
-      { header: 'Severidad', key: 'severity', width: 12 },
-      { header: 'Mensaje', key: 'message', width: 60 },
-      { header: 'Valor', key: 'value', width: 30 },
+      { header: 'Fila (del Excel)', key: 'rowNumber', width: 16 },
+      { header: 'Columna en tu archivo', key: 'column', width: 26 },
+      { header: 'Campo', key: 'field', width: 24 },
+      { header: 'Tipo', key: 'severity', width: 14 },
+      { header: 'Qué está mal', key: 'message', width: 70 },
+      { header: 'Valor recibido', key: 'value', width: 30 },
+      { header: 'Código de error', key: 'code', width: 30 },
     ];
     sheet.getRow(1).font = { bold: true };
     for (const entry of rows.sort((a, b) => a.rowNumber - b.rowNumber)) {
       sheet.addRow({
         rowNumber: entry.rowNumber,
+        column: sanitizeForSpreadsheet(entry.column),
         field: sanitizeForSpreadsheet(entry.field),
         code: sanitizeForSpreadsheet(entry.code),
-        severity: entry.severity,
+        severity: entry.severity === 'error' ? 'Error' : 'Advertencia',
         message: sanitizeForSpreadsheet(entry.message),
         value: sanitizeForSpreadsheet(entry.value),
       });

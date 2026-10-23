@@ -49,7 +49,7 @@ describe('MappingTemplates', () => {
     const headers = screen.getAllByLabelText('Encabezado de Excel');
     fireEvent.change(headers[0]!, { target: { value: 'DESC' } });
     fireEvent.change(screen.getAllByLabelText('Se asigna a')[0]!, { target: { value: 'name' } });
-    expect(screen.getByText(/una columna debe asignarse a "sku"/i)).toBeInTheDocument();
+    expect(screen.getByText(/una columna debe asignarse a "código"/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /crear plantilla/i })).toBeDisabled();
   });
 

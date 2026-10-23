@@ -7,7 +7,10 @@ import {
   IMPORT_MATCH_ACTION_LABELS,
   IMPORT_ROW_STATUSES,
   IMPORT_ROW_STATUS_LABELS,
+  headerForField,
+  importFieldLabel,
   importRowStatusTone,
+  type ImportRowIssue,
   type ImportJobRow,
   type ImportRowStatus,
 } from '../../../../lib/types/imports';
@@ -29,7 +32,14 @@ const PAGE_SIZE = 25;
  * few cells is shown, not the whole payload. No stack traces, no worker internals — the DTO does
  * not carry them.
  */
-export function ImportRows({ jobId }: { jobId: string }): React.JSX.Element {
+export function ImportRows({
+  jobId,
+  columnMapping,
+}: {
+  jobId: string;
+  /** `{ <Excel header>: <field> }` — lets each finding name the column of the user's own file. */
+  columnMapping?: Record<string, string>;
+}): React.JSX.Element {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<ImportRowStatus | ''>('');
   const [result, setResult] = useState<Paginated<ImportJobRow> | null>(null);
@@ -62,6 +72,26 @@ export function ImportRows({ jobId }: { jobId: string }): React.JSX.Element {
       .slice(0, 4)
       .map(([k, v]) => `${k}: ${v === null || v === undefined ? '—' : String(v)}`)
       .join(' · ');
+  }
+
+  /** One finding, written so the user can fix it: which field, which column of *their* Excel, what
+   * is wrong, and the value that was received (when the message does not already quote it). */
+  function renderIssue(row: ImportJobRow, issue: ImportRowIssue): React.ReactNode {
+    const label = importFieldLabel(issue.field);
+    const header = headerForField(columnMapping, issue.field);
+    const received = header ? row.rawData[header] : undefined;
+    const receivedText = received === null || received === undefined ? '' : String(received).trim();
+    const showReceived = receivedText !== '' && !issue.message.includes(receivedText);
+    return (
+      <>
+        <span className="font-medium">{label}</span>
+        {header && header.toLowerCase() !== label.toLowerCase() && (
+          <span className="opacity-80"> (columna «{header}»)</span>
+        )}
+        : {issue.message}
+        {showReceived && <span className="opacity-80"> Valor recibido: «{receivedText}».</span>}
+      </>
+    );
   }
 
   return (
@@ -133,14 +163,12 @@ export function ImportRows({ jobId }: { jobId: string }): React.JSX.Element {
                         <ul className="flex flex-col gap-0.5">
                           {row.errors.map((issue, i) => (
                             <li key={`e-${i}`} className="text-red-700">
-                              {issue.field ? `${issue.field}: ` : ''}
-                              {issue.message}
+                              {renderIssue(row, issue)}
                             </li>
                           ))}
                           {row.warnings.map((issue, i) => (
                             <li key={`w-${i}`} className="text-amber-700">
-                              {issue.field ? `${issue.field}: ` : ''}
-                              {issue.message}
+                              {renderIssue(row, issue)}
                             </li>
                           ))}
                         </ul>

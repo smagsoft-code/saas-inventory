@@ -9,6 +9,7 @@ import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { ImportUploadForm } from './import-upload-form';
+import { TemplateDownload } from './template-download';
 
 export const metadata = { title: 'Nueva importación · SaaS Inventory' };
 
@@ -30,7 +31,6 @@ export default async function NewImportPage(): Promise<React.JSX.Element> {
       </PageContainer>
     );
   }
-  const canUseInventoryMode = checker.can('import.inventory');
 
   const [templates, warehouses, locations, categories] = await Promise.all([
     listMappingTemplates({ pageSize: 100 }).catch(() => null),
@@ -43,11 +43,17 @@ export default async function NewImportPage(): Promise<React.JSX.Element> {
     <PageContainer>
       <PageHeader
         title="Nueva importación"
-        help="Sube un archivo .xlsx, elige cómo se asignan sus columnas a los campos del producto, luego valida y revisa antes de escribir nada."
+        help="Sube un archivo .xlsx, elige cómo se asignan sus columnas a los campos del producto, luego valida y revisa antes de escribir nada. ¿No estás seguro del formato? Descarga la plantilla en blanco — sus columnas coinciden con el diseño estándar."
+        actions={
+          <TemplateDownload
+            categories={(categories?.data ?? [])
+              .filter((c) => c.status === 'active')
+              .map((c) => ({ id: c.id, name: c.name }))}
+          />
+        }
       />
 
       <ImportUploadForm
-        canUseInventoryMode={canUseInventoryMode}
         templates={(templates?.data ?? []).map((t) => ({ id: t.id, name: t.name }))}
         warehouses={(warehouses?.data ?? [])
           .filter((w) => w.status === 'active')
@@ -55,9 +61,6 @@ export default async function NewImportPage(): Promise<React.JSX.Element> {
         locations={(locations?.data ?? [])
           .filter((l) => l.status === 'active')
           .map((l) => ({ id: l.id, warehouseId: l.warehouseId, name: l.name }))}
-        categories={(categories?.data ?? [])
-          .filter((c) => c.status === 'active')
-          .map((c) => ({ id: c.id, name: c.name }))}
       />
 
       <p className="text-sm text-slate-500">

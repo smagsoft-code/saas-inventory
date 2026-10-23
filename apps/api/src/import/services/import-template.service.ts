@@ -6,25 +6,24 @@ import type { TenantTransaction } from '../../database/tenant-context';
 import { ImportCatalogLookupRepository } from '../repositories/import-catalog-lookup.repository';
 
 const BASE_COLUMNS: Array<{ header: string; field: string; width: number }> = [
-  { header: 'SKU', field: 'sku', width: 18 },
+  { header: 'Código', field: 'sku', width: 18 },
   { header: 'Nombre', field: 'name', width: 30 },
-  { header: 'Categoria', field: 'category', width: 20 },
-  { header: 'Marca', field: 'brand', width: 18 },
-  { header: 'Proveedor', field: 'supplier', width: 18 },
-  { header: 'Descripcion', field: 'description', width: 30 },
+  { header: 'Categoría', field: 'category', width: 20 },
+  { header: 'Descripción', field: 'description', width: 30 },
   { header: 'Unidad', field: 'unit', width: 10 },
-  { header: 'Codigo de Barras', field: 'barcode', width: 18 },
+  { header: 'Código de barras', field: 'barcode', width: 18 },
   { header: 'Costo', field: 'cost', width: 12 },
-  { header: 'Precio maximo', field: 'maxPrice', width: 14 },
+  { header: 'Precio máximo', field: 'maxPrice', width: 14 },
   { header: 'Precio base', field: 'basePrice', width: 14 },
-  { header: 'Precio minimo', field: 'minPrice', width: 14 },
+  { header: 'Precio mínimo', field: 'minPrice', width: 14 },
   { header: 'Cantidad', field: 'quantity', width: 12 },
-  { header: 'Ubicacion', field: 'location', width: 20 },
-  { header: 'Referencia de Producto', field: 'productRef', width: 20 },
-  { header: 'Numero de Serie', field: 'serialNumber', width: 20 },
-  { header: 'Numero de Lote', field: 'lotNumber', width: 20 },
-  { header: 'Fecha de Fabricacion (AAAA-MM-DD)', field: 'manufacturedDate', width: 24 },
-  { header: 'Fecha de Vencimiento (AAAA-MM-DD)', field: 'expiryDate', width: 24 },
+  { header: 'Sucursal', field: 'warehouse', width: 20 },
+  { header: 'Almacén', field: 'location', width: 20 },
+  { header: 'Referencia de producto', field: 'productRef', width: 20 },
+  { header: 'Número de serie', field: 'serialNumber', width: 20 },
+  { header: 'Número de lote', field: 'lotNumber', width: 20 },
+  { header: 'Fecha de fabricación (AAAA-MM-DD)', field: 'manufacturedDate', width: 24 },
+  { header: 'Fecha de vencimiento (AAAA-MM-DD)', field: 'expiryDate', width: 24 },
 ];
 
 /**
@@ -47,6 +46,15 @@ export class ImportTemplateService {
     const sheet = workbook.addWorksheet('Importar');
 
     const columns = [...BASE_COLUMNS];
+    const usedHeaders = new Set(columns.map((c) => c.header.toLowerCase()));
+    const addAttribute = (def: { code: string; name: string; isRequired: boolean }): void => {
+      // A template header must be unique (the parser rejects duplicate headers): an attribute named
+      // like a base column gets an "(atributo)" marker, which the upload-time matching ignores.
+      const base = usedHeaders.has(def.name.toLowerCase()) ? `${def.name} (atributo)` : def.name;
+      const header = `${base}${def.isRequired ? ' (obligatorio)' : ''}`;
+      usedHeaders.add(def.name.toLowerCase());
+      columns.push({ header, field: `attr:${def.code}`, width: 20 });
+    };
     if (categoryId) {
       const category = await this.categoriesRepository.findById(tx, tenantId, categoryId);
       if (!category) {
@@ -60,8 +68,14 @@ export class ImportTemplateService {
       for (const def of [...productAttrs, ...variantAttrs]) {
         if (seen.has(def.code)) continue;
         seen.add(def.code);
-        columns.push({ header: `${def.name}${def.isRequired ? ' (obligatorio)' : ''}`, field: `attr:${def.code}`, width: 20 });
+        addAttribute(def);
       }
+    } else {
+      // General template: every active attribute of the tenant, so attribute data can be loaded
+      // without picking a category first (a value for an attribute the row's category does not use
+      // is reported by validation, never silently dropped).
+      const definitions = await this.attributesRepository.listDefinitionsByTenant(tx, tenantId, 'active');
+      for (const def of definitions) addAttribute({ code: def.code, name: def.name, isRequired: false });
     }
 
     sheet.columns = columns.map((col) => ({ header: col.header, key: col.field, width: col.width }));
@@ -82,15 +96,19 @@ export class ImportTemplateService {
       this.catalogLookup.listLocationNames(tx, tenantId),
     ]);
 
+    // One row per Almacén with the Sucursal it belongs to — the pair the Sucursal/Almacén columns
+    // of the template expect (an Almacén name can repeat across sucursales, e.g. "General").
+    const warehouseNameById = new Map(warehouseNames.map((w) => [w.id, w.name]));
     const reference = workbook.addWorksheet('Referencia');
     reference.columns = [
-      { header: 'Almacenes', key: 'warehouse', width: 24 },
-      { header: 'Ubicaciones', key: 'location', width: 24 },
+      { header: 'Sucursal', key: 'warehouse', width: 24 },
+      { header: 'Almacén', key: 'location', width: 24 },
+      { header: 'Código del almacén', key: 'code', width: 20 },
     ];
     reference.getRow(1).font = { bold: true };
-    const rowCount = Math.max(warehouseNames.length, locationNames.length);
-    for (let i = 0; i < rowCount; i += 1) {
-      reference.addRow({ warehouse: warehouseNames[i]?.name ?? '', location: locationNames[i]?.name ?? '' });
-    }
+    const rows = locationNames
+      .map((l) => ({ warehouse: warehouseNameById.get(l.warehouseId) ?? '', location: l.name, code: l.code }))
+      .sort((a, b) => a.warehouse.localeCompare(b.warehouse) || a.location.localeCompare(b.location));
+    for (const row of rows) reference.addRow(row);
   }
 }

@@ -137,28 +137,32 @@ export class ImportExecutionService {
     tx: TenantTransaction,
     tenantId: string,
     mapped: Record<string, unknown>,
+    defaultLocationId: string | null,
   ): Promise<{ categoryId: string | null; brandId: string | null; supplierId: string | null; locationId: string | null }> {
     const categoryText = asText(mapped['category']);
     const brandText = asText(mapped['brand']);
     const supplierText = asText(mapped['supplier']);
+    const warehouseText = asText(mapped['warehouse']);
     const locationText = asText(mapped['location']);
 
     const [category, brand, supplier, location] = await Promise.all([
       categoryText ? this.catalogLookup.findCategoryByName(tx, tenantId, categoryText) : undefined,
       brandText ? this.catalogLookup.findBrandByName(tx, tenantId, brandText) : undefined,
       supplierText ? this.catalogLookup.findSupplierByName(tx, tenantId, supplierText) : undefined,
-      locationText ? this.catalogLookup.findLocationByNameOrCode(tx, tenantId, locationText) : undefined,
+      this.catalogLookup.resolveLocation(tx, tenantId, { warehouseText, locationText, defaultLocationId }),
     ]);
     if (categoryText && !category) throw new RowCommitConflictError(`Category "${categoryText}" no longer exists.`);
     if (brandText && !brand) throw new RowCommitConflictError(`Brand "${brandText}" no longer exists.`);
     if (supplierText && !supplier) throw new RowCommitConflictError(`Supplier "${supplierText}" no longer exists.`);
-    if (locationText && !location) throw new RowCommitConflictError(`Location "${locationText}" no longer exists.`);
+    if (location.kind !== 'resolved') {
+      throw new RowCommitConflictError(`The sucursal/almacén of this row ("${warehouseText ?? ''}" / "${locationText ?? ''}") can no longer be resolved.`);
+    }
 
     return {
       categoryId: category?.id ?? null,
       brandId: brand?.id ?? null,
       supplierId: supplier?.id ?? null,
-      locationId: location?.id ?? null,
+      locationId: location.locationId,
     };
   }
 
@@ -183,7 +187,7 @@ export class ImportExecutionService {
       return this.attachPhysicalUnit(tx, tenantId, actorId, job, mapped, alreadyCreated.variantId, serialNumber, lotNumber);
     }
 
-    const { categoryId, brandId, supplierId } = await this.resolveReferences(tx, tenantId, mapped);
+    const { categoryId, brandId, supplierId } = await this.resolveReferences(tx, tenantId, mapped, job.defaultLocationId);
     const { productAttrs, variantAttrs } = await this.attributePartitionService.partition(tx, tenantId, categoryId, mapped);
     const isSerialized = Boolean(serialNumber);
     const isLotTracked = Boolean(lotNumber);
@@ -197,6 +201,9 @@ export class ImportExecutionService {
       supplierId,
       name: asText(mapped['name'])!,
       description: asText(mapped['description']),
+      // Same owner decision as POST /products: a new product is sellable straight away (`active`). Kept explicit
+      // even though the column default is now `active` too.
+      status: 'active',
       attributes: productAttrs,
     });
 
@@ -269,7 +276,9 @@ export class ImportExecutionService {
     serialNumber: string | undefined,
     lotNumber: string | undefined,
   ): Promise<string> {
-    const { locationId } = await this.resolveReferences(tx, tenantId, mapped);
+    // Same resolver validation used (Sucursal/Almacén cells, else the job's default location) — if
+    // commit ignored the default, rows without their own Almacén would import with no stock at all.
+    const { locationId } = await this.resolveReferences(tx, tenantId, mapped, job.defaultLocationId);
 
     if (serialNumber) {
       try {
@@ -331,7 +340,7 @@ export class ImportExecutionService {
     if (!existing || existing.variantId !== variantId) {
       throw new RowCommitConflictError('The matched product variant no longer exists.');
     }
-    const { categoryId, brandId, supplierId, locationId } = await this.resolveReferences(tx, tenantId, mapped);
+    const { categoryId, brandId, supplierId, locationId } = await this.resolveReferences(tx, tenantId, mapped, job.defaultLocationId);
     const { productAttrs, variantAttrs } = await this.attributePartitionService.partition(tx, tenantId, categoryId ?? existing.categoryId, mapped);
 
     const name = asText(mapped['name']);

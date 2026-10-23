@@ -25,8 +25,16 @@ describe('ImportsFilters', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Filtros$/ }));
     expect(screen.getByLabelText('Desde')).toBeInTheDocument();
     expect(screen.getByLabelText('Hasta')).toBeInTheDocument();
-    expect(screen.getByLabelText('Agrupar por')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Agrupar por')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Estado')).toBeInTheDocument();
+  });
+
+  it('anchors the panel to the left of the button so it never overflows the right edge', () => {
+    render(<ImportsFilters initial={initial} />);
+    fireEvent.click(screen.getByRole('button', { name: /^Filtros$/ }));
+    const panel = screen.getByLabelText('Desde').closest('div.absolute');
+    expect(panel).toHaveClass('left-0');
+    expect(panel).not.toHaveClass('right-0');
   });
 
   it('closes the panel on an outside click', () => {
@@ -42,22 +50,21 @@ describe('ImportsFilters', () => {
     expect(screen.queryByLabelText('Desde')).not.toBeInTheDocument();
   });
 
-  it('renders the initial from/to/groupBy/status values', () => {
+  it('renders the initial from/to/status values', () => {
     render(<ImportsFilters initial={initial} />);
     fireEvent.click(screen.getByRole('button', { name: /^Filtros$/ }));
     expect(screen.getByLabelText('Desde')).toHaveValue('2026-08-01');
     expect(screen.getByLabelText('Hasta')).toHaveValue('2026-08-31');
-    expect(screen.getByLabelText('Agrupar por')).toHaveValue('day');
     expect(screen.getByLabelText('Estado')).toHaveValue('');
   });
 
-  it('navigates with reportGroupBy on a groupBy change, preserving the dates, anchored at #report', () => {
+  it('navigates preserving the dates and the carried-through groupBy, anchored at #report', () => {
     render(<ImportsFilters initial={initial} />);
     fireEvent.click(screen.getByRole('button', { name: /^Filtros$/ }));
-    fireEvent.change(screen.getByLabelText('Agrupar por'), { target: { value: 'status' } });
+    fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'failed' } });
     const url = pushMock.mock.calls[0]![0] as string;
     expect(url.startsWith('/imports?')).toBe(true);
-    expect(url).toContain('reportGroupBy=status');
+    expect(url).toContain('reportGroupBy=day');
     expect(url).toContain('reportFrom=2026-08-01T00%3A00%3A00.000Z');
     expect(url.endsWith('#report')).toBe(true);
   });

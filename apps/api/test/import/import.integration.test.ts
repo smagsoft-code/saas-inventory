@@ -166,15 +166,103 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('import: staged Excel onboa
 
   const STANDARD_MAPPING = JSON.stringify({ SKU: 'sku', Nombre: 'name', 'Precio Max': 'maxPrice', 'Precio Base': 'basePrice', 'Precio Min': 'minPrice', Cantidad: 'quantity', Ubicacion: 'location' });
 
+  describe('Sucursal column + existing-code rejection', () => {
+    const MAPPING = JSON.stringify({ Código: 'sku', Nombre: 'name', 'Precio máximo': 'maxPrice', 'Precio base': 'basePrice', 'Precio mínimo': 'minPrice', Cantidad: 'quantity', Sucursal: 'warehouse', Almacén: 'location' });
+    const HEADERS = ['Código', 'Nombre', 'Precio máximo', 'Precio base', 'Precio mínimo', 'Cantidad', 'Sucursal', 'Almacén'];
+
+    async function validateRows(admin: Session, rows: Array<Array<string | number>>, fields: Record<string, string>): Promise<Array<{ status: string; errors: Array<{ code: string }> }>> {
+      const created = await uploadJob(admin, { columnMapping: MAPPING, ...fields }, await buildXlsx(HEADERS, rows));
+      expect(created.statusCode).toBe(201);
+      const job = JSON.parse(created.body) as { id: string };
+      await inject({ method: 'POST', url: `/api/v1/imports/${job.id}/validate`, headers: writeHeaders(admin) });
+      const res = await inject({ method: 'GET', url: `/api/v1/imports/${job.id}/rows`, headers: readHeaders(admin) });
+      return (JSON.parse(res.body) as { data: Array<{ status: string; errors: Array<{ code: string }> }> }).data;
+    }
+
+    it('an explicit Sucursal wins over the job default; an Almacén name shared by two sucursales without one is rejected as ambiguous', async () => {
+      const admin = await registerTenant('Import Sucursal Co', 'admin@import-sucursal.example');
+      const stamp = Date.now();
+      const whA = await createWarehouse(admin, `Sucursal A ${stamp}`, `SA-${stamp}`);
+      const whB = await createWarehouse(admin, `Sucursal B ${stamp}`, `SB-${stamp}`);
+      const locA = await createLocation(admin, whA, 'Zona X', `ZXA-${stamp}`);
+      await createLocation(admin, whB, 'Zona X', `ZXB-${stamp}`);
+
+      const rows = await validateRows(
+        admin,
+        [
+          [`OK-${stamp}`, 'Con sucursal', 10, 9, 8, 1, `Sucursal B ${stamp}`, 'Zona X'],
+          [`AMB-${stamp}`, 'Ambiguo', 10, 9, 8, 1, '', 'Zona X'],
+          [`NOW-${stamp}`, 'Sucursal inexistente', 10, 9, 8, 1, 'No existe', 'Zona X'],
+        ],
+        {},
+      );
+      expect(rows[0]!.status).toBe('valid');
+      expect(rows[1]!.errors.map((e) => e.code)).toContain('LOCATION_AMBIGUOUS');
+      expect(rows[2]!.errors.map((e) => e.code)).toContain('WAREHOUSE_NOT_FOUND');
+
+      // With a job default in Sucursal A, the same Sucursal-less "Zona X" resolves inside A.
+      const withDefault = await validateRows(admin, [[`DEF-${stamp}`, 'Por defecto', 10, 9, 8, 1, '', 'Zona X']], { defaultLocationId: locA });
+      expect(withDefault[0]!.status).toBe('valid');
+    });
+
+    it('a code that already exists is rejected (never updated) when the job uses reject_on_duplicate', async () => {
+      const admin = await registerTenant('Import Dup Code Co', 'admin@import-dupcode.example');
+      const stamp = Date.now();
+      const wh = await createWarehouse(admin, `WH ${stamp}`, `WD-${stamp}`);
+      const loc = await createLocation(admin, wh, 'Zona D', `ZD-${stamp}`);
+      const code = `DUP-${stamp}`;
+      const row = [code, 'Original', 10, 9, 8, 1, '', ''];
+
+      for (const expected of ['valid', 'invalid']) {
+        const created = await uploadJob(admin, { columnMapping: MAPPING, defaultLocationId: loc, duplicateHandlingMode: 'reject_on_duplicate' }, await buildXlsx(HEADERS, [row]));
+        const job = JSON.parse(created.body) as { id: string };
+        await inject({ method: 'POST', url: `/api/v1/imports/${job.id}/validate`, headers: writeHeaders(admin) });
+        const res = await inject({ method: 'GET', url: `/api/v1/imports/${job.id}/rows`, headers: readHeaders(admin) });
+        const first = (JSON.parse(res.body) as { data: Array<{ status: string; errors: Array<{ code: string }> }> }).data[0]!;
+        expect(first.status).toBe(expected);
+        if (expected === 'valid') {
+          await inject({ method: 'POST', url: `/api/v1/imports/${job.id}/confirm`, headers: writeHeaders(admin) });
+        } else {
+          expect(first.errors.map((e) => e.code)).toContain('DUPLICATE_SKU_REJECTED');
+        }
+      }
+    });
+  });
+
   describe('happy path — small synchronous import (§4, §17, §26)', () => {
+    it('a row with a quantity but NO Almacén column value is stocked at the job default location (validation and commit agree)', async () => {
+      const admin = await registerTenant('Import Default Loc Co', 'admin@import-default-loc.example');
+      const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
+      const locationId = await createLocation(admin, warehouseId, 'Zone D', `ZD-${Date.now()}`);
+
+      const mapping = JSON.stringify({ SKU: 'sku', Nombre: 'name', 'Precio Max': 'maxPrice', 'Precio Base': 'basePrice', 'Precio Min': 'minPrice', Cantidad: 'quantity' });
+      const buffer = await buildXlsx(['SKU', 'Nombre', 'Precio Max', 'Precio Base', 'Precio Min', 'Cantidad'], [[`SKU-${Date.now()}`, 'Default Loc Widget', 150, 120, 100, 7]]);
+
+      const created = await uploadJob(admin, { columnMapping: mapping, defaultLocationId: locationId }, buffer);
+      expect(created.statusCode).toBe(201);
+      const job = JSON.parse(created.body) as { id: string };
+      const validated = await inject({ method: 'POST', url: `/api/v1/imports/${job.id}/validate`, headers: writeHeaders(admin) });
+      expect((JSON.parse(validated.body) as { validRows: number }).validRows).toBe(1);
+      const confirmed = await inject({ method: 'POST', url: `/api/v1/imports/${job.id}/confirm`, headers: writeHeaders(admin) });
+      expect((JSON.parse(confirmed.body) as { status: string }).status).toBe('completed');
+
+      const rows = await inject({ method: 'GET', url: `/api/v1/imports/${job.id}/rows`, headers: readHeaders(admin) });
+      const variantId = (JSON.parse(rows.body) as { data: { matchedProductVariantId: string }[] }).data[0]!.matchedProductVariantId;
+      const balances = await inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${variantId}`, headers: readHeaders(admin) });
+      const balance = (JSON.parse(balances.body) as { data: { quantityPhysical: number; locationId: string }[] }).data[0]!;
+      expect(balance.quantityPhysical).toBe(7);
+      expect(balance.locationId).toBe(locationId);
+    });
+
     it('create -> validate -> preview -> confirm creates a product/variant and an INITIAL_STOCK movement, never a raw balance write', async () => {
       const admin = await registerTenant('Import Alpha Co', 'admin@import-alpha.example');
       const warehouseId = await createWarehouse(admin, 'WH', `WH-${Date.now()}`);
       const locationId = await createLocation(admin, warehouseId, 'Zone A', `ZA-${Date.now()}`);
 
+      const importedSku = `SKU-${Date.now()}`;
       const buffer = await buildXlsx(
         ['SKU', 'Nombre', 'Precio Max', 'Precio Base', 'Precio Min', 'Cantidad', 'Ubicacion'],
-        [[`SKU-${Date.now()}`, 'Imported Widget', 150, 120, 100, 25, 'Zone A']],
+        [[importedSku, 'Imported Widget', 150, 120, 100, 25, 'Zone A']],
       );
 
       const created = await uploadJob(admin, { columnMapping: STANDARD_MAPPING, defaultLocationId: locationId }, buffer);
@@ -208,10 +296,28 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('import: staged Excel onboa
       const movementTypes = (JSON.parse(movements.body) as { data: { movementType: string; referenceType?: string }[] }).data;
       expect(movementTypes).toHaveLength(1);
       expect(movementTypes[0]).toEqual(expect.objectContaining({ movementType: 'INITIAL_STOCK', referenceType: 'import_job' }));
+      // The ledger never exposes the job's uuid: it shows the import's sequence number instead.
+      const firstMovement = movementTypes[0] as unknown as { referenceLabel?: string; reason?: string };
+      expect(firstMovement.referenceLabel).toBe('Importación #1');
+      expect(firstMovement.reason).toBeUndefined();
+      const kardex = await inject({ method: 'GET', url: `/api/v1/reports/kardex?productVariantId=${variantId}&locationId=${locationId}`, headers: readHeaders(admin) });
+      expect(kardex.statusCode, kardex.body).toBe(200);
+      const kardexLabel = (JSON.parse(kardex.body) as { rows: { label: string }[] }).rows[0]!.label;
+      expect(kardexLabel).toBe('Stock inicial: Importación #1');
 
       const balances = await inject({ method: 'GET', url: `/api/v1/inventory/balances?productVariantId=${variantId}`, headers: readHeaders(admin) });
       const balance = (JSON.parse(balances.body) as { data: { quantityPhysical: number }[] }).data[0]!;
       expect(balance.quantityPhysical).toBe(25);
+
+      // An imported product is ACTIVE (there is no draft state any more), so the sales cart's product search —
+      // which asks for active products with stock available at the sale's almacén — finds it.
+      const cartSearch = await inject({
+        method: 'GET',
+        url: `/api/v1/reports/product-catalog?q=${importedSku}&status=active&productStatus=active&stock=available&locationId=${locationId}&pageSize=8`,
+        headers: readHeaders(admin),
+      });
+      expect(cartSearch.statusCode, cartSearch.body).toBe(200);
+      expect((JSON.parse(cartSearch.body) as { data: { sku: string }[] }).data.map((r) => r.sku)).toEqual([importedSku]);
     });
   });
 

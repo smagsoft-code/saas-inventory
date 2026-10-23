@@ -90,8 +90,8 @@ export type DuplicateHandlingMode = (typeof DUPLICATE_HANDLING_MODES)[number];
 export const DUPLICATE_HANDLING_MODE_LABELS: Record<DuplicateHandlingMode, string> = {
   update_catalog_only: 'Solo actualizar catálogo (opción segura — no toca el inventario)',
   update_catalog_and_inventory: 'Actualizar catálogo e inventario (requiere el permiso import-inventory)',
-  skip_existing: 'Omitir filas cuyo SKU ya existe',
-  reject_on_duplicate: 'Rechazar la fila si su SKU ya existe',
+  skip_existing: 'Omitir filas cuyo código ya existe',
+  reject_on_duplicate: 'Rechazar la fila si su código ya existe',
 };
 
 /** `import.inventory` is the extra permission the backend checks at confirm time for this mode. */
@@ -149,6 +149,7 @@ export const STANDARD_IMPORT_FIELDS = [
   'basePrice',
   'minPrice',
   'quantity',
+  'warehouse',
   'location',
   'productRef',
   'serialNumber',
@@ -157,6 +158,35 @@ export const STANDARD_IMPORT_FIELDS = [
   'expiryDate',
 ] as const;
 export type StandardImportField = (typeof STANDARD_IMPORT_FIELDS)[number];
+
+/** UI labels for the target fields, aligned with the product form and the downloadable template's
+ * headers (`sku` is always shown as "Código"). The wire value stays the English field id. */
+export const STANDARD_IMPORT_FIELD_LABELS: Record<StandardImportField, string> = {
+  sku: 'Código',
+  name: 'Nombre',
+  category: 'Categoría',
+  brand: 'Marca',
+  supplier: 'Proveedor',
+  description: 'Descripción',
+  unit: 'Unidad',
+  barcode: 'Código de barras',
+  cost: 'Costo',
+  maxPrice: 'Precio máximo',
+  basePrice: 'Precio base',
+  minPrice: 'Precio mínimo',
+  quantity: 'Cantidad',
+  warehouse: 'Sucursal',
+  location: 'Almacén',
+  productRef: 'Referencia de producto',
+  serialNumber: 'Número de serie',
+  lotNumber: 'Número de lote',
+  manufacturedDate: 'Fecha de fabricación',
+  expiryDate: 'Fecha de vencimiento',
+};
+
+/** Fields offered in the mapping-template editor. `brand`/`supplier` stay valid wire targets (the
+ * backend still accepts them) but are hidden until the brands/suppliers module exists. */
+export const MAPPABLE_IMPORT_FIELDS = STANDARD_IMPORT_FIELDS.filter((f) => f !== 'brand' && f !== 'supplier');
 
 export const ATTRIBUTE_FIELD_PREFIX = 'attr:';
 
@@ -174,7 +204,7 @@ export function columnMappingProblem(mapping: Record<string, string>): string | 
   const nonAttr = entries.map(([, t]) => t).filter((t) => !t.startsWith(ATTRIBUTE_FIELD_PREFIX));
   const dup = nonAttr.filter((t, i) => nonAttr.indexOf(t) !== i);
   if (dup.length > 0) return `Mapeado más de una vez: ${[...new Set(dup)].join(', ')}.`;
-  if (!entries.some(([, t]) => t === 'sku')) return 'Una columna debe asignarse a "sku".';
+  if (!entries.some(([, t]) => t === 'sku')) return 'Una columna debe asignarse a "código".';
   return null;
 }
 
@@ -182,25 +212,24 @@ export function columnMappingProblem(mapping: Record<string, string>): string | 
  * writes into the downloadable template. Offered in the upload form as "I filled in the downloaded
  * template" — the same module's own generator output, not an invented contract. */
 export const STANDARD_TEMPLATE_MAPPING: Record<string, string> = {
-  SKU: 'sku',
+  'Código': 'sku',
   Nombre: 'name',
-  Categoria: 'category',
-  Marca: 'brand',
-  Proveedor: 'supplier',
-  Descripcion: 'description',
+  'Categoría': 'category',
+  'Descripción': 'description',
   Unidad: 'unit',
-  'Codigo de Barras': 'barcode',
+  'Código de barras': 'barcode',
   Costo: 'cost',
-  'Precio maximo': 'maxPrice',
+  'Precio máximo': 'maxPrice',
   'Precio base': 'basePrice',
-  'Precio minimo': 'minPrice',
+  'Precio mínimo': 'minPrice',
   Cantidad: 'quantity',
-  Ubicacion: 'location',
-  'Referencia de Producto': 'productRef',
-  'Numero de Serie': 'serialNumber',
-  'Numero de Lote': 'lotNumber',
-  'Fecha de Fabricacion (AAAA-MM-DD)': 'manufacturedDate',
-  'Fecha de Vencimiento (AAAA-MM-DD)': 'expiryDate',
+  Sucursal: 'warehouse',
+  'Almacén': 'location',
+  'Referencia de producto': 'productRef',
+  'Número de serie': 'serialNumber',
+  'Número de lote': 'lotNumber',
+  'Fecha de fabricación (AAAA-MM-DD)': 'manufacturedDate',
+  'Fecha de vencimiento (AAAA-MM-DD)': 'expiryDate',
 };
 
 // --- DTOs ----------------------------------------------------------------------------------------
@@ -343,4 +372,19 @@ export function importHasErrorReport(job: {
     job.status === 'completed_with_errors' ||
     job.status === 'failed'
   );
+}
+
+/** The Excel header used for a target field (reverse lookup of `columnMapping`, `{ header: field }`),
+ * or `''` when no column was mapped to it. */
+export function headerForField(columnMapping: Record<string, string> | undefined, field: string): string {
+  for (const [header, target] of Object.entries(columnMapping ?? {})) {
+    if (target === field) return header;
+  }
+  return '';
+}
+
+/** User-facing name of a finding's field — never the internal id (`sku` → "Código"). */
+export function importFieldLabel(field: string): string {
+  if (field.startsWith(ATTRIBUTE_FIELD_PREFIX)) return `Atributo «${field.slice(ATTRIBUTE_FIELD_PREFIX.length)}»`;
+  return (STANDARD_IMPORT_FIELD_LABELS as Record<string, string>)[field] ?? field;
 }

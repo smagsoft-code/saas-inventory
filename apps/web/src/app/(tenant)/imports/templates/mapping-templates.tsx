@@ -7,7 +7,8 @@ import { apiFetch } from '../../../../lib/api/client';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
 import {
   ATTRIBUTE_FIELD_PREFIX,
-  STANDARD_IMPORT_FIELDS,
+  MAPPABLE_IMPORT_FIELDS,
+  STANDARD_IMPORT_FIELD_LABELS,
   columnMappingProblem,
   type MappingTemplate,
 } from '../../../../lib/types/imports';
@@ -299,7 +300,7 @@ export function MappingTemplates({
                   <span className="flex items-center gap-1.5">
                     Columnas
                     <HelpTip>
-                      Asigna cada encabezado de tu hoja de cálculo a un campo del producto. Una columna debe asignarse a «sku».
+                      Asigna cada encabezado de tu hoja de cálculo a un campo del producto. Una columna debe asignarse a «código».
                     </HelpTip>
                   </span>
                 </legend>
@@ -318,9 +319,9 @@ export function MappingTemplates({
                         disabled={busy}
                         onChange={(e) => setRow(row.key, { target: e.target.value })}
                       >
-                        {STANDARD_IMPORT_FIELDS.map((f) => (
+                        {MAPPABLE_IMPORT_FIELDS.map((f) => (
                           <option key={f} value={f}>
-                            {f}
+                            {STANDARD_IMPORT_FIELD_LABELS[f]}
                           </option>
                         ))}
                         <option value={ATTR_TARGET}>atributo (attr:…)</option>

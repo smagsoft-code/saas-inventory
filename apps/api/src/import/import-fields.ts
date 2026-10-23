@@ -21,6 +21,7 @@ export const STANDARD_IMPORT_FIELDS = [
   'basePrice',
   'minPrice',
   'quantity',
+  'warehouse',
   'location',
   'productRef',
   'serialNumber',
@@ -163,4 +164,78 @@ export function extractAttributeValues(mapped: Record<string, unknown>): Record<
     }
   }
   return attributes;
+}
+
+/** User-facing (Spanish) names of the target fields — the same labels the product form and the
+ * downloadable template use (`sku` is always "Código"). Used by validation messages and the error
+ * report so a finding names the column the user actually knows, never the internal field id. */
+export const IMPORT_FIELD_LABELS: Record<StandardImportField, string> = {
+  sku: 'Código',
+  name: 'Nombre',
+  category: 'Categoría',
+  brand: 'Marca',
+  supplier: 'Proveedor',
+  description: 'Descripción',
+  unit: 'Unidad',
+  barcode: 'Código de barras',
+  cost: 'Costo',
+  maxPrice: 'Precio máximo',
+  basePrice: 'Precio base',
+  minPrice: 'Precio mínimo',
+  quantity: 'Cantidad',
+  warehouse: 'Sucursal',
+  location: 'Almacén',
+  productRef: 'Referencia de producto',
+  serialNumber: 'Número de serie',
+  lotNumber: 'Número de lote',
+  manufacturedDate: 'Fecha de fabricación',
+  expiryDate: 'Fecha de vencimiento',
+};
+
+export function importFieldLabel(field: string): string {
+  if (isAttributeField(field)) return `Atributo «${attributeCodeOf(field)}»`;
+  return (IMPORT_FIELD_LABELS as Record<string, string>)[field] ?? field;
+}
+
+function normalizeHeaderForMatch(header: string): string {
+  return header
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\((obligatorio|atributo)\)/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * The downloadable template names each attribute column after the attribute itself (`Color`,
+ * `Cilindraje (obligatorio)`), but the upload only knows header→field pairs. So that the "I filled
+ * in the downloaded template" path also carries the attribute columns, any header the mapping does
+ * not already cover that matches an active attribute's name (case/accent-insensitive, ignoring the
+ * `(obligatorio)`/`(atributo)` markers the template appends) is mapped to `attr:<code>`. Existing
+ * mapping entries always win; an attribute is never mapped twice; ambiguous names (two attributes
+ * normalizing to the same text) are left unmapped rather than guessed.
+ */
+export function autoMapAttributeHeaders(
+  columnMapping: Record<string, string>,
+  headers: string[],
+  definitions: Array<{ code: string; name: string }>,
+): Record<string, string> {
+  const byName = new Map<string, string | null>();
+  for (const def of definitions) {
+    const key = normalizeHeaderForMatch(def.name);
+    byName.set(key, byName.has(key) ? null : def.code);
+  }
+  const usedTargets = new Set(Object.values(columnMapping));
+  const result = { ...columnMapping };
+  for (const header of headers) {
+    if (header in result) continue;
+    const code = byName.get(normalizeHeaderForMatch(header));
+    if (!code) continue;
+    const target = `${ATTRIBUTE_FIELD_PREFIX}${code}`;
+    if (usedTargets.has(target)) continue;
+    result[header] = target;
+    usedTargets.add(target);
+  }
+  return result;
 }

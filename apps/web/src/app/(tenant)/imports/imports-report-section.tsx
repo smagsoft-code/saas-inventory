@@ -1,6 +1,3 @@
-import { EmptyState } from '../../../components/ui/empty-state';
-import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
-import { IMPORT_JOB_STATUS_LABELS, type ImportJobStatus } from '../../../lib/types/imports';
 import type { ImportsSummary } from '../../../lib/types/imports-reports';
 
 /** Mirrors `ApprovalsReportError` / `MovementsReportError` exactly — a small, honest error surface
@@ -40,15 +37,11 @@ function KpiTile({ label, value }: { label: string; value: string }): React.JSX.
 
 /**
  * The F18-09 report — success rendering only (loading/error/no-access are the caller's job, same
- * `/approvals` / `/inventory` pattern). One horizontally-scrolling table only, never the whole page.
- *
- * Every column is safe to sum across buckets: `jobCount` because one job lands in exactly one
- * bucket, the row sums because they are frozen per job. `totals` is the endpoint's own
- * `groupBy`-independent aggregate over the completed-job window — the KPI row, never re-derived
- * client-side.
+ * `/approvals` / `/inventory` pattern). KPI tiles only — the per-period bucket table was removed by
+ * product decision. `totals` is the endpoint's own `groupBy`-independent aggregate over the
+ * completed-job window, never re-derived client-side.
  */
 export function ImportsReportSection({ summary }: { summary: ImportsSummary }): React.JSX.Element {
-  const isStatus = summary.groupBy === 'status';
   const t = summary.totals;
 
   return (
@@ -60,41 +53,6 @@ export function ImportsReportSection({ summary }: { summary: ImportsSummary }): 
         <KpiTile label="Filas con advertencias" value={String(t.warningRows)} />
       </div>
 
-      {summary.buckets.length === 0 ? (
-        <EmptyState
-          title="Sin importaciones completadas en este período"
-          description="Solo se cuentan los trabajos que terminaron (completado, completado con errores, fallido o cancelado) dentro del rango de fechas. Prueba con un rango más amplio."
-        />
-      ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>{isStatus ? 'Estado' : 'Período'}</TH>
-              <TH className="text-right">Trabajos</TH>
-              <TH className="text-right">Filas totales</TH>
-              <TH className="text-right">Válidas</TH>
-              <TH className="text-right">Advertencias</TH>
-              <TH className="text-right">Inválidas</TH>
-              <TH className="text-right">Importadas</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {summary.buckets.map((bucket) => (
-              <TR key={bucket.key}>
-                <TD className="font-medium">
-                  {isStatus ? IMPORT_JOB_STATUS_LABELS[bucket.key as ImportJobStatus] ?? bucket.key : bucket.key}
-                </TD>
-                <TD className="text-right">{bucket.jobCount}</TD>
-                <TD className="text-right text-slate-500">{bucket.totalRows}</TD>
-                <TD className="text-right text-slate-500">{bucket.validRows}</TD>
-                <TD className="text-right text-slate-500">{bucket.warningRows}</TD>
-                <TD className={`text-right ${bucket.invalidRows > 0 ? 'text-red-600' : 'text-slate-500'}`}>{bucket.invalidRows}</TD>
-                <TD className="text-right font-medium">{bucket.importedRows}</TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      )}
     </div>
   );
 }

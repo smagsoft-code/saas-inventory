@@ -15,7 +15,7 @@ describe('columnMappingProblem (mirror of assertValidColumnMapping)', () => {
   });
 
   it('requires a column mapped to sku', () => {
-    expect(columnMappingProblem({ Nombre: 'name' })).toMatch(/sku/i);
+    expect(columnMappingProblem({ Nombre: 'name' })).toMatch(/código/i);
   });
 
   it('rejects an unknown target field', () => {

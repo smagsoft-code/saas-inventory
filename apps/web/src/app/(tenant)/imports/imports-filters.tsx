@@ -2,11 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-import {
-  IMPORTS_SUMMARY_GROUP_BY,
-  IMPORTS_SUMMARY_GROUP_BY_LABELS,
-  type ImportsSummaryGroupBy,
-} from '../../../lib/types/imports-reports';
+import type { ImportsSummaryGroupBy } from '../../../lib/types/imports-reports';
 import { IMPORT_JOB_STATUSES, IMPORT_JOB_STATUS_LABELS, type ImportJobStatus } from '../../../lib/types/imports';
 import { Button } from '../../../components/ui/button';
 import { Field } from '../../../components/ui/field';
@@ -36,7 +32,9 @@ export function ImportsFilters({ initial }: { initial: ImportsFilterValues }): R
   const router = useRouter();
   const [from, setFrom] = useState(initial.from.slice(0, 10));
   const [to, setTo] = useState(initial.to.slice(0, 10));
-  const [groupBy, setGroupBy] = useState<ImportsSummaryGroupBy>(initial.groupBy);
+  // No visible "Agrupar por" control any more (the per-period table is gone) — the param is just
+  // carried through so the report endpoint keeps receiving the same `groupBy`.
+  const groupBy = initial.groupBy;
   const [status, setStatus] = useState(initial.status);
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -62,11 +60,11 @@ export function ImportsFilters({ initial }: { initial: ImportsFilterValues }): R
     return d.toISOString();
   }
 
-  function apply(next: { from?: string; to?: string; groupBy?: ImportsSummaryGroupBy; status?: string }): void {
+  function apply(next: { from?: string; to?: string; status?: string }): void {
     const params = new URLSearchParams();
     const nextFrom = next.from ?? from;
     const nextTo = next.to ?? to;
-    const nextGroupBy = next.groupBy ?? groupBy;
+    const nextGroupBy = groupBy;
     const nextStatus = next.status ?? status;
     if (nextFrom) params.set('reportFrom', `${nextFrom}T00:00:00.000Z`);
     if (nextTo) params.set('reportTo', nextDayStart(nextTo));
@@ -79,12 +77,11 @@ export function ImportsFilters({ initial }: { initial: ImportsFilterValues }): R
   }
 
   function clearFilters(): void {
-    setGroupBy('day');
     setStatus('');
     router.push('/imports#report');
   }
 
-  const hasFilter = Boolean(status) || groupBy !== 'day';
+  const hasFilter = Boolean(status);
 
   return (
     <div ref={panelRef} className="relative">
@@ -93,7 +90,7 @@ export function ImportsFilters({ initial }: { initial: ImportsFilterValues }): R
       </Button>
 
       {panelOpen && (
-        <div className="absolute right-0 z-10 mt-2 flex w-80 flex-col gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-lg">
+        <div className="absolute left-0 z-10 mt-2 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-md border border-slate-200 bg-white p-4 shadow-lg">
           <div className="grid grid-cols-2 gap-3">
             <Field label="Desde" help="Inicio de día en la zona horaria del tenant">
               <Input
@@ -118,23 +115,6 @@ export function ImportsFilters({ initial }: { initial: ImportsFilterValues }): R
               />
             </Field>
           </div>
-
-          <Field label="Agrupar por">
-            <Select
-              value={groupBy}
-              onChange={(e) => {
-                const next = e.target.value as ImportsSummaryGroupBy;
-                setGroupBy(next);
-                apply({ groupBy: next });
-              }}
-            >
-              {IMPORTS_SUMMARY_GROUP_BY.map((g) => (
-                <option key={g} value={g}>
-                  {IMPORTS_SUMMARY_GROUP_BY_LABELS[g]}
-                </option>
-              ))}
-            </Select>
-          </Field>
 
           <Field label="Estado" help="Filtra el reporte y el historial">
             <Select

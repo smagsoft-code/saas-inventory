@@ -32,38 +32,15 @@ describe('ImportsReportSection', () => {
     expect(screen.getByText('30')).toBeInTheDocument();
   });
 
-  it('shows an empty state (never a fake zero row) when there are no buckets', () => {
-    render(<ImportsReportSection summary={baseSummary()} />);
-    expect(screen.getByText('Sin importaciones completadas en este período')).toBeInTheDocument();
-  });
-
-  it('renders period buckets with the raw YYYY-MM-DD key and every row-count column', () => {
+  it('renders no per-period table, even when the endpoint returns buckets', () => {
     const summary = baseSummary({
-      groupBy: 'day',
       totals: { key: 'total', jobCount: 2, totalRows: 30, validRows: 28, invalidRows: 2, warningRows: 0, importedRows: 26 },
-      buckets: [
-        { key: '2026-08-01', jobCount: 1, totalRows: 10, validRows: 9, invalidRows: 1, warningRows: 0, importedRows: 8 },
-        { key: '2026-08-02', jobCount: 1, totalRows: 20, validRows: 19, invalidRows: 1, warningRows: 0, importedRows: 18 },
-      ],
+      buckets: [{ key: '2026-08-01', jobCount: 2, totalRows: 30, validRows: 28, invalidRows: 2, warningRows: 0, importedRows: 26 }],
     });
     render(<ImportsReportSection summary={summary} />);
-    expect(screen.getByText('2026-08-01')).toBeInTheDocument();
-    expect(screen.getByText('Período')).toBeInTheDocument(); // column header
-  });
-
-  it('renders status buckets with the human import-status label', () => {
-    const summary = baseSummary({
-      groupBy: 'status',
-      totals: { key: 'total', jobCount: 3, totalRows: 30, validRows: 27, invalidRows: 3, warningRows: 0, importedRows: 24 },
-      buckets: [
-        { key: 'completed', jobCount: 2, totalRows: 20, validRows: 20, invalidRows: 0, warningRows: 0, importedRows: 20 },
-        { key: 'completed_with_errors', jobCount: 1, totalRows: 10, validRows: 7, invalidRows: 3, warningRows: 0, importedRows: 4 },
-      ],
-    });
-    render(<ImportsReportSection summary={summary} />);
-    expect(screen.getByText('Completado')).toBeInTheDocument();
-    expect(screen.getByText('Completado con errores')).toBeInTheDocument();
-    expect(screen.getByText('Estado')).toBeInTheDocument(); // column header
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText('2026-08-01')).not.toBeInTheDocument();
+    expect(screen.queryByText('Período')).not.toBeInTheDocument();
   });
 });
 
