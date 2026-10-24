@@ -383,6 +383,8 @@ export function TransferForm({
         </section>
       )}
 
+      {sameLocation && <Alert tone="warning">El origen y el destino deben ser distintos.</Alert>}
+
       {/* Ruta: two tinted blocks (origen, destino) on phones; the original 2×2 grid from md up. */}
       <section
         className={cn(CARD, 'flex flex-col gap-3 md:grid md:grid-cols-2 md:gap-4')}
@@ -653,7 +655,6 @@ export function TransferForm({
         )}
       </section>
 
-      {sameLocation && <Alert tone="warning">El origen y el destino deben ser distintos.</Alert>}
       {error && <Alert tone="error">{error}</Alert>}
 
       <div className="flex flex-col gap-1 md:flex-row md:gap-2">
