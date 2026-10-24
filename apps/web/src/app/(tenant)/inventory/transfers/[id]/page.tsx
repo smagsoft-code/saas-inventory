@@ -17,6 +17,7 @@ import { Card, CardBody } from '../../../../../components/ui/card';
 import { Badge } from '../../../../../components/ui/badge';
 import { NoAccess } from '../../../../../components/ui/no-access';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../../components/ui/table';
+import { TransferDetailMobile, type MobileTransferDetail } from '../transfer-detail-mobile';
 import { CreatedToast } from './created-toast';
 import { TransferActions } from './transfer-actions';
 
@@ -74,21 +75,66 @@ export default async function TransferDetailPage({
     { label: 'Actualizada', value: transfer.updatedAt },
   ];
 
+  const mobileDetail: MobileTransferDetail = {
+    code: transfer.code,
+    status: transfer.status,
+    statusLabel: TRANSFER_STATUS_LABELS[status] ?? transfer.status,
+    statusTone: transferStatusTone(transfer.status),
+    source: {
+      name: index.locationName(transfer.sourceLocationId),
+      warehouse: index.warehouseName(transfer.sourceLocationId),
+    },
+    destination: {
+      name: index.locationName(transfer.destinationLocationId),
+      warehouse: index.warehouseName(transfer.destinationLocationId),
+    },
+    people: [
+      { label: 'Solicitada por', value: userIndex.userName(transfer.requestedBy) },
+      ...(transfer.approvedBy
+        ? [{ label: 'Aprobada por', value: userIndex.userName(transfer.approvedBy) }]
+        : []),
+      ...(transfer.dispatchedBy
+        ? [{ label: 'Despachada por', value: userIndex.userName(transfer.dispatchedBy) }]
+        : []),
+    ],
+    notes: transfer.notes ?? undefined,
+    events: timeline
+      .filter((row) => row.value)
+      .map((row) => ({ label: row.label, value: new Date(row.value as string).toLocaleString() })),
+    items: transfer.items.map((item) => ({
+      id: item.id,
+      label: item.productName
+        ? item.sku
+          ? `${item.productName} — ${item.sku}`
+          : item.productName
+        : shortId(item.productVariantId),
+      href: canView ? `/inventory/movements?productVariantId=${item.productVariantId}` : undefined,
+      requested: item.quantityRequested,
+      dispatched: item.quantityDispatched,
+      received: item.quantityReceived,
+      inTransit: item.quantityInTransit,
+    })),
+  };
+
   return (
     <PageContainer>
-      <PageHeader
-        title={`Transferencia ${transfer.code}`}
-        description={`${index.locationName(transfer.sourceLocationId)} → ${index.locationName(transfer.destinationLocationId)}`}
-        actions={
-          <Badge tone={transferStatusTone(transfer.status)}>
-            {TRANSFER_STATUS_LABELS[status] ?? transfer.status}
-          </Badge>
-        }
-      />
+      <div className="hidden md:block">
+        <PageHeader
+          title={`Transferencia ${transfer.code}`}
+          description={`${index.locationName(transfer.sourceLocationId)} → ${index.locationName(transfer.destinationLocationId)}`}
+          actions={
+            <Badge tone={transferStatusTone(transfer.status)}>
+              {TRANSFER_STATUS_LABELS[status] ?? transfer.status}
+            </Badge>
+          }
+        />
+      </div>
 
       <CreatedToast show={created === '1'} />
 
-      <Card>
+      <TransferDetailMobile detail={mobileDetail} />
+
+      <Card className="hidden md:block">
         <CardBody className="flex flex-col gap-4">
           <dl className="grid max-w-lg grid-cols-[10rem_1fr] gap-y-2 text-sm">
             <dt className="text-slate-500">Origen</dt>
@@ -133,7 +179,7 @@ export default async function TransferDetailPage({
         </CardBody>
       </Card>
 
-      <Card>
+      <Card className="hidden md:block">
         <CardBody className="flex flex-col gap-4">
           <h2 className="text-sm font-semibold text-slate-900">Productos</h2>
           <Table>

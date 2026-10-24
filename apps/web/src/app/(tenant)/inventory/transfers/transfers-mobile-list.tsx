@@ -60,7 +60,7 @@ function CheckIcon({ className }: { className: string }): React.JSX.Element {
   );
 }
 
-function Timeline({ status }: { status: string }): React.JSX.Element | null {
+export function TransferTimeline({ status }: { status: string }): React.JSX.Element | null {
   const reached = timelineStep(status);
   if (reached < 0) return null;
   return (
@@ -141,7 +141,7 @@ export function TransfersMobileList({
               <dd className={cn(T.tileValueMono, 'font-semibold')}>{transfer.createdLabel}</dd>
             </div>
           </dl>
-          <Timeline status={transfer.status} />
+          <TransferTimeline status={transfer.status} />
           <Link href={`/inventory/transfers/${transfer.id}`} className={T.primaryButton}>
             Ver
           </Link>
