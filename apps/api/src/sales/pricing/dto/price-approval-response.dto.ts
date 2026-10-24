@@ -13,6 +13,9 @@ export class PriceApprovalResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
 
+  @ApiProperty({ type: String, description: 'Per-tenant sequential number of this approval (e.g. APR-001).' })
+  approvalNumber!: string;
+
   @ApiProperty({ type: String, format: 'uuid' })
   orderId!: string;
 

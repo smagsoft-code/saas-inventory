@@ -211,6 +211,7 @@ export class PriceApprovalsService {
           tenantId,
           orderId: order.id,
           orderItemId: orderItem.id,
+          approvalNumber: await this.priceApprovalsRepository.nextApprovalNumber(tx, tenantId),
           requestedPrice: moneyString(requestedPrice),
           minPriceAtRequest: moneyString(minPrice),
           basePriceAtRequest: moneyString(basePrice),
@@ -471,6 +472,7 @@ export class PriceApprovalsService {
     return {
       id: row.id,
       orderId: row.orderId,
+      approvalNumber: row.approvalNumber,
       orderNumber: order?.orderNumber ?? row.orderId,
       orderItemId: row.orderItemId,
       locationId: order?.locationId ?? '',

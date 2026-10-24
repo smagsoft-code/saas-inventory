@@ -313,6 +313,8 @@ export function priceApprovalStatusTone(status: string): 'neutral' | 'success' |
  * is present only for a caller with `pricing.floor.view`; there is never a `cost` field (ADR-0028). */
 export interface PriceApproval {
   id: string;
+  /** Per-tenant sequential number (e.g. APR-001). */
+  approvalNumber: string;
   orderId: string;
   /** The parent order's own number (e.g. ORD-000042) — resolved server-side, never derived from
    * `orderId` on screen. */

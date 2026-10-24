@@ -351,6 +351,13 @@
       "when": 1792800200000,
       "tag": "0049_backfill_admin_pricing_permissions",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1792800300000,
+      "tag": "0050_price_approval_number",
+      "breakpoints": true
     }
   ]
 }

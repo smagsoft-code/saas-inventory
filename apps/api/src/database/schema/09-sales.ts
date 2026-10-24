@@ -243,6 +243,7 @@ export const priceApprovals = pgTable('price_approvals', {
   tenantId: tenantId(),
   orderId: uuid('order_id').notNull(),
   orderItemId: uuid('order_item_id').notNull(),
+  approvalNumber: text('approval_number').notNull(),
   requestedPrice: numeric('requested_price').notNull(),
   minPriceAtRequest: numeric('min_price_at_request').notNull(),
   basePriceAtRequest: numeric('base_price_at_request').notNull(),

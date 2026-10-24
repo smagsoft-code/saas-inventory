@@ -38,6 +38,7 @@ const PENDING_ROW = {
   tenantId: TENANT,
   orderId: 'order-1',
   orderItemId: 'oi-1',
+  approvalNumber: 'APR-001',
   requestedPrice: '70.00',
   minPriceAtRequest: '80.00',
   basePriceAtRequest: '100.00',
@@ -54,6 +55,7 @@ const PENDING_ROW = {
 function build() {
   const priceApprovalsRepository = {
     create: vi.fn().mockResolvedValue(PENDING_ROW),
+    nextApprovalNumber: vi.fn().mockResolvedValue('APR-001'),
     findById: vi.fn(),
     lockById: vi.fn(),
     lockByOrder: vi.fn(),

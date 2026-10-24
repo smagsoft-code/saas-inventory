@@ -65,7 +65,7 @@ export default async function ApprovalDetailPage({
   return (
     <PageContainer>
       <PageHeader
-        title={`Aprobación ${shortId(approval.id)}`}
+        title={`Aprobación ${approval.approvalNumber}`}
         description="Solicitud de descuento excepcional"
         actions={
           <Badge tone={priceApprovalStatusTone(approval.status)}>

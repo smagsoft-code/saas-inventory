@@ -8,6 +8,7 @@ export interface PriceApprovalRow {
   tenantId: string;
   orderId: string;
   orderItemId: string;
+  approvalNumber: string;
   requestedPrice: string;
   minPriceAtRequest: string;
   basePriceAtRequest: string;
@@ -26,6 +27,7 @@ export interface CreatePriceApprovalValues {
   tenantId: string;
   orderId: string;
   orderItemId: string;
+  approvalNumber: string;
   requestedPrice: string;
   minPriceAtRequest: string;
   basePriceAtRequest: string;
@@ -46,6 +48,13 @@ export interface CreatePriceApprovalValues {
  */
 @Injectable()
 export class PriceApprovalsRepository {
+  /** Next per-tenant sequential number ("APR-001"), same convention as return/order numbers. */
+  async nextApprovalNumber(tx: TenantTransaction, tenantId: string): Promise<string> {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`sales.approval_number:${tenantId}`}))`);
+    const [row] = await tx.select({ total: count() }).from(priceApprovals).where(eq(priceApprovals.tenantId, tenantId));
+    return `APR-${String((row?.total ?? 0) + 1).padStart(3, '0')}`;
+  }
+
   async create(tx: TenantTransaction, values: CreatePriceApprovalValues): Promise<PriceApprovalRow> {
     const [row] = await tx.insert(priceApprovals).values(values).returning();
     if (!row) {
