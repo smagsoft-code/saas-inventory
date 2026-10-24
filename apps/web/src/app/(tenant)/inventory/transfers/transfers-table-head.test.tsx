@@ -53,7 +53,7 @@ describe('transfers filters', () => {
     expect(push).toHaveBeenCalledWith('/inventory/transfers', { scroll: false });
   });
 
-  it('offers the same filters on the phone layout', () => {
+  it('offers the same filters on the phone layout, collapsed until the filter icon is pressed', () => {
     render(
       <TransfersMobileFilters
         params={{}}
@@ -61,6 +61,8 @@ describe('transfers filters', () => {
         locationOptions={locationOptions}
       />,
     );
+    expect(screen.queryByLabelText('Filtrar por almacén de destino')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /mostrar filtros/i }));
     fireEvent.change(screen.getByLabelText('Filtrar por almacén de destino'), {
       target: { value: 'l2' },
     });
@@ -91,5 +93,27 @@ describe('transfers filters', () => {
     );
     expect((screen.getByLabelText('Desde') as HTMLInputElement).value).toBe('2026-10-01');
     expect((screen.getByLabelText('Hasta') as HTMLInputElement).value).toBe('2026-10-31');
+  });
+
+  it('shows how many filters are active on the collapsed icon', () => {
+    render(
+      <TransfersMobileFilters
+        params={{ status: 'draft', createdFrom: '2026-10-01T00:00:00.000Z' }}
+        statusOptions={statusOptions}
+        locationOptions={locationOptions}
+      />,
+    );
+    expect(screen.getByLabelText('2 filtros activos')).toBeTruthy();
+  });
+
+  it('shows how many filters are active on the collapsed icon', () => {
+    render(
+      <TransfersMobileFilters
+        params={{ status: 'draft', createdFrom: '2026-10-01T00:00:00.000Z' }}
+        statusOptions={statusOptions}
+        locationOptions={locationOptions}
+      />,
+    );
+    expect(screen.getByLabelText('2 filtros activos')).toBeTruthy();
   });
 });

@@ -171,6 +171,15 @@ export function TransfersMobileFilters({
   actions,
 }: TransfersFilterProps & { actions?: React.ReactNode }): React.JSX.Element {
   const navigate = useNavigate(params);
+  // Collapsed by default so the list is reachable at once; the badge counts the filters in the URL.
+  const [open, setOpen] = useState(false);
+  const activeCount = [
+    'status',
+    'sourceLocationId',
+    'destinationLocationId',
+    'createdFrom',
+    'createdTo',
+  ].filter((key) => Boolean(params[key])).length;
   const label = 'mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500';
   return (
     <section
@@ -178,45 +187,84 @@ export function TransfersMobileFilters({
       aria-label="Filtros"
     >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-slate-900">Filtros</h3>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls="transfers-filters-panel"
+          aria-label={open ? 'Ocultar filtros' : 'Mostrar filtros'}
+          onClick={() => setOpen((current) => !current)}
+          className="flex items-center gap-2 text-sm font-bold text-slate-900"
+        >
+          <span className="relative flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-slate-700">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              aria-hidden="true"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 5h18l-7 8v5l-4 2v-7L3 5Z" />
+            </svg>
+            {activeCount > 0 && (
+              <span
+                className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-semibold text-white"
+                aria-label={`${activeCount} filtros activos`}
+              >
+                {activeCount}
+              </span>
+            )}
+          </span>
+          Filtros
+          <span
+            aria-hidden="true"
+            className={`text-xs text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          >
+            ▾
+          </span>
+        </button>
         {actions}
       </div>
-      <label className="block">
-        <span className={label}>Estado</span>
-        <SelectFilter
-          label="estado"
-          value={params['status'] ?? ''}
-          options={statusOptions}
-          allLabel="Todos los estados"
-          className={PHONE_INPUT}
-          onChange={(v) => navigate({ status: v || undefined })}
-        />
-      </label>
-      <TransfersDateFilters params={params} />
-      <div className="grid grid-cols-2 gap-2">
-        <label className="block min-w-0">
-          <span className={label}>Origen</span>
-          <SelectFilter
-            label="almacén de origen"
-            value={params['sourceLocationId'] ?? ''}
-            options={locationOptions}
-            allLabel="Cualquiera"
-            className={PHONE_INPUT}
-            onChange={(v) => navigate({ sourceLocationId: v || undefined })}
-          />
-        </label>
-        <label className="block min-w-0">
-          <span className={label}>Destino</span>
-          <SelectFilter
-            label="almacén de destino"
-            value={params['destinationLocationId'] ?? ''}
-            options={locationOptions}
-            allLabel="Cualquiera"
-            className={PHONE_INPUT}
-            onChange={(v) => navigate({ destinationLocationId: v || undefined })}
-          />
-        </label>
-      </div>
+      {open && (
+        <div id="transfers-filters-panel" className="flex flex-col gap-3">
+          <label className="block">
+            <span className={label}>Estado</span>
+            <SelectFilter
+              label="estado"
+              value={params['status'] ?? ''}
+              options={statusOptions}
+              allLabel="Todos los estados"
+              className={PHONE_INPUT}
+              onChange={(v) => navigate({ status: v || undefined })}
+            />
+          </label>
+          <TransfersDateFilters params={params} />
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block min-w-0">
+              <span className={label}>Origen</span>
+              <SelectFilter
+                label="almacén de origen"
+                value={params['sourceLocationId'] ?? ''}
+                options={locationOptions}
+                allLabel="Cualquiera"
+                className={PHONE_INPUT}
+                onChange={(v) => navigate({ sourceLocationId: v || undefined })}
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className={label}>Destino</span>
+              <SelectFilter
+                label="almacén de destino"
+                value={params['destinationLocationId'] ?? ''}
+                options={locationOptions}
+                allLabel="Cualquiera"
+                className={PHONE_INPUT}
+                onChange={(v) => navigate({ destinationLocationId: v || undefined })}
+              />
+            </label>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
