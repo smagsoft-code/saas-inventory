@@ -14,6 +14,11 @@ import { Input, Select, Textarea } from '../../../../components/ui/input';
 
 const TRANSFERS_PATH = '/api/v1/inventory/transfers';
 
+/** Phone: the same card as the other phone screens; from md up the original, borderless layout. */
+const CARD =
+  'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:border-0 md:bg-transparent md:p-0 md:shadow-none';
+const SECTION = 'text-[11px] font-semibold uppercase tracking-wider text-slate-500';
+
 interface ProductOption {
   id: string;
   name: string;
@@ -57,9 +62,12 @@ function emptyLine(key: number): Line {
 }
 
 async function fetchStockAvailable(productVariantId: string, locationId: string): Promise<number> {
-  const result = await apiFetch<{ data: { quantityAvailable: number }[] }>('/api/v1/inventory/balances', {
-    query: { productVariantId, locationId, pageSize: 1 },
-  });
+  const result = await apiFetch<{ data: { quantityAvailable: number }[] }>(
+    '/api/v1/inventory/balances',
+    {
+      query: { productVariantId, locationId, pageSize: 1 },
+    },
+  );
   return result.data[0]?.quantityAvailable ?? 0;
 }
 
@@ -67,7 +75,9 @@ async function fetchStockAvailable(productVariantId: string, locationId: string)
  * least one variant carrying available stock at that location, never the tenant's whole catalog
  * (F17-TRANSFERS-AUDIT). */
 async function fetchProductsInStock(locationId: string): Promise<ProductOption[]> {
-  return apiFetch<ProductOption[]>('/api/v1/inventory/products-in-stock', { query: { locationId } });
+  return apiFetch<ProductOption[]>('/api/v1/inventory/products-in-stock', {
+    query: { locationId },
+  });
 }
 
 /**
@@ -107,19 +117,24 @@ export function TransferForm({
   // once, up front. A later manual warehouse change (onSourceWarehouseChange) resets the location
   // to '' and stays reset even if that narrower list also happens to have one entry, so the reset
   // is never immediately fought back by an effect re-applying the "only one option" rule.
-  const [sourceWarehouseId, setSourceWarehouseId] = useState(() => (sourceWarehouses.length === 1 ? sourceWarehouses[0]!.id : ''));
+  const [sourceWarehouseId, setSourceWarehouseId] = useState(() =>
+    sourceWarehouses.length === 1 ? sourceWarehouses[0]!.id : '',
+  );
   const [sourceLocationId, setSourceLocationId] = useState(() => {
     if (sourceWarehouses.length !== 1) {
       return '';
     }
     const options = locations.filter(
-      (l) => l.warehouseId === sourceWarehouses[0]!.id && (scope.unrestricted || scope.locationIds.includes(l.id)),
+      (l) =>
+        l.warehouseId === sourceWarehouses[0]!.id &&
+        (scope.unrestricted || scope.locationIds.includes(l.id)),
     );
     return options.length === 1 ? options[0]!.id : '';
   });
   const [destinationWarehouseId, setDestinationWarehouseId] = useState('');
   const [destinationLocationId, setDestinationLocationId] = useState('');
   const [notes, setNotes] = useState('');
+  const [notesOpen, setNotesOpen] = useState(false);
   const [lines, setLines] = useState<Line[]>([emptyLine(0)]);
   const [nextKey, setNextKey] = useState(1);
 
@@ -163,7 +178,9 @@ export function TransferForm({
 
   const sourceLocationsInWarehouse = useMemo(() => {
     const inWarehouse = locations.filter((l) => l.warehouseId === sourceWarehouseId);
-    return scope.unrestricted ? inWarehouse : inWarehouse.filter((l) => scope.locationIds.includes(l.id));
+    return scope.unrestricted
+      ? inWarehouse
+      : inWarehouse.filter((l) => scope.locationIds.includes(l.id));
   }, [locations, sourceWarehouseId, scope]);
   const destinationLocationsInWarehouse = useMemo(
     () => locations.filter((l) => l.warehouseId === destinationWarehouseId),
@@ -213,7 +230,11 @@ export function TransferForm({
     setFieldError({});
   }
 
-  async function loadStockFor(key: number, productVariantId: string, locationId: string): Promise<void> {
+  async function loadStockFor(
+    key: number,
+    productVariantId: string,
+    locationId: string,
+  ): Promise<void> {
     updateLine(key, { stockLoading: true });
     try {
       const available = await fetchStockAvailable(productVariantId, locationId);
@@ -235,7 +256,9 @@ export function TransferForm({
       return;
     }
     try {
-      const rows = await apiFetch<{ id: string; sku: string }[]>(`/api/v1/products/${productId}/variants`);
+      const rows = await apiFetch<{ id: string; sku: string }[]>(
+        `/api/v1/products/${productId}/variants`,
+      );
       const variants = rows.map((r) => ({ id: r.id, sku: r.sku }));
       updateLine(key, { variants, variantsLoading: false });
       // §3: a single-variant product never makes the user pick a variant manually.
@@ -295,7 +318,8 @@ export function TransferForm({
       if (line.quantity === '' || Number.isNaN(q) || q <= 0) {
         next[`line-${i}-quantity`] = 'Ingresa una cantidad mayor que cero.';
       } else if (typeof line.stockAvailable === 'number' && q > line.stockAvailable) {
-        next[`line-${i}-quantity`] = `No puede superar el stock disponible (${line.stockAvailable}).`;
+        next[`line-${i}-quantity`] =
+          `No puede superar el stock disponible (${line.stockAvailable}).`;
       }
     });
 
@@ -341,7 +365,8 @@ export function TransferForm({
   }
 
   const noSourceScope = sourceWarehouses.length === 0;
-  const productsDisabled = !canViewInventory || !sourceLocationId || originProductsLoading || originProducts.length === 0;
+  const productsDisabled =
+    !canViewInventory || !sourceLocationId || originProductsLoading || originProducts.length === 0;
   const productPlaceholder = !canViewInventory
     ? 'No puedes ver el inventario'
     : !sourceLocationId
@@ -353,15 +378,17 @@ export function TransferForm({
           : 'Elegir un producto…';
 
   return (
-    <form onSubmit={handleSubmit} noValidate className="flex max-w-3xl flex-col gap-5">
+    <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3 md:max-w-3xl md:gap-5">
       {noSourceScope && (
         <Alert tone="warning">
           No tienes ningún almacén asignado como origen. Pide a un administrador que te asigne al
           menos una ubicación para poder crear transferencias.
         </Alert>
       )}
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={cn(CARD, 'grid gap-3 md:grid-cols-2 md:gap-4')}>
+        <h3 className={cn(SECTION, 'order-first md:hidden')}>Origen y destino</h3>
         <Field
+          className="order-1"
           label="Sucursal de origen"
           required
           {...(fieldError['sourceWarehouseId'] ? { error: fieldError['sourceWarehouseId'] } : {})}
@@ -380,11 +407,17 @@ export function TransferForm({
           </Select>
         </Field>
         <Field
+          className="order-3 md:order-2"
           label="Sucursal de destino"
           required
-          {...(fieldError['destinationWarehouseId'] ? { error: fieldError['destinationWarehouseId'] } : {})}
+          {...(fieldError['destinationWarehouseId']
+            ? { error: fieldError['destinationWarehouseId'] }
+            : {})}
         >
-          <Select value={destinationWarehouseId} onChange={(e) => onDestinationWarehouseChange(e.target.value)}>
+          <Select
+            value={destinationWarehouseId}
+            onChange={(e) => onDestinationWarehouseChange(e.target.value)}
+          >
             <option value="">Elegir una sucursal…</option>
             {warehouses.map((warehouse) => (
               <option key={warehouse.id} value={warehouse.id}>
@@ -394,6 +427,7 @@ export function TransferForm({
           </Select>
         </Field>
         <Field
+          className="order-2 md:order-3"
           label="Almacén de origen"
           required
           {...(fieldError['sourceLocationId'] ? { error: fieldError['sourceLocationId'] } : {})}
@@ -403,7 +437,9 @@ export function TransferForm({
             disabled={!sourceWarehouseId}
             onChange={(e) => setSourceLocationId(e.target.value)}
           >
-            <option value="">{sourceWarehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}</option>
+            <option value="">
+              {sourceWarehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}
+            </option>
             {sourceLocationsInWarehouse.map((location) => (
               <option key={location.id} value={location.id}>
                 {location.name}
@@ -412,16 +448,21 @@ export function TransferForm({
           </Select>
         </Field>
         <Field
+          className="order-4"
           label="Almacén de destino"
           required
-          {...(fieldError['destinationLocationId'] ? { error: fieldError['destinationLocationId'] } : {})}
+          {...(fieldError['destinationLocationId']
+            ? { error: fieldError['destinationLocationId'] }
+            : {})}
         >
           <Select
             value={destinationLocationId}
             disabled={!destinationWarehouseId}
             onChange={(e) => setDestinationLocationId(e.target.value)}
           >
-            <option value="">{destinationWarehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}</option>
+            <option value="">
+              {destinationWarehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}
+            </option>
             {destinationLocationsInWarehouse.map((location) => (
               <option key={location.id} value={location.id}>
                 {location.name}
@@ -431,7 +472,9 @@ export function TransferForm({
         </Field>
       </div>
 
-      <fieldset className="flex flex-col gap-4 rounded-lg border border-slate-200 p-4">
+      <fieldset className={cn(CARD, 'flex flex-col gap-4 md:rounded-lg md:shadow-none')}>
+        <legend className="sr-only">Productos</legend>
+        <h3 className={cn(SECTION, 'md:hidden')}>Productos</h3>
         {lines.map((line, i) => {
           const singleVariant = line.variants.length === 1;
           // Column titles only need to appear once (row 0) once the rows line up as a real desktop
@@ -440,9 +483,16 @@ export function TransferForm({
           // to lean on in that layout.
           const repeatedLabel = i > 0 ? 'sm:sr-only' : undefined;
           return (
-            <div key={line.key} className="flex flex-col gap-3 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
+            <div
+              key={line.key}
+              className="flex flex-col gap-3 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0"
+            >
               <div className="grid items-start gap-3 sm:grid-cols-[1.4fr_1fr_0.8fr_0.8fr_auto_auto]">
-                <Field label="Producto" required {...(repeatedLabel ? { labelClassName: repeatedLabel } : {})}>
+                <Field
+                  label="Producto"
+                  required
+                  {...(repeatedLabel ? { labelClassName: repeatedLabel } : {})}
+                >
                   <Select
                     value={line.productId}
                     disabled={productsDisabled}
@@ -459,15 +509,21 @@ export function TransferForm({
 
                 {singleVariant ? (
                   <div className="flex flex-col gap-1">
-                    <span className={cn('text-sm font-medium text-slate-700', repeatedLabel)}>Variante</span>
-                    <p className="flex h-10 items-center text-sm text-slate-600">{line.variants[0]!.sku}</p>
+                    <span className={cn('text-sm font-medium text-slate-700', repeatedLabel)}>
+                      Variante
+                    </span>
+                    <p className="flex h-10 items-center text-sm text-slate-600">
+                      {line.variants[0]!.sku}
+                    </p>
                   </div>
                 ) : (
                   <Field
                     label="Variante"
                     required
                     {...(repeatedLabel ? { labelClassName: repeatedLabel } : {})}
-                    {...(fieldError[`line-${i}-variant`] ? { error: fieldError[`line-${i}-variant`] } : {})}
+                    {...(fieldError[`line-${i}-variant`]
+                      ? { error: fieldError[`line-${i}-variant`] }
+                      : {})}
                     {...(line.variantsLoading ? { hint: 'Cargando variantes…' } : {})}
                   >
                     <Select
@@ -475,7 +531,9 @@ export function TransferForm({
                       disabled={!line.productId || line.variantsLoading}
                       onChange={(e) => onVariantChange(line.key, e.target.value)}
                     >
-                      <option value="">{line.productId ? 'Elegir una variante…' : 'Elige primero un producto'}</option>
+                      <option value="">
+                        {line.productId ? 'Elegir una variante…' : 'Elige primero un producto'}
+                      </option>
                       {line.variants.map((variant) => (
                         <option key={variant.id} value={variant.id}>
                           {variant.sku}
@@ -485,9 +543,11 @@ export function TransferForm({
                   </Field>
                 )}
 
-                <div className="flex flex-col gap-1">
-                  <span className={cn('text-sm font-medium text-slate-700', repeatedLabel)}>Stock disponible</span>
-                  <p className="flex h-10 items-center text-sm text-slate-600">
+                <div className="flex items-center justify-between gap-3 md:flex-col md:items-stretch md:justify-start md:gap-1">
+                  <span className={cn('text-sm font-medium text-slate-700', repeatedLabel)}>
+                    Stock disponible
+                  </span>
+                  <p className="flex items-center font-mono text-sm text-emerald-700 md:h-10 md:font-sans md:text-slate-600">
                     {!line.productVariantId || !sourceLocationId
                       ? '—'
                       : line.stockLoading
@@ -502,57 +562,90 @@ export function TransferForm({
                   label="Cantidad"
                   required
                   {...(repeatedLabel ? { labelClassName: repeatedLabel } : {})}
-                  {...(fieldError[`line-${i}-quantity`] ? { error: fieldError[`line-${i}-quantity`] } : {})}
+                  {...(fieldError[`line-${i}-quantity`]
+                    ? { error: fieldError[`line-${i}-quantity`] }
+                    : {})}
                 >
                   <Input
                     type="number"
                     min={0}
-                    {...(typeof line.stockAvailable === 'number' ? { max: line.stockAvailable } : {})}
+                    {...(typeof line.stockAvailable === 'number'
+                      ? { max: line.stockAvailable }
+                      : {})}
                     step="any"
                     value={line.quantity}
                     onChange={(e) => updateLine(line.key, { quantity: e.target.value })}
                   />
                 </Field>
 
-                <Button
-                  type="button"
-                  variant="primary"
-                  aria-label="Agregar fila"
-                  title="Agregar fila"
-                  disabled={productsDisabled}
-                  className="mt-6 h-10 w-10 shrink-0 text-lg font-semibold"
-                  onClick={addLine}
-                >
-                  +
-                </Button>
-                <Button
-                  type="button"
-                  variant="danger"
-                  aria-label="Quitar fila"
-                  title="Quitar fila"
-                  className="mt-6 h-10 w-10 shrink-0 text-lg font-semibold"
-                  onClick={() => removeLine(line.key)}
-                >
-                  ×
-                </Button>
+                <div className="flex justify-end gap-2 md:contents">
+                  <Button
+                    type="button"
+                    variant="primary"
+                    aria-label="Agregar fila"
+                    title="Agregar fila"
+                    disabled={productsDisabled}
+                    className="h-10 w-10 shrink-0 text-lg font-semibold md:mt-6"
+                    onClick={addLine}
+                  >
+                    +
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    aria-label="Quitar fila"
+                    title="Quitar fila"
+                    className="h-10 w-10 shrink-0 text-lg font-semibold md:mt-6"
+                    onClick={() => removeLine(line.key)}
+                  >
+                    ×
+                  </Button>
+                </div>
               </div>
             </div>
           );
         })}
       </fieldset>
 
-      <Field label="Notas" help="Opcional — visible en la transferencia.">
-        <Textarea maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} />
-      </Field>
+      <div className="hidden md:block">
+        <Field label="Notas" help="Opcional — visible en la transferencia.">
+          <Textarea maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </Field>
+      </div>
+      <div className="md:hidden">
+        {notesOpen || notes ? (
+          <Field label="Notas" help="Opcional — visible en la transferencia.">
+            <Textarea
+              rows={2}
+              maxLength={1000}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </Field>
+        ) : (
+          <button
+            type="button"
+            className="text-sm font-medium text-blue-700 hover:underline"
+            onClick={() => setNotesOpen(true)}
+          >
+            + Añadir notas
+          </button>
+        )}
+      </div>
 
       {sameLocation && <Alert tone="warning">El origen y el destino deben ser distintos.</Alert>}
       {error && <Alert tone="error">{error}</Alert>}
 
-      <div className="flex gap-2">
-        <Button type="submit" loading={submitting} disabled={!canSubmit} className="w-fit">
+      <div className="flex flex-col gap-2 md:flex-row">
+        <Button
+          type="submit"
+          loading={submitting}
+          disabled={!canSubmit}
+          className="w-full md:w-fit"
+        >
           Crear transferencia
         </Button>
-        <ButtonLink href="/inventory/transfers" variant="ghost" className="w-fit">
+        <ButtonLink href="/inventory/transfers" variant="ghost" className="w-full md:w-fit">
           Cancelar
         </ButtonLink>
       </div>
