@@ -350,7 +350,19 @@ export function TransferForm({
               className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-700"
               aria-hidden="true"
             >
-              →
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M3 6.5h10v9H3zM13 9.5h4l3 3v3h-7z" />
+                <circle cx="7" cy="17.5" r="1.7" />
+                <circle cx="16.5" cy="17.5" r="1.7" />
+              </svg>
             </span>
             <button
               type="button"
