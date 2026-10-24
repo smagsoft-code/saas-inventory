@@ -185,6 +185,7 @@ export default async function TransfersPage({
   return (
     <PageContainer>
       <PageHeader
+        actionsBeside
         title="Transferencias"
         help="Mueve stock entre almacenes: solicitar, aprobar, preparar, despachar y recibir."
         actions={
@@ -193,7 +194,10 @@ export default async function TransfersPage({
               <TransfersDateFilters params={carried} inline />
             </div>
             {canRequest && (
-              <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink>
+              <ButtonLink href="/inventory/transfers/new">
+                <span className="md:hidden">Nueva</span>
+                <span className="hidden md:inline">Nueva transferencia</span>
+              </ButtonLink>
             )}
           </div>
         }

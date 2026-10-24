@@ -7,6 +7,7 @@ export function PageHeader({
   description,
   help,
   actions,
+  actionsBeside = false,
 }: {
   title: string;
   description?: string;
@@ -14,9 +15,17 @@ export function PageHeader({
    * permanent line under it (saves vertical space). Prefer this over `description` for legends. */
   help?: ReactNode;
   actions?: ReactNode;
+  /** Keep the actions on the title row on phones too (they normally stack under the title). */
+  actionsBeside?: boolean;
 }): React.JSX.Element {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+    <div
+      className={
+        actionsBeside
+          ? 'flex items-center justify-between gap-3 sm:items-start'
+          : 'flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between'
+      }
+    >
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
