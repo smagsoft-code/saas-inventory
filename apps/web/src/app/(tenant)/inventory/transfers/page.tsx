@@ -23,7 +23,8 @@ import { Badge } from '../../../../components/ui/badge';
 import { EmptyState } from '../../../../components/ui/empty-state';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { Pagination } from '../../../../components/ui/pagination';
-import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
+import { Table, TBody, TD, TR } from '../../../../components/ui/table';
+import { TransfersMobileFilters, TransfersTableHead } from './transfers-table-head';
 import { TransfersMobileList, type MobileTransfer } from './transfers-mobile-list';
 
 export const metadata = { title: 'Transferencias · SaaS Inventory' };
@@ -31,7 +32,9 @@ export const metadata = { title: 'Transferencias · SaaS Inventory' };
 const PAGE_SIZE = 20;
 
 function parseStatus(value: string | undefined): TransferStatus | undefined {
-  return (TRANSFER_STATUSES as readonly string[]).includes(value ?? '') ? (value as TransferStatus) : undefined;
+  return (TRANSFER_STATUSES as readonly string[]).includes(value ?? '')
+    ? (value as TransferStatus)
+    : undefined;
 }
 
 /**
@@ -81,7 +84,8 @@ export default async function TransfersPage({
   // selector and its grouped breakdown table were removed per owner feedback); `groupBy` is sent
   // because the endpoint requires one, but nothing here depends on which value it resolves to.
   let transfersSummary: TransfersSummary | undefined;
-  let summaryError: { status: number; message: string; correlationId: string | undefined } | undefined;
+  let summaryError:
+    { status: number; message: string; correlationId: string | undefined } | undefined;
   try {
     transfersSummary = await getTransfersSummary({ groupBy: 'status' });
   } catch (error) {
@@ -94,12 +98,22 @@ export default async function TransfersPage({
 
   const [result, index] = await Promise.all([
     showAll
-      ? fetchAllPages((p, size) => listTransfers({ ...listFilters, page: p, pageSize: size })).then((all) => ({
-          data: all.data,
-          meta: { page: 1, pageSize: Math.max(all.data.length, PAGE_SIZE), total: all.total, totalPages: 1 },
-          truncated: all.truncated,
-        }))
-      : listTransfers({ ...listFilters, page, pageSize: PAGE_SIZE }).then((paged) => ({ ...paged, truncated: false })),
+      ? fetchAllPages((p, size) => listTransfers({ ...listFilters, page: p, pageSize: size })).then(
+          (all) => ({
+            data: all.data,
+            meta: {
+              page: 1,
+              pageSize: Math.max(all.data.length, PAGE_SIZE),
+              total: all.total,
+              totalPages: 1,
+            },
+            truncated: all.truncated,
+          }),
+        )
+      : listTransfers({ ...listFilters, page, pageSize: PAGE_SIZE }).then((paged) => ({
+          ...paged,
+          truncated: false,
+        })),
     buildLocationIndex(checker.can('warehouses.view')),
   ]);
   const locationOptions = index.locations.filter((l) => l.status === 'active');
@@ -114,7 +128,8 @@ export default async function TransfersPage({
     const params = new URLSearchParams();
     const nextStatus = 'status' in next ? next.status : status;
     const nextSource = 'sourceLocationId' in next ? next.sourceLocationId : sourceLocationId;
-    const nextDest = 'destinationLocationId' in next ? next.destinationLocationId : destinationLocationId;
+    const nextDest =
+      'destinationLocationId' in next ? next.destinationLocationId : destinationLocationId;
     if (nextStatus) params.set('status', nextStatus);
     if (nextSource) params.set('sourceLocationId', nextSource);
     if (nextDest) params.set('destinationLocationId', nextDest);
@@ -135,6 +150,18 @@ export default async function TransfersPage({
     createdLabel: new Date(transfer.createdAt).toLocaleDateString(),
   }));
 
+  const carried: Record<string, string> = {
+    ...(showAll ? { all: '1' } : {}),
+    ...(status ? { status } : {}),
+    ...(sourceLocationId ? { sourceLocationId } : {}),
+    ...(destinationLocationId ? { destinationLocationId } : {}),
+  };
+  const statusOptions = TRANSFER_STATUSES.map((s) => ({
+    value: s,
+    label: TRANSFER_STATUS_LABELS[s],
+  }));
+  const headLocationOptions = locationOptions.map((l) => ({ value: l.id, label: l.name }));
+
   const hasFilter = Boolean(status || sourceLocationId || destinationLocationId);
 
   return (
@@ -142,7 +169,11 @@ export default async function TransfersPage({
       <PageHeader
         title="Transferencias"
         help="Mueve stock entre almacenes: solicitar, aprobar, preparar, despachar y recibir."
-        actions={canRequest ? <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink> : undefined}
+        actions={
+          canRequest ? (
+            <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink>
+          ) : undefined
+        }
       />
 
       <section aria-labelledby="report-heading" id="report" className="flex flex-col gap-3">
@@ -166,83 +197,16 @@ export default async function TransfersPage({
 
       <h2 className="text-sm font-semibold text-slate-900">Listado de transferencias</h2>
 
-      <form method="get" className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-          Estado
-          <select
-            name="status"
-            defaultValue={status ?? ''}
-            className="h-10 w-full rounded-md border border-slate-300 px-2 text-sm text-slate-900 sm:h-9 sm:w-auto"
-          >
-            <option value="">Todos los estados</option>
-            {TRANSFER_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {TRANSFER_STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        {locationOptions.length > 0 && (
-          <>
-            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-              Almacén de origen
-              <select
-                name="sourceLocationId"
-                defaultValue={sourceLocationId ?? ''}
-                className="h-10 w-full rounded-md border border-slate-300 px-2 text-sm text-slate-900 sm:h-9 sm:w-auto"
-              >
-                <option value="">Cualquiera</option>
-                {locationOptions.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-              Almacén de destino
-              <select
-                name="destinationLocationId"
-                defaultValue={destinationLocationId ?? ''}
-                className="h-10 w-full rounded-md border border-slate-300 px-2 text-sm text-slate-900 sm:h-9 sm:w-auto"
-              >
-                <option value="">Cualquiera</option>
-                {locationOptions.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </>
-        )}
-        {showAll && <input type="hidden" name="all" value="1" />}
-        <button
-          type="submit"
-          className="h-9 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
-        >
-          Aplicar
-        </button>
-        {hasFilter && (
-          <Link
-            href={buildHref({ all: showAll, status: undefined, sourceLocationId: undefined, destinationLocationId: undefined })}
-            className="h-9 rounded-md px-2 text-sm font-medium text-slate-500 hover:underline"
-          >
-            Quitar filtros
-          </Link>
-        )}
-      </form>
-
-      {result.data.length === 0 ? (
+      {result.data.length === 0 && !hasFilter ? (
         <EmptyState
-          title={hasFilter ? 'Ninguna transferencia coincide con estos filtros' : 'Aún no hay transferencias'}
-          description={
-            hasFilter
-              ? 'Prueba con otro estado o almacén.'
-              : 'Crea una transferencia para mover stock entre dos almacenes.'
-          }
-          {...(canRequest && !hasFilter
-            ? { action: <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink> }
+          title="Aún no hay transferencias"
+          description="Crea una transferencia para mover stock entre dos almacenes."
+          {...(canRequest
+            ? {
+                action: (
+                  <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink>
+                ),
+              }
             : {})}
         />
       ) : (
@@ -258,58 +222,75 @@ export default async function TransfersPage({
             excelHref={buildTransfersExportHref(listFilters, 'xlsx')}
             pdfHref={buildTransfersExportHref(listFilters, 'pdf')}
           />
-          <div className="md:hidden">
-            <TransfersMobileList transfers={mobileTransfers} />
+          <div className="flex flex-col gap-3 md:hidden">
+            <TransfersMobileFilters
+              params={carried}
+              statusOptions={statusOptions}
+              locationOptions={headLocationOptions}
+            />
+            {mobileTransfers.length === 0 ? (
+              <p className="py-6 text-center text-sm text-slate-500">
+                Ninguna transferencia coincide con estos filtros.
+              </p>
+            ) : (
+              <TransfersMobileList transfers={mobileTransfers} />
+            )}
           </div>
           <div className="hidden md:block">
-          <Table>
-            <THead>
-              <TR>
-                <TH>Transferencia</TH>
-                <TH>Estado</TH>
-                <TH>Origen</TH>
-                <TH>Destino</TH>
-                <TH className="text-right">Líneas</TH>
-                <TH className="text-right">En tránsito</TH>
-                <TH>Creada</TH>
-                <TH className="w-0">
-                  <span className="sr-only">Acciones</span>
-                </TH>
-              </TR>
-            </THead>
-            <TBody>
-              {result.data.map((transfer: Transfer) => {
-                const inTransit = transfer.items.reduce((sum, item) => sum + item.quantityInTransit, 0);
-                return (
-                  <TR key={transfer.id}>
-                    <TD>
-                      <span className="font-mono text-xs text-slate-700">{transfer.code}</span>
-                    </TD>
-                    <TD>
-                      <Badge tone={transferStatusTone(transfer.status)}>
-                        {TRANSFER_STATUS_LABELS[transfer.status as TransferStatus] ?? transfer.status}
-                      </Badge>
-                    </TD>
-                    <TD className="text-slate-700">{index.locationName(transfer.sourceLocationId)}</TD>
-                    <TD className="text-slate-700">{index.locationName(transfer.destinationLocationId)}</TD>
-                    <TD className="text-right text-slate-500">{transfer.items.length}</TD>
-                    <TD className="text-right text-slate-500">{inTransit}</TD>
-                    <TD className="whitespace-nowrap text-slate-500">
-                      {new Date(transfer.createdAt).toLocaleDateString()}
-                    </TD>
-                    <TD>
-                      <Link
-                        href={`/inventory/transfers/${transfer.id}`}
-                        className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
-                      >
-                        Ver
-                      </Link>
+            <Table className="table-fixed text-xs">
+              <TransfersTableHead
+                params={carried}
+                statusOptions={statusOptions}
+                locationOptions={headLocationOptions}
+              />
+              <TBody>
+                {result.data.length === 0 && (
+                  <TR>
+                    <TD colSpan={8} className="py-10 text-center text-sm text-slate-500">
+                      Ninguna transferencia coincide con estos filtros.
                     </TD>
                   </TR>
-                );
-              })}
-            </TBody>
-          </Table>
+                )}
+                {result.data.map((transfer: Transfer) => {
+                  const inTransit = transfer.items.reduce(
+                    (sum, item) => sum + item.quantityInTransit,
+                    0,
+                  );
+                  return (
+                    <TR key={transfer.id}>
+                      <TD>
+                        <span className="font-mono text-xs text-slate-700">{transfer.code}</span>
+                      </TD>
+                      <TD>
+                        <Badge tone={transferStatusTone(transfer.status)}>
+                          {TRANSFER_STATUS_LABELS[transfer.status as TransferStatus] ??
+                            transfer.status}
+                        </Badge>
+                      </TD>
+                      <TD className="text-slate-700">
+                        {index.locationName(transfer.sourceLocationId)}
+                      </TD>
+                      <TD className="text-slate-700">
+                        {index.locationName(transfer.destinationLocationId)}
+                      </TD>
+                      <TD className="text-right text-slate-500">{transfer.items.length}</TD>
+                      <TD className="text-right text-slate-500">{inTransit}</TD>
+                      <TD className="whitespace-nowrap text-slate-500">
+                        {new Date(transfer.createdAt).toLocaleDateString()}
+                      </TD>
+                      <TD>
+                        <Link
+                          href={`/inventory/transfers/${transfer.id}`}
+                          className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+                        >
+                          Ver
+                        </Link>
+                      </TD>
+                    </TR>
+                  );
+                })}
+              </TBody>
+            </Table>
           </div>
           <Pagination
             page={result.meta.page}
