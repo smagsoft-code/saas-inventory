@@ -2,6 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { Field } from '../../../../components/ui/field';
+import { Input } from '../../../../components/ui/input';
 import { THead, TH, TR } from '../../../../components/ui/table';
 
 export interface TransfersHeadOption {
@@ -251,26 +253,17 @@ export function TransfersDateFilters({
     setFrom(urlFrom);
     setTo(urlTo);
   }, [urlFrom, urlTo]);
-  // inline: label + input on one row (page-header strip on desktop); otherwise stacked (phone card).
-  const label = inline
-    ? 'text-xs font-medium text-slate-600'
-    : 'mb-1 block text-xs font-medium text-slate-600';
-  const input = inline
-    ? 'h-9 w-36 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900'
-    : 'h-10 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900';
-  const field = inline ? 'flex items-center gap-1.5' : 'block min-w-0';
+  // Same look as the Movimientos date filter: label above, standard field with the calendar icon.
   return (
     <div
-      className={`${inline ? 'flex items-center gap-3' : 'grid grid-cols-2 gap-2'} ${className ?? ''}`}
+      className={`${inline ? 'flex items-end gap-3' : 'grid grid-cols-2 gap-2'} ${className ?? ''}`}
     >
-      <label className={field}>
-        <span className={label}>Desde</span>
-        <input
+      <Field label="Desde">
+        <Input
           type="date"
-          aria-label="Desde"
-          className={input}
           value={from}
           max={to || undefined}
+          className={inline ? 'w-44' : undefined}
           onChange={(e) => {
             setFrom(e.target.value);
             navigate({
@@ -278,21 +271,19 @@ export function TransfersDateFilters({
             });
           }}
         />
-      </label>
-      <label className={field}>
-        <span className={label}>Hasta</span>
-        <input
+      </Field>
+      <Field label="Hasta">
+        <Input
           type="date"
-          aria-label="Hasta"
-          className={input}
           value={to}
           min={from || undefined}
+          className={inline ? 'w-44' : undefined}
           onChange={(e) => {
             setTo(e.target.value);
             navigate({ createdTo: e.target.value ? nextDayStart(e.target.value) : undefined });
           }}
         />
-      </label>
+      </Field>
     </div>
   );
 }
