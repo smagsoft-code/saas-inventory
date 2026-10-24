@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '../../../../../lib/api/errors';
 import { apiFetch } from '../../../../../lib/api/client';
@@ -13,6 +13,11 @@ const T = 'transfer-1';
 const RECEIVABLE_ITEMS = [
   { id: 'ti-1', productVariantId: 'var-1', quantityRequested: 10, quantityDispatched: 10, quantityReceived: 0 },
 ];
+
+/** Acciones now open a modal: confirm from inside the dialog (the card also has a same-named button). */
+function confirmInDialog(name: RegExp): void {
+  fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name }));
+}
 
 describe('TransferActions', () => {
   beforeEach(() => {
@@ -41,6 +46,7 @@ describe('TransferActions', () => {
     mockedFetch.mockResolvedValueOnce({});
     render(<TransferActions transferId={T} status="draft" items={[]} canApprove canDispatch canReceive />);
     fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
+    confirmInDialog(/^aprobar$/i);
     expect(await screen.findByText(/transferencia aprobada correctamente/i)).toBeInTheDocument();
   });
 
@@ -64,6 +70,8 @@ describe('TransferActions', () => {
     mockedFetch.mockResolvedValueOnce({});
     render(<TransferActions transferId={T} status="draft" items={[]} canApprove canDispatch canReceive />);
     fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
+    expect(mockedFetch).not.toHaveBeenCalled();
+    confirmInDialog(/^aprobar$/i);
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/inventory/transfers/transfer-1/approve', { method: 'POST' });
     expect(JSON.stringify(mockedFetch.mock.calls)).not.toMatch(/tenantId/i);
@@ -73,7 +81,8 @@ describe('TransferActions', () => {
     let resolve: (v: unknown) => void = () => {};
     mockedFetch.mockImplementationOnce(() => new Promise((r) => { resolve = r; }));
     render(<TransferActions transferId={T} status="draft" items={[]} canApprove canDispatch canReceive />);
-    const btn = screen.getByRole('button', { name: /^aprobar$/i });
+    fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
+    const btn = within(screen.getByRole('dialog')).getByRole('button', { name: /^aprobar$/i });
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(mockedFetch).toHaveBeenCalledTimes(1);
@@ -85,7 +94,18 @@ describe('TransferActions', () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'nope', undefined));
     render(<TransferActions transferId={T} status="approved" items={[]} canApprove canDispatch canReceive />);
     fireEvent.click(screen.getByRole('button', { name: /^preparar$/i }));
+    confirmInDialog(/^preparar$/i);
     expect(await screen.findByText(/no tienes autorización para operar/i)).toBeInTheDocument();
+  });
+
+  it('every action opens a modal dialog; closing it without confirming sends nothing', () => {
+    render(<TransferActions transferId={T} status="preparing" items={RECEIVABLE_ITEMS} canApprove canDispatch canReceive />);
+    fireEvent.click(screen.getByRole('button', { name: /despachar…/i }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Despachar transferencia')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: /^cancelar$/i }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mockedFetch).not.toHaveBeenCalled();
   });
 
   it('cancel is a two-step confirm', async () => {
@@ -93,7 +113,7 @@ describe('TransferActions', () => {
     render(<TransferActions transferId={T} status="draft" items={[]} canApprove canDispatch canReceive />);
     fireEvent.click(screen.getByRole('button', { name: /cancelar transferencia/i }));
     expect(mockedFetch).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: /confirmar cancelación/i }));
+    confirmInDialog(/confirmar cancelación/i);
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
     expect(mockedFetch).toHaveBeenCalledWith('/api/v1/inventory/transfers/transfer-1/cancel', { method: 'POST' });
   });
@@ -101,7 +121,7 @@ describe('TransferActions', () => {
   describe('receive — idempotency', () => {
     function openAndSubmitReceive() {
       fireEvent.click(screen.getByRole('button', { name: /recibir…/i }));
-      fireEvent.click(screen.getByRole('button', { name: /confirmar recepción/i }));
+      confirmInDialog(/confirmar recepción/i);
     }
 
     it('sends a non-empty Idempotency-Key header with the receive body', async () => {
@@ -125,7 +145,7 @@ describe('TransferActions', () => {
       await screen.findByText(/temporary|conflict/i);
 
       mockedFetch.mockResolvedValueOnce({});
-      fireEvent.click(screen.getByRole('button', { name: /confirmar recepción/i }));
+      confirmInDialog(/confirmar recepción/i);
       await waitFor(() => expect(refreshMock).toHaveBeenCalled());
 
       const receiveCalls = mockedFetch.mock.calls.filter(([p]) => String(p).endsWith('/receive'));

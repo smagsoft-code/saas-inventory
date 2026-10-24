@@ -16,6 +16,7 @@ import { Button } from '../../../../../components/ui/button';
 import { Card, CardBody } from '../../../../../components/ui/card';
 import { Field } from '../../../../../components/ui/field';
 import { Input, Select, Textarea } from '../../../../../components/ui/input';
+import { Modal } from '../../../../../components/ui/modal';
 import { Toast } from '../../../../../components/ui/toast';
 
 interface ActionItem {
@@ -109,7 +110,7 @@ export function TransferActions({
   const [busy, setBusy] = useState<Transition | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<'approve' | 'prepare' | 'cancel' | null>(null);
 
   // Dispatch panel
   const [dispatchOpen, setDispatchOpen] = useState(false);
@@ -249,167 +250,227 @@ export function TransferActions({
     return null;
   }
 
+  const anyModalOpen = confirmAction !== null || dispatchOpen || receiveOpen;
+  const closeConfirm = (): void => {
+    if (busy === null) setConfirmAction(null);
+  };
+  const closeDispatch = (): void => {
+    if (busy === null) setDispatchOpen(false);
+  };
+  const closeReceive = (): void => {
+    if (busy === null) setReceiveOpen(false);
+  };
+  const modalError = error ? <Alert tone="error">{error}</Alert> : null;
+
+  const CONFIRM_COPY: Record<'approve' | 'prepare' | 'cancel', { title: string; text: string; button: string; danger?: boolean }> = {
+    approve: { title: 'Aprobar transferencia', text: '¿Aprobar esta transferencia?', button: 'Aprobar' },
+    prepare: {
+      title: 'Preparar transferencia',
+      text: '¿Pasar esta transferencia a preparación? Se reserva el stock en el origen.',
+      button: 'Preparar',
+    },
+    cancel: {
+      title: 'Cancelar transferencia',
+      text: '¿Cancelar esta transferencia? Se libera cualquier reserva en el origen.',
+      button: 'Confirmar cancelación',
+      danger: true,
+    },
+  };
+
+  function submitConfirm(): void {
+    if (!confirmAction) return;
+    const done = (): void => setConfirmAction(null);
+    if (confirmAction === 'approve') {
+      void run('approve', () => apiFetch(`${base}/approve`, { method: 'POST' }), { onDone: done });
+    } else if (confirmAction === 'prepare') {
+      void run('prepare', () => apiFetch(`${base}/prepare`, { method: 'POST' }), { locationHint: true, onDone: done });
+    } else {
+      void run('cancel', () => apiFetch(`${base}/cancel`, { method: 'POST' }), { onDone: done });
+    }
+  }
+
+  function openConfirm(action: 'approve' | 'prepare' | 'cancel'): void {
+    setError(null);
+    setConfirmAction(action);
+  }
+
   return (
     <Card>
       <CardBody className="flex flex-col gap-4">
         <h2 className="text-sm font-semibold text-slate-900">Acciones</h2>
 
         {success && <Toast message={success} onDismiss={() => setSuccess(null)} />}
-        {error && <Alert tone="error">{error}</Alert>}
+        {!anyModalOpen && modalError}
 
         <div className="flex flex-wrap gap-2">
           {showApprove && (
-            <Button
-              loading={busy === 'approve'}
-              disabled={busy !== null}
-              onClick={() => void run('approve', () => apiFetch(`${base}/approve`, { method: 'POST' }))}
-            >
+            <Button disabled={busy !== null} onClick={() => openConfirm('approve')}>
               Aprobar
             </Button>
           )}
           {showPrepare && (
-            <Button
-              loading={busy === 'prepare'}
-              disabled={busy !== null}
-              onClick={() => void run('prepare', () => apiFetch(`${base}/prepare`, { method: 'POST' }), { locationHint: true })}
-            >
+            <Button disabled={busy !== null} onClick={() => openConfirm('prepare')}>
               Preparar
             </Button>
           )}
-          {showDispatch && !dispatchOpen && (
+          {showDispatch && (
             <Button variant="secondary" disabled={busy !== null} onClick={openDispatch}>
               Despachar…
             </Button>
           )}
-          {showReceive && !receiveOpen && (
+          {showReceive && (
             <Button variant="secondary" disabled={busy !== null} onClick={openReceive}>
               Recibir…
             </Button>
           )}
-          {showCancel && !confirmCancel && (
-            <Button variant="danger" disabled={busy !== null} onClick={() => setConfirmCancel(true)}>
+          {showCancel && (
+            <Button variant="danger" disabled={busy !== null} onClick={() => openConfirm('cancel')}>
               Cancelar transferencia
             </Button>
           )}
         </div>
 
-        {confirmCancel && showCancel && (
-          <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            <span>¿Cancelar esta transferencia? Se libera cualquier reserva en el origen.</span>
-            <Button
-              variant="danger"
-              size="sm"
-              loading={busy === 'cancel'}
-              disabled={busy !== null}
-              onClick={() =>
-                void run('cancel', () => apiFetch(`${base}/cancel`, { method: 'POST' }), {
-                  onDone: () => setConfirmCancel(false),
-                })
-              }
-            >
-              Confirmar cancelación
-            </Button>
-            <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => setConfirmCancel(false)}>
-              Mantener transferencia
-            </Button>
-          </div>
+        {confirmAction && (
+          <Modal
+            open
+            onClose={closeConfirm}
+            title={CONFIRM_COPY[confirmAction].title}
+            footer={
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" disabled={busy !== null} onClick={closeConfirm}>
+                  {confirmAction === 'cancel' ? 'Mantener transferencia' : 'Cancelar'}
+                </Button>
+                <Button
+                  variant={CONFIRM_COPY[confirmAction].danger ? 'danger' : 'primary'}
+                  loading={busy === confirmAction}
+                  disabled={busy !== null}
+                  onClick={submitConfirm}
+                >
+                  {CONFIRM_COPY[confirmAction].button}
+                </Button>
+              </div>
+            }
+          >
+            <div className="flex flex-col gap-3">
+              {modalError}
+              <p className="text-sm text-slate-700">{CONFIRM_COPY[confirmAction].text}</p>
+            </div>
+          </Modal>
         )}
 
         {showDispatch && dispatchOpen && (
-          <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-            <p className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
-              Cantidades a despachar
-              <HelpTip>
-                Por defecto es la cantidad solicitada de cada producto. Reduce el valor solo si vas a despachar menos.
-              </HelpTip>
-            </p>
-            {items.map((item) => (
-              <Field key={item.id} label={`${itemLabel(item)} (solicitado ${item.quantityRequested})`}>
-                <Input
-                  type="number"
-                  min={0}
-                  max={item.quantityRequested}
-                  step="any"
-                  value={dispatchQty[item.id] ?? ''}
-                  onChange={(e) => setDispatchQty((cur) => ({ ...cur, [item.id]: e.target.value }))}
-                />
-              </Field>
-            ))}
-            <div className="flex gap-2">
-              <Button loading={busy === 'dispatch'} disabled={busy !== null} onClick={() => void submitDispatch()}>
-                Despachar
-              </Button>
-              <Button variant="ghost" disabled={busy !== null} onClick={() => setDispatchOpen(false)}>
-                Cancelar
-              </Button>
+          <Modal
+            open
+            onClose={closeDispatch}
+            title="Despachar transferencia"
+            footer={
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" disabled={busy !== null} onClick={closeDispatch}>
+                  Cancelar
+                </Button>
+                <Button loading={busy === 'dispatch'} disabled={busy !== null} onClick={() => void submitDispatch()}>
+                  Despachar
+                </Button>
+              </div>
+            }
+          >
+            <div className="flex flex-col gap-3">
+              {modalError}
+              <p className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+                Cantidades a despachar
+                <HelpTip>
+                  Por defecto es la cantidad solicitada de cada producto. Reduce el valor solo si vas a despachar menos.
+                </HelpTip>
+              </p>
+              {items.map((item) => (
+                <Field key={item.id} label={`${itemLabel(item)} (solicitado ${item.quantityRequested})`}>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={item.quantityRequested}
+                    step="any"
+                    value={dispatchQty[item.id] ?? ''}
+                    onChange={(e) => setDispatchQty((cur) => ({ ...cur, [item.id]: e.target.value }))}
+                  />
+                </Field>
+              ))}
             </div>
-          </div>
+          </Modal>
         )}
 
         {showReceive && receiveOpen && (
-          <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-            <p className="text-sm font-medium text-slate-700">Recibir existencias</p>
-            {outstanding.length === 0 ? (
-              <p className="text-sm text-slate-500">No hay nada pendiente por recibir en esta transferencia.</p>
-            ) : (
-              outstanding.map((item) => {
-                const remaining = item.quantityDispatched - item.quantityReceived;
-                return (
-                  <div key={item.id} className="flex flex-col gap-2 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
-                    <Field label={`${itemLabel(item)} (hasta ${remaining})`}>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={remaining}
-                        step="any"
-                        value={receiveQty[item.id] ?? ''}
-                        onChange={(e) => setReceiveQty((cur) => ({ ...cur, [item.id]: e.target.value }))}
-                      />
-                    </Field>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <Field label="Incidencia" help="Opcional.">
-                        <Select
-                          value={receiveIncident[item.id] ?? ''}
-                          onChange={(e) => setReceiveIncident((cur) => ({ ...cur, [item.id]: e.target.value }))}
-                        >
-                          <option value="">Ninguna</option>
-                          {TRANSFER_INCIDENT_TYPES.map((t) => (
-                            <option key={t} value={t}>
-                              {TRANSFER_INCIDENT_TYPE_LABELS[t]}
-                            </option>
-                          ))}
-                        </Select>
+          <Modal
+            open
+            onClose={closeReceive}
+            title="Recibir existencias"
+            size="lg"
+            footer={
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" disabled={busy !== null} onClick={closeReceive}>
+                  Cancelar
+                </Button>
+                <Button
+                  loading={busy === 'receive'}
+                  disabled={busy !== null || outstanding.length === 0}
+                  onClick={() => void submitReceive()}
+                >
+                  Confirmar recepción
+                </Button>
+              </div>
+            }
+          >
+            <div className="flex flex-col gap-3">
+              {modalError}
+              {outstanding.length === 0 ? (
+                <p className="text-sm text-slate-500">No hay nada pendiente por recibir en esta transferencia.</p>
+              ) : (
+                outstanding.map((item) => {
+                  const remaining = item.quantityDispatched - item.quantityReceived;
+                  return (
+                    <div key={item.id} className="flex flex-col gap-2 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
+                      <Field label={`${itemLabel(item)} (hasta ${remaining})`}>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={remaining}
+                          step="any"
+                          value={receiveQty[item.id] ?? ''}
+                          onChange={(e) => setReceiveQty((cur) => ({ ...cur, [item.id]: e.target.value }))}
+                        />
                       </Field>
-                      {receiveIncident[item.id] && (
-                        <Field label="Notas de la incidencia" help="Opcional.">
-                          <Input
-                            maxLength={500}
-                            value={receiveIncidentNotes[item.id] ?? ''}
-                            onChange={(e) => setReceiveIncidentNotes((cur) => ({ ...cur, [item.id]: e.target.value }))}
-                          />
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <Field label="Incidencia" help="Opcional.">
+                          <Select
+                            value={receiveIncident[item.id] ?? ''}
+                            onChange={(e) => setReceiveIncident((cur) => ({ ...cur, [item.id]: e.target.value }))}
+                          >
+                            <option value="">Ninguna</option>
+                            {TRANSFER_INCIDENT_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {TRANSFER_INCIDENT_TYPE_LABELS[t]}
+                              </option>
+                            ))}
+                          </Select>
                         </Field>
-                      )}
+                        {receiveIncident[item.id] && (
+                          <Field label="Notas de la incidencia" help="Opcional.">
+                            <Input
+                              maxLength={500}
+                              value={receiveIncidentNotes[item.id] ?? ''}
+                              onChange={(e) => setReceiveIncidentNotes((cur) => ({ ...cur, [item.id]: e.target.value }))}
+                            />
+                          </Field>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                );
-              })
-            )}
-            <Field label="Notas" help="Opcional — se registra en el evento de recepción.">
-              <Textarea maxLength={1000} value={receiveNotes} onChange={(e) => setReceiveNotes(e.target.value)} />
-            </Field>
-            <div className="flex gap-2">
-              <Button
-                loading={busy === 'receive'}
-                disabled={busy !== null || outstanding.length === 0}
-                onClick={() => void submitReceive()}
-              >
-                Confirmar recepción
-              </Button>
-              <Button variant="ghost" disabled={busy !== null} onClick={() => setReceiveOpen(false)}>
-                Cancelar
-              </Button>
+                  );
+                })
+              )}
+              <Field label="Notas" help="Opcional — se registra en el evento de recepción.">
+                <Textarea maxLength={1000} value={receiveNotes} onChange={(e) => setReceiveNotes(e.target.value)} />
+              </Field>
             </div>
-          </div>
+          </Modal>
         )}
       </CardBody>
     </Card>
