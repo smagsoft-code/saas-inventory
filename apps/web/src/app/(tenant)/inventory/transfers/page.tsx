@@ -188,9 +188,14 @@ export default async function TransfersPage({
         title="Transferencias"
         help="Mueve stock entre almacenes: solicitar, aprobar, preparar, despachar y recibir."
         actions={
-          canRequest ? (
-            <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink>
-          ) : undefined
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="hidden md:block">
+              <TransfersDateFilters params={carried} inline />
+            </div>
+            {canRequest && (
+              <ButtonLink href="/inventory/transfers/new">Nueva transferencia</ButtonLink>
+            )}
+          </div>
         }
       />
 
@@ -213,9 +218,22 @@ export default async function TransfersPage({
 
       <hr className="border-slate-200" />
 
-      <h2 className="hidden text-sm font-semibold text-slate-900 md:block">
-        Listado de transferencias
-      </h2>
+      <div className="hidden items-center justify-between gap-3 md:flex">
+        <h2 className="text-sm font-semibold text-slate-900">Listado de transferencias</h2>
+        {!(result.data.length === 0 && !hasFilter) && (
+          <ListViewControls
+            showingAll={showAll}
+            allHref={buildHref({ all: true })}
+            pagedHref={buildHref({})}
+            shown={result.data.length}
+            total={result.meta.total}
+            truncated={result.truncated}
+            canToggle={result.meta.total > PAGE_SIZE}
+            excelHref={buildTransfersExportHref(listFilters, 'xlsx')}
+            pdfHref={buildTransfersExportHref(listFilters, 'pdf')}
+          />
+        )}
+      </div>
 
       {result.data.length === 0 && !hasFilter ? (
         <EmptyState
@@ -231,22 +249,6 @@ export default async function TransfersPage({
         />
       ) : (
         <>
-          <div className="hidden max-w-md md:block">
-            <TransfersDateFilters params={carried} />
-          </div>
-          <div className="hidden md:block">
-            <ListViewControls
-              showingAll={showAll}
-              allHref={buildHref({ all: true })}
-              pagedHref={buildHref({})}
-              shown={result.data.length}
-              total={result.meta.total}
-              truncated={result.truncated}
-              canToggle={result.meta.total > PAGE_SIZE}
-              excelHref={buildTransfersExportHref(listFilters, 'xlsx')}
-              pdfHref={buildTransfersExportHref(listFilters, 'pdf')}
-            />
-          </div>
           <div className="flex flex-col gap-3 md:hidden">
             <TransfersMobileFilters
               params={carried}

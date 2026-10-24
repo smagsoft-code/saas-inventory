@@ -233,9 +233,11 @@ function nextDayStart(dateOnly: string): string {
 export function TransfersDateFilters({
   params,
   className,
+  inline = false,
 }: {
   params: Record<string, string>;
   className?: string;
+  inline?: boolean;
 }): React.JSX.Element {
   const navigate = useNavigate(params);
   const urlFrom = params['createdFrom']?.slice(0, 10) ?? '';
@@ -249,12 +251,19 @@ export function TransfersDateFilters({
     setFrom(urlFrom);
     setTo(urlTo);
   }, [urlFrom, urlTo]);
-  const label = 'mb-1 block text-xs font-medium text-slate-600';
-  const input =
-    'h-10 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900 md:h-9';
+  // inline: label + input on one row (page-header strip on desktop); otherwise stacked (phone card).
+  const label = inline
+    ? 'text-xs font-medium text-slate-600'
+    : 'mb-1 block text-xs font-medium text-slate-600';
+  const input = inline
+    ? 'h-9 w-36 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900'
+    : 'h-10 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900';
+  const field = inline ? 'flex items-center gap-1.5' : 'block min-w-0';
   return (
-    <div className={`grid grid-cols-2 gap-2 ${className ?? ''}`}>
-      <label className="block min-w-0">
+    <div
+      className={`${inline ? 'flex items-center gap-3' : 'grid grid-cols-2 gap-2'} ${className ?? ''}`}
+    >
+      <label className={field}>
         <span className={label}>Desde</span>
         <input
           type="date"
@@ -270,7 +279,7 @@ export function TransfersDateFilters({
           }}
         />
       </label>
-      <label className="block min-w-0">
+      <label className={field}>
         <span className={label}>Hasta</span>
         <input
           type="date"
