@@ -209,7 +209,7 @@ export function TransferActions({
       .filter((line): line is NonNullable<typeof line> => line !== null);
 
     if (lines.length === 0) {
-      setError('Ingresa una cantidad para al menos una línea.');
+      setError('Ingresa una cantidad para al menos un producto.');
       return;
     }
 
@@ -320,7 +320,7 @@ export function TransferActions({
             <p className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
               Cantidades a despachar
               <HelpTip>
-                Por defecto es la cantidad solicitada de cada línea. Reduce el valor solo si vas a despachar menos.
+                Por defecto es la cantidad solicitada de cada producto. Reduce el valor solo si vas a despachar menos.
               </HelpTip>
             </p>
             {items.map((item) => (

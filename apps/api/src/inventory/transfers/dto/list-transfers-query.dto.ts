@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 
 const TRANSFER_STATUSES = ['draft', 'approved', 'preparing', 'dispatched', 'partially_received', 'received', 'cancelled'] as const;
 
@@ -34,4 +34,14 @@ export class ListTransfersQueryDto {
   @IsOptional()
   @IsUUID()
   destinationLocationId?: string;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time', description: 'Inclusive lower bound on created_at (half-open [createdFrom, createdTo)).' })
+  @IsOptional()
+  @IsDateString()
+  createdFrom?: string;
+
+  @ApiPropertyOptional({ type: String, format: 'date-time', description: 'Exclusive upper bound on created_at (half-open [createdFrom, createdTo)).' })
+  @IsOptional()
+  @IsDateString()
+  createdTo?: string;
 }

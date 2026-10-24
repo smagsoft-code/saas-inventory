@@ -19,6 +19,9 @@ export interface ListTransfersQuery {
   status?: TransferStatus;
   sourceLocationId?: string;
   destinationLocationId?: string;
+  /** ISO instants, half-open [createdFrom, createdTo) on created_at. */
+  createdFrom?: string;
+  createdTo?: string;
 }
 
 export async function listTransfers(query: ListTransfersQuery = {}): Promise<Paginated<Transfer>> {
@@ -35,15 +38,23 @@ export async function listTransfers(query: ListTransfersQuery = {}): Promise<Pag
   if (query.destinationLocationId) {
     params['destinationLocationId'] = query.destinationLocationId;
   }
+  if (query.createdFrom) {
+    params['createdFrom'] = query.createdFrom;
+  }
+  if (query.createdTo) {
+    params['createdTo'] = query.createdTo;
+  }
   return serverApiFetch<Paginated<Transfer>>('/api/v1/inventory/transfers', { query: params });
 }
 
 /** Same-origin Excel/PDF download of the filtered transfer list — the whole filtered set. */
-export function buildTransfersExportHref(query: Pick<ListTransfersQuery, 'status' | 'sourceLocationId' | 'destinationLocationId'>, format: 'xlsx' | 'pdf'): string {
+export function buildTransfersExportHref(query: Pick<ListTransfersQuery, 'status' | 'sourceLocationId' | 'destinationLocationId' | 'createdFrom' | 'createdTo'>, format: 'xlsx' | 'pdf'): string {
   const params = new URLSearchParams({ format });
   if (query.status) params.set('status', query.status);
   if (query.sourceLocationId) params.set('sourceLocationId', query.sourceLocationId);
   if (query.destinationLocationId) params.set('destinationLocationId', query.destinationLocationId);
+  if (query.createdFrom) params.set('createdFrom', query.createdFrom);
+  if (query.createdTo) params.set('createdTo', query.createdTo);
   return `/api/v1/inventory/transfers/export?${params}`;
 }
 

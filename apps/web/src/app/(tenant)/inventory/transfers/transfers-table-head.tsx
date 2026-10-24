@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import { THead, TH, TR } from '../../../../components/ui/table';
 
 export interface TransfersHeadOption {
@@ -95,11 +96,11 @@ export function TransfersTableHead({
     'Estado',
     'Origen',
     'Destino',
-    'Líneas',
+    'Productos',
     'En tránsito',
     'Creada',
   ];
-  const numeric = new Set(['Líneas', 'En tránsito']);
+  const numeric = new Set(['Productos', 'En tránsito']);
   return (
     <THead>
       <TR className="hover:bg-transparent">
@@ -189,6 +190,7 @@ export function TransfersMobileFilters({
           onChange={(v) => navigate({ status: v || undefined })}
         />
       </label>
+      <TransfersDateFilters params={params} />
       <div className="grid grid-cols-2 gap-2">
         <label className="block min-w-0">
           <span className={label}>Origen</span>
@@ -214,5 +216,74 @@ export function TransfersMobileFilters({
         </label>
       </div>
     </section>
+  );
+}
+
+function nextDayStart(dateOnly: string): string {
+  const d = new Date(`${dateOnly}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString();
+}
+
+/**
+ * Desde / Hasta — the same date filter as Movimientos: calendar days sent as the half-open range
+ * [createdFrom, createdTo) on the transfer's creation date (`Hasta` includes its whole day).
+ * Applies on change; the URL is the source of truth, so the inputs re-sync when it changes.
+ */
+export function TransfersDateFilters({
+  params,
+  className,
+}: {
+  params: Record<string, string>;
+  className?: string;
+}): React.JSX.Element {
+  const navigate = useNavigate(params);
+  const urlFrom = params['createdFrom']?.slice(0, 10) ?? '';
+  // createdTo is stored as the exclusive next-day start; show the inclusive day the user picked.
+  const urlTo = params['createdTo']
+    ? new Date(new Date(params['createdTo']).getTime() - 86_400_000).toISOString().slice(0, 10)
+    : '';
+  const [from, setFrom] = useState(urlFrom);
+  const [to, setTo] = useState(urlTo);
+  useEffect(() => {
+    setFrom(urlFrom);
+    setTo(urlTo);
+  }, [urlFrom, urlTo]);
+  const label = 'mb-1 block text-xs font-medium text-slate-600';
+  const input =
+    'h-10 w-full min-w-0 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-900 md:h-9';
+  return (
+    <div className={`grid grid-cols-2 gap-2 ${className ?? ''}`}>
+      <label className="block min-w-0">
+        <span className={label}>Desde</span>
+        <input
+          type="date"
+          aria-label="Desde"
+          className={input}
+          value={from}
+          max={to || undefined}
+          onChange={(e) => {
+            setFrom(e.target.value);
+            navigate({
+              createdFrom: e.target.value ? `${e.target.value}T00:00:00.000Z` : undefined,
+            });
+          }}
+        />
+      </label>
+      <label className="block min-w-0">
+        <span className={label}>Hasta</span>
+        <input
+          type="date"
+          aria-label="Hasta"
+          className={input}
+          value={to}
+          min={from || undefined}
+          onChange={(e) => {
+            setTo(e.target.value);
+            navigate({ createdTo: e.target.value ? nextDayStart(e.target.value) : undefined });
+          }}
+        />
+      </label>
+    </div>
   );
 }

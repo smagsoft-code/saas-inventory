@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gte, lt, sql } from 'drizzle-orm';
 import { inventoryTransfers } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
@@ -76,6 +76,8 @@ export class InventoryTransfersRepository {
       status?: string | undefined;
       sourceLocationId?: string | undefined;
       destinationLocationId?: string | undefined;
+      createdFrom?: string | undefined;
+      createdTo?: string | undefined;
     },
   ): Promise<{ rows: InventoryTransferRow[]; total: number }> {
     const conditions = [eq(inventoryTransfers.tenantId, tenantId)];
@@ -87,6 +89,12 @@ export class InventoryTransfersRepository {
     }
     if (params.destinationLocationId) {
       conditions.push(eq(inventoryTransfers.destinationLocationId, params.destinationLocationId));
+    }
+    if (params.createdFrom) {
+      conditions.push(gte(inventoryTransfers.createdAt, new Date(params.createdFrom)));
+    }
+    if (params.createdTo) {
+      conditions.push(lt(inventoryTransfers.createdAt, new Date(params.createdTo)));
     }
     const where = and(...conditions);
 

@@ -25,7 +25,11 @@ import { EmptyState } from '../../../../components/ui/empty-state';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { Pagination } from '../../../../components/ui/pagination';
 import { Table, TBody, TD, TR } from '../../../../components/ui/table';
-import { TransfersMobileFilters, TransfersTableHead } from './transfers-table-head';
+import {
+  TransfersDateFilters,
+  TransfersMobileFilters,
+  TransfersTableHead,
+} from './transfers-table-head';
 import { TransfersMobileList, type MobileTransfer } from './transfers-mobile-list';
 
 export const metadata = { title: 'Transferencias · SaaS Inventory' };
@@ -54,6 +58,8 @@ export default async function TransfersPage({
     sourceLocationId?: string;
     destinationLocationId?: string;
     all?: string;
+    createdFrom?: string;
+    createdTo?: string;
   }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -74,11 +80,15 @@ export default async function TransfersPage({
   const sourceLocationId = sp.sourceLocationId || undefined;
   const destinationLocationId = sp.destinationLocationId || undefined;
   // "Ver todos": every matching transfer on screen instead of one page.
+  const createdFrom = sp.createdFrom || undefined;
+  const createdTo = sp.createdTo || undefined;
   const showAll = sp.all === '1';
   const listFilters = {
     ...(status ? { status } : {}),
     ...(sourceLocationId ? { sourceLocationId } : {}),
     ...(destinationLocationId ? { destinationLocationId } : {}),
+    ...(createdFrom ? { createdFrom } : {}),
+    ...(createdTo ? { createdTo } : {}),
   };
 
   // F18-08 transfer analytics — just the two groupBy-independent KPI tiles now (the "Agrupar por"
@@ -134,6 +144,8 @@ export default async function TransfersPage({
     if (nextStatus) params.set('status', nextStatus);
     if (nextSource) params.set('sourceLocationId', nextSource);
     if (nextDest) params.set('destinationLocationId', nextDest);
+    if (createdFrom) params.set('createdFrom', createdFrom);
+    if (createdTo) params.set('createdTo', createdTo);
     if (next.all ?? false) params.set('all', '1');
     if (next.page && next.page > 1) params.set('page', String(next.page));
     return `/inventory/transfers${params.toString() ? `?${params}` : ''}`;
@@ -157,6 +169,8 @@ export default async function TransfersPage({
     ...(status ? { status } : {}),
     ...(sourceLocationId ? { sourceLocationId } : {}),
     ...(destinationLocationId ? { destinationLocationId } : {}),
+    ...(createdFrom ? { createdFrom } : {}),
+    ...(createdTo ? { createdTo } : {}),
   };
   const statusOptions = TRANSFER_STATUSES.map((s) => ({
     value: s,
@@ -164,7 +178,9 @@ export default async function TransfersPage({
   }));
   const headLocationOptions = locationOptions.map((l) => ({ value: l.id, label: l.name }));
 
-  const hasFilter = Boolean(status || sourceLocationId || destinationLocationId);
+  const hasFilter = Boolean(
+    status || sourceLocationId || destinationLocationId || createdFrom || createdTo,
+  );
 
   return (
     <PageContainer>
@@ -215,6 +231,9 @@ export default async function TransfersPage({
         />
       ) : (
         <>
+          <div className="hidden max-w-md md:block">
+            <TransfersDateFilters params={carried} />
+          </div>
           <div className="hidden md:block">
             <ListViewControls
               showingAll={showAll}

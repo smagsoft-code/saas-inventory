@@ -34,6 +34,8 @@ export class TransfersExportService {
       query.status ? `Estado: ${STATUS_LABELS[query.status] ?? query.status}` : undefined,
       query.sourceLocationId ? 'Origen filtrado' : undefined,
       query.destinationLocationId ? 'Destino filtrado' : undefined,
+      query.createdFrom ? `Desde: ${query.createdFrom.slice(0, 10)}` : undefined,
+      query.createdTo ? `Hasta (excl.): ${query.createdTo.slice(0, 10)}` : undefined,
     ].filter(Boolean);
     const spec: TabularExportSpec = {
       title: 'Transferencias',

@@ -192,12 +192,12 @@ describe('TransferForm', () => {
   it('always shows a × on the only line, and resets it to empty instead of removing it', async () => {
     renderForm();
     await fillOneLine();
-    const removeButtons = screen.getAllByRole('button', { name: /quitar línea/i });
+    const removeButtons = screen.getAllByRole('button', { name: /quitar fila/i });
     expect(removeButtons).toHaveLength(1);
 
     fireEvent.click(removeButtons[0]!);
     // Still exactly one line, now empty.
-    expect(screen.getAllByRole('button', { name: /quitar línea/i })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /quitar fila/i })).toHaveLength(1);
     expect(screen.getByLabelText(/producto/i)).toHaveValue('');
   });
 
@@ -207,7 +207,7 @@ describe('TransferForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /agregar/i }));
     expect(screen.getAllByLabelText(/producto/i)).toHaveLength(2);
 
-    const removeButtons = screen.getAllByRole('button', { name: /quitar línea/i });
+    const removeButtons = screen.getAllByRole('button', { name: /quitar fila/i });
     expect(removeButtons).toHaveLength(2);
     fireEvent.click(removeButtons[1]!);
     expect(screen.getAllByLabelText(/producto/i)).toHaveLength(1);

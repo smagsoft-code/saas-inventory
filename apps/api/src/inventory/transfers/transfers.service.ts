@@ -81,6 +81,8 @@ export class TransfersService {
         status: query.status,
         sourceLocationId: query.sourceLocationId,
         destinationLocationId: query.destinationLocationId,
+        createdFrom: query.createdFrom,
+        createdTo: query.createdTo,
       });
       const data = await Promise.all(rows.map((row) => this.toResponse(tx, tenantId, row)));
       return {

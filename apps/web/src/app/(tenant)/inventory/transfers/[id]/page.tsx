@@ -135,7 +135,7 @@ export default async function TransferDetailPage({
 
       <Card>
         <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Líneas</h2>
+          <h2 className="text-sm font-semibold text-slate-900">Productos</h2>
           <Table>
             <THead>
               <TR>

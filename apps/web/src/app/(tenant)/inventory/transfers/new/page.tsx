@@ -68,7 +68,7 @@ export default async function NewTransferPage(): Promise<React.JSX.Element> {
       )}
       {!canViewInventory && (
         <Alert tone="warning">
-          No puedes ver el inventario, por eso no se pueden agregar líneas aquí. Pide a un
+          No puedes ver el inventario, por eso no se pueden agregar productos aquí. Pide a un
           administrador el permiso de inventario.
         </Alert>
       )}

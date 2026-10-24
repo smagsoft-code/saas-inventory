@@ -287,7 +287,7 @@ export function TransferForm({
       if (!line.productVariantId) {
         next[`line-${i}-variant`] = 'Elige una variante.';
       } else if (seen.has(line.productVariantId)) {
-        next[`line-${i}-variant`] = 'Esta variante ya está en otra línea.';
+        next[`line-${i}-variant`] = 'Esta variante ya está en otra fila.';
       } else {
         seen.add(line.productVariantId);
       }
@@ -517,8 +517,8 @@ export function TransferForm({
                 <Button
                   type="button"
                   variant="primary"
-                  aria-label="Agregar línea"
-                  title="Agregar línea"
+                  aria-label="Agregar fila"
+                  title="Agregar fila"
                   disabled={productsDisabled}
                   className="mt-6 h-10 w-10 shrink-0 text-lg font-semibold"
                   onClick={addLine}
@@ -528,8 +528,8 @@ export function TransferForm({
                 <Button
                   type="button"
                   variant="danger"
-                  aria-label="Quitar línea"
-                  title="Quitar línea"
+                  aria-label="Quitar fila"
+                  title="Quitar fila"
                   className="mt-6 h-10 w-10 shrink-0 text-lg font-semibold"
                   onClick={() => removeLine(line.key)}
                 >
