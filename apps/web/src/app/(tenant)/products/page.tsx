@@ -1,6 +1,8 @@
 import { getSession } from '../../../lib/auth/session';
 import { createPermissionChecker } from '../../../lib/auth/permissions';
-import { listProductCatalog } from '../../../lib/catalog/product-catalog';
+import { buildProductCatalogExportHref, listProductCatalog } from '../../../lib/catalog/product-catalog';
+import { fetchAllPages } from '../../../lib/fetch-all';
+import { ListViewControls } from '../../../components/list-view-controls';
 import { listCategories } from '../../../lib/catalog/categories';
 import { getAttributeOptions, listAttributeDefinitions, listMeasurementUnits } from '../../../lib/catalog/attributes';
 import { buildAttributeSummaryFromDefinitions, formatAttributeSummaryLine } from '../../../lib/catalog/attribute-summary';
@@ -19,8 +21,10 @@ import { ButtonLink } from '../../../components/ui/button';
 import { EmptyState } from '../../../components/ui/empty-state';
 import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
+import { getInventorySummary } from '../../../lib/inventory/reports';
 import { ProductsFilters } from './products-filters';
 import { ProductsCatalogTable } from './products-catalog-table';
+import { ProductsChips, ProductsKpis, ProductsMobileList, type ProductsChip, type ProductsKpiData } from './products-mobile';
 
 export const metadata = { title: 'Productos · SaaS Inventory' };
 
@@ -59,7 +63,7 @@ function parseStock(value: string | undefined): ProductCatalogStockFilter | unde
 export default async function ProductsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string; categoryId?: string; status?: string; stock?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; categoryId?: string; status?: string; stock?: string; all?: string }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
   const checker = createPermissionChecker(session?.permissions ?? []);
@@ -83,16 +87,23 @@ export default async function ProductsPage({
   const urlStatus = parseUrlStatus(sp.status);
   const status = toQueryStatus(urlStatus);
   const stock = parseStock(sp.stock);
+  // "Ver todos": every matching variant on screen instead of one page.
+  const showAll = sp.all === '1';
+  const catalogFilters = {
+    ...(q ? { q } : {}),
+    ...(categoryId ? { categoryId } : {}),
+    ...(status ? { status } : {}),
+    ...(stock ? { stock } : {}),
+  };
 
   const [result, categories, qrCodes, locationIndex] = await Promise.all([
-    listProductCatalog({
-      page,
-      pageSize: PAGE_SIZE,
-      ...(q ? { q } : {}),
-      ...(categoryId ? { categoryId } : {}),
-      ...(status ? { status } : {}),
-      ...(stock ? { stock } : {}),
-    }),
+    showAll
+      ? fetchAllPages((p, size) => listProductCatalog({ ...catalogFilters, page: p, pageSize: size })).then((all) => ({
+          data: all.data,
+          meta: { page: 1, pageSize: Math.max(all.data.length, PAGE_SIZE), total: all.total, totalPages: 1 },
+          truncated: all.truncated,
+        }))
+      : listProductCatalog({ ...catalogFilters, page, pageSize: PAGE_SIZE }).then((paged) => ({ ...paged, truncated: false })),
     canViewCategories ? listCategories({ pageSize: 100 }) : Promise.resolve(null),
     canViewQr ? listQrCodes({ targetType: 'product_variant', pageSize: 100 }).catch(() => null) : Promise.resolve(null),
     canViewInventory ? buildLocationIndex(checker.can('warehouses.view')) : Promise.resolve(null),
@@ -142,19 +153,93 @@ export default async function ProductsPage({
     (locationIndex?.locations ?? []).map((l) => [l.id, locationIndex!.warehouseName(l.id)]),
   );
 
-  function buildHref(next: { page?: number }): string {
+  /** The list URL with the current filters. `without` drops one filter (a removable chip); `status`
+   * forces the status param (`null` = back to the default). */
+  function buildHref(next: { page?: number; all?: boolean; without?: 'categoryId' | 'stock'; status?: string | null }): string {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
-    if (categoryId) params.set('categoryId', categoryId);
-    if (urlStatus) params.set('status', urlStatus);
-    if (stock) params.set('stock', stock);
+    if (categoryId && next.without !== 'categoryId') params.set('categoryId', categoryId);
+    const nextStatus = next.status === undefined ? urlStatus : next.status;
+    if (nextStatus) params.set('status', nextStatus);
+    if (stock && next.without !== 'stock') params.set('stock', stock);
+    if (next.all) params.set('all', '1');
     if (next.page && next.page > 1) params.set('page', String(next.page));
     return `/products${params.toString() ? `?${params}` : ''}`;
   }
 
+  // --- phone version: KPI tiles + active-filter chips -----------------------------------------------
+  // Stock figures are tenant-wide live reads; a caller without inventory.view (or a failed read)
+  // gets "—", never a 0.
+  const [inventorySummary, withoutStock] = canViewInventory
+    ? await Promise.all([
+        getInventorySummary({ groupBy: 'warehouse' }).catch(() => null),
+        listProductCatalog({ status: 'active', stock: 'without', pageSize: 1 }).catch(() => null),
+      ])
+    : [null, null];
+  const available = inventorySummary?.totals.availableQuantity;
+  const reserved = inventorySummary?.totals.reservedQuantity ?? 0;
+  const statusChipLabel = urlStatus === 'all' ? undefined : urlStatus === 'discontinued' ? 'Desactivados' : 'Activos';
+  const kpis: ProductsKpiData = {
+    totalModels: result.meta.total,
+    totalStock: available ?? null,
+    availablePercent: available === undefined || available + reserved <= 0 ? null : Math.round((available / (available + reserved)) * 100),
+    outOfStockCount: withoutStock ? withoutStock.meta.total : null,
+    firstOutOfStockSku: withoutStock?.data[0]?.sku,
+    modelsCaption: statusChipLabel ?? 'Todos los estados',
+  };
+  // One chip per filter of the panel (the search text lives in the search box, not here), so the
+  // "Filtro (n)" count and these chips are always the same set.
+  const chips: ProductsChip[] = [
+    ...(statusChipLabel ? [{ key: 'status', label: statusChipLabel, removeHref: buildHref({ status: urlStatus === 'discontinued' ? null : 'all' }), tone: 'accent' as const }] : []),
+    ...(categoryId ? [{ key: 'category', label: categoryNames.get(categoryId) ?? 'Categoría', removeHref: buildHref({ without: 'categoryId' }), tone: 'alt' as const }] : []),
+    ...(stock ? [{ key: 'stock', label: stock === 'with' ? 'Con stock' : 'Sin stock', removeHref: buildHref({ without: 'stock' }), tone: 'accent' as const }] : []),
+  ];
+
   // `active` — explicit or (more often) the untouched default — is not a real filter; only a
   // genuine deviation from it (`discontinued`, or explicitly `all`) should count as one.
   const hasFilter = Boolean(q || categoryId || (urlStatus && urlStatus !== 'active') || stock);
+
+  const filtersEl = (
+    <ProductsFilters
+      initial={{ q, categoryId, status: urlStatus, stock }}
+      categories={(categories?.data ?? []).map((c) => ({ id: c.id, name: c.name }))}
+      showAll={showAll}
+    />
+  );
+  const emptyEl =
+    result.data.length === 0 ? (
+      hasFilter ? (
+        <EmptyState title="Ningún producto coincide con estos filtros" description="Prueba con otra búsqueda, categoría, estado o stock." />
+      ) : (
+        <EmptyState
+          title="Aún no hay productos"
+          description="Crea tu primer producto para empezar a construir el catálogo."
+          action={canManage ? <ButtonLink href="/products/new">Nuevo producto</ButtonLink> : undefined}
+        />
+      )
+    ) : null;
+  const controlsEl = (
+    <ListViewControls
+      showingAll={showAll}
+      allHref={buildHref({ all: true })}
+      pagedHref={buildHref({})}
+      shown={result.data.length}
+      total={result.meta.total}
+      truncated={result.truncated}
+      canToggle={result.meta.total > PAGE_SIZE}
+      excelHref={buildProductCatalogExportHref(catalogFilters, 'xlsx')}
+      pdfHref={buildProductCatalogExportHref(catalogFilters, 'pdf')}
+    />
+  );
+  const paginationEl = (
+    <Pagination
+      page={result.meta.page}
+      pageSize={result.meta.pageSize}
+      total={result.meta.total}
+      totalPages={result.meta.totalPages}
+      buildHref={(nextPage) => buildHref({ page: nextPage })}
+    />
+  );
 
   return (
     <PageContainer>
@@ -164,42 +249,50 @@ export default async function ProductsPage({
         actions={canManage ? <ButtonLink href="/products/new">Nuevo producto</ButtonLink> : undefined}
       />
 
-      <ProductsFilters
-        initial={{ q, categoryId, status: urlStatus, stock }}
-        categories={(categories?.data ?? []).map((c) => ({ id: c.id, name: c.name }))}
-      />
+      {/* Phones: KPI tiles, search + filters, active-filter chips and expandable cards. */}
+      <div className="flex flex-col gap-4 md:hidden">
+        <ProductsKpis data={kpis} />
+        {filtersEl}
+        <ProductsChips chips={chips} />
+        {emptyEl ?? (
+          <>
+            <ProductsMobileList
+              rows={result.data}
+              total={result.meta.total}
+              categoryNames={categoryNames}
+              attributeLineByVariant={attributeLineByVariant}
+              qrValueByVariant={qrValueByVariant}
+              canManage={canManage}
+              canViewInventory={canViewInventory}
+              locationNames={locationNames}
+              locationWarehouseNames={locationWarehouseNames}
+            />
+            {controlsEl}
+            {paginationEl}
+          </>
+        )}
+      </div>
 
-      {result.data.length === 0 ? (
-        hasFilter ? (
-          <EmptyState title="Ningún producto coincide con estos filtros" description="Prueba con otra búsqueda, categoría, estado o stock." />
-        ) : (
-          <EmptyState
-            title="Aún no hay productos"
-            description="Crea tu primer producto para empezar a construir el catálogo."
-            action={canManage ? <ButtonLink href="/products/new">Nuevo producto</ButtonLink> : undefined}
-          />
-        )
-      ) : (
-        <>
-          <ProductsCatalogTable
-          attributeLineByVariant={attributeLineByVariant}
-            rows={result.data}
-            categoryNames={categoryNames}
-            qrValueByVariant={qrValueByVariant}
-            canManage={canManage}
-            canViewInventory={canViewInventory}
-            locationNames={locationNames}
-            locationWarehouseNames={locationWarehouseNames}
-          />
-          <Pagination
-            page={result.meta.page}
-            pageSize={result.meta.pageSize}
-            total={result.meta.total}
-            totalPages={result.meta.totalPages}
-            buildHref={(nextPage) => buildHref({ page: nextPage })}
-          />
-        </>
-      )}
+      {/* Tablets and desktops keep the table (`md:contents` = no wrapper box, same page rhythm). */}
+      <div className="hidden md:contents">
+        {filtersEl}
+        {emptyEl ?? (
+          <>
+            {controlsEl}
+            <ProductsCatalogTable
+              attributeLineByVariant={attributeLineByVariant}
+              rows={result.data}
+              categoryNames={categoryNames}
+              qrValueByVariant={qrValueByVariant}
+              canManage={canManage}
+              canViewInventory={canViewInventory}
+              locationNames={locationNames}
+              locationWarehouseNames={locationWarehouseNames}
+            />
+            {paginationEl}
+          </>
+        )}
+      </div>
     </PageContainer>
   );
 }

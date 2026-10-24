@@ -34,27 +34,27 @@ describe('UsersFilters', () => {
 
     vi.advanceTimersByTime(1);
     expect(pushMock).toHaveBeenCalledTimes(1);
-    expect(pushMock).toHaveBeenCalledWith('/users?q=juan');
+    expect(pushMock).toHaveBeenCalledWith('/users?q=juan', { scroll: false });
   });
 
   it('finds a partial match regardless of case — the request just carries whatever was typed, the server matches it', () => {
     render(<UsersFilters initial={{}} />);
     fireEvent.change(screen.getByLabelText('Buscar usuarios por nombre'), { target: { value: 'JuAn' } });
     vi.advanceTimersByTime(400);
-    expect(pushMock).toHaveBeenCalledWith('/users?q=JuAn');
+    expect(pushMock).toHaveBeenCalledWith('/users?q=JuAn', { scroll: false });
   });
 
   it('trims the search box and omits q entirely when it is blank', () => {
     render(<UsersFilters initial={{}} />);
     fireEvent.change(screen.getByLabelText('Buscar usuarios por nombre'), { target: { value: '   ' } });
     vi.advanceTimersByTime(400);
-    expect(pushMock).toHaveBeenCalledWith('/users');
+    expect(pushMock).toHaveBeenCalledWith('/users', { scroll: false });
   });
 
   it('clearing an existing search navigates back to the unfiltered list', () => {
     render(<UsersFilters initial={{ q: 'juan' }} />);
     fireEvent.change(screen.getByLabelText('Buscar usuarios por nombre'), { target: { value: '' } });
     vi.advanceTimersByTime(400);
-    expect(pushMock).toHaveBeenCalledWith('/users');
+    expect(pushMock).toHaveBeenCalledWith('/users', { scroll: false });
   });
 });

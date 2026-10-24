@@ -44,7 +44,19 @@ function TextFilter({
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // The stored value changed from outside (reset, other navigation): the draft follows it.
-  useEffect(() => setDraft(value), [value]);
+  // What this box last sent. The server answers later; if typing continued meanwhile, that older
+  // value must not overwrite the box — only a value this box did not send (reset, back button) does.
+  const sent = useRef(value);
+  useEffect(() => {
+    if (value !== sent.current) {
+      sent.current = value;
+      setDraft(value);
+    }
+  }, [value]);
+  function commit(next: string): void {
+    sent.current = next;
+    onCommit(next);
+  }
   useEffect(() => () => clearTimeout(timer.current), []);
 
   return (
@@ -58,12 +70,12 @@ function TextFilter({
         const next = e.target.value;
         setDraft(next);
         clearTimeout(timer.current);
-        timer.current = setTimeout(() => onCommit(next.trim()), TEXT_DEBOUNCE_MS);
+        timer.current = setTimeout(() => commit(next.trim()), TEXT_DEBOUNCE_MS);
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
           clearTimeout(timer.current);
-          onCommit((e.target as HTMLInputElement).value.trim());
+          commit((e.target as HTMLInputElement).value.trim());
         }
       }}
     />
@@ -133,7 +145,7 @@ export function SalesTableHead({
     for (const [key, value] of Object.entries({ ...params, ...patch })) {
       if (value && key !== 'page') next.set(key, value);
     }
-    router.push(`/sales?${next}`);
+    router.push(`/sales?${next}`, { scroll: false });
   }
 
   function toggleSort(column: SalesSortColumn): void {
@@ -198,7 +210,14 @@ export function SalesTableHead({
           <SelectFilter label="almacén" value={text('locationId')} options={locationOptions} allLabel="Todos" onChange={(v) => navigate({ locationId: v || undefined })} />
         </TH>
         <TH className="!px-2 pb-2">
-          <SelectFilter label="estado" value={text('status')} options={statusOptions} allLabel="Todos" onChange={(v) => navigate({ status: v || undefined })} />
+          <SelectFilter
+            label="estado"
+            value={text('status') === 'all' ? '' : text('status')}
+            options={statusOptions}
+            allLabel="Todos"
+            // "Todos" is an explicit `all`: no param at all would mean the default (Confirmado).
+            onChange={(v) => navigate({ status: v || 'all' })}
+          />
         </TH>
         <TH className="!px-2 pb-2">
           <SelectFilter label="notificación" value={text('notificationStatus')} options={notificationOptions} allLabel="Todas" onChange={(v) => navigate({ notificationStatus: v || undefined })} />

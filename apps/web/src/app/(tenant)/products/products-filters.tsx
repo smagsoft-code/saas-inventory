@@ -33,9 +33,12 @@ const SEARCH_DEBOUNCE_MS = 350;
 export function ProductsFilters({
   initial,
   categories,
+  showAll = false,
 }: {
   initial: ProductsFilterValues;
   categories: CategoryOption[];
+  /** The "Ver todos" view survives a search/filter change. */
+  showAll?: boolean;
 }): React.JSX.Element {
   const router = useRouter();
   const [q, setQ] = useState(initial.q ?? '');
@@ -49,6 +52,12 @@ export function ProductsFilters({
   const panelRef = useRef<HTMLDivElement>(null);
   const skipNextDebounce = useRef(true);
 
+  // The URL is the truth for the panel: when a filter changes from outside (an active-filter chip's ×,
+  // the browser back button) the controls follow it, so the panel and the count never disagree.
+  useEffect(() => setCategoryId(initial.categoryId ?? ''), [initial.categoryId]);
+  useEffect(() => setStatus(initial.status ?? ''), [initial.status]);
+  useEffect(() => setStock(initial.stock ?? ''), [initial.stock]);
+
   function apply(next: ProductsFilterValues = {}): void {
     const params = new URLSearchParams();
     const nextQ = 'q' in next ? next.q : q;
@@ -59,7 +68,8 @@ export function ProductsFilters({
     if (nextCategoryId) params.set('categoryId', nextCategoryId);
     if (nextStatus) params.set('status', nextStatus);
     if (nextStock) params.set('stock', nextStock);
-    router.push(`/products${params.toString() ? `?${params}` : ''}`);
+    if (showAll) params.set('all', '1');
+    router.push(`/products${params.toString() ? `?${params}` : ''}`, { scroll: false });
   }
 
   // Live search: debounced so a pause in typing (not every keystroke) triggers the real navigation.
@@ -98,9 +108,10 @@ export function ProductsFilters({
     apply({ categoryId: undefined, status: undefined, stock: undefined });
   }
 
-  // `status === 'active'` is the default view (descontinuadas hidden), not a filter the owner
-  // chose — only a real deviation from it (`discontinued`, or explicitly `all`) counts as one.
-  const activeFilterCount = [categoryId, status !== 'active' ? status : '', stock].filter(Boolean).length;
+  // The count is exactly the filters the page applies (the same ones its chips show), taken from the
+  // URL values the server rendered with — never from half-edited local state: Estado counts unless it
+  // is 'Todos', plus Categoría and Stock when set. (The search text is the search box, not a filter.)
+  const activeFilterCount = [initial.categoryId, initial.status === 'all' ? '' : 'active', initial.stock].filter(Boolean).length;
   const hasFilter = activeFilterCount > 0;
 
   return (

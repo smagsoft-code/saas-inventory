@@ -38,6 +38,15 @@ export async function listTransfers(query: ListTransfersQuery = {}): Promise<Pag
   return serverApiFetch<Paginated<Transfer>>('/api/v1/inventory/transfers', { query: params });
 }
 
+/** Same-origin Excel/PDF download of the filtered transfer list — the whole filtered set. */
+export function buildTransfersExportHref(query: Pick<ListTransfersQuery, 'status' | 'sourceLocationId' | 'destinationLocationId'>, format: 'xlsx' | 'pdf'): string {
+  const params = new URLSearchParams({ format });
+  if (query.status) params.set('status', query.status);
+  if (query.sourceLocationId) params.set('sourceLocationId', query.sourceLocationId);
+  if (query.destinationLocationId) params.set('destinationLocationId', query.destinationLocationId);
+  return `/api/v1/inventory/transfers/export?${params}`;
+}
+
 export async function getTransfer(id: string): Promise<Transfer> {
   return serverApiFetch<Transfer>(`/api/v1/inventory/transfers/${id}`);
 }

@@ -1,5 +1,7 @@
 import type { KardexLocationBalance } from '../../../lib/types/kardex';
 import { EmptyState, Table, TBody, TD, TH, THead, TR } from '../../../components/ui';
+import { useIsMobile } from '../../../lib/use-is-mobile';
+import { StockByLocationMobile } from './kardex-mobile';
 
 /**
  * "Stock por sucursal" (UI-UX-SPEC-001 §16) — always the LAST section on the page, never before the
@@ -7,8 +9,13 @@ import { EmptyState, Table, TBody, TD, TH, THead, TR } from '../../../components
  * whichever single location the Kardex above is showing.
  */
 export function KardexStockByLocation({ rows }: { rows: KardexLocationBalance[] }): React.JSX.Element {
+  const isMobile = useIsMobile();
   if (rows.length === 0) {
     return <EmptyState title="Sin existencias registradas en ninguna sucursal" />;
+  }
+
+  if (isMobile) {
+    return <StockByLocationMobile rows={rows} />;
   }
 
   return (

@@ -105,4 +105,20 @@ describe('SalesTableHead', () => {
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(lastUrl().searchParams.has('total')).toBe(false);
   });
+
+  it('Estado shows the confirmed default selected, and "Todos" is sent as an explicit status=all', () => {
+    renderHead({ dateFrom: '2026-10-01', status: 'confirmed' });
+    const select = screen.getByLabelText('Filtrar por estado') as HTMLSelectElement;
+    expect(select.value).toBe('confirmed');
+    fireEvent.change(select, { target: { value: '' } });
+    expect(lastUrl().searchParams.get('status')).toBe('all'); // never "no param" — that means the default
+  });
+
+  it('with status=all the select shows "Todos"; picking a status sends it', () => {
+    renderHead({ dateFrom: '2026-10-01', status: 'all' });
+    const select = screen.getByLabelText('Filtrar por estado') as HTMLSelectElement;
+    expect(select.value).toBe('');
+    fireEvent.change(select, { target: { value: 'pending' } });
+    expect(lastUrl().searchParams.get('status')).toBe('pending');
+  });
 });

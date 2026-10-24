@@ -226,6 +226,11 @@ export function BulkStockForm({
           />
         </Field>
 
+        {/* Above the file picker: grab the template first, then fill it and pick it below. */}
+        <a href={`${BASE_PATH}/template`} className={buttonClasses('success', 'md', 'w-fit')}>
+          Descargar plantilla (.xlsx)
+        </a>
+
         <Field
           label="Archivo de Excel"
           required
@@ -236,7 +241,7 @@ export function BulkStockForm({
             ref={fileInput}
             type="file"
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium"
+            className="block w-full text-sm text-slate-700 file:mr-3 file:cursor-pointer file:rounded-md file:border-0 file:bg-slate-900 file:px-3 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-slate-800"
             onChange={(e) => {
               setFile(e.target.files?.[0] ?? null);
               payloadChanged();
@@ -248,9 +253,6 @@ export function BulkStockForm({
           <Button type="submit" loading={checking} className="w-fit">
             Revisar archivo
           </Button>
-          <a href={`${BASE_PATH}/template`} className={buttonClasses('ghost')}>
-            Descargar plantilla (.xlsx)
-          </a>
         </div>
       </form>
 

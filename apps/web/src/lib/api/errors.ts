@@ -60,6 +60,19 @@ export function isNotFound(error: unknown): error is ApiError {
 }
 
 /**
+ * The few backend validation messages a user can actually hit on the credential fields, in Spanish
+ * (the rest of the backend text still passes through untouched — GAP-BACKEND-MESSAGES-EN).
+ */
+function translateValidationMessage(message: string): string {
+  const password = /password must be longer than or equal to (\d+) characters/i.exec(message);
+  if (password) return `La contraseña debe tener al menos ${password[1]} caracteres.`;
+  const login = /email must be longer than or equal to (\d+) characters/i.exec(message);
+  if (login) return `El usuario debe tener al menos ${login[1]} caracteres.`;
+  if (/password should not be empty/i.test(message)) return 'Ingresa una contraseña.';
+  return message;
+}
+
+/**
  * A short, user-facing sentence for an error — never a stack trace or raw backend message for a
  * 5xx. For 4xx the backend's own message is safe and specific (it is written for end users), so it
  * is preferred when present; the status-based text is the fallback.
@@ -77,7 +90,7 @@ export function httpErrorMessage(error: unknown): string {
       // OUI-001 / GAP-BACKEND-MESSAGES-EN: error.message viene del backend (apps/api), que hoy
       // devuelve sus mensajes en inglés — traducir esa cadena está fuera de alcance de esta fase
       // (no se toca apps/api). El fallback (sin mensaje del backend) sí está en español.
-      return error.message || 'Parte de la información ingresada no es válida.';
+      return translateValidationMessage(error.message) || 'Parte de la información ingresada no es válida.';
     case 401:
       return 'Tu sesión expiró. Inicia sesión de nuevo.';
     case 403:

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../lib/api/client';
-import { ApiError } from '../../../lib/api/errors';
+import { registerErrorMessage } from '../../../lib/auth/auth-errors';
 import { Button } from '../../../components/ui/button';
 import { Field } from '../../../components/ui/field';
 import { Input } from '../../../components/ui/input';
@@ -33,9 +33,7 @@ export default function RegisterPage(): React.JSX.Element {
       router.replace('/');
       router.refresh();
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : 'No se pudo crear tu cuenta. Inténtalo de nuevo.',
-      );
+      setError(registerErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
@@ -78,12 +76,11 @@ export default function RegisterPage(): React.JSX.Element {
             autoComplete="email"
           />
         </Field>
-        <Field label="Contraseña" required help="Mínimo 10 caracteres.">
+        <Field label="Contraseña" required>
           <Input
             name="password"
             type="password"
             required
-            minLength={10}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="new-password"

@@ -50,6 +50,8 @@ const OPTS = {
   notificationOptions: [{ value: 'none', label: 'Sin notificación' }, { value: 'pending', label: 'En cola' }],
 };
 
+const baseProps = { orders: ORDERS, count: 2, sort: 'createdAt', dir: 'desc' as const, ...OPTS };
+
 function renderList(params: Record<string, string> = { dateFrom: '2026-10-01' }, orders = ORDERS, count = orders.length) {
   return render(<SalesMobileList orders={orders} count={count} params={params} sort="createdAt" dir="desc" {...OPTS} />);
 }
@@ -108,7 +110,10 @@ describe('SalesMobileList', () => {
 
   it('shows active filters as chips with their readable value, and × removes just that one', () => {
     renderList({ dateFrom: '2026-10-01', documentType: 'invoice', status: 'confirmed', customerName: 'ana' });
-    expect(screen.getByRole('button', { name: /Filtros/ })).toHaveTextContent('3'); // 3 active filters
+    // Documento + Estado = 2. customerName is the search box's job now (not a panel filter), so it
+    // neither counts nor shows as a chip.
+    expect(screen.getByRole('button', { name: /Filtros/ })).toHaveTextContent('2');
+    expect(screen.queryByText('Cliente:')).not.toBeInTheDocument();
     const chips = screen.getByLabelText('Filtros activos');
     expect(within(chips).getByText('Factura')).toBeInTheDocument();
     expect(within(chips).getByText('Confirmado')).toBeInTheDocument();
@@ -124,11 +129,11 @@ describe('SalesMobileList', () => {
     fireEvent.click(screen.getByRole('button', { name: /Filtros/ }));
     const dialog = screen.getByRole('dialog', { name: 'Filtros' });
     fireEvent.change(within(dialog).getByLabelText('Estado'), { target: { value: 'pending' } });
-    fireEvent.change(within(dialog).getByLabelText('Cliente'), { target: { value: 'nadia' } });
+    fireEvent.change(within(dialog).getByLabelText('Total'), { target: { value: '100' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Aplicar' }));
     const url = lastUrl();
     expect(url.searchParams.get('status')).toBe('pending');
-    expect(url.searchParams.get('customerName')).toBe('nadia');
+    expect(url.searchParams.get('total')).toBe('100');
     expect(url.searchParams.has('page')).toBe(false);
   });
 
@@ -157,5 +162,77 @@ describe('SalesMobileList', () => {
     renderList({ dateFrom: '2026-10-01', status: 'cancelled' }, [], 0);
     expect(screen.getByText('0 registros encontrados')).toBeInTheDocument();
     expect(screen.getByText('Ningún pedido coincide con estos filtros.')).toBeInTheDocument();
+  });
+
+  it('the Filtros panel has no Pedido / Cliente / Vendedor fields — the search box already covers them', () => {
+    renderList({ dateFrom: '2026-10-01' });
+    fireEvent.click(screen.getByRole('button', { name: /Filtros/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Filtros' });
+    for (const label of ['Pedido', 'Cliente', 'Vendedor']) {
+      expect(within(dialog).queryByLabelText(label)).not.toBeInTheDocument();
+    }
+    for (const label of ['Total', 'Documento', 'Almacén', 'Estado', 'Notificación']) {
+      expect(within(dialog).getByLabelText(label)).toBeInTheDocument();
+    }
+  });
+
+  it('the count follows the URL: removing a chip drops it from the button', () => {
+    const { rerender } = renderList({ dateFrom: '2026-10-01', documentType: 'invoice', status: 'confirmed' });
+    expect(screen.getByRole('button', { name: /Filtros/ })).toHaveTextContent('2');
+    rerender(<SalesMobileList {...baseProps} params={{ dateFrom: '2026-10-01', status: 'confirmed' }} />);
+    expect(screen.getByRole('button', { name: /Filtros/ })).toHaveTextContent('1');
+    rerender(<SalesMobileList {...baseProps} params={{ dateFrom: '2026-10-01' }} />);
+    expect(screen.getByRole('button', { name: /Filtros/ })).not.toHaveTextContent(/\d/);
+  });
+
+  it('navigations keep the scroll position (scroll: false) instead of jumping to the top', () => {
+    renderList({ dateFrom: '2026-10-01', documentType: 'invoice' });
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar filtro Documento' }));
+    expect(pushMock.mock.calls.at(-1)?.[1]).toEqual({ scroll: false });
+  });
+
+  it('an older server answer never overwrites what the user has typed since', () => {
+    vi.useFakeTimers();
+    const { rerender } = renderList({ dateFrom: '2026-10-01' });
+    const box = screen.getByLabelText('Buscar por pedido, cliente o vendedor') as HTMLInputElement;
+    fireEvent.change(box, { target: { value: 'ab' } });
+    vi.advanceTimersByTime(500); // "ab" is sent to the URL
+    fireEvent.change(box, { target: { value: 'abc' } }); // the user keeps typing
+    // The server now answers for "ab" — the box must keep "abc".
+    rerender(<SalesMobileList {...baseProps} params={{ dateFrom: '2026-10-01', q: 'ab' }} />);
+    expect(box.value).toBe('abc');
+    // A q this box never sent (back button, a link) is adopted.
+    rerender(<SalesMobileList {...baseProps} params={{ dateFrom: '2026-10-01', q: 'otra' }} />);
+    expect(box.value).toBe('otra');
+  });
+
+  it('the default Estado (Confirmado) is a visible, counted chip; removing it asks for Todos explicitly', () => {
+    renderList({ dateFrom: '2026-10-01', status: 'confirmed' });
+    expect(screen.getByRole('button', { name: /Filtros/ })).toHaveTextContent('1');
+    expect(within(screen.getByLabelText('Filtros activos')).getByText('Confirmado')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar filtro Estado' }));
+    expect(lastUrl().searchParams.get('status')).toBe('all');
+  });
+
+  it('with status=all there is no Estado chip and nothing is counted', () => {
+    renderList({ dateFrom: '2026-10-01', status: 'all' });
+    expect(screen.queryByLabelText('Filtros activos')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Filtros/ })).not.toHaveTextContent(/\d/);
+  });
+
+  it('the panel shows Todos for status=all, and applying "Todos" sends status=all (not an absent param)', () => {
+    renderList({ dateFrom: '2026-10-01', status: 'all' });
+    fireEvent.click(screen.getByRole('button', { name: /Filtros/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Filtros' });
+    expect((within(dialog).getByLabelText('Estado') as HTMLSelectElement).value).toBe('');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Aplicar' }));
+    expect(lastUrl().searchParams.get('status')).toBe('all');
+  });
+
+  it('"Limpiar" drops the panel filters, returning Estado to its default (no status param)', () => {
+    renderList({ dateFrom: '2026-10-01', status: 'pending', total: '100' });
+    fireEvent.click(screen.getByRole('button', { name: /Filtros/ }));
+    fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Limpiar' }));
+    expect(lastUrl().searchParams.has('status')).toBe(false);
   });
 });

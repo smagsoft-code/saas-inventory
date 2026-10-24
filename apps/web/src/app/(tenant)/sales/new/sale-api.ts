@@ -10,6 +10,8 @@ export interface ProductSearchResult {
   name: string;
   /** The variant's code (SKU). */
   sku: string;
+  /** The variant's maximum price (never permission-gated). */
+  maxPrice: number;
 }
 
 /**
@@ -21,7 +23,7 @@ export interface ProductSearchResult {
  * results; this is a picker, not the catalog list.
  */
 export async function searchProducts(q: string, locationId?: string): Promise<ProductSearchResult[]> {
-  const page = await apiFetch<{ data: { productId: string; productName: string; variantId: string; sku: string }[] }>(
+  const page = await apiFetch<{ data: { productId: string; productName: string; variantId: string; sku: string; maxPrice: number }[] }>(
     '/api/v1/reports/product-catalog',
     {
       query: {
@@ -34,7 +36,7 @@ export async function searchProducts(q: string, locationId?: string): Promise<Pr
       },
     },
   );
-  return page.data.map((row) => ({ id: row.productId, variantId: row.variantId, name: row.productName, sku: row.sku }));
+  return page.data.map((row) => ({ id: row.productId, variantId: row.variantId, name: row.productName, sku: row.sku, maxPrice: row.maxPrice }));
 }
 
 /** `GET /products/:id/variants` — no tenant-wide variant list exists (`GAP-VARIANT-LIST`). */

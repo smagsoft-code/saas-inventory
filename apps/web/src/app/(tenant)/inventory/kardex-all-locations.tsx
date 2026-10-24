@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { getKardex } from '../../../lib/inventory/kardex';
 import type { KardexResponse } from '../../../lib/types/kardex';
 import { ErrorState, Spinner } from '../../../components/ui';
+import { useIsMobile } from '../../../lib/use-is-mobile';
+import { AllLocationsMobileList } from './kardex-mobile';
 
 export interface AllLocationsOption {
   id: string;
@@ -21,6 +23,11 @@ interface LocationTotals {
 function money(value: number | undefined): string {
   return value === undefined ? '—' : value.toFixed(2);
 }
+
+// Same tiles as the selected-product card, always one row.
+const STAT_BOX = 'min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3';
+const STAT_LABEL = 'truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500';
+const STAT_VALUE = 'mt-1 truncate font-mono text-lg font-bold tabular-nums text-slate-900 md:text-xl';
 
 const TH_CLASS = 'px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-600';
 
@@ -50,6 +57,7 @@ export function KardexAllLocations({
   const [rows, setRows] = useState<LocationTotals[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [open, setOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     let cancelled = false;
@@ -96,20 +104,20 @@ export function KardexAllLocations({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap gap-6" data-testid="all-locations-totals">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-slate-500">Stock disponible</p>
-          <p className="text-2xl font-semibold tabular-nums text-slate-900">{totalUnits}</p>
+      <div className={`grid gap-2 ${showCost ? 'grid-cols-3' : 'max-w-[12rem] grid-cols-1'}`} data-testid="all-locations-totals">
+        <div className={STAT_BOX}>
+          <p className={STAT_LABEL}>Stock disponible</p>
+          <p className={STAT_VALUE}>{totalUnits}</p>
         </div>
         {showCost && (
           <>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Costo promedio</p>
-              <p className="text-2xl font-semibold tabular-nums text-slate-900">${money(averageCost)}</p>
+            <div className={STAT_BOX}>
+              <p className={STAT_LABEL}>Costo promedio</p>
+              <p className={STAT_VALUE}>${money(averageCost)}</p>
             </div>
-            <div>
-              <p className="text-xs uppercase tracking-wide text-slate-500">Costo total</p>
-              <p className="text-2xl font-semibold tabular-nums text-slate-900">${money(totalValue)}</p>
+            <div className={STAT_BOX}>
+              <p className={STAT_LABEL}>Costo total</p>
+              <p className={STAT_VALUE}>${money(totalValue)}</p>
             </div>
           </>
         )}
@@ -118,7 +126,7 @@ export function KardexAllLocations({
       {rows.length > 1 && (
         // Same secondary-table treatment as the products screen's "Existencias": indented under the
         // summary with a left rule, small type and a light header.
-        <div className="ml-6 border-l-2 border-slate-300 pl-4">
+        <div className={isMobile ? '' : 'ml-6 border-l-2 border-slate-300 pl-4'}>
           <button
             type="button"
             aria-expanded={open}
@@ -137,7 +145,8 @@ export function KardexAllLocations({
             </svg>
             Existencias por sucursal y almacén ({rows.length})
           </button>
-          {open && (
+          {open && isMobile && <AllLocationsMobileList rows={rows} showCost={showCost} />}
+          {open && !isMobile && (
             <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
               <table className="w-full border-collapse text-xs">
                 <thead className="bg-slate-100 text-left">

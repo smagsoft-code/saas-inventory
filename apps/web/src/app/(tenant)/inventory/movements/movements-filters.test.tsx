@@ -45,7 +45,7 @@ describe('MovementsFilters', () => {
   it('sends occurredFrom as the picked date at 00:00:00.000Z', () => {
     render(<MovementsFilters initial={{}} locations={LOCATIONS} />);
     fireEvent.change(screen.getByLabelText('Desde'), { target: { value: '2026-07-01' } });
-    expect(pushMock).toHaveBeenCalledWith('/inventory/movements?occurredFrom=2026-07-01T00%3A00%3A00.000Z');
+    expect(pushMock).toHaveBeenCalledWith('/inventory/movements?occurredFrom=2026-07-01T00%3A00%3A00.000Z', { scroll: false });
   });
 
   it('sends occurredTo as the START of the NEXT day, so the picked end date is fully included ([occurredFrom, occurredTo))', () => {

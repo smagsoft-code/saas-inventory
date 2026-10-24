@@ -4,7 +4,9 @@ import type { ReactNode } from 'react';
 import type { NavSection } from '../../lib/navigation';
 import type { Session } from '../../lib/types/session';
 import { SessionProvider } from '../../lib/auth/session-context';
+import { CompanyBrand } from './company-brand';
 import { ShellLayout } from './shell-layout';
+import { MobileTabBar } from './mobile-tab-bar';
 import { SidebarNav } from './sidebar-nav';
 import { SupportModeBanner } from './support-mode-banner';
 import { UserMenu } from './user-menu';
@@ -18,22 +20,18 @@ import { SessionExpiryListener } from './session-expiry-listener';
 export function AppShell({
   session,
   tenantName,
+  logoVersion,
   navSections,
   children,
 }: {
   session: Session;
   tenantName: string;
+  /** The company logo's last change (ms) — present only when the company has uploaded one. */
+  logoVersion?: number | undefined;
   navSections: NavSection[];
   children: ReactNode;
 }): React.JSX.Element {
-  const brand = (
-    <div className="flex h-14 items-center gap-3 px-[1.125rem] text-sm font-semibold text-slate-900">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-slate-900 text-xs font-bold text-white">
-        SI
-      </span>
-      <span className="nav-label whitespace-nowrap">SaaS Inventory</span>
-    </div>
-  );
+  const brand = <CompanyBrand name={tenantName} logoVersion={logoVersion} />;
 
   return (
     <SessionProvider session={session}>
@@ -43,6 +41,7 @@ export function AppShell({
         nav={<SidebarNav sections={navSections} />}
         headerLeft={<span className="hidden text-sm text-slate-500 sm:block">{tenantName}</span>}
         headerRight={<UserMenu tenantName={tenantName} />}
+        bottomNav={<MobileTabBar sections={navSections} />}
         banner={session.supportSession ? <SupportModeBanner session={session.supportSession} /> : undefined}
       >
         {children}

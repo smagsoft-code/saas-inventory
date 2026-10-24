@@ -19,7 +19,9 @@ import { Alert } from '../../../../components/ui/alert';
 import { Button } from '../../../../components/ui/button';
 import { Input } from '../../../../components/ui/input';
 import { Modal } from '../../../../components/ui/modal';
+import { ProductPreviewModal } from '../../products/product-preview-modal';
 import { CreateCustomerModal } from './create-customer-modal';
+import { EditCustomerModal } from './edit-customer-modal';
 import {
   getStockAvailable,
   getVariant,
@@ -60,6 +62,7 @@ export function ProductCartModal({
   cart,
   locationLabel,
   canViewProducts,
+  canManageProducts = false,
   onCartUpdated,
   customerLabel,
   selectedCustomer,
@@ -76,6 +79,8 @@ export function ProductCartModal({
   /** "Sucursal · Almacén" the sale is made from — shown next to the window title. */
   locationLabel?: string;
   canViewProducts: boolean;
+  /** Wording of the preview's link only ("Editar producto" vs "Ver producto"). */
+  canManageProducts?: boolean;
   onCartUpdated: (cart: Cart) => void;
   customerLabel: string | null;
   selectedCustomer: Customer | null;
@@ -97,6 +102,7 @@ export function ProductCartModal({
   const [customerSearching, setCustomerSearching] = useState(false);
   const [customerBusy, setCustomerBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [createPrefillTaxId, setCreatePrefillTaxId] = useState('');
   const skipNextCustomerDebounce = useRef(true);
 
@@ -423,6 +429,20 @@ export function ProductCartModal({
           {cart.customerId && !customerPanelOpen ? (
             <div className="flex items-center justify-between gap-2">
               <p className="text-sm text-slate-700">{customerLabel ?? 'Seleccionado'}</p>
+              {canManageCustomers && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label="Editar cliente"
+                  onClick={() => setEditOpen(true)}
+                  className="ml-auto px-2"
+                >
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.06 2.06 0 0 1 2.915 2.914L8.5 18.678l-4 1 1-4Z" />
+                  </svg>
+                </Button>
+              )}
               {canSearchCustomers && (
                 <Button type="button" variant="ghost" size="sm" onClick={() => setCustomerPanelOpen(true)}>
                   Cambiar
@@ -565,7 +585,9 @@ export function ProductCartModal({
                         >
                           <span className="flex min-w-0 flex-col">
                             <span className="truncate text-xs font-medium text-slate-900">{product.name}</span>
-                            <span className="text-[11px] text-slate-500">{product.sku}</span>
+                            <span className="text-[11px] text-slate-500">
+                              {product.sku} · Precio máx: ${product.maxPrice.toFixed(2)}
+                            </span>
                           </span>
                           {variantsLoading === product.id ? (
                             <span className="text-xs text-slate-500">Cargando…</span>
@@ -596,6 +618,9 @@ export function ProductCartModal({
                                     </span>
                                     <span className="block text-xs text-slate-400">
                                       {outOfStock ? 'Sin stock disponible' : `Stock disponible: ${stock}`}
+                                    </span>
+                                    <span className="block text-xs text-slate-400">
+                                      Precio máx: ${variant.maxPrice.toFixed(2)}
                                     </span>
                                   </span>
                                   <Button
@@ -654,6 +679,10 @@ export function ProductCartModal({
                   item={item}
                   busy={busy}
                   thumbnailUrl={thumbnailByProductId[item.productId] ?? null}
+                  // Same click-the-photo preview as /products — only for a caller who can read products
+                  // (the preview reads the product, its variant and attributes).
+                  previewable={canViewProducts}
+                  canManageProducts={canManageProducts}
                   onIncrement={() => void setLineQuantity(item, item.quantity + 1)}
                   onDecrement={() => void setLineQuantity(item, item.quantity - 1)}
                   onPriceCommit={(value) => void setLinePrice(item, value)}
@@ -671,6 +700,15 @@ export function ProductCartModal({
         </div>
       </div>
 
+      {cart.customerId && (
+        <EditCustomerModal
+          open={editOpen}
+          customerId={cart.customerId}
+          customer={selectedCustomer}
+          onClose={() => setEditOpen(false)}
+          onSaved={(customer) => void onSelectCustomer(customer)}
+        />
+      )}
       <CreateCustomerModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
@@ -685,6 +723,8 @@ function CartLineRow({
   item,
   busy,
   thumbnailUrl,
+  previewable,
+  canManageProducts,
   onIncrement,
   onDecrement,
   onPriceCommit,
@@ -693,6 +733,8 @@ function CartLineRow({
   item: CartItem;
   busy: string | null;
   thumbnailUrl: string | null;
+  previewable: boolean;
+  canManageProducts: boolean;
   onIncrement: () => void;
   onDecrement: () => void;
   onPriceCommit: (value: string) => void;
@@ -703,6 +745,17 @@ function CartLineRow({
   // `basePrice` is never permission-gated, so this shows for every caller, not just one with
   // `pricing.floor.view`.
   const belowBase = item.unitPrice < item.basePrice;
+  const thumb = thumbnailUrl ? (
+    <img src={thumbnailUrl} alt="" className="h-9 w-9 shrink-0 rounded-md border border-slate-200 bg-white object-contain" />
+  ) : (
+    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-300">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5" aria-hidden="true">
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <path d="M21 15l-5-5L5 21" />
+      </svg>
+    </div>
+  );
 
   return (
     <li
@@ -725,16 +778,20 @@ function CartLineRow({
       {/* Always a single row, even on mobile (owner requirement) — compact sizing throughout
        * (smaller thumbnail/stepper/price/remove, truncated text) is what makes that fit at ~390px. */}
       <div className="flex items-center gap-2">
-        {thumbnailUrl ? (
-          <img src={thumbnailUrl} alt="" className="h-9 w-9 shrink-0 rounded-md border border-slate-200 object-cover" />
+        {previewable ? (
+          <ProductPreviewModal
+            productId={item.productId}
+            variantId={item.productVariantId}
+            productName={item.productName}
+            sku={item.sku}
+            thumbnailUrl={thumbnailUrl ?? undefined}
+            detailHref={`/products/${item.productId}/variants/${item.productVariantId}`}
+            canManage={canManageProducts}
+          >
+            {thumb}
+          </ProductPreviewModal>
         ) : (
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-300">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5" aria-hidden="true">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <path d="M21 15l-5-5L5 21" />
-            </svg>
-          </div>
+          thumb
         )}
 
         <div className="min-w-0 flex-1">

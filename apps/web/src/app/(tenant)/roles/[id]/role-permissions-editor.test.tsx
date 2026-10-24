@@ -42,7 +42,7 @@ describe('RolePermissionsEditor', () => {
     const save = screen.getByRole('button', { name: /guardar permisos/i });
     expect(save).toBeDisabled();
 
-    fireEvent.click(screen.getByText('Crear pedidos'));
+    fireEvent.click(screen.getByLabelText('Crear y confirmar ventas'));
     expect(save).toBeEnabled();
     fireEvent.click(save);
 
@@ -57,7 +57,7 @@ describe('RolePermissionsEditor', () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(403, 'ROLE_SELF_PERMISSION_ESCALATION', 'nope', undefined));
     render(<RolePermissionsEditor role={ROLE} catalog={CATALOG} />);
 
-    fireEvent.click(screen.getByText('Crear pedidos'));
+    fireEvent.click(screen.getByLabelText('Crear y confirmar ventas'));
     fireEvent.click(screen.getByRole('button', { name: /guardar permisos/i }));
 
     expect(await screen.findByText(/no puedes modificar los permisos de un rol que tú mismo tienes asignado/i)).toBeInTheDocument();

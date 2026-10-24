@@ -5,6 +5,7 @@ import { apiFetch } from '../../../lib/api/client';
 import { buildKardexExportHref, getKardex } from '../../../lib/inventory/kardex';
 import type { KardexResponse } from '../../../lib/types/kardex';
 import { Button, Card, CardBody, EmptyState, ErrorState, Field, Input, Select, Spinner } from '../../../components/ui';
+import { ExportLinks } from '../../../components/export-icons';
 import { KardexAllLocations } from './kardex-all-locations';
 import { KardexAllMovements } from './kardex-all-movements';
 import { KardexStockByLocation } from './kardex-stock-by-location';
@@ -35,6 +36,11 @@ export interface LocationOption {
 /** Sentinel value of the Almacén select: totals across every location holding the variant. */
 const ALL_LOCATIONS = '__all__';
 
+// Stock / Costo promedio / Valor tiles — same tile style as Inicio and Productos, always one row.
+const STAT_BOX = 'min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3';
+const STAT_LABEL = 'truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500';
+const STAT_VALUE = 'mt-1 truncate font-mono text-lg font-bold tabular-nums text-slate-900 md:text-xl';
+
 const SEARCH_DEBOUNCE_MS = 250;
 const PICKER_PAGE_SIZE = 10;
 
@@ -46,27 +52,6 @@ function nextDayStartUtc(dateOnly: string): string {
 
 function money(value: number | undefined): string {
   return value === undefined ? '—' : value.toFixed(2);
-}
-
-// Plain inline SVGs, not an icon library — this design system doesn't use one anywhere else
-// ("sin librerías visuales innecesarias"), and two glyphs don't justify adding one.
-function ExcelIcon(): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <rect x="3" y="3" width="14" height="14" rx="1.5" />
-      <path d="M3 8h14M3 13h14M8.33 3v14M13.67 3v14" />
-    </svg>
-  );
-}
-
-function PdfIcon(): React.JSX.Element {
-  return (
-    <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-      <path d="M6 2.5h5.5L15 6v11a.5.5 0 0 1-.5.5h-8a.5.5 0 0 1-.5-.5v-14a.5.5 0 0 1 .5-.5Z" strokeLinejoin="round" />
-      <path d="M11.5 2.5V6H15" strokeLinejoin="round" />
-      <path d="M7 10.5h6M7 13h6" strokeLinecap="round" />
-    </svg>
-  );
 }
 
 /**
@@ -269,6 +254,10 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
   const selectedLocation = variantLocations.find((l) => l.id === selectedLocationId) ?? locationsById.get(selectedLocationId);
   const showCost = kardexData ? kardexData.opening.averageCost !== undefined : false;
   const allLocationsSelected = selectedLocationId === ALL_LOCATIONS;
+  // The code of the variant being viewed — known as soon as one is chosen (a product with several
+  // variants shows none until the user picks one).
+  const selectedVariantSku = variants.find((variant) => variant.id === selectedVariantId)?.sku;
+
   const exportQuery = selectedVariantId && selectedLocationId && !allLocationsSelected
     ? {
         productVariantId: selectedVariantId,
@@ -347,15 +336,18 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
           )}
         </div>
 
-        <Field label="Fecha inicio" {...(dateError ? { error: dateError } : {})}>
-          <Input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} />
-        </Field>
-        <Field label="Fecha fin">
-          <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} />
-        </Field>
+        <div className="grid w-full grid-cols-2 gap-3 md:contents">
+          <Field label="Fecha inicio" {...(dateError ? { error: dateError } : {})}>
+            <Input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} />
+          </Field>
+          <Field label="Fecha fin">
+            <Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} />
+          </Field>
+        </div>
 
         <Button
           type="button"
+          className="w-full md:w-auto"
           variant={allMovementsMode ? 'primary' : 'secondary'}
           onClick={() => {
             if (allMovementsMode) {
@@ -374,47 +366,67 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
       {selectedProduct && (
         <Card>
           <CardBody className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-sm text-slate-500">Producto seleccionado</p>
-                <p className="text-base font-semibold text-slate-900">{selectedProduct.name}</p>
-              </div>
-              <div className="flex flex-wrap items-end gap-3">
-                {variants.length > 1 && (
-                  <Field label="Variante">
-                    <Select value={selectedVariantId} disabled={variantsLoading} onChange={(event) => selectVariant(event.target.value)}>
-                      <option value="">Elegir una variante…</option>
-                      {variants.map((variant) => (
-                        <option key={variant.id} value={variant.id}>
-                          {variant.sku}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                )}
-                {selectedVariantId && variantLocations.length > 1 && (
-                  <Field label="Almacén">
-                    <Select value={selectedLocationId} disabled={locationsLoading} onChange={(event) => setSelectedLocationId(event.target.value)}>
-                      <option value="">Elegir un almacén…</option>
-                      <option value={ALL_LOCATIONS}>Todos los almacenes</option>
-                      {variantLocations.map((location) => (
-                        <option key={location.id} value={location.id}>
-                          {location.warehouseName} — {location.name}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                )}
-                {selectedLocation && variantLocations.length <= 1 && (
-                  <p className="text-sm text-slate-500">
-                    Almacén: <span className="text-slate-900">{selectedLocation.warehouseName} — {selectedLocation.name}</span>
-                  </p>
-                )}
-                <Button type="button" variant="ghost" size="sm" onClick={resetSelection}>
-                  Quitar selección
-                </Button>
-              </div>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-3">
+              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                <span aria-hidden="true" className="h-2 w-2 rounded-full bg-sky-500" />
+                Producto seleccionado
+              </p>
+              <button
+                type="button"
+                onClick={resetSelection}
+                className="inline-flex items-center gap-1 rounded-md px-1 text-sm font-semibold text-red-600 hover:text-red-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+              >
+                Quitar selección
+                <span aria-hidden="true">×</span>
+              </button>
             </div>
+
+            {/* Same order as a search result: the variant's code to the left of the product name. */}
+            <div className="flex flex-wrap items-center gap-3">
+              {selectedVariantSku && (
+                <span className="shrink-0 whitespace-nowrap rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1 font-mono text-sm font-bold text-cyan-700">
+                  {selectedVariantSku}
+                </span>
+              )}
+              <h3 className="min-w-0 text-xl font-bold text-slate-900">{selectedProduct.name}</h3>
+            </div>
+
+            {variants.length > 1 && (
+              <Field label="Variante">
+                <Select value={selectedVariantId} disabled={variantsLoading} onChange={(event) => selectVariant(event.target.value)}>
+                  <option value="">Elegir una variante…</option>
+                  {variants.map((variant) => (
+                    <option key={variant.id} value={variant.id}>
+                      {variant.sku}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+            {selectedVariantId && variantLocations.length > 1 && (
+              <Field label="Almacén">
+                <Select value={selectedLocationId} disabled={locationsLoading} onChange={(event) => setSelectedLocationId(event.target.value)}>
+                  <option value="">Elegir un almacén…</option>
+                  <option value={ALL_LOCATIONS}>Todos los almacenes</option>
+                  {variantLocations.map((location) => (
+                    <option key={location.id} value={location.id}>
+                      {location.warehouseName} — {location.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+            {selectedLocation && variantLocations.length <= 1 && (
+              <p className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-sky-600" aria-hidden="true">
+                  <path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z" />
+                  <circle cx="12" cy="10" r="2.5" />
+                </svg>
+                <span>
+                  Almacén: <span className="text-slate-900">{selectedLocation.warehouseName} — {selectedLocation.name}</span>
+                </span>
+              </p>
+            )}
 
             {allLocationsSelected && selectedVariantId && (
               <div className="border-t border-slate-100 pt-4">
@@ -427,21 +439,22 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
               </div>
             )}
 
+            {/* Stock · Costo promedio · Valor: always side by side, one row. */}
             {kardexData && !allLocationsSelected && (
-              <div className="flex flex-wrap gap-6 border-t border-slate-100 pt-4">
-                <div>
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Stock disponible</p>
-                  <p className="text-2xl font-semibold tabular-nums text-slate-900">{kardexData.closing.stockUnits}</p>
+              <div className={`grid gap-2 ${showCost ? 'grid-cols-3' : 'max-w-[12rem] grid-cols-1'}`}>
+                <div className={STAT_BOX}>
+                  <p className={STAT_LABEL}>Stock disponible</p>
+                  <p className={STAT_VALUE}>{kardexData.closing.stockUnits}</p>
                 </div>
                 {showCost && (
                   <>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Costo promedio</p>
-                      <p className="text-2xl font-semibold tabular-nums text-slate-900">${money(kardexData.closing.averageCost)}</p>
+                    <div className={STAT_BOX}>
+                      <p className={STAT_LABEL}>Costo promedio</p>
+                      <p className={STAT_VALUE}>${money(kardexData.closing.averageCost)}</p>
                     </div>
-                    <div>
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Valor</p>
-                      <p className="text-2xl font-semibold tabular-nums text-slate-900">${money(kardexData.closing.stockValue)}</p>
+                    <div className={STAT_BOX}>
+                      <p className={STAT_LABEL}>Valor</p>
+                      <p className={STAT_VALUE}>${money(kardexData.closing.stockValue)}</p>
                     </div>
                   </>
                 )}
@@ -456,28 +469,9 @@ export function KardexExplorer({ locations }: { locations: LocationOption[] }): 
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-slate-900">{allMovementsMode ? 'Todos los movimientos' : 'Kardex'}</h2>
           {!allMovementsMode && kardexData && exportQuery && (
-            <div className="flex gap-1.5">
-              {/* Plain same-origin `<a>`s, not Next's `Link` — these navigate to a binary download
-                  (Content-Disposition: attachment), the same convention `import-upload-form.tsx`'s
-                  template download already uses. Icon-only per owner feedback, top-right of the
-                  table instead of two full-width buttons below it. */}
-              <a
-                href={buildKardexExportHref(exportQuery, 'xlsx')}
-                title="Exportar a Excel"
-                aria-label="Exportar a Excel"
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-green-700 hover:bg-slate-50"
-              >
-                <ExcelIcon />
-              </a>
-              <a
-                href={buildKardexExportHref(exportQuery, 'pdf')}
-                title="Exportar a PDF"
-                aria-label="Exportar a PDF"
-                className="flex h-8 w-8 items-center justify-center rounded-md border border-slate-300 bg-white text-red-700 hover:bg-slate-50"
-              >
-                <PdfIcon />
-              </a>
-            </div>
+            /* Icon-only per owner feedback, top-right of the table instead of two full-width
+               buttons below it; shared with Formas de pago (`components/export-icons.tsx`). */
+            <ExportLinks excelHref={buildKardexExportHref(exportQuery, 'xlsx')} pdfHref={buildKardexExportHref(exportQuery, 'pdf')} />
           )}
         </div>
 

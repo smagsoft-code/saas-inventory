@@ -36,7 +36,7 @@ describe('QrFilters', () => {
 
     vi.advanceTimersByTime(1);
     expect(pushMock).toHaveBeenCalledTimes(1);
-    expect(pushMock).toHaveBeenCalledWith('/qr?q=wid');
+    expect(pushMock).toHaveBeenCalledWith('/qr?q=wid', { scroll: false });
   });
 
   it('hides the filter panel until "Filtro" is pressed, and shows only Categoría + Estado (no Stock)', () => {
@@ -74,10 +74,10 @@ describe('QrFilters', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Filtro$/ }));
 
     fireEvent.change(screen.getByLabelText('Categoría'), { target: { value: 'c1' } });
-    expect(pushMock).toHaveBeenLastCalledWith('/qr?categoryId=c1');
+    expect(pushMock).toHaveBeenLastCalledWith('/qr?categoryId=c1', { scroll: false });
 
     fireEvent.change(screen.getByLabelText('Estado'), { target: { value: 'revoked' } });
-    expect(pushMock).toHaveBeenLastCalledWith('/qr?categoryId=c1&status=revoked');
+    expect(pushMock).toHaveBeenLastCalledWith('/qr?categoryId=c1&status=revoked', { scroll: false });
   });
 
   it('shows the active-filter count on the Filtro button', () => {
@@ -89,7 +89,7 @@ describe('QrFilters', () => {
     render(<QrFilters initial={{ q: 'wid', categoryId: 'c1', status: 'active' }} categories={CATEGORIES} />);
     fireEvent.click(screen.getByRole('button', { name: /^Filtro/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Quitar filtros' }));
-    expect(pushMock).toHaveBeenCalledWith('/qr?q=wid');
+    expect(pushMock).toHaveBeenCalledWith('/qr?q=wid', { scroll: false });
   });
 
   it('never sends a tenantId anywhere', () => {

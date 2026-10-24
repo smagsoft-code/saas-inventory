@@ -20,7 +20,25 @@ export interface ListProductCatalogQuery {
   /** Exactly one variant (to resolve a variant id to its code/name). */
   variantId?: string;
   status?: ProductCatalogStatus;
-  stock?: ProductCatalogStockFilter;
+  /** `'available'` (backend-only, not offered in the Productos filter UI) = more than 0 available. */
+  stock?: ProductCatalogStockFilter | 'available';
+  /** Count stock at this one Almacén only, instead of tenant-wide (the `stock` filter and
+   * `availableQuantity` then refer to that Almacén). */
+  locationId?: string;
+}
+
+/** Same-origin Excel/PDF download of the filtered product list (one row per variant) — the whole
+ * filtered set, never a page. Carries the same filters the screen sends. */
+export function buildProductCatalogExportHref(
+  query: Pick<ListProductCatalogQuery, 'q' | 'categoryId' | 'status' | 'stock'>,
+  format: 'xlsx' | 'pdf',
+): string {
+  const params = new URLSearchParams({ format });
+  if (query.q) params.set('q', query.q);
+  if (query.categoryId) params.set('categoryId', query.categoryId);
+  if (query.status) params.set('status', query.status);
+  if (query.stock) params.set('stock', query.stock);
+  return `/api/v1/reports/product-catalog/export?${params}`;
 }
 
 export async function listProductCatalog(query: ListProductCatalogQuery = {}): Promise<Paginated<ProductCatalogRow>> {
@@ -42,6 +60,9 @@ export async function listProductCatalog(query: ListProductCatalogQuery = {}): P
   }
   if (query.stock) {
     params['stock'] = query.stock;
+  }
+  if (query.locationId) {
+    params['locationId'] = query.locationId;
   }
   return serverApiFetch<Paginated<ProductCatalogRow>>('/api/v1/reports/product-catalog', { query: params });
 }

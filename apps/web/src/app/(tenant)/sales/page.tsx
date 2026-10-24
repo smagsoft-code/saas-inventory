@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { getSession } from '../../../lib/auth/session';
 import { createPermissionChecker } from '../../../lib/auth/permissions';
 import { httpErrorMessage, isApiError } from '../../../lib/api/errors';
-import { listOrders } from '../../../lib/sales/orders';
+import { buildOrdersExportHref, listOrders } from '../../../lib/sales/orders';
+import { fetchAllPages } from '../../../lib/fetch-all';
+import { ListViewControls } from '../../../components/list-view-controls';
 import { getSalesSummary } from '../../../lib/sales/reports';
 import { resolveHistoryDates, tenantToday } from '../../../lib/sales/history-dates';
 import {
@@ -81,6 +83,7 @@ export default async function SalesHistoryPage({
     dir?: string;
     dateFrom?: string;
     dateTo?: string;
+    all?: string;
   }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -100,7 +103,10 @@ export default async function SalesHistoryPage({
   const today = tenantToday(timezone);
   const { dateFrom, dateTo } = resolveHistoryDates(sp, timezone);
   const page = Math.max(1, Number(sp.page) || 1);
-  const status = pick(HISTORY_STATUSES, sp.status);
+  // Estado defaults to Confirmado. "Todos" is the explicit `status=all` (a bare absence of the
+  // param can only mean "never touched" = the default), so choosing Todos survives every navigation.
+  const statusParam: OrderStatus | 'all' = sp.status === 'all' ? 'all' : (pick(HISTORY_STATUSES, sp.status) ?? 'confirmed');
+  const status: OrderStatus | undefined = statusParam === 'all' ? undefined : statusParam;
   const documentType = pick(DOCUMENT_TYPES, sp.documentType);
   const notificationStatus = pick(NOTIFICATION_OVERALL_STATUSES, sp.notificationStatus);
   const customerId = sp.customerId || undefined;
@@ -110,7 +116,9 @@ export default async function SalesHistoryPage({
   const sellerName = sp.sellerName?.trim() || undefined;
   const total = sp.total?.trim() || undefined;
   const sort = pick(SORT_COLUMNS, sp.sort);
-  const dir = sp.dir === 'asc' || sp.dir === 'desc' ? sp.dir : undefined;
+  const dir: 'asc' | 'desc' | undefined = sp.dir === 'asc' || sp.dir === 'desc' ? sp.dir : undefined;
+  // "Ver todos": every matching order on screen instead of one page.
+  const showAll = sp.all === '1';
   // Default order: newest first.
   const activeSort: SalesSortColumn = sort ?? 'createdAt';
   const activeDir: 'asc' | 'desc' = dir ?? 'desc';
@@ -130,7 +138,7 @@ export default async function SalesHistoryPage({
     return warehouse !== '—' ? `${warehouse} · ${index.locationName(id)}` : index.locationName(id);
   };
 
-  const filters: HistoryFilterValues = { dateFrom, dateTo, status, documentType, customerId, locationId };
+  const filters: HistoryFilterValues = { dateFrom, dateTo, status: statusParam, documentType, customerId, locationId };
   // The exact same filter set feeds the cards and the table.
   const columnFilters = {
     ...(q ? { q } : {}),
@@ -150,10 +158,10 @@ export default async function SalesHistoryPage({
     ...columnFilters,
   };
   // Every param (besides the page) that a header control must keep when it changes one of them.
-  const carried: Record<string, string> = {
+  const carriedBase: Record<string, string> = {
     dateFrom,
     ...(dateTo ? { dateTo } : {}),
-    ...(status ? { status } : {}),
+    status: statusParam,
     ...(documentType ? { documentType } : {}),
     ...(customerId ? { customerId } : {}),
     ...(locationId ? { locationId } : {}),
@@ -161,6 +169,8 @@ export default async function SalesHistoryPage({
     ...(sort ? { sort } : {}),
     ...(dir ? { dir } : {}),
   };
+  // The "Ver todos" view survives a filter/sort change (header controls copy every carried param).
+  const carried: Record<string, string> = { ...carriedBase, ...(showAll ? { all: '1' } : {}) };
 
   type SummaryOutcome =
     | { summary: SalesSummary }
@@ -177,12 +187,20 @@ export default async function SalesHistoryPage({
       }),
     );
 
+  const orderQuery = { ...common, ...(sort ? { sort } : {}), ...(dir ? { dir } : {}) };
   const [result, outcome] = await Promise.all([
-    listOrders({ page, pageSize: PAGE_SIZE, ...common, ...(sort ? { sort } : {}), ...(dir ? { dir } : {}) }),
+    showAll
+      ? fetchAllPages((p, size) => listOrders({ ...orderQuery, page: p, pageSize: size })).then((all) => ({
+          data: all.data,
+          meta: { page: 1, pageSize: Math.max(all.data.length, PAGE_SIZE), total: all.total, totalPages: 1 },
+          truncated: all.truncated,
+        }))
+      : listOrders({ ...orderQuery, page, pageSize: PAGE_SIZE }).then((paged) => ({ ...paged, truncated: false })),
     summaryPromise,
   ]);
 
-  const hasColumnFilters = Boolean(status || documentType || customerId || locationId || Object.keys(columnFilters).length > 0);
+  // Confirmado is the default view, not a filter the user chose.
+  const hasColumnFilters = Boolean((status && status !== 'confirmed') || documentType || customerId || locationId || Object.keys(columnFilters).length > 0);
   const hasNarrowing = Boolean(hasColumnFilters || dateTo || dateFrom !== today);
   const dateTimeFormat = (() => {
     try {
@@ -231,6 +249,7 @@ export default async function SalesHistoryPage({
               ...columnFilters,
               ...(sort ? { sort } : {}),
               ...(dir ? { dir } : {}),
+              ...(showAll ? { all: '1' } : {}),
             }}
           />
         }
@@ -243,6 +262,18 @@ export default async function SalesHistoryPage({
           <SalesReportError status={outcome.error.status} message={outcome.error.message} correlationId={outcome.error.correlationId} />
         )}
       </section>
+
+      <ListViewControls
+        showingAll={showAll}
+        allHref={`/sales?${new URLSearchParams({ ...carriedBase, all: '1' })}`}
+        pagedHref={`/sales?${new URLSearchParams(carriedBase)}`}
+        shown={result.data.length}
+        total={result.meta.total}
+        truncated={result.truncated}
+        canToggle={result.meta.total > PAGE_SIZE}
+        excelHref={buildOrdersExportHref(orderQuery, 'xlsx')}
+        pdfHref={buildOrdersExportHref(orderQuery, 'pdf')}
+      />
 
       <div className="hidden md:block">
       <Table className="table-fixed text-xs">

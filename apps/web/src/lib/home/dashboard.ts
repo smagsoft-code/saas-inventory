@@ -32,7 +32,9 @@ import { tenantDateParts, tenantStartOfDayUtc, tenantStartOfYearUtc } from './te
  * The Almacén filter (top-right, level with the welcome message) narrows sales, stock alerts and
  * inventory value, and only offers the locations the user is actually authorized for
  * (`GET /inventory/location-scope`, ADR-0024/0035 — the founding Administrador sees them all).
- * "Total productos" is the catalog size and is not location-scoped.
+ * "Total productos" follows it too: with an Almacén chosen it counts the active products (codes) that
+ * have stock available there (`product-catalog?locationId=…&stock=available`); with "Todos los
+ * almacenes" it stays the catalog size the Productos screen lists.
  */
 
 export type TileState = 'ready' | 'unavailable' | 'no-access';
@@ -205,7 +207,9 @@ export async function loadHomeDashboard(
     fetchValue(canSales, () => getSalesSummary({ from: yearFrom, to, groupBy: 'month', ...loc })),
     fetchValue(canSales, () => getSalesSummary({ from: dayFrom, to, groupBy: 'product', ...loc })),
     fetchValue(canInventory, () => getInventorySummary({ groupBy: 'warehouse', ...loc })),
-    fetchValue(canProducts, () => listProductCatalog({ status: 'active', pageSize: 1 })),
+    // With an Almacén chosen the tile counts the active products that have stock there; with none
+    // it stays the catalog size the Productos screen lists.
+    fetchValue(canProducts, () => listProductCatalog({ status: 'active', pageSize: 1, ...(selectedLocationId ? { locationId: selectedLocationId, stock: 'available' as const } : {}) })),
   ]);
 
   // A single-currency-per-tenant app (FASE 12 default) — the code itself always comes from a real
@@ -246,7 +250,7 @@ export async function loadHomeDashboard(
       format: 'count',
       icon: 'box',
       tone: 'indigo',
-      ...(selectedLocationId ? { note: 'Catálogo completo' } : {}),
+      ...(selectedLocationId ? { note: 'Con existencias en este almacén' } : {}),
     },
     {
       key: 'inventory-value',

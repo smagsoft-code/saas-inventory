@@ -1,5 +1,7 @@
 import type { KardexResponse, KardexRow } from '../../../lib/types/kardex';
 import { Badge, EmptyState, Table, TBody, TD, TH, THead, TR } from '../../../components/ui';
+import { useIsMobile } from '../../../lib/use-is-mobile';
+import { KardexMobileList } from './kardex-mobile';
 
 function money(value: number | undefined): string {
   return value === undefined ? '—' : value.toFixed(2);
@@ -44,12 +46,29 @@ export function KardexTable({
   onRowClick?: (row: KardexRow) => void;
 }): React.JSX.Element {
   const showCost = data.opening.averageCost !== undefined;
+  const isMobile = useIsMobile();
 
   if (data.rows.length === 0) {
     return (
       <EmptyState
         title="Sin movimientos en este rango"
         description="Prueba con un rango de fechas más amplio, o quítalo para ver todo el historial."
+      />
+    );
+  }
+
+  // Phones get cards (same rows, same columns, same sort and click-through) instead of the table.
+  if (isMobile) {
+    return (
+      <KardexMobileList
+        rows={data.rows}
+        showCost={showCost}
+        truncated={data.truncated}
+        sortDescending={sortDescending}
+        onToggleSort={onToggleSort}
+        productoByMovementId={productoByMovementId}
+        almacenByMovementId={almacenByMovementId}
+        onRowClick={onRowClick}
       />
     );
   }

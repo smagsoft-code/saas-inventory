@@ -121,8 +121,8 @@ describe('HomeLocationFilter', () => {
     pushMock.mockClear();
     render(<HomeLocationFilter options={options} selectedLocationId="l1" />);
     fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: 'l2' } });
-    expect(pushMock).toHaveBeenLastCalledWith('/?locationId=l2');
+    expect(pushMock).toHaveBeenLastCalledWith('/?locationId=l2', { scroll: false });
     fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: '' } });
-    expect(pushMock).toHaveBeenLastCalledWith('/');
+    expect(pushMock).toHaveBeenLastCalledWith('/', { scroll: false });
   });
 });

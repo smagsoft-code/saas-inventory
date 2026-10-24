@@ -27,7 +27,7 @@ function ThumbnailPlaceholder({ src }: { src?: string }): React.JSX.Element {
       <img
         src={src}
         alt=""
-        className="h-10 w-10 shrink-0 rounded-md border border-slate-200 object-cover"
+        className="h-10 w-10 shrink-0 rounded-md border border-slate-200 bg-white object-contain"
       />
     );
   }

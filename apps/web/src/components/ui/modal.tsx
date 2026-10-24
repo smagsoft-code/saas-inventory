@@ -5,6 +5,10 @@ import { cn } from '../../lib/cn';
 
 type Size = 'md' | 'lg' | 'xl';
 
+/** Open modals, bottom = oldest. A modal opened on top of another (the product preview inside the
+ * cart) must be the only one Escape closes — the one underneath stays open. */
+const openModalStack: symbol[] = [];
+
 const SIZES: Record<Size, string> = {
   md: 'sm:max-w-lg',
   lg: 'sm:max-w-2xl',
@@ -47,8 +51,10 @@ export function Modal({
     if (!open) {
       return;
     }
+    const self = Symbol('modal');
+    openModalStack.push(self);
     function onKey(event: KeyboardEvent): void {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && openModalStack[openModalStack.length - 1] === self) {
         onClose();
       }
     }
@@ -56,6 +62,8 @@ export function Modal({
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
+      const index = openModalStack.indexOf(self);
+      if (index >= 0) openModalStack.splice(index, 1);
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
     };

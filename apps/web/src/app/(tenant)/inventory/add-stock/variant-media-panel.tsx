@@ -1,5 +1,6 @@
 'use client';
 
+import { ProductImageDimensions } from '../../../../components/product-image-dimensions';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
 import { QrCodeImage } from '../../../../components/qr-code-image';
@@ -66,7 +67,7 @@ export function VariantMediaPanel({
           <img
             src={imageUrl}
             alt=""
-            className="aspect-square w-full rounded-md border border-slate-200 object-cover"
+            className="aspect-square w-full rounded-md border border-slate-200 bg-white object-contain"
           />
         ) : (
           <div
@@ -86,6 +87,7 @@ export function VariantMediaPanel({
             </svg>
           </div>
         )}
+        <ProductImageDimensions className="mt-2" />
       </div>
 
       {canViewQr && (

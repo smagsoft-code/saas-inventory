@@ -8,6 +8,7 @@ import { PageContainer } from '../../../components/ui/page-container';
 import { PageHeader } from '../../../components/ui/page-header';
 import { Card, CardBody } from '../../../components/ui/card';
 import { Badge, statusTone } from '../../../components/ui/badge';
+import { CompanyLogoForm } from './company-logo-form';
 import { TenantSettingsForm } from './tenant-settings-form';
 import { RegionalSettingsForm } from './regional-settings-form';
 import { BusinessHoursForm } from './business-hours-form';
@@ -99,6 +100,13 @@ export default async function TenantSettingsPage(): Promise<React.JSX.Element> {
             tienes permiso para cambiarlo.
           </p>
         )}
+      </SettingsSection>
+
+      <SettingsSection
+        title="Logo de la empresa"
+        description="Se muestra en la esquina del menú lateral en lugar de las iniciales de la empresa."
+      >
+        <CompanyLogoForm companyName={tenant.name} logoVersion={tenant.logoVersion} canManage={canEditCompany} />
       </SettingsSection>
 
       <SettingsSection

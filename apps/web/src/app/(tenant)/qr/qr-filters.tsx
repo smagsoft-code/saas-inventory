@@ -41,7 +41,9 @@ export function QrFilters({
   const router = useRouter();
   const [q, setQ] = useState(initial.q ?? '');
   const [categoryId, setCategoryId] = useState(initial.categoryId ?? '');
+  useEffect(() => setCategoryId(initial.categoryId ?? ''), [initial.categoryId]);
   const [status, setStatus] = useState<QrStatus | ''>(initial.status ?? '');
+  useEffect(() => setStatus(initial.status ?? ''), [initial.status]);
   const [panelOpen, setPanelOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const skipNextDebounce = useRef(true);
@@ -54,7 +56,7 @@ export function QrFilters({
     if (nextQ) params.set('q', nextQ);
     if (nextCategoryId) params.set('categoryId', nextCategoryId);
     if (nextStatus) params.set('status', nextStatus);
-    router.push(`/qr${params.toString() ? `?${params}` : ''}`);
+    router.push(`/qr${params.toString() ? `?${params}` : ''}`, { scroll: false });
   }
 
   useEffect(() => {
@@ -89,7 +91,9 @@ export function QrFilters({
     apply({ categoryId: undefined, status: undefined });
   }
 
-  const activeFilterCount = [categoryId, status].filter(Boolean).length;
+  // The count is the filters the page applied (the URL values the server rendered with) — not local,
+  // half-edited state — so it can never disagree with what is actually filtered.
+  const activeFilterCount = [initial.categoryId, initial.status].filter(Boolean).length;
   const hasFilter = activeFilterCount > 0;
 
   return (

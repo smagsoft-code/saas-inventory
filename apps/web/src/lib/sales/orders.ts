@@ -40,11 +40,24 @@ export interface ListOrdersQuery {
   dateTo?: string;
 }
 
+/** Same-origin download link for the Excel/PDF of the history — carries exactly the filters (and
+ * sort) of `query`, never a page: the export is always the whole filtered set. */
+export function buildOrdersExportHref(query: ListOrdersQuery, format: 'xlsx' | 'pdf'): string {
+  const params = ordersFilterParams(query);
+  return `/api/v1/orders/export?${new URLSearchParams({ ...params, format })}`;
+}
+
 export async function listOrders(query: ListOrdersQuery = {}): Promise<Paginated<Order>> {
   const params: Record<string, string | number> = {
+    ...ordersFilterParams(query),
     page: query.page ?? 1,
     pageSize: query.pageSize ?? 20,
   };
+  return serverApiFetch<Paginated<Order>>('/api/v1/orders', { query: params });
+}
+
+function ordersFilterParams(query: ListOrdersQuery): Record<string, string> {
+  const params: Record<string, string> = {};
   if (query.status) {
     params['status'] = query.status;
   }
@@ -85,7 +98,7 @@ export async function listOrders(query: ListOrdersQuery = {}): Promise<Paginated
   if (query.dateTo) {
     params['dateTo'] = query.dateTo;
   }
-  return serverApiFetch<Paginated<Order>>('/api/v1/orders', { query: params });
+  return params;
 }
 
 export async function getOrder(id: string): Promise<Order> {

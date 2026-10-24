@@ -28,9 +28,9 @@ export function TransfersReportError({
 
 function KpiTile({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold tabular-nums text-slate-900">{value}</p>
+    <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:rounded-lg md:p-4 md:shadow-none">
+      <p className="truncate text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:text-xs md:font-medium md:tracking-wide">{label}</p>
+      <p className="mt-1 font-mono text-xl font-bold tabular-nums text-slate-900 md:mt-2 md:font-sans md:text-2xl md:font-semibold">{value}</p>
     </div>
   );
 }

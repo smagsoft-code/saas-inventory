@@ -43,6 +43,7 @@ export function CustomerForm({
   mode,
   customer,
   onCreated,
+  onSaved,
   onCancel,
   initialTaxId,
 }: {
@@ -53,6 +54,8 @@ export function CustomerForm({
    * decides what to do with the new customer (e.g. select it on the cart). Has no effect in
    * `edit` mode. */
   onCreated?: (customer: Customer) => void;
+  /** Edit mode: called with the updated customer after a successful save (e.g. a modal closing itself). */
+  onSaved?: (customer: Customer) => void;
   /** Overrides the "Volver a clientes" button when embedded outside `/customers/*` (e.g. the
    * sale-flow modal, which should just close instead of navigating away). */
   onCancel?: () => void;
@@ -70,7 +73,9 @@ export function CustomerForm({
   const [email, setEmail] = useState(customer?.email ?? '');
   const [phone, setPhone] = useState(customer?.phone ?? '');
   const [address, setAddress] = useState(customer?.address ?? '');
-  const [status, setStatus] = useState<CustomerStatus>((customer?.status as CustomerStatus) ?? 'active');
+  const [status, setStatus] = useState<CustomerStatus>(
+    (customer?.status as CustomerStatus) ?? 'active',
+  );
 
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<Record<string, string>>({});
@@ -153,8 +158,12 @@ export function CustomerForm({
       if (address !== (customer?.address ?? '')) body['address'] = address.trim();
       if (status !== customer?.status) body['status'] = status;
 
-      await apiFetch<Customer>(`${CUSTOMERS_PATH}/${customer!.id}`, { method: 'PATCH', body });
+      const saved = await apiFetch<Customer>(`${CUSTOMERS_PATH}/${customer!.id}`, {
+        method: 'PATCH',
+        body,
+      });
       setSuccess(true);
+      onSaved?.(saved);
       router.refresh();
     } catch (err) {
       if (isApiError(err) && err.status === 409) {
@@ -224,7 +233,11 @@ export function CustomerForm({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Nombres" required {...(fieldError['firstName'] ? { error: fieldError['firstName'] } : {})}>
+        <Field
+          label="Nombres"
+          required
+          {...(fieldError['firstName'] ? { error: fieldError['firstName'] } : {})}
+        >
           <Input
             required
             maxLength={120}
@@ -235,7 +248,11 @@ export function CustomerForm({
             }}
           />
         </Field>
-        <Field label="Apellidos" required {...(fieldError['lastName'] ? { error: fieldError['lastName'] } : {})}>
+        <Field
+          label="Apellidos"
+          required
+          {...(fieldError['lastName'] ? { error: fieldError['lastName'] } : {})}
+        >
           <Input
             required
             maxLength={120}
@@ -286,8 +303,8 @@ export function CustomerForm({
       <p className="flex items-center gap-1.5 text-xs text-slate-500">
         Datos necesarios para vender
         <HelpTip>
-          Una venta necesita correo, teléfono y dirección del cliente — complétalos aquí para evitar un
-          error al cerrar la venta.
+          Una venta necesita correo, teléfono y dirección del cliente — complétalos aquí para evitar
+          un error al cerrar la venta.
         </HelpTip>
       </p>
 
@@ -298,7 +315,12 @@ export function CustomerForm({
         <Button type="submit" loading={submitting} disabled={!dirty} className="w-fit">
           {mode === 'create' ? 'Crear cliente' : 'Guardar cambios'}
         </Button>
-        <Button type="button" variant="ghost" className="w-fit" onClick={onCancel ?? (() => router.push('/customers'))}>
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-fit"
+          onClick={onCancel ?? (() => router.push('/customers'))}
+        >
           {onCancel ? 'Cancelar' : 'Volver a clientes'}
         </Button>
       </div>

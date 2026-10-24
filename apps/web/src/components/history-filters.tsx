@@ -54,7 +54,7 @@ function useApply(basePath: string, preserve: Record<string, string> | undefined
     for (const [key, value] of Object.entries(preserve ?? {})) {
       if (value) params.set(key, value);
     }
-    router.push(`${basePath}?${params}`);
+    router.push(`${basePath}?${params}`, { scroll: false });
   };
 }
 

@@ -28,6 +28,7 @@ export function ShellLayout({
   headerLeft,
   headerRight,
   banner,
+  bottomNav,
   children,
 }: {
   brand: ReactNode;
@@ -38,6 +39,9 @@ export function ShellLayout({
    * above the fixed sidebar). Still context-free: a plain slot, no session/permission logic lives
    * here — e.g. `PlatformShell`'s ADR-0036 "modo soporte" banner. */
   banner?: ReactNode;
+  /** Phone/tablet bottom navigation (fixed, hidden from `lg`). When present the content reserves room
+   * for it so nothing ends up underneath. */
+  bottomNav?: ReactNode;
   children: ReactNode;
 }): React.JSX.Element {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -164,8 +168,9 @@ export function ShellLayout({
           </header>
         </div>
 
-        <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
+        <main className={cn('flex-1 px-4 py-6 sm:px-6 lg:px-8', bottomNav ? 'pb-28 lg:pb-6' : undefined)}>{children}</main>
       </div>
+      {bottomNav}
     </div>
   );
 }

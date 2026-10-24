@@ -8,6 +8,9 @@ export interface Tenant {
   status: string;
   isDemo: boolean;
   createdAt: string;
+  /** Present only when the company has a logo: its last change in ms (cache-buster for
+   * `GET /tenant/logo`). */
+  logoVersion?: number;
 }
 
 export interface TenantUser {

@@ -185,7 +185,7 @@ describe('LoginForm', () => {
     typeCredentials();
     fireEvent.click(screen.getByRole('button', { name: /iniciar sesión/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Usuario o contraseña incorrectos.');
     expect(replaceMock).not.toHaveBeenCalled();
   });
 

@@ -121,6 +121,14 @@ export function NavIconGlyph({
           <path d="M8 8h8M8 12h8M8 16h5" />
         </svg>
       );
+    case 'wallet':
+      return (
+        <svg {...common}>
+          <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H18a1 1 0 0 1 1 1v2" />
+          <path d="M4 7.5V17a2 2 0 0 0 2 2h12a1 1 0 0 0 1-1v-9a1 1 0 0 0-1-1H6.5A2.5 2.5 0 0 1 4 7.5Z" />
+          <circle cx="15.5" cy="13.5" r="1" />
+        </svg>
+      );
     case 'approval':
       return (
         <svg {...common}>

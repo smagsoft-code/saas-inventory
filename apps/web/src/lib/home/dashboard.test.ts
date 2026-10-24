@@ -86,6 +86,12 @@ describe('loadHomeDashboard — KPI row', () => {
     expect(mProducts).toHaveBeenCalledWith(expect.objectContaining({ status: 'active' }));
   });
 
+  it('Total productos with no Almacén chosen is the whole catalog (no location or stock param sent)', async () => {
+    await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC', undefined, NOW);
+    expect(mProducts).toHaveBeenCalledWith({ status: 'active', pageSize: 1 });
+    expect(tile(await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC', undefined, NOW), 'total-products').note).toBeUndefined();
+  });
+
   it('has no stock-alerts card; Valor total de inventario = inventory cost value', async () => {
     mInventory.mockResolvedValue(inventorySummary({ outOfStockCount: 13, totalCostValue: 48668.5, missingCostCount: 2 }) as never);
     const d = await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC', undefined, NOW);
@@ -209,6 +215,22 @@ describe('loadHomeDashboard — Almacén filter only offers what the user may us
     expect(d.selectedLocationId).toBe('l2');
     expect(mSales).toHaveBeenCalledWith(expect.objectContaining({ groupBy: 'month', locationId: 'l2' }));
     expect(mInventory).toHaveBeenCalledWith(expect.objectContaining({ locationId: 'l2' }));
+  });
+
+  it('Total productos follows the chosen Almacén: only products with stock available there, and says so', async () => {
+    mProducts.mockImplementation((q) =>
+      Promise.resolve({ data: [], meta: { page: 1, pageSize: 1, total: q?.locationId === 'l2' ? 7 : 55, totalPages: 1 } } as never),
+    );
+    const d = await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC', 'l2', NOW);
+    expect(mProducts).toHaveBeenCalledWith({ status: 'active', pageSize: 1, locationId: 'l2', stock: 'available' });
+    expect(tile(d, 'total-products').value).toBe(7);
+    expect(tile(d, 'total-products').note).toBe('Con existencias en este almacén');
+  });
+
+  it('Total productos never sends a location the user is not authorized for', async () => {
+    mScope.mockResolvedValue({ unrestricted: false, locationIds: ['l2'] });
+    await loadHomeDashboard(createPermissionChecker(ALL_PERMS), 'UTC', 'l1', NOW);
+    expect(mProducts).toHaveBeenCalledWith({ status: 'active', pageSize: 1 });
   });
 
   it('offers no locations when the scope cannot be determined (never "everything")', async () => {

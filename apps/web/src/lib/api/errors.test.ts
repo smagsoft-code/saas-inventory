@@ -38,6 +38,16 @@ describe('httpErrorMessage', () => {
     ).toBe('Quantity must be positive.');
   });
 
+  it('translates the credential-field validation messages a user can hit', () => {
+    expect(httpErrorMessage(new ApiError(400, 'VALIDATION_ERROR', 'password must be longer than or equal to 10 characters', undefined))).toBe(
+      'La contraseña debe tener al menos 10 caracteres.',
+    );
+    expect(httpErrorMessage(new ApiError(400, 'VALIDATION_ERROR', 'email must be longer than or equal to 10 characters', undefined))).toBe(
+      'El usuario debe tener al menos 10 caracteres.',
+    );
+    expect(httpErrorMessage(new ApiError(400, 'VALIDATION_ERROR', 'password should not be empty', undefined))).toBe('Ingresa una contraseña.');
+  });
+
   it('uses a fixed sentence for 401/403/429', () => {
     expect(httpErrorMessage(new ApiError(401, 'UNAUTHORIZED', 'x', undefined))).toMatch(
       /sesión expiró/i,

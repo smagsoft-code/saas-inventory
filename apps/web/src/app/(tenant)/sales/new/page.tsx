@@ -92,6 +92,7 @@ export default async function NewSalePage({
         locations={locations.map((l) => ({ id: l.id, warehouseId: l.warehouseId, name: l.name }))}
         scope={scope}
         canViewProducts={canViewProducts}
+        canManageProducts={checker.can('products.manage')}
         canSearchCustomers={canSearchCustomers}
         canManageCustomers={canManageCustomers}
       />

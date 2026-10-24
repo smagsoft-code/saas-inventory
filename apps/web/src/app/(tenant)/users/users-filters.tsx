@@ -28,7 +28,7 @@ export function UsersFilters({ initial }: { initial: { q?: string | undefined } 
       const trimmed = q.trim();
       const params = new URLSearchParams();
       if (trimmed) params.set('q', trimmed);
-      router.push(`/users${params.toString() ? `?${params}` : ''}`);
+      router.push(`/users${params.toString() ? `?${params}` : ''}`, { scroll: false });
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [q]);

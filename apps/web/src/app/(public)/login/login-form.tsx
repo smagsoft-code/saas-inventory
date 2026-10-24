@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../lib/api/client';
-import { ApiError } from '../../../lib/api/errors';
+import { loginErrorMessage, selectionErrorMessage } from '../../../lib/auth/auth-errors';
 import { safeReturnTo } from '../../../lib/auth/return-to';
 import type { AvailableTenant, LoginResponse } from '../../../lib/types/session';
 import { Button } from '../../../components/ui/button';
@@ -39,29 +39,6 @@ async function attemptSilentRestore(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/** Deliberately generic — the API never says which credential was wrong (security.md §6), and a
- * 5xx body is never echoed. */
-function loginErrorMessage(err: unknown): string {
-  if (err instanceof ApiError) {
-    if (err.isNetworkError) return 'No se pudo contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
-    if (err.status === 429) return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
-    if (err.status >= 500) return 'Algo salió mal de nuestro lado. Inténtalo de nuevo.';
-    return err.message || 'No se pudo iniciar sesión. Inténtalo de nuevo.';
-  }
-  return 'No se pudo iniciar sesión. Inténtalo de nuevo.';
-}
-
-function selectionErrorMessage(err: unknown): string {
-  if (err instanceof ApiError) {
-    if (err.isNetworkError) return 'No se pudo contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
-    if (err.status === 401) return 'Tu inicio de sesión expiró antes de elegir una empresa. Inicia sesión de nuevo.';
-    if (err.status === 429) return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
-    if (err.status >= 500) return 'Algo salió mal de nuestro lado. Inténtalo de nuevo.';
-    return err.message || 'No se pudo abrir esa empresa. Inicia sesión de nuevo.';
-  }
-  return 'No se pudo abrir esa empresa. Inicia sesión de nuevo.';
 }
 
 export function LoginForm(): React.JSX.Element {

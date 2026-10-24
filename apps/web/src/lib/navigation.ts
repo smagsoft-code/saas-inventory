@@ -43,6 +43,7 @@ export type NavIcon =
   | 'upload'
   | 'building'
   | 'qr'
+  | 'wallet'
   | 'shield';
 
 export interface NavSection {
@@ -165,6 +166,14 @@ export const NAVIGATION: NavSection[] = [
         icon: 'receipt',
         permission: 'sales.orders.view',
         activePaths: ['/sales'],
+      },
+      {
+        // Reporte de pagos por forma de pago; rides on the same permission as the history.
+        label: 'Formas de pago',
+        href: '/sales/payments',
+        icon: 'wallet',
+        permission: 'sales.orders.view',
+        activePaths: ['/sales/payments'],
       },
       {
         label: 'Clientes',

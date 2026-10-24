@@ -38,6 +38,13 @@ export async function listCustomers(query: ListCustomersQuery = {}): Promise<Pag
   return serverApiFetch<Paginated<Customer>>('/api/v1/customers', { query: params });
 }
 
+/** Same-origin Excel/PDF download of the (searched) customer list — the whole filtered set. */
+export function buildCustomersExportHref(query: Pick<ListCustomersQuery, 'q'>, format: 'xlsx' | 'pdf'): string {
+  const params = new URLSearchParams({ format });
+  if (query.q) params.set('q', query.q);
+  return `/api/v1/customers/export?${params}`;
+}
+
 export async function getCustomer(id: string): Promise<Customer> {
   return serverApiFetch<Customer>(`/api/v1/customers/${id}`);
 }

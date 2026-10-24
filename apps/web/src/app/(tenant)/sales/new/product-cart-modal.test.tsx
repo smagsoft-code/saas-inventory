@@ -147,7 +147,7 @@ describe('ProductCartModal', () => {
   it('searches GET /reports/product-catalog?q= (debounced) and adds a single-variant product at maxPrice', async () => {
     const { onCartUpdated } = renderModal();
     vi.useFakeTimers();
-    mockedFetch.mockResolvedValueOnce({ data: [{ productId: 'prod-1', productName: 'Blender', variantId: 'var-1', sku: 'BLE-001' }] });
+    mockedFetch.mockResolvedValueOnce({ data: [{ productId: 'prod-1', productName: 'Blender', variantId: 'var-1', sku: 'BLE-001', maxPrice: 120 }] });
     fireEvent.change(screen.getByLabelText(/buscar producto/i), { target: { value: 'blen' } });
     expect(mockedFetch).not.toHaveBeenCalled();
 
@@ -164,7 +164,7 @@ describe('ProductCartModal', () => {
     vi.useRealTimers();
     await waitFor(() => expect(screen.getByText('Blender')).toBeInTheDocument());
     // The variant's code is shown under the name.
-    expect(screen.getByText('BLE-001')).toBeInTheDocument();
+    expect(screen.getByText('BLE-001 · Precio máx: $120.00')).toBeInTheDocument();
 
     mockedFetch.mockResolvedValueOnce([
       { id: 'var-1', productId: 'prod-1', sku: 'SKU-1', unit: 'un', maxPrice: 15, basePrice: 10, status: 'active', isSerialized: false, isLotTracked: false, attributes: {}, createdAt: '', updatedAt: '' },
@@ -451,6 +451,57 @@ describe('ProductCartModal', () => {
     expect(container.querySelector('img')).toHaveAttribute('src', '/api/v1/products/prod-1/images/img-1');
   });
 
+  describe('photo preview (same click-the-photo summary as /products)', () => {
+    afterEach(() => mockedFetch.mockReset());
+
+    function routeProductFetch(): void {
+      mockedFetch.mockImplementation((async (path: string) => {
+        if (path === '/api/v1/products/prod-1/images') return [{ id: 'img-1', productId: 'prod-1', position: 0, createdAt: '', url: '/img/full.png' }];
+        if (path === '/api/v1/products/prod-1') return { id: 'prod-1', categoryId: 'cat-1', name: 'Blender', description: 'Licuadora de 2 velocidades', status: 'active', attributes: {} };
+        if (path === '/api/v1/products/prod-1/variants/var-1') return { id: 'var-1', productId: 'prod-1', sku: 'SKU-1', attributes: {} };
+        if (path === '/api/v1/categories/cat-1') return { id: 'cat-1', name: 'Electrodomésticos' };
+        if (path === '/api/v1/attribute-definitions') return [];
+        if (path === '/api/v1/measurement-units') return [];
+        if (path === '/api/v1/categories/cat-1/attributes') return [];
+        return [];
+      }) as never);
+    }
+
+    it('clicking the line photo opens the product summary (description, category, link to the product)', async () => {
+      routeProductFetch();
+      renderModal(CART_WITH_LINE);
+      fireEvent.click(await screen.findByRole('button', { name: 'Ver foto y resumen de Blender' }));
+      const dialog = await screen.findByRole('dialog', { name: 'Blender' });
+      expect(dialog).toBeInTheDocument();
+      expect(await screen.findByText('Licuadora de 2 velocidades')).toBeInTheDocument();
+      expect(await screen.findByText('Electrodomésticos')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Ver producto' })).toHaveAttribute('href', '/products/prod-1/variants/var-1');
+    });
+
+    it('says "Editar producto" for a caller who can manage products', async () => {
+      routeProductFetch();
+      renderModal(CART_WITH_LINE, { canManageProducts: true });
+      fireEvent.click(await screen.findByRole('button', { name: 'Ver foto y resumen de Blender' }));
+      expect(await screen.findByRole('link', { name: 'Editar producto' })).toBeInTheDocument();
+    });
+
+    it('Escape closes only the preview; the cart window stays open', async () => {
+      routeProductFetch();
+      const { onClose } = renderModal(CART_WITH_LINE);
+      fireEvent.click(await screen.findByRole('button', { name: 'Ver foto y resumen de Blender' }));
+      await screen.findByRole('dialog', { name: 'Blender' });
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Blender' })).not.toBeInTheDocument());
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('the photo is not clickable for a caller who cannot read products', () => {
+      routeProductFetch();
+      renderModal(CART_WITH_LINE, { canViewProducts: false });
+      expect(screen.queryByRole('button', { name: 'Ver foto y resumen de Blender' })).not.toBeInTheDocument();
+    });
+  });
+
   it('keeps the placeholder icon when the product has no images', async () => {
     mockedFetch.mockResolvedValueOnce([]);
     const { container } = renderModal(CART_WITH_LINE);
@@ -506,7 +557,7 @@ describe('ProductCartModal', () => {
 /** Drives the search box with real timers (the debounce path itself is covered by the dedicated
  * fake-timer test above) by resolving instantly — used only to get to the variant-picker UI. */
 async function pickFirstResultAfterSearch(productName: string, productId: string): Promise<HTMLElement> {
-  mockedFetch.mockResolvedValueOnce({ data: [{ productId, productName, variantId: `${productId}-v`, sku: 'COD-001' }] });
+  mockedFetch.mockResolvedValueOnce({ data: [{ productId, productName, variantId: `${productId}-v`, sku: 'COD-001', maxPrice: 120 }] });
   fireEvent.change(screen.getByLabelText(/buscar producto/i), { target: { value: productName } });
   await screen.findByText(productName);
   return screen.getByRole('button', { name: new RegExp(productName) });

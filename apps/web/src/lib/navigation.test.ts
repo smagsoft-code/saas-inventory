@@ -93,6 +93,9 @@ describe('filterNavigation', () => {
     // Sales history rides on sales.orders.view
     expect(labels([])).not.toContain('Historial de ventas');
     expect(labels(['sales.orders.view'])).toContain('Historial de ventas');
+    // Formas de pago (payment report) rides on the same permission
+    expect(labels([])).not.toContain('Formas de pago');
+    expect(labels(['sales.orders.view'])).toContain('Formas de pago');
     // Returns rides on sales.returns.view
     expect(labels([])).not.toContain('Devoluciones');
     expect(labels(['sales.returns.view'])).toContain('Devoluciones');

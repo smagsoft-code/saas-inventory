@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
-import { listTransfers } from '../../../../lib/inventory/transfers';
+import { buildTransfersExportHref, listTransfers } from '../../../../lib/inventory/transfers';
+import { fetchAllPages } from '../../../../lib/fetch-all';
+import { ListViewControls } from '../../../../components/list-view-controls';
 import { getTransfersSummary } from '../../../../lib/inventory/reports';
 import { buildLocationIndex } from '../../../../lib/inventory/location-index';
 import {
@@ -22,6 +24,7 @@ import { EmptyState } from '../../../../components/ui/empty-state';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { Pagination } from '../../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
+import { TransfersMobileList, type MobileTransfer } from './transfers-mobile-list';
 
 export const metadata = { title: 'Transferencias · SaaS Inventory' };
 
@@ -46,6 +49,7 @@ export default async function TransfersPage({
     status?: string;
     sourceLocationId?: string;
     destinationLocationId?: string;
+    all?: string;
   }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
@@ -65,6 +69,13 @@ export default async function TransfersPage({
   const status = parseStatus(sp.status);
   const sourceLocationId = sp.sourceLocationId || undefined;
   const destinationLocationId = sp.destinationLocationId || undefined;
+  // "Ver todos": every matching transfer on screen instead of one page.
+  const showAll = sp.all === '1';
+  const listFilters = {
+    ...(status ? { status } : {}),
+    ...(sourceLocationId ? { sourceLocationId } : {}),
+    ...(destinationLocationId ? { destinationLocationId } : {}),
+  };
 
   // F18-08 transfer analytics — just the two groupBy-independent KPI tiles now (the "Agrupar por"
   // selector and its grouped breakdown table were removed per owner feedback); `groupBy` is sent
@@ -82,19 +93,20 @@ export default async function TransfersPage({
   }
 
   const [result, index] = await Promise.all([
-    listTransfers({
-      page,
-      pageSize: PAGE_SIZE,
-      ...(status ? { status } : {}),
-      ...(sourceLocationId ? { sourceLocationId } : {}),
-      ...(destinationLocationId ? { destinationLocationId } : {}),
-    }),
+    showAll
+      ? fetchAllPages((p, size) => listTransfers({ ...listFilters, page: p, pageSize: size })).then((all) => ({
+          data: all.data,
+          meta: { page: 1, pageSize: Math.max(all.data.length, PAGE_SIZE), total: all.total, totalPages: 1 },
+          truncated: all.truncated,
+        }))
+      : listTransfers({ ...listFilters, page, pageSize: PAGE_SIZE }).then((paged) => ({ ...paged, truncated: false })),
     buildLocationIndex(checker.can('warehouses.view')),
   ]);
   const locationOptions = index.locations.filter((l) => l.status === 'active');
 
   function buildHref(next: {
     page?: number;
+    all?: boolean;
     status?: string | undefined;
     sourceLocationId?: string | undefined;
     destinationLocationId?: string | undefined;
@@ -106,9 +118,22 @@ export default async function TransfersPage({
     if (nextStatus) params.set('status', nextStatus);
     if (nextSource) params.set('sourceLocationId', nextSource);
     if (nextDest) params.set('destinationLocationId', nextDest);
+    if (next.all ?? false) params.set('all', '1');
     if (next.page && next.page > 1) params.set('page', String(next.page));
     return `/inventory/transfers${params.toString() ? `?${params}` : ''}`;
   }
+
+  const mobileTransfers: MobileTransfer[] = result.data.map((transfer: Transfer) => ({
+    id: transfer.id,
+    code: transfer.code,
+    statusLabel: TRANSFER_STATUS_LABELS[transfer.status as TransferStatus] ?? transfer.status,
+    statusTone: transferStatusTone(transfer.status),
+    sourceLabel: index.locationName(transfer.sourceLocationId),
+    destinationLabel: index.locationName(transfer.destinationLocationId),
+    lineCount: transfer.items.length,
+    inTransit: transfer.items.reduce((sum, item) => sum + item.quantityInTransit, 0),
+    createdLabel: new Date(transfer.createdAt).toLocaleDateString(),
+  }));
 
   const hasFilter = Boolean(status || sourceLocationId || destinationLocationId);
 
@@ -141,13 +166,13 @@ export default async function TransfersPage({
 
       <h2 className="text-sm font-semibold text-slate-900">Listado de transferencias</h2>
 
-      <form method="get" className="flex flex-wrap items-end gap-3">
+      <form method="get" className="grid grid-cols-1 gap-3 sm:flex sm:flex-wrap sm:items-end">
         <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
           Estado
           <select
             name="status"
             defaultValue={status ?? ''}
-            className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-900"
+            className="h-10 w-full rounded-md border border-slate-300 px-2 text-sm text-slate-900 sm:h-9 sm:w-auto"
           >
             <option value="">Todos los estados</option>
             {TRANSFER_STATUSES.map((s) => (
@@ -164,7 +189,7 @@ export default async function TransfersPage({
               <select
                 name="sourceLocationId"
                 defaultValue={sourceLocationId ?? ''}
-                className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-900"
+                className="h-10 w-full rounded-md border border-slate-300 px-2 text-sm text-slate-900 sm:h-9 sm:w-auto"
               >
                 <option value="">Cualquiera</option>
                 {locationOptions.map((l) => (
@@ -179,7 +204,7 @@ export default async function TransfersPage({
               <select
                 name="destinationLocationId"
                 defaultValue={destinationLocationId ?? ''}
-                className="h-9 rounded-md border border-slate-300 px-2 text-sm text-slate-900"
+                className="h-10 w-full rounded-md border border-slate-300 px-2 text-sm text-slate-900 sm:h-9 sm:w-auto"
               >
                 <option value="">Cualquiera</option>
                 {locationOptions.map((l) => (
@@ -191,6 +216,7 @@ export default async function TransfersPage({
             </label>
           </>
         )}
+        {showAll && <input type="hidden" name="all" value="1" />}
         <button
           type="submit"
           className="h-9 rounded-md border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -199,7 +225,7 @@ export default async function TransfersPage({
         </button>
         {hasFilter && (
           <Link
-            href={buildHref({ status: undefined, sourceLocationId: undefined, destinationLocationId: undefined })}
+            href={buildHref({ all: showAll, status: undefined, sourceLocationId: undefined, destinationLocationId: undefined })}
             className="h-9 rounded-md px-2 text-sm font-medium text-slate-500 hover:underline"
           >
             Quitar filtros
@@ -221,6 +247,21 @@ export default async function TransfersPage({
         />
       ) : (
         <>
+          <ListViewControls
+            showingAll={showAll}
+            allHref={buildHref({ all: true })}
+            pagedHref={buildHref({})}
+            shown={result.data.length}
+            total={result.meta.total}
+            truncated={result.truncated}
+            canToggle={result.meta.total > PAGE_SIZE}
+            excelHref={buildTransfersExportHref(listFilters, 'xlsx')}
+            pdfHref={buildTransfersExportHref(listFilters, 'pdf')}
+          />
+          <div className="md:hidden">
+            <TransfersMobileList transfers={mobileTransfers} />
+          </div>
+          <div className="hidden md:block">
           <Table>
             <THead>
               <TR>
@@ -269,6 +310,7 @@ export default async function TransfersPage({
               })}
             </TBody>
           </Table>
+          </div>
           <Pagination
             page={result.meta.page}
             pageSize={result.meta.pageSize}

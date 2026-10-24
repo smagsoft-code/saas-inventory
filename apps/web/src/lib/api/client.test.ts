@@ -86,6 +86,22 @@ describe('apiFetch', () => {
     expect(headers['Correlation-Id']).toBeTruthy();
   });
 
+  it('sends a real UUID as Correlation-Id even where crypto.randomUUID does not exist (page opened over plain http)', async () => {
+    const original = globalThis.crypto.randomUUID;
+    Object.defineProperty(globalThis.crypto, 'randomUUID', { value: undefined, configurable: true });
+    try {
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
+      global.fetch = fetchMock as typeof fetch;
+      await apiFetch('/api/v1/orders', { method: 'POST', body: { cartId: 'c1' } });
+      const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+      const id = (init.headers as Record<string, string>)['Correlation-Id'];
+      // The backend stores it in uuid columns (orders.correlation_id, ...): anything else was a 500.
+      expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    } finally {
+      Object.defineProperty(globalThis.crypto, 'randomUUID', { value: original, configurable: true });
+    }
+  });
+
   it('omits Content-Type on a bodyless mutation (e.g. POST /orders/:id/confirm) — Fastify 500s on JSON content-type with an empty body', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
     global.fetch = fetchMock as typeof fetch;

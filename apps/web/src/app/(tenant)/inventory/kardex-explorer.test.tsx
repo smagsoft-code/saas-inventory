@@ -151,6 +151,10 @@ describe('KardexExplorer', () => {
     await waitFor(() => expect(mockedGetKardex).toHaveBeenLastCalledWith({ productVariantId: 'v1', locationId: 'loc-1' }));
     expect(await screen.findByText('Producto seleccionado')).toBeInTheDocument();
     expect(screen.getByText('Silla de Comedor')).toBeInTheDocument();
+    // The card also names the variant's code, to the LEFT of the product name (like a search result).
+    const codeEl = screen.getByText('SILLA-1');
+    const nameEl = screen.getByText('Silla de Comedor');
+    expect(codeEl.compareDocumentPosition(nameEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByText('Elige un almacén para ver su kardex')).not.toBeInTheDocument();
   }, 10000);
 

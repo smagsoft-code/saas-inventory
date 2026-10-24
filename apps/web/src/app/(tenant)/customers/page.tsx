@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { getSession } from '../../../lib/auth/session';
 import { createPermissionChecker } from '../../../lib/auth/permissions';
-import { listCustomers } from '../../../lib/sales/customers';
+import { buildCustomersExportHref, listCustomers } from '../../../lib/sales/customers';
+import { fetchAllPages } from '../../../lib/fetch-all';
+import { ListViewControls } from '../../../components/list-view-controls';
 import { CUSTOMER_TYPE_LABELS, type Customer, type CustomerType } from '../../../lib/types/sales';
 import { PageContainer } from '../../../components/ui/page-container';
 import { PageHeader } from '../../../components/ui/page-header';
@@ -25,7 +27,7 @@ const PAGE_SIZE = 20;
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; q?: string }>;
+  searchParams: Promise<{ page?: string; q?: string; all?: string }>;
 }): Promise<React.JSX.Element> {
   const session = await getSession();
   const checker = createPermissionChecker(session?.permissions ?? []);
@@ -42,16 +44,21 @@ export default async function CustomersPage({
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page) || 1);
   const q = sp.q?.trim() || undefined;
+  // "Ver todos": every matching customer on screen instead of one page.
+  const showAll = sp.all === '1';
 
-  const result = await listCustomers({
-    page,
-    pageSize: PAGE_SIZE,
-    ...(q ? { q } : {}),
-  });
+  const result = showAll
+    ? await fetchAllPages((p, size) => listCustomers({ page: p, pageSize: size, ...(q ? { q } : {}) })).then((all) => ({
+        data: all.data,
+        meta: { page: 1, pageSize: Math.max(all.data.length, PAGE_SIZE), total: all.total, totalPages: 1 },
+        truncated: all.truncated,
+      }))
+    : await listCustomers({ page, pageSize: PAGE_SIZE, ...(q ? { q } : {}) }).then((paged) => ({ ...paged, truncated: false }));
 
-  function buildHref(nextPage: number): string {
+  function buildHref(nextPage: number, all = false): string {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
+    if (all) params.set('all', '1');
     if (nextPage > 1) params.set('page', String(nextPage));
     return `/customers${params.toString() ? `?${params}` : ''}`;
   }
@@ -66,7 +73,19 @@ export default async function CustomersPage({
         actions={canManage ? <ButtonLink href="/customers/new">Nuevo cliente</ButtonLink> : undefined}
       />
 
-      <CustomersSearch initialQ={q ?? ''} />
+      <CustomersSearch initialQ={q ?? ''} showAll={showAll} />
+
+      <ListViewControls
+        showingAll={showAll}
+        allHref={buildHref(1, true)}
+        pagedHref={buildHref(1)}
+        shown={result.data.length}
+        total={result.meta.total}
+        truncated={result.truncated}
+        canToggle={result.meta.total > PAGE_SIZE}
+        excelHref={buildCustomersExportHref({ ...(q ? { q } : {}) }, 'xlsx')}
+        pdfHref={buildCustomersExportHref({ ...(q ? { q } : {}) }, 'pdf')}
+      />
 
       {result.data.length === 0 ? (
         <EmptyState

@@ -3,7 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
-import { ApiError } from '../../../../lib/api/errors';
+import { loginErrorMessage } from '../../../../lib/auth/auth-errors';
 import { safeReturnTo } from '../../../../lib/auth/return-to';
 import type { PlatformAuthResponse } from '../../../../lib/types/platform-session';
 import { Button } from '../../../../components/ui/button';
@@ -12,18 +12,6 @@ import { Input } from '../../../../components/ui/input';
 import { Alert } from '../../../../components/ui/alert';
 
 const LOGIN_PATH = '/api/v1/platform/auth/login';
-
-/** Deliberately generic — the API never says which credential was wrong, and a 5xx body is never
- * echoed. Platform admins are provisioned out-of-band; there is no self-registration link. */
-function loginErrorMessage(err: unknown): string {
-  if (err instanceof ApiError) {
-    if (err.isNetworkError) return 'No se pudo contactar al servidor. Revisa tu conexión e inténtalo de nuevo.';
-    if (err.status === 429) return 'Demasiados intentos. Espera un momento e inténtalo de nuevo.';
-    if (err.status >= 500) return 'Algo salió mal de nuestro lado. Inténtalo de nuevo.';
-    return err.message || 'No se pudo iniciar sesión. Inténtalo de nuevo.';
-  }
-  return 'No se pudo iniciar sesión. Inténtalo de nuevo.';
-}
 
 export function PlatformLoginForm(): React.JSX.Element {
   const router = useRouter();

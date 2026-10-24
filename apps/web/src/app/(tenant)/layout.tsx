@@ -30,9 +30,11 @@ export default async function TenantLayout({
   // The tenant record carries the display name for the shell. If it briefly fails (transient API
   // error) fall back to the slug rather than blocking the whole app.
   let tenantName = session.tenantSlug;
+  let logoVersion: number | undefined;
   try {
     const tenant = await serverApiFetch<Tenant>('/api/v1/tenant');
     tenantName = tenant.name;
+    logoVersion = tenant.logoVersion;
   } catch (error) {
     if (isApiError(error) && error.status === 401) {
       redirect('/login');
@@ -41,7 +43,7 @@ export default async function TenantLayout({
   }
 
   return (
-    <AppShell session={session} tenantName={tenantName} navSections={navSections}>
+    <AppShell session={session} tenantName={tenantName} logoVersion={logoVersion} navSections={navSections}>
       {children}
     </AppShell>
   );

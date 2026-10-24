@@ -3,7 +3,7 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 import { Spinner } from './spinner';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
+type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 'info';
 type Size = 'sm' | 'md';
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -19,6 +19,10 @@ const VARIANTS: Record<Variant, string> = {
     'border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 disabled:text-slate-400',
   ghost: 'text-slate-700 hover:bg-slate-100 disabled:text-slate-400',
   danger: 'bg-red-600 text-white hover:bg-red-500 disabled:bg-red-300',
+  // The same green as the cart's subtotal pill (Nueva venta) — a positive, "go ahead" action.
+  success: 'bg-green-600 text-white hover:bg-green-500 disabled:bg-green-300',
+  // The blue of the Home "Ventas del mes" highlight.
+  info: 'bg-blue-600 text-white hover:bg-blue-500 disabled:bg-blue-300',
 };
 
 const SIZES: Record<Size, string> = {

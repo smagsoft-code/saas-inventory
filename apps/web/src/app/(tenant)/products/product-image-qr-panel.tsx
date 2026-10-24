@@ -1,5 +1,6 @@
 'use client';
 
+import { ProductImageDimensions } from '../../../components/product-image-dimensions';
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api/client';
 import { httpErrorMessage } from '../../../lib/api/errors';
@@ -131,11 +132,11 @@ export function ProductImageQrPanel({
           <img
             src={stagedPreview ?? imageUrl}
             alt=""
-            className="mb-3 aspect-square w-full rounded-md border border-slate-200 object-cover"
+            className="mb-1 aspect-square w-full rounded-md border border-slate-200 bg-white object-contain"
           />
         ) : (
           <div
-            className="mb-3 flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-slate-300"
+            className="mb-1 flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-slate-300"
             aria-hidden
           >
             <svg
@@ -151,6 +152,7 @@ export function ProductImageQrPanel({
             </svg>
           </div>
         )}
+        <ProductImageDimensions />
         {canManageImage && (
           <>
             {uploading && (

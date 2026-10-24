@@ -57,6 +57,7 @@ export function NewSale({
   locations,
   scope,
   canViewProducts,
+  canManageProducts = false,
   canSearchCustomers,
   canManageCustomers,
 }: {
@@ -67,6 +68,8 @@ export function NewSale({
   locations: LocationOption[];
   scope: LocationScope;
   canViewProducts: boolean;
+  /** Only changes the wording of the link in a cart line's photo preview ("Editar" vs "Ver producto"). */
+  canManageProducts?: boolean;
   canSearchCustomers: boolean;
   canManageCustomers: boolean;
 }): React.JSX.Element {
@@ -296,6 +299,7 @@ export function NewSale({
         cart={cart}
         locationLabel={`${warehouseName ? `${warehouseName} · ` : ''}${locationName}`}
         canViewProducts={canViewProducts}
+        canManageProducts={canManageProducts}
         onCartUpdated={setCart}
         customerLabel={customerLabel}
         selectedCustomer={selectedCustomer}

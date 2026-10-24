@@ -1,5 +1,6 @@
 'use client';
 
+import { ProductImageDimensions } from '../../../components/product-image-dimensions';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../lib/api/client';
@@ -817,11 +818,11 @@ export function ProductForm({
               <img
                 src={imagePreviewUrl}
                 alt=""
-                className="mb-3 aspect-square w-full rounded-md border border-slate-200 object-cover"
+                className="mb-1 aspect-square w-full rounded-md border border-slate-200 bg-white object-contain"
               />
             ) : (
               <div
-                className="mb-3 flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-slate-300"
+                className="mb-1 flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-slate-300"
                 aria-hidden
               >
                 <svg
@@ -837,6 +838,7 @@ export function ProductForm({
                 </svg>
               </div>
             )}
+            <ProductImageDimensions />
             <ImageFilePicker
               label="Elegir imagen"
               hint="Opcional. JPEG, PNG o WEBP, hasta 5 MB."

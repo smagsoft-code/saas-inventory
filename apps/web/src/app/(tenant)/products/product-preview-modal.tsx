@@ -1,5 +1,6 @@
 'use client';
 
+import { ProductImageDimensions } from '../../../components/product-image-dimensions';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../../lib/api/client';
@@ -20,6 +21,8 @@ import { Spinner } from '../../../components/ui/spinner';
 
 interface Preview {
   product: Product;
+  /** Resolved from the product's own category when the caller did not pass a name. */
+  categoryName: string | undefined;
   imageUrl: string | undefined;
   attributes: AttributeSummaryItem[];
 }
@@ -68,6 +71,10 @@ export function ProductPreviewModal({
         apiFetch<MeasurementUnit[]>('/api/v1/measurement-units'),
         apiFetch<ProductImage[]>(`/api/v1/products/${productId}/images`).catch(() => [] as ProductImage[]),
       ]);
+      // The cart has no category list at hand; the product's own category is looked up instead
+      // (best-effort — a seller without categories.view just sees no category line).
+      const resolvedCategoryName =
+        categoryName ?? (product.categoryId ? await apiFetch<{ name: string }>(`/api/v1/categories/${product.categoryId}`).then((c) => c.name).catch(() => undefined) : undefined);
       const sets = await loadCategoryAttributeFieldSets(apiFetch, product.categoryId, definitions);
       const attributes = buildAttributeSummary({
         fields: [...sets.product, ...sets.variant],
@@ -76,11 +83,11 @@ export function ProductPreviewModal({
         units,
         values: { ...product.attributes, ...variant.attributes },
       });
-      setState({ status: 'ready', data: { product, imageUrl: images[0]?.url ?? thumbnailUrl, attributes } });
+      setState({ status: 'ready', data: { product, categoryName: resolvedCategoryName, imageUrl: images[0]?.url ?? thumbnailUrl, attributes } });
     } catch (err) {
       setState({ status: 'error', error: httpErrorMessage(err) });
     }
-  }, [productId, variantId, thumbnailUrl]);
+  }, [productId, variantId, thumbnailUrl, categoryName]);
 
   useEffect(() => {
     if (open && state.status === 'idle') void load();
@@ -104,12 +111,13 @@ export function ProductPreviewModal({
         <div className="flex flex-col gap-4 sm:flex-row">
           <div className="sm:w-64 sm:shrink-0">
             {image ? (
-              <img src={image} alt={productName} className="aspect-square w-full rounded-md border border-slate-200 object-cover" />
+              <img src={image} alt={productName} className="aspect-square w-full rounded-md border border-slate-200 bg-white object-contain" />
             ) : (
               <div className="flex aspect-square w-full items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50 text-sm text-slate-400">
                 Sin imagen
               </div>
             )}
+            <ProductImageDimensions className="mt-2 mb-0" />
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col gap-3 text-sm">
@@ -121,9 +129,9 @@ export function ProductPreviewModal({
                 </Badge>
               )}
             </p>
-            {categoryName && (
+            {(categoryName ?? data?.categoryName) && (
               <p>
-                <span className="text-slate-500">Categoría:</span> <span className="text-slate-800">{categoryName}</span>
+                <span className="text-slate-500">Categoría:</span> <span className="text-slate-800">{categoryName ?? data?.categoryName}</span>
               </p>
             )}
 

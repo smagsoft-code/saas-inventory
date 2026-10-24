@@ -82,7 +82,7 @@ describe('PlatformLoginForm', () => {
     typeCredentials();
     submit();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid email or password.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Usuario o contraseña incorrectos.');
     expect(replaceMock).not.toHaveBeenCalled();
   });
 

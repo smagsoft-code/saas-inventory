@@ -11,7 +11,7 @@ const SEARCH_DEBOUNCE_MS = 350;
  * `ProductsFilters`' search box. Matches `q` against firstName/lastName/taxId/email/phone
  * server-side (`ListCustomersQueryDto.q`); no Tipo/Estado filters, no Buscar button here anymore.
  */
-export function CustomersSearch({ initialQ }: { initialQ: string }): React.JSX.Element {
+export function CustomersSearch({ initialQ, showAll = false }: { initialQ: string; showAll?: boolean }): React.JSX.Element {
   const router = useRouter();
   const [q, setQ] = useState(initialQ);
   const skipNextDebounce = useRef(true);
@@ -24,7 +24,9 @@ export function CustomersSearch({ initialQ }: { initialQ: string }): React.JSX.E
     const timer = setTimeout(() => {
       const params = new URLSearchParams();
       if (q.trim()) params.set('q', q.trim());
-      router.push(`/customers${params.toString() ? `?${params}` : ''}`);
+      // The "Ver todos" view survives a new search.
+      if (showAll) params.set('all', '1');
+      router.push(`/customers${params.toString() ? `?${params}` : ''}`, { scroll: false });
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   }, [q]);

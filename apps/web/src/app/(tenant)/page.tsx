@@ -6,6 +6,7 @@ import { createPermissionChecker } from '../../lib/auth/permissions';
 import { loadHomeDashboard } from '../../lib/home/dashboard';
 import { HomeHighlights, HomeKpiGrid, HomeTopProducts } from './home-dashboard';
 import { HomeLocationFilter } from './home-location-filter';
+import { HomeMobile } from './home-mobile';
 import { SalesTrendChart } from './sales-trend-chart';
 
 export const metadata = { title: 'Inicio · SaaS Inventory' };
@@ -42,7 +43,15 @@ export default async function HomePage({
   const visibleTiles = dashboard.tiles.filter((tile) => tile.state !== 'no-access');
   const visibleHighlights = dashboard.highlights.filter((h) => h.state !== 'no-access');
 
+  const chartYear = /^d{4}$/.test(sp.year ?? '') ? sp.year : undefined;
+
   return (
+    <>
+      {/* Phones get the dedicated layout; tablets and desktops keep the card grid below. */}
+      <div className="md:hidden">
+        <HomeMobile fullName={session.fullName} dashboard={dashboard} chartYear={chartYear} />
+      </div>
+      <div className="hidden md:block">
     <PageContainer>
       <PageHeader
         title={`Bienvenido, ${session.fullName}`}
@@ -77,5 +86,7 @@ export default async function HomePage({
         </section>
       )}
     </PageContainer>
+      </div>
+    </>
   );
 }

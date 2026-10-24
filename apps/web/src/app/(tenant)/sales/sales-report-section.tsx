@@ -70,11 +70,12 @@ export function summarizeSales(summary: SalesSummary): {
   };
 }
 
+// Phone: the same card and type as the Inicio / Productos tiles; from md up the original look.
 function KpiTile({ label, value, hint }: { label: string; value: string; hint?: string }): React.JSX.Element {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 break-words text-2xl font-semibold tabular-nums text-slate-900">{value}</p>
+    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:rounded-lg md:p-4 md:shadow-none">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:text-xs md:font-medium md:tracking-wide">{label}</p>
+      <p className="mt-1 break-words text-xl font-bold tabular-nums text-slate-900 md:mt-2 md:text-2xl md:font-semibold">{value}</p>
       {hint && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
     </div>
   );

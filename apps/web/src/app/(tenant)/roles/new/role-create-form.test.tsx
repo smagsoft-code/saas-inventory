@@ -28,8 +28,8 @@ describe('RoleCreateForm', () => {
 
     fireEvent.change(screen.getByLabelText(/nombre del rol/i), { target: { value: 'Cajero' } });
     fireEvent.change(screen.getByLabelText(/descripción/i), { target: { value: 'Punto de venta' } });
-    fireEvent.click(screen.getByText('Ver pedidos'));
-    fireEvent.click(screen.getByText('Crear pedidos'));
+    fireEvent.click(screen.getByLabelText('Ver el historial de ventas'));
+    fireEvent.click(screen.getByLabelText('Crear y confirmar ventas'));
 
     fireEvent.click(screen.getByRole('button', { name: /crear rol/i }));
     await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/roles/new-role-id'));

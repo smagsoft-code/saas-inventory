@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Field } from '../../../../components/ui/field';
 import { Input, Select } from '../../../../components/ui/input';
 import { MOVEMENT_TYPES, MOVEMENT_TYPE_LABELS } from '../../../../lib/types/inventory';
@@ -37,6 +37,14 @@ export function MovementsFilters({ initial, locations }: { initial: MovementsFil
   const [locationId, setLocationId] = useState(initial.locationId ?? '');
   const [movementType, setMovementType] = useState(initial.movementType ?? '');
 
+  // The URL is the source of truth: removing a chip or navigating back re-syncs the controls.
+  useEffect(() => {
+    setFrom(initial.occurredFrom?.slice(0, 10) ?? '');
+    setTo(initial.occurredTo?.slice(0, 10) ?? '');
+    setLocationId(initial.locationId ?? '');
+    setMovementType(initial.movementType ?? '');
+  }, [initial.occurredFrom, initial.occurredTo, initial.locationId, initial.movementType]);
+
   function nextDayStart(dateOnly: string): string {
     const d = new Date(`${dateOnly}T00:00:00.000Z`);
     d.setUTCDate(d.getUTCDate() + 1);
@@ -70,7 +78,7 @@ export function MovementsFilters({ initial, locations }: { initial: MovementsFil
     } else {
       params.delete('movementType');
     }
-    router.push(`${pathname}?${params.toString()}`);
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
   return (

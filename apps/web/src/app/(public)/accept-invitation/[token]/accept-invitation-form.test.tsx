@@ -43,7 +43,7 @@ describe('AcceptInvitationForm', () => {
     fireEvent.change(screen.getByLabelText(/contraseña/i), { target: { value: 'a-long-password' } });
     fireEvent.click(screen.getByRole('button', { name: /activar cuenta/i }));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(/expired/i);
+    expect(await screen.findByRole('alert')).toHaveTextContent('La invitación no es válida o ya venció');
     expect(replaceMock).not.toHaveBeenCalled();
   });
 

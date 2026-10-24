@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { getSession } from '../../../../lib/auth/session';
 import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { listMovements } from '../../../../lib/inventory/movements';
-import { buildLocationIndex, shortId } from '../../../../lib/inventory/location-index';
+import { listProductCatalog } from '../../../../lib/catalog/product-catalog';
+import { buildLocationIndex } from '../../../../lib/inventory/location-index';
 import { buildUserIndex } from '../../../../lib/core/users';
 import {
   MOVEMENT_TYPE_LABELS,
@@ -18,10 +19,22 @@ import { NoAccess } from '../../../../components/ui/no-access';
 import { Pagination } from '../../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../../components/ui/table';
 import { MovementsFilters, type MovementsLocationOption } from './movements-filters';
+import { MovementsMobileList, type MobileMovement } from './movements-mobile-list';
 
 export const metadata = { title: 'Movimientos de inventario · SaaS Inventory' };
 
 const PAGE_SIZE = 20;
+
+/** What the Motivo / referencia column says when the server could not resolve a document's own name
+ * (e.g. the document was removed) — the kind of document, never its raw id. */
+const REFERENCE_TYPE_LABELS: Record<string, string> = {
+  order: 'Pedido',
+  transfer: 'Transferencia',
+  transfer_receipt: 'Transferencia',
+  sales_return_item: 'Devolución',
+  import_job: 'Importación',
+  manual_adjustment: 'Ajuste manual',
+};
 
 function parseMovementType(value: string | undefined): MovementType | undefined {
   return (MOVEMENT_TYPES as readonly string[]).includes(value ?? '') ? (value as MovementType) : undefined;
@@ -96,6 +109,28 @@ export default async function MovementsPage({
     return `/inventory/movements${params.toString() ? `?${params}` : ''}`;
   }
 
+  // The drill-in chip names the product (code · name), never the raw variant id.
+  let variantLabel: string | undefined;
+  if (productVariantId) {
+    const item = (await listProductCatalog({ variantId: productVariantId, pageSize: 1 }).catch(() => null))?.data[0];
+    variantLabel = item ? `${item.sku} · ${item.productName}` : 'Producto seleccionado';
+  }
+
+  const typeLabelOf = (movement: InventoryMovement): string => MOVEMENT_TYPE_LABELS[movement.movementType as MovementType] ?? movement.movementType;
+  const referenceOf = (movement: InventoryMovement): string =>
+    movement.reason ?? movement.referenceLabel ?? (movement.referenceType ? (REFERENCE_TYPE_LABELS[movement.referenceType] ?? '—') : '—');
+  const userOf = (movement: InventoryMovement): string => (movement.actorId ? userIndex.userName(movement.actorId) : movement.actorType);
+  const mobileMovements: MobileMovement[] = result.data.map((movement: InventoryMovement) => ({
+    id: movement.id,
+    whenLabel: new Date(movement.occurredAt).toLocaleString(),
+    typeLabel: typeLabelOf(movement),
+    quantity: movement.quantity,
+    balanceAfter: movement.balanceAfter,
+    locationLabel: index.locationName(movement.locationId),
+    referenceLabel: referenceOf(movement),
+    userLabel: userOf(movement),
+  }));
+
   const hasFilter = Boolean(locationId || movementType || productVariantId || occurredFrom || occurredTo);
 
   return (
@@ -115,7 +150,7 @@ export default async function MovementsPage({
             href={buildHref({ productVariantId: undefined })}
             className="inline-flex items-center gap-1 rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100"
           >
-            Variante {shortId(productVariantId)} <span aria-hidden="true">×</span>
+            {variantLabel} <span aria-hidden="true">×</span>
             <span className="sr-only">Quitar filtro de variante</span>
           </Link>
         </div>
@@ -128,6 +163,10 @@ export default async function MovementsPage({
         />
       ) : (
         <>
+          <div className="md:hidden">
+            <MovementsMobileList movements={mobileMovements} />
+          </div>
+          <div className="hidden md:block">
           <Table>
             <THead>
               <TR>
@@ -147,9 +186,7 @@ export default async function MovementsPage({
                     {new Date(movement.occurredAt).toLocaleString()}
                   </TD>
                   <TD>
-                    <Badge tone="neutral">
-                      {MOVEMENT_TYPE_LABELS[movement.movementType as MovementType] ?? movement.movementType}
-                    </Badge>
+                    <Badge tone="neutral">{typeLabelOf(movement)}</Badge>
                   </TD>
                   <TD className="text-slate-500">{index.locationName(movement.locationId)}</TD>
                   <TD className="text-right">
@@ -165,13 +202,14 @@ export default async function MovementsPage({
                   </TD>
                   <TD className="bg-blue-50 text-right font-medium text-blue-900">{movement.balanceAfter}</TD>
                   <TD className="text-slate-500">
-                    {movement.reason ?? movement.referenceLabel ?? (movement.referenceType ? `${movement.referenceType} ${shortId(movement.referenceId ?? '')}` : '—')}
+                    {referenceOf(movement)}
                   </TD>
-                  <TD className="text-slate-500">{movement.actorId ? userIndex.userName(movement.actorId) : movement.actorType}</TD>
+                  <TD className="text-slate-500">{userOf(movement)}</TD>
                 </TR>
               ))}
             </TBody>
           </Table>
+          </div>
           <Pagination
             page={result.meta.page}
             pageSize={result.meta.pageSize}

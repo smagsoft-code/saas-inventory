@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
-import { httpErrorMessage } from '../../../../lib/api/errors';
+import { invitationErrorMessage } from '../../../../lib/auth/auth-errors';
 import { Alert } from '../../../../components/ui/alert';
 import { Button } from '../../../../components/ui/button';
 import { Field } from '../../../../components/ui/field';
@@ -40,7 +40,7 @@ export function AcceptInvitationForm({
       router.replace('/');
       router.refresh();
     } catch (err) {
-      setError(httpErrorMessage(err));
+      setError(invitationErrorMessage(err));
       setSubmitting(false);
     }
   }
@@ -54,12 +54,11 @@ export function AcceptInvitationForm({
         </p>
       </div>
       <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
-        <Field label="Contraseña" required help="Mínimo 10 caracteres.">
+        <Field label="Contraseña" required>
           <Input
             name="password"
             type="password"
             required
-            minLength={10}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             autoComplete="new-password"
