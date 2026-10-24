@@ -11,6 +11,7 @@ import { Alert } from '../../../../components/ui/alert';
 import { Button, ButtonLink } from '../../../../components/ui/button';
 import { Field } from '../../../../components/ui/field';
 import { Input, Select, Textarea } from '../../../../components/ui/input';
+import { TransferProductSearch, type VariantHit } from './transfer-product-search';
 
 const TRANSFERS_PATH = '/api/v1/inventory/transfers';
 
@@ -22,10 +23,6 @@ const TITLE = 'flex items-center gap-2 text-base font-bold text-slate-900';
 /** A tinted block inside a phone card (origen / destino / one product). */
 const BLOCK = 'flex flex-col gap-3 rounded-xl bg-slate-50 p-3';
 
-interface ProductOption {
-  id: string;
-  name: string;
-}
 export interface WarehouseOption {
   id: string;
   name: string;
@@ -35,15 +32,12 @@ export interface LocationOption {
   warehouseId: string;
   name: string;
 }
-interface VariantOption {
-  id: string;
-  sku: string;
-}
 interface Line {
   key: number;
-  productId: string;
-  variants: VariantOption[];
-  variantsLoading: boolean;
+  /** What the search box shows once a product is picked ("Name"). */
+  productLabel: string;
+  /** The picked variant's code. */
+  sku: string;
   productVariantId: string;
   quantity: string;
   /** `undefined` = not yet looked up, `null` = looked up but no balance row (zero stock). */
@@ -54,9 +48,8 @@ interface Line {
 function emptyLine(key: number): Line {
   return {
     key,
-    productId: '',
-    variants: [],
-    variantsLoading: false,
+    productLabel: '',
+    sku: '',
     productVariantId: '',
     quantity: '',
     stockAvailable: undefined,
@@ -74,20 +67,11 @@ async function fetchStockAvailable(productVariantId: string, locationId: string)
   return result.data[0]?.quantityAvailable ?? 0;
 }
 
-/** `GET /inventory/products-in-stock?locationId=` (`inventory.view`) — only products with at
- * least one variant carrying available stock at that location, never the tenant's whole catalog
- * (F17-TRANSFERS-AUDIT). */
-async function fetchProductsInStock(locationId: string): Promise<ProductOption[]> {
-  return apiFetch<ProductOption[]>('/api/v1/inventory/products-in-stock', {
-    query: { locationId },
-  });
-}
-
 /**
  * Creates a transfer — `POST /api/v1/inventory/transfers` (`inventory.transfers.request`). Body is
  * exactly `CreateTransferDto` (`sourceLocationId`, `destinationLocationId`, `items[]`, `notes?`);
- * never `tenantId`/`requestedBy`/`status`. Each line is Product → Variant → quantity, reusing
- * `GET /products/:id/variants` (no tenant-wide variant list — `GAP-VARIANT-LIST`). Client
+ * never `tenantId`/`requestedBy`/`status`. Each line is one variant found with the product search box
+ * (`GET /inventory/products-in-stock/variants`, by name or code) plus a quantity. Client
  * validation (including "cantidad <= stock disponible") is a UX mirror only — the backend
  * re-validates and authorizes both (F17-TRANSFERS-AUDIT §4/§17).
  *
@@ -147,46 +131,14 @@ export function TransferForm({
     setDestinationOpen(destinationLocationId === '');
   }, [destinationLocationId]);
   const [notes, setNotes] = useState('');
+  // Like the receive modal: the notes box stays collapsed until the user asks for it.
+  const [notesOpen, setNotesOpen] = useState(false);
   const [lines, setLines] = useState<Line[]>([emptyLine(0)]);
   const [nextKey, setNextKey] = useState(1);
 
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-
-  const [originProducts, setOriginProducts] = useState<ProductOption[]>([]);
-  const [originProductsLoading, setOriginProductsLoading] = useState(false);
-
-  // Re-fetch the eligible product list every time the source location changes — "Producto" is
-  // always relative to the chosen origin, never a static, unfiltered catalog fetch.
-  useEffect(() => {
-    if (!sourceLocationId) {
-      setOriginProducts([]);
-      return;
-    }
-    let cancelled = false;
-    setOriginProductsLoading(true);
-    void fetchProductsInStock(sourceLocationId)
-      .then((rows) => {
-        if (!cancelled) {
-          setOriginProducts(rows);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setOriginProducts([]);
-          setError(httpErrorMessage(err));
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setOriginProductsLoading(false);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [sourceLocationId]);
 
   const sourceLocationsInWarehouse = useMemo(() => {
     const inWarehouse = locations.filter((l) => l.warehouseId === sourceWarehouseId);
@@ -256,41 +208,17 @@ export function TransferForm({
     }
   }
 
-  async function onProductChange(key: number, productId: string): Promise<void> {
+  /** A search hit is one variant with stock at the origin: the line takes it (and its stock) whole. */
+  function onPickVariant(key: number, hit: VariantHit): void {
     updateLine(key, {
-      productId,
-      productVariantId: '',
-      variants: [],
-      variantsLoading: Boolean(productId),
-      stockAvailable: undefined,
+      productLabel: hit.productName,
+      sku: hit.sku,
+      productVariantId: hit.variantId,
+      stockAvailable: hit.quantityAvailable,
+      stockLoading: false,
+      quantity: '',
     });
-    if (!productId) {
-      return;
-    }
-    try {
-      const rows = await apiFetch<{ id: string; sku: string }[]>(
-        `/api/v1/products/${productId}/variants`,
-      );
-      const variants = rows.map((r) => ({ id: r.id, sku: r.sku }));
-      updateLine(key, { variants, variantsLoading: false });
-      // §3: a single-variant product never makes the user pick a variant manually.
-      if (variants.length === 1 && sourceLocationId) {
-        updateLine(key, { productVariantId: variants[0]!.id });
-        void loadStockFor(key, variants[0]!.id, sourceLocationId);
-      } else if (variants.length === 1) {
-        updateLine(key, { productVariantId: variants[0]!.id });
-      }
-    } catch (err) {
-      updateLine(key, { variantsLoading: false });
-      setError(httpErrorMessage(err));
-    }
-  }
-
-  function onVariantChange(key: number, productVariantId: string): void {
-    updateLine(key, { productVariantId, stockAvailable: undefined });
-    if (productVariantId && sourceLocationId) {
-      void loadStockFor(key, productVariantId, sourceLocationId);
-    }
+    setFieldError({});
   }
 
   // Origin changed — re-check stock for every line that already has a variant chosen, since
@@ -320,7 +248,7 @@ export function TransferForm({
     const seen = new Set<string>();
     lines.forEach((line, i) => {
       if (!line.productVariantId) {
-        next[`line-${i}-variant`] = 'Elige una variante.';
+        next[`line-${i}-variant`] = 'Elige un producto.';
       } else if (seen.has(line.productVariantId)) {
         next[`line-${i}-variant`] = 'Esta variante ya está en otra fila.';
       } else {
@@ -377,17 +305,12 @@ export function TransferForm({
   }
 
   const noSourceScope = sourceWarehouses.length === 0;
-  const productsDisabled =
-    !canViewInventory || !sourceLocationId || originProductsLoading || originProducts.length === 0;
+  const productsDisabled = !canViewInventory || !sourceLocationId;
   const productPlaceholder = !canViewInventory
     ? 'No puedes ver el inventario'
     : !sourceLocationId
       ? 'Elige primero el almacén de origen'
-      : originProductsLoading
-        ? 'Cargando productos…'
-        : originProducts.length === 0
-          ? 'Sin productos con stock en este almacén'
-          : 'Elegir un producto…';
+      : 'Buscar por nombre o código';
 
   const locationName = (id: string): string | undefined => locations.find((l) => l.id === id)?.name;
   const warehouseName = (id: string): string | undefined => {
@@ -566,7 +489,6 @@ export function TransferForm({
           </span>
         </div>
         {lines.map((line, i) => {
-          const singleVariant = line.variants.length === 1;
           // Column titles only need to appear once (row 0) once the rows line up as a real desktop
           // grid/table — repeating "Producto"/"Variante"/… on every row is redundant there. Mobile
           // (stacked, below `md`) keeps every row's own labels, since there is no shared header row
@@ -588,6 +510,9 @@ export function TransferForm({
                   >
                     {i + 1}
                   </span>
+                  <span className="min-w-0 flex-1 truncate text-xs font-semibold text-slate-500 md:hidden">
+                    {line.sku ? `SKU: ${line.sku}` : ''}
+                  </span>
                   <Button
                     type="button"
                     variant="danger"
@@ -604,56 +529,25 @@ export function TransferForm({
                   label="Producto"
                   required
                   {...(repeatedLabel ? { labelClassName: repeatedLabel } : {})}
+                  {...(fieldError[`line-${i}-variant`]
+                    ? { error: fieldError[`line-${i}-variant`] }
+                    : {})}
                 >
-                  <Select
-                    value={line.productId}
+                  <TransferProductSearch
+                    locationId={sourceLocationId}
+                    selectedLabel={line.productLabel}
+                    placeholder={productPlaceholder}
                     disabled={productsDisabled}
-                    onChange={(e) => void onProductChange(line.key, e.target.value)}
-                  >
-                    <option value="">{productPlaceholder}</option>
-                    {originProducts.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name}
-                      </option>
-                    ))}
-                  </Select>
+                    onPick={(hit) => onPickVariant(line.key, hit)}
+                  />
                 </Field>
 
-                {singleVariant ? (
-                  <div className="flex flex-col gap-1">
-                    <span className={cn('text-sm font-medium text-slate-700', repeatedLabel)}>
-                      Variante
-                    </span>
-                    <p className="flex h-10 items-center text-sm text-slate-600">
-                      {line.variants[0]!.sku}
-                    </p>
-                  </div>
-                ) : (
-                  <Field
-                    label="Variante"
-                    required
-                    {...(repeatedLabel ? { labelClassName: repeatedLabel } : {})}
-                    {...(fieldError[`line-${i}-variant`]
-                      ? { error: fieldError[`line-${i}-variant`] }
-                      : {})}
-                    {...(line.variantsLoading ? { hint: 'Cargando variantes…' } : {})}
-                  >
-                    <Select
-                      value={line.productVariantId}
-                      disabled={!line.productId || line.variantsLoading}
-                      onChange={(e) => onVariantChange(line.key, e.target.value)}
-                    >
-                      <option value="">
-                        {line.productId ? 'Elegir una variante…' : 'Elige primero un producto'}
-                      </option>
-                      {line.variants.map((variant) => (
-                        <option key={variant.id} value={variant.id}>
-                          {variant.sku}
-                        </option>
-                      ))}
-                    </Select>
-                  </Field>
-                )}
+                <div className="flex flex-col gap-1">
+                  <span className={cn('text-sm font-medium text-slate-700', repeatedLabel)}>
+                    Código
+                  </span>
+                  <p className="flex h-10 items-center text-sm text-slate-600">{line.sku || '—'}</p>
+                </div>
 
                 {/* Stock + Cantidad share one row on phones (stock pill left, stepper right). */}
                 <div className="flex items-end justify-between gap-3 md:contents">
@@ -716,23 +610,35 @@ export function TransferForm({
           type="button"
           variant="secondary"
           disabled={productsDisabled}
-          className="w-full border-blue-100 bg-blue-50 text-blue-800 md:hidden"
+          className="w-full gap-2 md:hidden"
           onClick={addLine}
         >
-          + Añadir producto
+          <span aria-hidden="true" className="text-lg leading-none text-blue-700">
+            ⊕
+          </span>
+          Añadir producto
         </Button>
       </fieldset>
 
-      <section className={CARD} aria-label="Notas">
-        <Field label="Notas" help="Opcional — visible en la transferencia.">
-          <Textarea
-            rows={2}
-            maxLength={1000}
-            className="md:h-24"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </Field>
+      <section className={notesOpen || notes ? CARD : undefined} aria-label="Notas">
+        {notesOpen || notes ? (
+          <Field label="Notas" help="Opcional — visible en la transferencia.">
+            <Textarea
+              rows={2}
+              maxLength={1000}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+            />
+          </Field>
+        ) : (
+          <button
+            type="button"
+            className="text-sm font-medium text-blue-700 hover:underline"
+            onClick={() => setNotesOpen(true)}
+          >
+            + Agregar notas
+          </button>
+        )}
       </section>
 
       {sameLocation && <Alert tone="warning">El origen y el destino deben ser distintos.</Alert>}

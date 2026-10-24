@@ -6,6 +6,8 @@ import { withTenantTransaction } from '../../database/tenant-context';
 import { ProductsInStockRepository } from '../repositories/products-in-stock.repository';
 import { ListProductsInStockQueryDto } from './dto/list-products-in-stock-query.dto';
 import { ProductInStockResponseDto } from './dto/product-in-stock-response.dto';
+import { SearchVariantsInStockQueryDto } from './dto/search-variants-in-stock-query.dto';
+import { VariantInStockResponseDto } from './dto/variant-in-stock-response.dto';
 
 /**
  * Which products have available stock (`quantity_available > 0`) at one location — backs
@@ -18,6 +20,17 @@ import { ProductInStockResponseDto } from './dto/product-in-stock-response.dto';
 @Controller('inventory/products-in-stock')
 export class ProductsInStockController {
   constructor(private readonly productsInStockRepository: ProductsInStockRepository) {}
+
+  /** Variant-grain search by product name or code — the New Transfer form's product search box. */
+  @Get('variants')
+  @RequirePermissions('inventory.view')
+  @ApiOkResponse({ type: VariantInStockResponseDto, isArray: true })
+  async searchVariants(@CurrentTenant() tenantId: string, @Query() query: SearchVariantsInStockQueryDto): Promise<VariantInStockResponseDto[]> {
+    const rows = await withTenantTransaction(tenantId, (tx) =>
+      this.productsInStockRepository.searchVariantsByLocation(tx, tenantId, query.locationId, query.q),
+    );
+    return rows.map((row) => ({ ...row, quantityAvailable: Number(row.quantityAvailable) }));
+  }
 
   @Get()
   @RequirePermissions('inventory.view')
