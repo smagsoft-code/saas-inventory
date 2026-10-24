@@ -43,23 +43,36 @@ function Row({ label, value }: { label: string; value: string }): React.JSX.Elem
   );
 }
 
-export function TransferDetailMobile({ detail }: { detail: MobileTransferDetail }): React.JSX.Element {
+export function TransferDetailMobile({
+  detail,
+}: {
+  detail: MobileTransferDetail;
+}): React.JSX.Element {
   return (
     <div className="flex flex-col gap-3 md:hidden">
-      <section className={cn(T.card, 'flex flex-col gap-3 p-4')} aria-label="Resumen de la transferencia">
+      <section
+        className={cn(T.card, 'flex flex-col gap-3 p-4')}
+        aria-label="Resumen de la transferencia"
+      >
         <span className="flex items-center justify-between gap-3">
           <span className={cn(T.code, 'min-w-0 truncate text-sm')}>{detail.code}</span>
-          <span className={cn(mobileBadgeClass(T, detail.statusTone), 'shrink-0')}>{detail.statusLabel}</span>
+          <span className={cn(mobileBadgeClass(T, detail.statusTone), 'shrink-0')}>
+            {detail.statusLabel}
+          </span>
         </span>
         <div className="grid grid-cols-2 gap-2">
           <div className={cn(T.tile, 'min-w-0 bg-slate-50 p-2.5')}>
             <p className={T.tileLabel}>Origen</p>
-            <p className="mt-1 truncate text-sm font-semibold text-slate-900">{detail.source.name}</p>
+            <p className="mt-1 truncate text-sm font-semibold text-slate-900">
+              {detail.source.name}
+            </p>
             <p className="truncate text-xs text-slate-500">{detail.source.warehouse}</p>
           </div>
           <div className={cn(T.tile, 'min-w-0 bg-slate-50 p-2.5')}>
             <p className={T.tileLabel}>Destino</p>
-            <p className="mt-1 truncate text-sm font-semibold text-blue-700">{detail.destination.name}</p>
+            <p className="mt-1 truncate text-sm font-semibold text-blue-700">
+              {detail.destination.name}
+            </p>
             <p className="truncate text-xs text-slate-500">{detail.destination.warehouse}</p>
           </div>
         </div>
@@ -85,7 +98,7 @@ export function TransferDetailMobile({ detail }: { detail: MobileTransferDetail 
       </h2>
       <ul className="flex flex-col gap-3" aria-label="Productos de la transferencia">
         {detail.items.map((item) => (
-          <li key={item.id} className={cn(T.card, 'flex flex-col gap-3 p-4')}>
+          <li key={item.id} className={cn(T.card, 'flex flex-col gap-2 p-4')}>
             {item.href ? (
               <Link href={item.href} className={cn(T.title, 'underline-offset-2 hover:underline')}>
                 {item.label}
@@ -93,7 +106,7 @@ export function TransferDetailMobile({ detail }: { detail: MobileTransferDetail 
             ) : (
               <span className={T.title}>{item.label}</span>
             )}
-            <dl className="grid grid-cols-2 gap-2">
+            <dl className="flex flex-col divide-y divide-slate-100">
               {(
                 [
                   ['Solicitado', item.requested],
@@ -102,9 +115,9 @@ export function TransferDetailMobile({ detail }: { detail: MobileTransferDetail 
                   ['En tránsito', item.inTransit],
                 ] as const
               ).map(([label, value]) => (
-                <div key={label} className={cn(T.tile, 'p-2.5')}>
-                  <dt className={T.tileLabel}>{label}</dt>
-                  <dd className={cn(T.tileValueMono, 'font-semibold')}>{value}</dd>
+                <div key={label} className="flex items-baseline justify-between gap-3 py-1.5">
+                  <dt className="text-sm font-semibold text-slate-900">{label}</dt>
+                  <dd className="font-mono text-sm tabular-nums text-emerald-700">{value}</dd>
                 </div>
               ))}
             </dl>

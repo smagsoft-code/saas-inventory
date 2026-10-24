@@ -123,6 +123,8 @@ export function TransferActions({
   const [receiveIncident, setReceiveIncident] = useState<Record<string, string>>({});
   const [receiveIncidentNotes, setReceiveIncidentNotes] = useState<Record<string, string>>({});
   const [receiveNotes, setReceiveNotes] = useState('');
+  // The general notes box stays collapsed until the user asks for it.
+  const [receiveNotesOpen, setReceiveNotesOpen] = useState(false);
 
   const outstanding = items.filter((item) => item.quantityDispatched - item.quantityReceived > 0);
 
@@ -164,6 +166,7 @@ export function TransferActions({
     setReceiveIncident({});
     setReceiveIncidentNotes({});
     setReceiveNotes('');
+    setReceiveNotesOpen(false);
     setError(null);
     setReceiveOpen(true);
   }
@@ -466,9 +469,24 @@ export function TransferActions({
                   );
                 })
               )}
-              <Field label="Notas" help="Opcional — se registra en el evento de recepción.">
-                <Textarea maxLength={1000} value={receiveNotes} onChange={(e) => setReceiveNotes(e.target.value)} />
-              </Field>
+              {receiveNotesOpen || receiveNotes ? (
+                <Field label="Notas" help="Opcional — se registra en el evento de recepción.">
+                  <Textarea
+                    rows={2}
+                    maxLength={1000}
+                    value={receiveNotes}
+                    onChange={(e) => setReceiveNotes(e.target.value)}
+                  />
+                </Field>
+              ) : (
+                <button
+                  type="button"
+                  className="self-start text-sm font-medium text-blue-700 hover:underline"
+                  onClick={() => setReceiveNotesOpen(true)}
+                >
+                  + Agregar notas
+                </button>
+              )}
             </div>
           </Modal>
         )}

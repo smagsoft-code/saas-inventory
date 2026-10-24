@@ -108,6 +108,15 @@ describe('TransferActions', () => {
     expect(mockedFetch).not.toHaveBeenCalled();
   });
 
+  it('the receive notes box stays collapsed until the user asks for it', () => {
+    render(<TransferActions transferId={T} status="dispatched" items={RECEIVABLE_ITEMS} canApprove canDispatch canReceive />);
+    fireEvent.click(screen.getByRole('button', { name: /recibir…/i }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByRole('textbox', { name: /notas/i })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: /agregar notas/i }));
+    expect(within(dialog).getByRole('textbox', { name: /notas/i })).toBeInTheDocument();
+  });
+
   it('cancel is a two-step confirm', async () => {
     mockedFetch.mockResolvedValueOnce({});
     render(<TransferActions transferId={T} status="draft" items={[]} canApprove canDispatch canReceive />);
