@@ -58,7 +58,9 @@ export default async function ApprovalDetailPage({
   // `sales.orders.view` gets a 403 here, which is fine (the ids still link).
   const order = await getOrder(approval.orderId).catch(() => null);
   const line = order?.items.find((item) => item.id === approval.orderItemId) ?? null;
-  const isOwnRequest = approval.requestedBy === session?.id;
+  // The tenant administrator (pricing.policy.manage) may resolve their own request; everyone else cannot.
+  const requestedByMe = approval.requestedBy === session?.id;
+  const isOwnRequest = requestedByMe && !checker.can('pricing.policy.manage');
 
   return (
     <PageContainer>
@@ -110,7 +112,7 @@ export default async function ApprovalDetailPage({
             <dt className="text-slate-500">Solicitado por</dt>
             <dd className="text-slate-900">
               {approval.requestedByName}
-              {isOwnRequest && <span className="text-slate-500"> · tú</span>}
+              {requestedByMe && <span className="text-slate-500"> · tú</span>}
             </dd>
             <dt className="text-slate-500">Solicitado el</dt>
             <dd className="text-slate-900">{new Date(approval.requestedAt).toLocaleString('es')}</dd>

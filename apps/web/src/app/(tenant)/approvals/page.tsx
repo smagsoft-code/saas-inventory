@@ -194,20 +194,20 @@ export default async function ApprovalsPage({
         />
       ) : (
         <>
-          <Table>
+          <Table className="table-fixed">
             <THead>
               <TR>
-                <TH className="whitespace-nowrap">Pedido</TH>
-                <TH>Producto</TH>
-                <TH>Almacén</TH>
-                <TH className="whitespace-nowrap text-right" title="Precio solicitado">
+                <TH className="w-[12%]">Pedido</TH>
+                <TH className="w-[16%]">Producto</TH>
+                <TH className="w-[12%]">Almacén</TH>
+                <TH className="w-[10%] text-right" title="Precio solicitado">
                   P. solicitado
                 </TH>
-                <TH className="text-right">Descuento</TH>
-                <TH className="w-48">Motivo</TH>
-                <TH className="whitespace-nowrap">Solicitado</TH>
-                <TH>Estado</TH>
-                <TH className="w-0">
+                <TH className="w-[10%] text-right">Descuento</TH>
+                <TH className="w-[16%]">Motivo</TH>
+                <TH className="w-[11%]">Solicitado</TH>
+                <TH className="w-[9%]">Estado</TH>
+                <TH className="w-[4%]">
                   <span className="sr-only">Acciones</span>
                 </TH>
               </TR>
@@ -215,7 +215,7 @@ export default async function ApprovalsPage({
             <TBody>
               {result.data.map((approval) => (
                 <TR key={approval.id}>
-                  <TD className="whitespace-nowrap">
+                  <TD className="break-words">
                     <Link
                       href={`/sales/${approval.orderId}`}
                       className="font-medium text-slate-700 underline-offset-2 hover:underline"
@@ -223,7 +223,7 @@ export default async function ApprovalsPage({
                       {approval.orderNumber}
                     </Link>
                   </TD>
-                  <TD className="max-w-[12rem] text-slate-700">
+                  <TD className="text-slate-700">
                     {approval.productName ? (
                       <span className="block truncate" title={approval.sku ? `${approval.sku} · ${approval.productName}` : approval.productName}>
                         {approval.productName}
@@ -232,15 +232,15 @@ export default async function ApprovalsPage({
                       '—'
                     )}
                   </TD>
-                  <TD className="whitespace-nowrap text-slate-500">{location.index.locationName(approval.locationId)}</TD>
-                  <TD className="whitespace-nowrap text-right text-slate-700">{approval.requestedPrice.toFixed(2)}</TD>
-                  <TD className="whitespace-nowrap text-right text-slate-500">{approval.discountAmount.toFixed(2)}</TD>
-                  <TD className="w-48 min-w-[10rem] max-w-[12rem] text-xs leading-snug text-slate-500">
+                  <TD className="break-words text-slate-500">{location.index.locationName(approval.locationId)}</TD>
+                  <TD className="text-right text-slate-700">{approval.requestedPrice.toFixed(2)}</TD>
+                  <TD className="text-right text-slate-500">{approval.discountAmount.toFixed(2)}</TD>
+                  <TD className="text-xs leading-snug text-slate-500">
                     <span className="line-clamp-2" title={approval.reason}>
                       {approval.reason}
                     </span>
                   </TD>
-                  <TD className="whitespace-nowrap text-slate-500">{dateFormat.format(new Date(approval.requestedAt))}</TD>
+                  <TD className="text-slate-500">{dateFormat.format(new Date(approval.requestedAt))}</TD>
                   <TD>
                     <Badge tone={priceApprovalStatusTone(approval.status)}>
                       {PRICE_APPROVAL_STATUS_LABELS[approval.status as PriceApprovalStatus] ?? approval.status}
