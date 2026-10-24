@@ -394,4 +394,20 @@ describe('TransferForm', () => {
     fireEvent.click(screen.getByRole('button', { name: /añadir producto/i }));
     expect(screen.getByText('2 productos')).toBeInTheDocument();
   });
+
+  it('phone: origin and destination fold once chosen and reopen from the route summary', async () => {
+    renderForm();
+    await fillOneLine();
+    const origin = screen.getByRole('button', { name: 'Editar origen' });
+    const destination = screen.getByRole('button', { name: 'Editar destino' });
+    expect(origin).toHaveAttribute('aria-expanded', 'false');
+    expect(destination).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(origin);
+    expect(origin).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(destination);
+    expect(destination).toHaveAttribute('aria-expanded', 'true');
+    // clearing the almacén opens that side again on its own
+    fireEvent.change(screen.getByLabelText(/sucursal de origen/i), { target: { value: 'wh-2' } });
+    expect(origin).toHaveAttribute('aria-expanded', 'true');
+  });
 });

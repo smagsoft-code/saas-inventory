@@ -136,6 +136,16 @@ export function TransferForm({
   });
   const [destinationWarehouseId, setDestinationWarehouseId] = useState('');
   const [destinationLocationId, setDestinationLocationId] = useState('');
+  // Phone only: once a side (sucursal + almacén) is chosen its fields fold away to avoid confusion;
+  // tapping that side of the route summary opens them again. Clearing the almacén re-opens it.
+  const [originOpen, setOriginOpen] = useState(() => sourceLocationId === '');
+  const [destinationOpen, setDestinationOpen] = useState(true);
+  useEffect(() => {
+    setOriginOpen(sourceLocationId === '');
+  }, [sourceLocationId]);
+  useEffect(() => {
+    setDestinationOpen(destinationLocationId === '');
+  }, [destinationLocationId]);
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([emptyLine(0)]);
   const [nextKey, setNextKey] = useState(1);
@@ -398,7 +408,13 @@ export function TransferForm({
       {(sourceLocationId || destinationLocationId) && (
         <section className={cn(CARD, 'md:hidden')} aria-label="Ruta elegida">
           <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl bg-slate-50 p-3">
-            <div className="min-w-0">
+            <button
+              type="button"
+              aria-expanded={originOpen}
+              aria-label="Editar origen"
+              onClick={() => setOriginOpen((open) => !open)}
+              className="min-w-0 text-left"
+            >
               <p className={SECTION}>Origen</p>
               <p className="truncate text-sm font-bold text-slate-900">
                 {locationName(sourceLocationId) ?? '—'}
@@ -406,14 +422,20 @@ export function TransferForm({
               <p className="truncate text-xs text-slate-500">
                 {warehouseName(sourceWarehouseId) ?? ''}
               </p>
-            </div>
+            </button>
             <span
               className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-700"
               aria-hidden="true"
             >
               →
             </span>
-            <div className="min-w-0 text-right">
+            <button
+              type="button"
+              aria-expanded={destinationOpen}
+              aria-label="Editar destino"
+              onClick={() => setDestinationOpen((open) => !open)}
+              className="min-w-0 text-right"
+            >
               <p className={SECTION}>Destino</p>
               <p className="truncate text-sm font-bold text-slate-900">
                 {locationName(destinationLocationId) ?? '—'}
@@ -421,7 +443,7 @@ export function TransferForm({
               <p className="truncate text-xs text-slate-500">
                 {warehouseName(destinationWarehouseId) ?? ''}
               </p>
-            </div>
+            </button>
           </div>
         </section>
       )}
@@ -437,7 +459,7 @@ export function TransferForm({
           </span>
           Ruta logística
         </h3>
-        <div className={cn(BLOCK, 'md:contents')}>
+        <div className={originOpen ? cn(BLOCK, 'md:contents') : 'hidden md:contents'}>
           <Field
             className="md:order-1"
             label="Sucursal de origen"
@@ -480,12 +502,15 @@ export function TransferForm({
           </Field>
         </div>
         <span
-          className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-700 md:hidden"
+          className={cn(
+            'mx-auto h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-700 md:hidden',
+            originOpen && destinationOpen ? 'flex' : 'hidden',
+          )}
           aria-hidden="true"
         >
           ↓
         </span>
-        <div className={cn(BLOCK, 'md:contents')}>
+        <div className={destinationOpen ? cn(BLOCK, 'md:contents') : 'hidden md:contents'}>
           <Field
             className="md:order-2"
             label="Sucursal de destino"
