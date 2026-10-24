@@ -188,7 +188,7 @@ export default async function TransfersPage({
         title="Transferencias"
         help="Mueve stock entre almacenes: solicitar, aprobar, preparar, despachar y recibir."
         actions={
-          <div className="flex flex-wrap items-center justify-end gap-3">
+          <div className="flex flex-wrap items-end justify-end gap-3">
             <div className="hidden md:block">
               <TransfersDateFilters params={carried} inline />
             </div>
