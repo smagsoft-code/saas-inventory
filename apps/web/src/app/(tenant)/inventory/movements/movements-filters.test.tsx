@@ -26,7 +26,12 @@ describe('MovementsFilters', () => {
   it('renders the initial from/to/location/type values', () => {
     render(
       <MovementsFilters
-        initial={{ occurredFrom: '2026-06-01T00:00:00.000Z', occurredTo: '2026-06-15T00:00:00.000Z', locationId: 'loc-2', movementType: 'RECEIPT' }}
+        initial={{
+          occurredFrom: '2026-06-01T00:00:00.000Z',
+          occurredTo: '2026-06-15T00:00:00.000Z',
+          locationId: 'loc-2',
+          movementType: 'RECEIPT',
+        }}
         locations={LOCATIONS}
       />,
     );
@@ -45,7 +50,10 @@ describe('MovementsFilters', () => {
   it('sends occurredFrom as the picked date at 00:00:00.000Z', () => {
     render(<MovementsFilters initial={{}} locations={LOCATIONS} />);
     fireEvent.change(screen.getByLabelText('Desde'), { target: { value: '2026-07-01' } });
-    expect(pushMock).toHaveBeenCalledWith('/inventory/movements?occurredFrom=2026-07-01T00%3A00%3A00.000Z', { scroll: false });
+    expect(pushMock).toHaveBeenCalledWith(
+      '/inventory/movements?occurredFrom=2026-07-01T00%3A00%3A00.000Z',
+      { scroll: false },
+    );
   });
 
   it('sends occurredTo as the START of the NEXT day, so the picked end date is fully included ([occurredFrom, occurredTo))', () => {
@@ -81,7 +89,12 @@ describe('MovementsFilters', () => {
 
   it('clears occurredFrom from the URL when the field is cleared', () => {
     currentSearch = 'occurredFrom=2026-06-01T00%3A00%3A00.000Z';
-    render(<MovementsFilters initial={{ occurredFrom: '2026-06-01T00:00:00.000Z' }} locations={LOCATIONS} />);
+    render(
+      <MovementsFilters
+        initial={{ occurredFrom: '2026-06-01T00:00:00.000Z' }}
+        locations={LOCATIONS}
+      />,
+    );
     fireEvent.change(screen.getByLabelText('Desde'), { target: { value: '' } });
     const url = pushMock.mock.calls[0]![0] as string;
     expect(url).not.toContain('occurredFrom');
@@ -93,5 +106,22 @@ describe('MovementsFilters', () => {
     fireEvent.change(screen.getByLabelText('Almacén'), { target: { value: '' } });
     const url = pushMock.mock.calls[0]![0] as string;
     expect(url).not.toContain('locationId');
+  });
+
+  it('phone: the filter icon toggles the panel and shows how many filters are active', () => {
+    render(
+      <MovementsFilters
+        initial={{ locationId: 'loc-2', movementType: 'RECEIPT' }}
+        locations={LOCATIONS}
+      />,
+    );
+    expect(screen.getByLabelText('2 filtros activos')).toBeTruthy();
+    const toggle = screen.getByRole('button', { name: /mostrar filtros/i });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(toggle);
+    expect(screen.getByRole('button', { name: /ocultar filtros/i })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
   });
 });
