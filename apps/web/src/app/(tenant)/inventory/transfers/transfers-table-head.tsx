@@ -156,39 +156,63 @@ export function TransfersTableHead({
   );
 }
 
-/** The same three filters for the phone layout (the column headers are not shown there). */
+/**
+ * The phone layout's filter card (the column headers are not shown there): the same three filters
+ * as the table head, with the export icons () in the card's header, like the other phone
+ * screens. Applies on change.
+ */
 export function TransfersMobileFilters({
   params,
   statusOptions,
   locationOptions,
-}: TransfersFilterProps): React.JSX.Element {
+  actions,
+}: TransfersFilterProps & { actions?: React.ReactNode }): React.JSX.Element {
   const navigate = useNavigate(params);
+  const label = 'mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-500';
   return (
-    <div className="grid grid-cols-1 gap-2">
-      <SelectFilter
-        label="estado"
-        value={params['status'] ?? ''}
-        options={statusOptions}
-        allLabel="Todos los estados"
-        className={PHONE_INPUT}
-        onChange={(v) => navigate({ status: v || undefined })}
-      />
-      <SelectFilter
-        label="almacén de origen"
-        value={params['sourceLocationId'] ?? ''}
-        options={locationOptions}
-        allLabel="Origen: cualquiera"
-        className={PHONE_INPUT}
-        onChange={(v) => navigate({ sourceLocationId: v || undefined })}
-      />
-      <SelectFilter
-        label="almacén de destino"
-        value={params['destinationLocationId'] ?? ''}
-        options={locationOptions}
-        allLabel="Destino: cualquiera"
-        className={PHONE_INPUT}
-        onChange={(v) => navigate({ destinationLocationId: v || undefined })}
-      />
-    </div>
+    <section
+      className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      aria-label="Filtros"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-bold text-slate-900">Filtros</h3>
+        {actions}
+      </div>
+      <label className="block">
+        <span className={label}>Estado</span>
+        <SelectFilter
+          label="estado"
+          value={params['status'] ?? ''}
+          options={statusOptions}
+          allLabel="Todos los estados"
+          className={PHONE_INPUT}
+          onChange={(v) => navigate({ status: v || undefined })}
+        />
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block min-w-0">
+          <span className={label}>Origen</span>
+          <SelectFilter
+            label="almacén de origen"
+            value={params['sourceLocationId'] ?? ''}
+            options={locationOptions}
+            allLabel="Cualquiera"
+            className={PHONE_INPUT}
+            onChange={(v) => navigate({ sourceLocationId: v || undefined })}
+          />
+        </label>
+        <label className="block min-w-0">
+          <span className={label}>Destino</span>
+          <SelectFilter
+            label="almacén de destino"
+            value={params['destinationLocationId'] ?? ''}
+            options={locationOptions}
+            allLabel="Cualquiera"
+            className={PHONE_INPUT}
+            onChange={(v) => navigate({ destinationLocationId: v || undefined })}
+          />
+        </label>
+      </div>
+    </section>
   );
 }

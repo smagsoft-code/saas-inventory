@@ -4,6 +4,7 @@ import { createPermissionChecker } from '../../../../lib/auth/permissions';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
 import { buildTransfersExportHref, listTransfers } from '../../../../lib/inventory/transfers';
 import { fetchAllPages } from '../../../../lib/fetch-all';
+import { ExportLinks } from '../../../../components/export-icons';
 import { ListViewControls } from '../../../../components/list-view-controls';
 import { getTransfersSummary } from '../../../../lib/inventory/reports';
 import { buildLocationIndex } from '../../../../lib/inventory/location-index';
@@ -141,6 +142,7 @@ export default async function TransfersPage({
   const mobileTransfers: MobileTransfer[] = result.data.map((transfer: Transfer) => ({
     id: transfer.id,
     code: transfer.code,
+    status: transfer.status,
     statusLabel: TRANSFER_STATUS_LABELS[transfer.status as TransferStatus] ?? transfer.status,
     statusTone: transferStatusTone(transfer.status),
     sourceLabel: index.locationName(transfer.sourceLocationId),
@@ -195,7 +197,9 @@ export default async function TransfersPage({
 
       <hr className="border-slate-200" />
 
-      <h2 className="text-sm font-semibold text-slate-900">Listado de transferencias</h2>
+      <h2 className="hidden text-sm font-semibold text-slate-900 md:block">
+        Listado de transferencias
+      </h2>
 
       {result.data.length === 0 && !hasFilter ? (
         <EmptyState
@@ -211,23 +215,44 @@ export default async function TransfersPage({
         />
       ) : (
         <>
-          <ListViewControls
-            showingAll={showAll}
-            allHref={buildHref({ all: true })}
-            pagedHref={buildHref({})}
-            shown={result.data.length}
-            total={result.meta.total}
-            truncated={result.truncated}
-            canToggle={result.meta.total > PAGE_SIZE}
-            excelHref={buildTransfersExportHref(listFilters, 'xlsx')}
-            pdfHref={buildTransfersExportHref(listFilters, 'pdf')}
-          />
+          <div className="hidden md:block">
+            <ListViewControls
+              showingAll={showAll}
+              allHref={buildHref({ all: true })}
+              pagedHref={buildHref({})}
+              shown={result.data.length}
+              total={result.meta.total}
+              truncated={result.truncated}
+              canToggle={result.meta.total > PAGE_SIZE}
+              excelHref={buildTransfersExportHref(listFilters, 'xlsx')}
+              pdfHref={buildTransfersExportHref(listFilters, 'pdf')}
+            />
+          </div>
           <div className="flex flex-col gap-3 md:hidden">
             <TransfersMobileFilters
               params={carried}
               statusOptions={statusOptions}
               locationOptions={headLocationOptions}
+              actions={
+                <ExportLinks
+                  excelHref={buildTransfersExportHref(listFilters, 'xlsx')}
+                  pdfHref={buildTransfersExportHref(listFilters, 'pdf')}
+                />
+              }
             />
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                Listado de transferencias ({result.meta.total})
+              </h3>
+              {(result.meta.total > PAGE_SIZE || showAll) && (
+                <Link
+                  href={showAll ? buildHref({}) : buildHref({ all: true })}
+                  className="text-xs font-semibold text-blue-700"
+                >
+                  {showAll ? 'Ver paginado' : 'Ver todos'}
+                </Link>
+              )}
+            </div>
             {mobileTransfers.length === 0 ? (
               <p className="py-6 text-center text-sm text-slate-500">
                 Ninguna transferencia coincide con estos filtros.
