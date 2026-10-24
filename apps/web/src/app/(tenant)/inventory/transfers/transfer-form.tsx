@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type InputHTMLAttributes } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
 import { cn } from '../../../../lib/cn';
@@ -17,7 +17,10 @@ const TRANSFERS_PATH = '/api/v1/inventory/transfers';
 /** Phone: the same card as the other phone screens; from md up the original, borderless layout. */
 const CARD =
   'rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:border-0 md:bg-transparent md:p-0 md:shadow-none';
-const SECTION = 'text-[11px] font-semibold uppercase tracking-wider text-slate-500';
+const SECTION = 'text-[10px] font-semibold uppercase tracking-wider text-slate-500';
+const TITLE = 'flex items-center gap-2 text-base font-bold text-slate-900';
+/** A tinted block inside a phone card (origen / destino / one product). */
+const BLOCK = 'flex flex-col gap-3 rounded-xl bg-slate-50 p-3';
 
 interface ProductOption {
   id: string;
@@ -134,7 +137,6 @@ export function TransferForm({
   const [destinationWarehouseId, setDestinationWarehouseId] = useState('');
   const [destinationLocationId, setDestinationLocationId] = useState('');
   const [notes, setNotes] = useState('');
-  const [notesOpen, setNotesOpen] = useState(false);
   const [lines, setLines] = useState<Line[]>([emptyLine(0)]);
   const [nextKey, setNextKey] = useState(1);
 
@@ -377,6 +379,12 @@ export function TransferForm({
           ? 'Sin productos con stock en este almacén'
           : 'Elegir un producto…';
 
+  const locationName = (id: string): string | undefined => locations.find((l) => l.id === id)?.name;
+  const warehouseName = (id: string): string | undefined => {
+    const all = [...warehouses, ...sourceWarehouses];
+    return all.find((w) => w.id === id)?.name;
+  };
+
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-3 md:max-w-3xl md:gap-5">
       {noSourceScope && (
@@ -385,109 +393,188 @@ export function TransferForm({
           menos una ubicación para poder crear transferencias.
         </Alert>
       )}
-      <div className={cn(CARD, 'grid gap-3 md:grid-cols-2 md:gap-4')}>
-        <h3 className={cn(SECTION, 'order-first md:hidden')}>Origen y destino</h3>
-        <Field
-          className="order-1"
-          label="Sucursal de origen"
-          required
-          {...(fieldError['sourceWarehouseId'] ? { error: fieldError['sourceWarehouseId'] } : {})}
-        >
-          <Select
-            value={sourceWarehouseId}
-            disabled={noSourceScope}
-            onChange={(e) => onSourceWarehouseChange(e.target.value)}
-          >
-            <option value="">Elegir una sucursal…</option>
-            {sourceWarehouses.map((warehouse) => (
-              <option key={warehouse.id} value={warehouse.id}>
-                {warehouse.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field
-          className="order-3 md:order-2"
-          label="Sucursal de destino"
-          required
-          {...(fieldError['destinationWarehouseId']
-            ? { error: fieldError['destinationWarehouseId'] }
-            : {})}
-        >
-          <Select
-            value={destinationWarehouseId}
-            onChange={(e) => onDestinationWarehouseChange(e.target.value)}
-          >
-            <option value="">Elegir una sucursal…</option>
-            {warehouses.map((warehouse) => (
-              <option key={warehouse.id} value={warehouse.id}>
-                {warehouse.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field
-          className="order-2 md:order-3"
-          label="Almacén de origen"
-          required
-          {...(fieldError['sourceLocationId'] ? { error: fieldError['sourceLocationId'] } : {})}
-        >
-          <Select
-            value={sourceLocationId}
-            disabled={!sourceWarehouseId}
-            onChange={(e) => setSourceLocationId(e.target.value)}
-          >
-            <option value="">
-              {sourceWarehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}
-            </option>
-            {sourceLocationsInWarehouse.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field
-          className="order-4"
-          label="Almacén de destino"
-          required
-          {...(fieldError['destinationLocationId']
-            ? { error: fieldError['destinationLocationId'] }
-            : {})}
-        >
-          <Select
-            value={destinationLocationId}
-            disabled={!destinationWarehouseId}
-            onChange={(e) => setDestinationLocationId(e.target.value)}
-          >
-            <option value="">
-              {destinationWarehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}
-            </option>
-            {destinationLocationsInWarehouse.map((location) => (
-              <option key={location.id} value={location.id}>
-                {location.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
-      </div>
 
-      <fieldset className={cn(CARD, 'flex flex-col gap-4 md:rounded-lg md:shadow-none')}>
+      {/* Phone only: the chosen route at a glance (names already on the form — nothing new). */}
+      {(sourceLocationId || destinationLocationId) && (
+        <section className={cn(CARD, 'md:hidden')} aria-label="Ruta elegida">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 rounded-xl bg-slate-50 p-3">
+            <div className="min-w-0">
+              <p className={SECTION}>Origen</p>
+              <p className="truncate text-sm font-bold text-slate-900">
+                {locationName(sourceLocationId) ?? '—'}
+              </p>
+              <p className="truncate text-xs text-slate-500">
+                {warehouseName(sourceWarehouseId) ?? ''}
+              </p>
+            </div>
+            <span
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-700"
+              aria-hidden="true"
+            >
+              →
+            </span>
+            <div className="min-w-0 text-right">
+              <p className={SECTION}>Destino</p>
+              <p className="truncate text-sm font-bold text-slate-900">
+                {locationName(destinationLocationId) ?? '—'}
+              </p>
+              <p className="truncate text-xs text-slate-500">
+                {warehouseName(destinationWarehouseId) ?? ''}
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Ruta: two tinted blocks (origen, destino) on phones; the original 2×2 grid from md up. */}
+      <section
+        className={cn(CARD, 'flex flex-col gap-3 md:grid md:grid-cols-2 md:gap-4')}
+        aria-label="Ruta"
+      >
+        <h3 className={cn(TITLE, 'md:hidden')}>
+          <span aria-hidden="true" className="text-blue-700">
+            ⇄
+          </span>
+          Ruta logística
+        </h3>
+        <div className={cn(BLOCK, 'md:contents')}>
+          <Field
+            className="md:order-1"
+            label="Sucursal de origen"
+            required
+            {...(fieldError['sourceWarehouseId'] ? { error: fieldError['sourceWarehouseId'] } : {})}
+          >
+            <Select
+              value={sourceWarehouseId}
+              disabled={noSourceScope}
+              onChange={(e) => onSourceWarehouseChange(e.target.value)}
+            >
+              <option value="">Elegir una sucursal…</option>
+              {sourceWarehouses.map((warehouse) => (
+                <option key={warehouse.id} value={warehouse.id}>
+                  {warehouse.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            className="md:order-3"
+            label="Almacén de origen"
+            required
+            {...(fieldError['sourceLocationId'] ? { error: fieldError['sourceLocationId'] } : {})}
+          >
+            <Select
+              value={sourceLocationId}
+              disabled={!sourceWarehouseId}
+              onChange={(e) => setSourceLocationId(e.target.value)}
+            >
+              <option value="">
+                {sourceWarehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}
+              </option>
+              {sourceLocationsInWarehouse.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+        <span
+          className="mx-auto flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-700 md:hidden"
+          aria-hidden="true"
+        >
+          ↓
+        </span>
+        <div className={cn(BLOCK, 'md:contents')}>
+          <Field
+            className="md:order-2"
+            label="Sucursal de destino"
+            required
+            {...(fieldError['destinationWarehouseId']
+              ? { error: fieldError['destinationWarehouseId'] }
+              : {})}
+          >
+            <Select
+              value={destinationWarehouseId}
+              onChange={(e) => onDestinationWarehouseChange(e.target.value)}
+            >
+              <option value="">Elegir una sucursal…</option>
+              {warehouses.map((warehouse) => (
+                <option key={warehouse.id} value={warehouse.id}>
+                  {warehouse.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            className="md:order-4"
+            label="Almacén de destino"
+            required
+            {...(fieldError['destinationLocationId']
+              ? { error: fieldError['destinationLocationId'] }
+              : {})}
+          >
+            <Select
+              value={destinationLocationId}
+              disabled={!destinationWarehouseId}
+              onChange={(e) => setDestinationLocationId(e.target.value)}
+            >
+              <option value="">
+                {destinationWarehouseId ? 'Elegir un almacén…' : 'Elige primero una sucursal'}
+              </option>
+              {destinationLocationsInWarehouse.map((location) => (
+                <option key={location.id} value={location.id}>
+                  {location.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+      </section>
+
+      <fieldset className={cn(CARD, 'flex flex-col gap-3 md:gap-4 md:rounded-lg md:shadow-none')}>
         <legend className="sr-only">Productos</legend>
-        <h3 className={cn(SECTION, 'md:hidden')}>Productos</h3>
+        <div className="flex items-center justify-between gap-2 md:hidden">
+          <h3 className={TITLE}>Productos a transferir</h3>
+          <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+            {lines.length} {lines.length === 1 ? 'producto' : 'productos'}
+          </span>
+        </div>
         {lines.map((line, i) => {
           const singleVariant = line.variants.length === 1;
           // Column titles only need to appear once (row 0) once the rows line up as a real desktop
           // grid/table — repeating "Producto"/"Variante"/… on every row is redundant there. Mobile
-          // (stacked, below `sm`) keeps every row's own labels, since there is no shared header row
+          // (stacked, below `md`) keeps every row's own labels, since there is no shared header row
           // to lean on in that layout.
           const repeatedLabel = i > 0 ? 'sm:sr-only' : undefined;
           return (
             <div
               key={line.key}
-              className="flex flex-col gap-3 border-t border-slate-100 pt-3 first:border-t-0 first:pt-0"
+              className={cn(
+                BLOCK,
+                'md:rounded-none md:bg-transparent md:p-0 md:border-t md:border-slate-100 md:pt-3 md:first:border-t-0 md:first:pt-0',
+              )}
             >
-              <div className="grid items-start gap-3 sm:grid-cols-[1.4fr_1fr_0.8fr_0.8fr_auto_auto]">
+              <div className="grid items-start gap-3 md:grid-cols-[1.4fr_1fr_0.8fr_0.8fr_auto_auto]">
+                <div className="flex items-center justify-between gap-2 md:contents">
+                  <span
+                    className="flex h-6 w-6 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700 md:hidden"
+                    aria-hidden="true"
+                  >
+                    {i + 1}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    aria-label="Quitar fila"
+                    title="Quitar fila"
+                    className="h-9 w-9 shrink-0 text-lg font-semibold md:order-last md:mt-6 md:h-10 md:w-10"
+                    onClick={() => removeLine(line.key)}
+                  >
+                    ×
+                  </Button>
+                </div>
+
                 <Field
                   label="Producto"
                   required
@@ -543,105 +630,95 @@ export function TransferForm({
                   </Field>
                 )}
 
-                <div className="flex items-center justify-between gap-3 md:flex-col md:items-stretch md:justify-start md:gap-1">
-                  <span className={cn('text-sm font-medium text-slate-700', repeatedLabel)}>
-                    Stock disponible
-                  </span>
-                  <p className="flex items-center font-mono text-sm text-emerald-700 md:h-10 md:font-sans md:text-slate-600">
-                    {!line.productVariantId || !sourceLocationId
-                      ? '—'
-                      : line.stockLoading
-                        ? 'Consultando…'
-                        : typeof line.stockAvailable === 'number'
-                          ? line.stockAvailable
-                          : '—'}
-                  </p>
-                </div>
+                {/* Stock + Cantidad share one row on phones (stock pill left, stepper right). */}
+                <div className="flex items-end justify-between gap-3 md:contents">
+                  <div className="flex flex-col gap-1">
+                    <span className={cn('text-sm font-medium text-slate-700', repeatedLabel)}>
+                      Stock disponible
+                    </span>
+                    <p className="flex h-10 items-center text-sm text-slate-600">
+                      {!line.productVariantId || !sourceLocationId ? (
+                        '—'
+                      ) : line.stockLoading ? (
+                        'Consultando…'
+                      ) : typeof line.stockAvailable === 'number' ? (
+                        <span className="inline-flex items-baseline gap-1 rounded-lg bg-emerald-50 px-2.5 py-1 font-mono text-emerald-700 md:bg-transparent md:p-0 md:font-sans md:text-slate-600">
+                          <span className="text-base font-bold md:text-sm md:font-normal">
+                            {line.stockAvailable}
+                          </span>
+                          <span className="text-xs md:hidden">un.</span>
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </p>
+                  </div>
 
-                <Field
-                  label="Cantidad"
-                  required
-                  {...(repeatedLabel ? { labelClassName: repeatedLabel } : {})}
-                  {...(fieldError[`line-${i}-quantity`]
-                    ? { error: fieldError[`line-${i}-quantity`] }
-                    : {})}
-                >
-                  <Input
-                    type="number"
-                    min={0}
-                    {...(typeof line.stockAvailable === 'number'
-                      ? { max: line.stockAvailable }
+                  <Field
+                    label="Cantidad"
+                    required
+                    {...(repeatedLabel ? { labelClassName: repeatedLabel } : {})}
+                    {...(fieldError[`line-${i}-quantity`]
+                      ? { error: fieldError[`line-${i}-quantity`] }
                       : {})}
-                    step="any"
-                    value={line.quantity}
-                    onChange={(e) => updateLine(line.key, { quantity: e.target.value })}
-                  />
-                </Field>
-
-                <div className="flex justify-end gap-2 md:contents">
-                  <Button
-                    type="button"
-                    variant="primary"
-                    aria-label="Agregar fila"
-                    title="Agregar fila"
-                    disabled={productsDisabled}
-                    className="h-10 w-10 shrink-0 text-lg font-semibold md:mt-6"
-                    onClick={addLine}
                   >
-                    +
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="danger"
-                    aria-label="Quitar fila"
-                    title="Quitar fila"
-                    className="h-10 w-10 shrink-0 text-lg font-semibold md:mt-6"
-                    onClick={() => removeLine(line.key)}
-                  >
-                    ×
-                  </Button>
+                    <QuantityControl
+                      value={line.quantity}
+                      max={
+                        typeof line.stockAvailable === 'number' ? line.stockAvailable : undefined
+                      }
+                      onChange={(quantity) => updateLine(line.key, { quantity })}
+                    />
+                  </Field>
                 </div>
+
+                <Button
+                  type="button"
+                  variant="primary"
+                  aria-label="Agregar fila"
+                  title="Agregar fila"
+                  disabled={productsDisabled}
+                  className="hidden h-10 w-10 shrink-0 text-lg font-semibold md:mt-6 md:flex"
+                  onClick={addLine}
+                >
+                  +
+                </Button>
               </div>
             </div>
           );
         })}
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={productsDisabled}
+          className="w-full border-blue-100 bg-blue-50 text-blue-800 md:hidden"
+          onClick={addLine}
+        >
+          + Añadir producto
+        </Button>
       </fieldset>
 
-      <div className="hidden md:block">
+      <section className={CARD} aria-label="Notas">
         <Field label="Notas" help="Opcional — visible en la transferencia.">
-          <Textarea maxLength={1000} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <Textarea
+            rows={2}
+            maxLength={1000}
+            className="md:h-24"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
         </Field>
-      </div>
-      <div className="md:hidden">
-        {notesOpen || notes ? (
-          <Field label="Notas" help="Opcional — visible en la transferencia.">
-            <Textarea
-              rows={2}
-              maxLength={1000}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-            />
-          </Field>
-        ) : (
-          <button
-            type="button"
-            className="text-sm font-medium text-blue-700 hover:underline"
-            onClick={() => setNotesOpen(true)}
-          >
-            + Añadir notas
-          </button>
-        )}
-      </div>
+      </section>
 
       {sameLocation && <Alert tone="warning">El origen y el destino deben ser distintos.</Alert>}
       {error && <Alert tone="error">{error}</Alert>}
 
-      <div className="flex flex-col gap-2 md:flex-row">
+      <div className="flex flex-col gap-1 md:flex-row md:gap-2">
         <Button
           type="submit"
           loading={submitting}
           disabled={!canSubmit}
-          className="w-full md:w-fit"
+          className="h-11 w-full md:h-10 md:w-fit"
         >
           Crear transferencia
         </Button>
@@ -650,5 +727,54 @@ export function TransferForm({
         </ButtonLink>
       </div>
     </form>
+  );
+}
+
+/**
+ * The "Cantidad" input. From md up it is the plain number input it always was; on phones it gets
+ * − / + steppers (capped at the available stock, never below 0) around the same input. `Field`
+ * wires its `id`/`aria-*` onto this component, which forwards them to the input.
+ */
+function QuantityControl({
+  value,
+  max,
+  onChange,
+  ...fieldProps
+}: {
+  value: string;
+  max: number | undefined;
+  onChange: (next: string) => void;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'max'>): React.JSX.Element {
+  const current = Number(value) || 0;
+  const step = (delta: number): void => {
+    const next = Math.max(0, max !== undefined ? Math.min(max, current + delta) : current + delta);
+    onChange(String(next));
+  };
+  const stepper =
+    'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-lg font-semibold text-slate-700 md:hidden';
+  return (
+    <div className="flex items-center gap-1.5">
+      <button type="button" aria-label="Restar uno" className={stepper} onClick={() => step(-1)}>
+        −
+      </button>
+      <Input
+        {...fieldProps}
+        type="number"
+        min={0}
+        {...(max !== undefined ? { max } : {})}
+        step="any"
+        value={value}
+        className="text-center md:text-left"
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        type="button"
+        aria-label="Sumar uno"
+        className={cn(stepper, 'bg-slate-900 text-white')}
+        onClick={() => step(1)}
+      >
+        +
+      </button>
+    </div>
   );
 }

@@ -37,27 +37,35 @@ function mockApi(opts: {
   create?: unknown | Error;
 }): void {
   const productsInStock = opts.productsInStock ?? { 'loc-1': PRODUCTS };
-  mockedFetch.mockImplementation(async (path: string, init?: { method?: string; query?: Record<string, unknown> }) => {
-    if (path.startsWith('/api/v1/products/') && path.endsWith('/variants')) {
-      const productId = path.split('/')[4];
-      return opts.variants?.[productId as string] ?? [];
-    }
-    if (path === '/api/v1/inventory/products-in-stock') {
-      const locationId = init?.query?.['locationId'] as string | undefined;
-      return (locationId ? productsInStock[locationId] : undefined) ?? [];
-    }
-    if (path === '/api/v1/inventory/balances') {
-      return { data: [{ quantityAvailable: opts.stock ?? 1000 }] };
-    }
-    if (path === '/api/v1/inventory/transfers' && init?.method === 'POST') {
-      if (opts.create instanceof Error) throw opts.create;
-      return opts.create ?? { id: 't-1' };
-    }
-    throw new Error(`Unexpected apiFetch call: ${path}`);
-  });
+  mockedFetch.mockImplementation(
+    async (path: string, init?: { method?: string; query?: Record<string, unknown> }) => {
+      if (path.startsWith('/api/v1/products/') && path.endsWith('/variants')) {
+        const productId = path.split('/')[4];
+        return opts.variants?.[productId as string] ?? [];
+      }
+      if (path === '/api/v1/inventory/products-in-stock') {
+        const locationId = init?.query?.['locationId'] as string | undefined;
+        return (locationId ? productsInStock[locationId] : undefined) ?? [];
+      }
+      if (path === '/api/v1/inventory/balances') {
+        return { data: [{ quantityAvailable: opts.stock ?? 1000 }] };
+      }
+      if (path === '/api/v1/inventory/transfers' && init?.method === 'POST') {
+        if (opts.create instanceof Error) throw opts.create;
+        return opts.create ?? { id: 't-1' };
+      }
+      throw new Error(`Unexpected apiFetch call: ${path}`);
+    },
+  );
 }
 
-function renderForm(overrides: { sourceWarehouses?: typeof WAREHOUSES; scope?: LocationScope; canViewInventory?: boolean } = {}) {
+function renderForm(
+  overrides: {
+    sourceWarehouses?: typeof WAREHOUSES;
+    scope?: LocationScope;
+    canViewInventory?: boolean;
+  } = {},
+) {
   return render(
     <TransferForm
       warehouses={WAREHOUSES}
@@ -90,7 +98,14 @@ describe('TransferForm', () => {
     vi.clearAllMocks();
     localStorage.clear();
     sessionStorage.clear();
-    mockApi({ variants: { 'prod-1': [{ id: 'var-9', sku: 'SKU-9' }, { id: 'var-10', sku: 'SKU-10' }] } });
+    mockApi({
+      variants: {
+        'prod-1': [
+          { id: 'var-9', sku: 'SKU-9' },
+          { id: 'var-10', sku: 'SKU-10' },
+        ],
+      },
+    });
   });
   afterEach(() => cleanup());
 
@@ -99,8 +114,12 @@ describe('TransferForm', () => {
     await fillOneLine();
     fireEvent.click(screen.getByRole('button', { name: /crear transferencia/i }));
 
-    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/inventory/transfers/t-1?created=1'));
-    const createCall = mockedFetch.mock.calls.find(([path]) => path === '/api/v1/inventory/transfers');
+    await waitFor(() =>
+      expect(pushMock).toHaveBeenCalledWith('/inventory/transfers/t-1?created=1'),
+    );
+    const createCall = mockedFetch.mock.calls.find(
+      ([path]) => path === '/api/v1/inventory/transfers',
+    );
     expect(createCall?.[1]).toEqual({
       method: 'POST',
       body: {
@@ -137,17 +156,23 @@ describe('TransferForm', () => {
 
     expect(screen.getByText(/deben ser distintos/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /crear transferencia/i }));
-    expect(mockedFetch.mock.calls.filter(([p]) => p === '/api/v1/inventory/transfers')).toHaveLength(0);
+    expect(
+      mockedFetch.mock.calls.filter(([p]) => p === '/api/v1/inventory/transfers'),
+    ).toHaveLength(0);
   });
 
   it('Producto stays disabled until an origin is chosen, and only lists products with stock there', async () => {
-    mockApi({ productsInStock: { 'loc-1': PRODUCTS, 'loc-2': [{ id: 'prod-2', name: 'Sander' }] } });
+    mockApi({
+      productsInStock: { 'loc-1': PRODUCTS, 'loc-2': [{ id: 'prod-2', name: 'Sander' }] },
+    });
     renderForm();
     expect(screen.getByLabelText(/producto/i)).toBeDisabled();
 
     fireEvent.change(screen.getByLabelText(/sucursal de origen/i), { target: { value: 'wh-1' } });
     fireEvent.change(screen.getByLabelText(/almacén de origen/i), { target: { value: 'loc-1' } });
-    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/inventory/products-in-stock', { query: { locationId: 'loc-1' } });
+    expect(mockedFetch).toHaveBeenCalledWith('/api/v1/inventory/products-in-stock', {
+      query: { locationId: 'loc-1' },
+    });
 
     await screen.findByRole('option', { name: 'Blender' });
     expect(screen.getByLabelText(/producto/i)).not.toBeDisabled();
@@ -178,15 +203,30 @@ describe('TransferForm', () => {
   });
 
   it('shows stock disponible for the chosen variant + source location and blocks over-requesting it', async () => {
-    mockApi({ variants: { 'prod-1': [{ id: 'var-9', sku: 'SKU-9' }, { id: 'var-10', sku: 'SKU-10' }] }, stock: 5 });
+    mockApi({
+      variants: {
+        'prod-1': [
+          { id: 'var-9', sku: 'SKU-9' },
+          { id: 'var-10', sku: 'SKU-10' },
+        ],
+      },
+      stock: 5,
+    });
     renderForm();
     await fillOneLine();
     await screen.findByText('5');
 
     fireEvent.change(screen.getByLabelText(/cantidad/i), { target: { value: '10' } });
     fireEvent.click(screen.getByRole('button', { name: /crear transferencia/i }));
-    expect(await screen.findByText(/no puede superar el stock disponible \(5\)/i)).toBeInTheDocument();
-    expect(mockedFetch.mock.calls.filter(([p, i]) => p === '/api/v1/inventory/transfers' && (i as { method?: string })?.method === 'POST')).toHaveLength(0);
+    expect(
+      await screen.findByText(/no puede superar el stock disponible \(5\)/i),
+    ).toBeInTheDocument();
+    expect(
+      mockedFetch.mock.calls.filter(
+        ([p, i]) =>
+          p === '/api/v1/inventory/transfers' && (i as { method?: string })?.method === 'POST',
+      ),
+    ).toHaveLength(0);
   });
 
   it('always shows a × on the only line, and resets it to empty instead of removing it', async () => {
@@ -204,7 +244,7 @@ describe('TransferForm', () => {
   it('+ adds a line, × removes just the targeted row when two or more exist', async () => {
     renderForm();
     await fillOneLine();
-    fireEvent.click(screen.getByRole('button', { name: /agregar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /agregar fila/i }));
     expect(screen.getAllByLabelText(/producto/i)).toHaveLength(2);
 
     const removeButtons = screen.getAllByRole('button', { name: /quitar fila/i });
@@ -218,7 +258,7 @@ describe('TransferForm', () => {
   it('hides the repeated column labels (sm:sr-only) on every line after the first', async () => {
     renderForm();
     await fillOneLine();
-    fireEvent.click(screen.getByRole('button', { name: /agregar/i }));
+    fireEvent.click(screen.getByRole('button', { name: /agregar fila/i }));
 
     const productLabels = screen.getAllByText('Producto', { selector: 'label' });
     expect(productLabels).toHaveLength(2);
@@ -228,7 +268,10 @@ describe('TransferForm', () => {
 
   it('restricts Sucursal/Almacén de origen to the scoped list and auto-selects a single option', () => {
     const scoped = [{ id: 'wh-1', name: 'Sucursal Central' }];
-    renderForm({ sourceWarehouses: scoped, scope: { unrestricted: false, locationIds: ['loc-1'] } });
+    renderForm({
+      sourceWarehouses: scoped,
+      scope: { unrestricted: false, locationIds: ['loc-1'] },
+    });
 
     // Destination keeps the full, unrestricted list.
     expect(screen.getByRole('option', { name: 'Sucursal Norte' })).toBeInTheDocument();
@@ -246,25 +289,44 @@ describe('TransferForm', () => {
   it('disables Producto and explains why when the caller cannot view inventory', () => {
     renderForm({ canViewInventory: false });
     expect(screen.getByLabelText(/producto/i)).toBeDisabled();
-    expect(screen.getByRole('option', { name: /no puedes ver el inventario/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: /no puedes ver el inventario/i }),
+    ).toBeInTheDocument();
   });
 
   it('shows a location-authorization message on 403 and does not redirect', async () => {
     mockApi({
-      variants: { 'prod-1': [{ id: 'var-9', sku: 'SKU-9' }, { id: 'var-10', sku: 'SKU-10' }] },
+      variants: {
+        'prod-1': [
+          { id: 'var-9', sku: 'SKU-9' },
+          { id: 'var-10', sku: 'SKU-10' },
+        ],
+      },
       create: new ApiError(403, 'FORBIDDEN', 'nope', undefined),
     });
     renderForm();
     await fillOneLine();
     fireEvent.click(screen.getByRole('button', { name: /crear transferencia/i }));
-    expect(await screen.findByText(/no tienes autorización para crear una transferencia/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/no tienes autorización para crear una transferencia/i),
+    ).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
   });
 
   it('surfaces a 409 (e.g. insufficient stock re-validated server-side) safely', async () => {
     mockApi({
-      variants: { 'prod-1': [{ id: 'var-9', sku: 'SKU-9' }, { id: 'var-10', sku: 'SKU-10' }] },
-      create: new ApiError(409, 'CONFLICT', 'Stock insuficiente para la variante var-9 en el almacén de origen. Disponible: 3.', undefined),
+      variants: {
+        'prod-1': [
+          { id: 'var-9', sku: 'SKU-9' },
+          { id: 'var-10', sku: 'SKU-10' },
+        ],
+      },
+      create: new ApiError(
+        409,
+        'CONFLICT',
+        'Stock insuficiente para la variante var-9 en el almacén de origen. Disponible: 3.',
+        undefined,
+      ),
     });
     renderForm();
     await fillOneLine();
@@ -289,7 +351,12 @@ describe('TransferForm', () => {
     const btn = screen.getByRole('button', { name: /crear transferencia/i });
     fireEvent.click(btn);
     fireEvent.click(btn);
-    expect(mockedFetch.mock.calls.filter(([p, i]) => p === '/api/v1/inventory/transfers' && (i as { method?: string })?.method === 'POST')).toHaveLength(1);
+    expect(
+      mockedFetch.mock.calls.filter(
+        ([p, i]) =>
+          p === '/api/v1/inventory/transfers' && (i as { method?: string })?.method === 'POST',
+      ),
+    ).toHaveLength(1);
     resolve({ id: 't-1' });
     await waitFor(() => expect(pushMock).toHaveBeenCalled());
   });
@@ -301,5 +368,30 @@ describe('TransferForm', () => {
     await waitFor(() => expect(pushMock).toHaveBeenCalled());
     expect(localStorage.length).toBe(0);
     expect(sessionStorage.length).toBe(0);
+  });
+
+  it('phone steppers raise and lower the quantity and never go below 0', async () => {
+    renderForm();
+    await fillOneLine();
+    const quantity = screen.getByLabelText(/cantidad/i);
+    fireEvent.click(screen.getByRole('button', { name: 'Sumar uno' }));
+    expect(quantity).toHaveValue(5);
+    fireEvent.click(screen.getByRole('button', { name: 'Restar uno' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Restar uno' }));
+    expect(quantity).toHaveValue(3);
+    for (let i = 0; i < 5; i += 1)
+      fireEvent.click(screen.getByRole('button', { name: 'Restar uno' }));
+    expect(quantity).toHaveValue(0);
+  });
+
+  it('shows the chosen route and the product count in the phone cards', async () => {
+    renderForm();
+    await fillOneLine();
+    const route = screen.getByRole('region', { name: 'Ruta elegida' });
+    expect(route).toHaveTextContent(/origen/i);
+    expect(route).toHaveTextContent(/destino/i);
+    expect(screen.getByText('1 producto')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /añadir producto/i }));
+    expect(screen.getByText('2 productos')).toBeInTheDocument();
   });
 });
