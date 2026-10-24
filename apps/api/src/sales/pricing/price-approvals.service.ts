@@ -300,9 +300,11 @@ export class PriceApprovalsService {
       if (!existing) {
         throw new NotFoundException('Price approval not found.');
       }
-      // Separation of duties (§49, §74 / test P7) — the requester can never resolve their own
-      // request, regardless of holding pricing.discount.approve.
-      if (existing.requestedBy === actorId) {
+      // Separation of duties (§49, §74 / test P7) — the requester cannot resolve their own request
+      // just by holding pricing.discount.approve (a Supervisor). The tenant administrator (the
+      // pricing-policy owner, `pricing.policy.manage`) is the one exception: owner decision, they
+      // may both raise and approve a below-minimum price. Still audited like any resolution.
+      if (existing.requestedBy === actorId && !permissions.includes('pricing.policy.manage')) {
         throw new ForbiddenException('You cannot resolve your own exceptional-discount request.');
       }
       if (existing.status === status) {

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -155,6 +157,82 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: order transition co
     const response = await c.inject({ method: 'GET', url: `/api/v1/orders/${orderId}`, headers: c.readHeaders(f.admin) });
     return (JSON.parse(response.body) as { status: string }).status;
   }
+
+  describe('closing date — confirm moves the order date to the confirmation instant', () => {
+    it('createdAt becomes the confirmation time, the audit log keeps the placement and closing dates, a retry changes nothing', async () => {
+      const f = await seed(`Co close ${Date.now()}`, `close-${Date.now()}@example.com`);
+      const orderId = await pendingOrder(f);
+      const before = JSON.parse((await c.inject({ method: 'GET', url: `/api/v1/orders/${orderId}`, headers: c.readHeaders(f.admin) })).body) as { createdAt: string };
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const first = await confirm(f, orderId);
+      expect(first.statusCode, first.body).toBe(200);
+      const confirmed = JSON.parse(first.body) as { createdAt: string };
+      expect(new Date(confirmed.createdAt).getTime()).toBeGreaterThan(new Date(before.createdAt).getTime());
+
+      // The payment is stamped with the same instant as the order's new date.
+      const payments = JSON.parse((await c.inject({ method: 'GET', url: `/api/v1/reports/payments?dateFrom=${new Date().toISOString().slice(0, 10)}&dateTo=${new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)}`, headers: c.readHeaders(f.admin) })).body) as { data: { paidAt: string }[] };
+      expect(payments.data[0]?.paidAt).toBe(confirmed.createdAt);
+
+      const { client, db } = getMigratorDb();
+      try {
+        const rows = await db
+          .select({ afterState: auditLog.afterState })
+          .from(auditLog)
+          .where(and(eq(auditLog.tenantId, f.tenantId), eq(auditLog.entityType, 'order'), eq(auditLog.entityId, orderId), eq(auditLog.actionCode, 'order.confirmed')));
+        expect(rows).toHaveLength(1);
+        expect(rows[0]!.afterState).toMatchObject({ status: 'confirmed', createdAt: before.createdAt, closedAt: confirmed.createdAt });
+      } finally {
+        await client.end();
+      }
+
+      const retry = JSON.parse((await confirm(f, orderId)).body) as { createdAt: string };
+      expect(retry.createdAt).toBe(confirmed.createdAt);
+    });
+
+    it('migration 0047 re-dates an order confirmed before the change to its payment instant, keeps the original in the audit log, leaves updated_at alone, and is a no-op the second time', async () => {
+      const f = await seed(`Co backfill ${Date.now()}`, `backfill-${Date.now()}@example.com`);
+      const orderId = await pendingOrder(f);
+      const confirmed = JSON.parse((await confirm(f, orderId)).body) as { createdAt: string };
+
+      // Simulate an order confirmed before the change: dated 3 days earlier than its payment.
+      const { client } = getMigratorDb();
+      try {
+        await client`update orders set created_at = created_at - interval '3 days' where id = ${orderId}`;
+        const [before] = await client<{ created_at: string; updated_at: string }[]>`select to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at, updated_at::text as updated_at from orders where id = ${orderId}`;
+        const migration = readFileSync(fileURLToPath(new URL('../../../../database/migrations/0047_backfill_confirmed_order_dates.sql', import.meta.url)), 'utf8');
+        const statements = migration.split('--> statement-breakpoint').map((s) => s.trim()).filter(Boolean);
+        const run = () =>
+          client.begin(async (tx) => {
+            for (const statement of statements) await tx.unsafe(statement);
+          });
+        await run();
+
+        const [after] = await client<{ created_at: string; updated_at: string }[]>`select to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at, updated_at::text as updated_at from orders where id = ${orderId}`;
+        expect(after!.created_at).toBe(confirmed.createdAt);
+        expect(after!.updated_at).toBe(before!.updated_at);
+        const audit = await client<{ after_state: { createdAt: string; closedAt: string } }[]>`
+          select after_state from audit_log where entity_id = ${orderId} and action_code = 'order.confirmed.date_backfill'`;
+        expect(audit).toHaveLength(1);
+        expect(audit[0]!.after_state.createdAt).toBe(before!.created_at);
+        expect(audit[0]!.after_state.closedAt).toBe(confirmed.createdAt);
+
+        await run();
+        const again = await client`select 1 from audit_log where entity_id = ${orderId} and action_code = 'order.confirmed.date_backfill'`;
+        expect(again).toHaveLength(1);
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('a cancelled order keeps its placement date', async () => {
+      const f = await seed(`Co cancel ${Date.now()}`, `cancel-date-${Date.now()}@example.com`);
+      const orderId = await pendingOrder(f);
+      const before = JSON.parse((await c.inject({ method: 'GET', url: `/api/v1/orders/${orderId}`, headers: c.readHeaders(f.admin) })).body) as { createdAt: string };
+      const cancelled = JSON.parse((await cancel(f, orderId)).body) as { createdAt: string };
+      expect(cancelled.createdAt).toBe(before.createdAt);
+    });
+  });
 
   describe('T1 / T7 — confirm vs confirm (§23, §29, §48, §96)', () => {
     it('two simultaneous confirms -> one confirmed order, exactly one SALE and one RESERVATION_RELEASE per line, one audit', async () => {

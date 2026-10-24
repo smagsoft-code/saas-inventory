@@ -203,6 +203,14 @@ describe('PriceApprovalsService.approve / reject', () => {
     await expect(service.approve(TENANT, REQUESTER, APPROVE_PERMS, 'pa-1', META)).rejects.toThrow(ForbiddenException);
   });
 
+  it('lets the tenant administrator (pricing.policy.manage) approve their own request', async () => {
+    const { service, priceApprovalsRepository } = build();
+    priceApprovalsRepository.lockById.mockResolvedValue(PENDING_ROW);
+    priceApprovalsRepository.resolveIfPending.mockResolvedValue({ ...PENDING_ROW, status: 'approved', approvedBy: REQUESTER });
+    const result = await service.approve(TENANT, REQUESTER, [...APPROVE_PERMS, 'pricing.policy.manage'], 'pa-1', META);
+    expect(result.status).toBe('approved');
+  });
+
   it('approves a pending request via the conditional update', async () => {
     const { service, priceApprovalsRepository } = build();
     priceApprovalsRepository.lockById.mockResolvedValue(PENDING_ROW);

@@ -59,7 +59,8 @@ export async function buildImportTestApp(): Promise<NestFastifyApplication> {
   const fastifyInstance = app.getHttpAdapter().getInstance();
   fastifyInstance.addHook('onRequest', (request, reply, done) => {
     const incoming = request.headers['correlation-id'];
-    const correlationId = typeof incoming === 'string' && incoming.trim() !== '' ? incoming : randomUUID();
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const correlationId = typeof incoming === 'string' && uuid.test(incoming.trim()) ? incoming.trim() : randomUUID();
     request.correlationId = correlationId;
     void reply.header('Correlation-Id', correlationId);
     done();

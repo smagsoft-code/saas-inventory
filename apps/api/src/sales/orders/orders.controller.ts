@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AuthPrincipal, TenantRequestContext } from '../../common/context/request-context';
 import { CurrentPermissions } from '../../common/decorators/current-permissions.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
@@ -9,7 +9,9 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { ConfirmOrderDto } from './dto/confirm-order.dto';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { ExportOrdersQueryDto } from './dto/export-orders-query.dto';
 import { ListOrdersQueryDto } from './dto/list-orders-query.dto';
+import { OrdersExportService } from './orders-export.service';
 import { OrderNotificationsResponseDto } from './dto/order-notifications-response.dto';
 import { OrderResponseDto } from './dto/order-response.dto';
 import { OrdersService } from './orders.service';
@@ -23,7 +25,10 @@ import { OrdersService } from './orders.service';
 @ApiTags('sales-orders')
 @Controller('orders')
 export class OrdersController {
-  constructor(private readonly ordersService: OrdersService) {}
+  constructor(
+    private readonly ordersService: OrdersService,
+    private readonly ordersExportService: OrdersExportService,
+  ) {}
 
   @Get()
   @RequirePermissions('sales.orders.view')
@@ -35,6 +40,22 @@ export class OrdersController {
     @Query() query: ListOrdersQueryDto,
   ): Promise<PaginatedResult<OrderResponseDto>> {
     return this.ordersService.list(tenantId, principal.userId, permissions, query);
+  }
+
+  /** Excel/PDF of the filtered history. Declared before `:id` so `export` is never read as an id. */
+  @Get('export')
+  @RequirePermissions('sales.orders.view')
+  async exportOrders(
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
+    @CurrentPermissions() permissions: TenantRequestContext['permissions'],
+    @Query() query: ExportOrdersQueryDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<Buffer> {
+    const file = await this.ordersExportService.build(tenantId, principal.userId, permissions, query);
+    void reply.header('Content-Type', file.contentType);
+    void reply.header('Content-Disposition', `attachment; filename="${file.filename}"`);
+    return file.buffer;
   }
 
   @Get(':id')

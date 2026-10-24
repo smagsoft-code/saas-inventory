@@ -497,12 +497,25 @@ export class OrdersService {
         }
       }
 
-      const updated = await this.ordersRepository.updateStatus(tx, tenantId, id, { status: 'confirmed' });
+      // The sale closes here: the order's date moves from "when it was placed" to "when it was
+      // confirmed" (history, filters and reports all key off `orders.created_at`). The original
+      // placement date would be lost, so it is written to the audit log below — critically (a failed
+      // write rolls the confirmation back) instead of best-effort like the other audit entries.
+      const placedAt = order.createdAt;
+      const updated = await this.ordersRepository.updateStatus(tx, tenantId, id, { status: 'confirmed' }, { stampClosedAt: true });
       if (!updated) {
         throw new NotFoundException('Order not found.');
       }
 
-      await this.writeAudit(tx, { tenantId, actorId, actionCode: 'order.confirmed', entityId: id, meta });
+      await this.writeAudit(tx, {
+        tenantId,
+        actorId,
+        actionCode: 'order.confirmed',
+        entityId: id,
+        afterState: { status: 'confirmed', createdAt: placedAt.toISOString(), closedAt: updated.createdAt.toISOString() },
+        meta,
+        critical: true,
+      });
       // Domain event — the physical sale is committed (§16). Written in THIS transaction, so it
       // exists iff the confirmation does (§26/§97/§98). Only the real pending -> confirmed path
       // reaches here; an idempotent retry returned early above and emits nothing (§16/§35/§99).
@@ -792,7 +805,16 @@ export class OrdersService {
 
   private async writeAudit(
     tx: TenantTransaction,
-    input: { tenantId: string; actorId: string; actionCode: string; entityId: string; afterState?: Record<string, unknown>; meta: AuditMeta },
+    input: {
+      tenantId: string;
+      actorId: string;
+      actionCode: string;
+      entityId: string;
+      afterState?: Record<string, unknown>;
+      meta: AuditMeta;
+      /** The entry carries data that exists nowhere else — a failure must roll the operation back. */
+      critical?: boolean;
+    },
   ): Promise<void> {
     try {
       await this.auditLogService.record(tx, {
@@ -805,7 +827,10 @@ export class OrdersService {
         correlationId: input.meta.correlationId,
         ipAddress: input.meta.ipAddress,
       });
-    } catch {
+    } catch (error) {
+      if (input.critical) {
+        throw error;
+      }
       // Best-effort — an audit write failure must never block the primary operation.
     }
   }

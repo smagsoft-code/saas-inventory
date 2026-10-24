@@ -192,10 +192,13 @@ export class OrdersRepository {
     tenantId: string,
     id: string,
     values: { status: string },
+    options: { stampClosedAt?: boolean } = {},
   ): Promise<OrderRow | undefined> {
     const [row] = await tx
       .update(orders)
-      .set(values)
+      // `stampClosedAt` (confirm only): the order's date becomes the instant the sale closed.
+      // `now()` is the transaction start — the same instant `order_payments.created_at` gets.
+      .set(options.stampClosedAt ? { ...values, createdAt: sql`now()` } : values)
       .where(and(eq(orders.tenantId, tenantId), eq(orders.id, id)))
       .returning();
     return row;

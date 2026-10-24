@@ -1,12 +1,14 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AuthPrincipal } from '../../common/context/request-context';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
+import { CustomersExportService } from './customers-export.service';
 import { CustomersService } from './customers.service';
+import { ExportCustomersQueryDto } from './dto/export-customers-query.dto';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { CustomerResponseDto } from './dto/customer-response.dto';
 import { ListCustomersQueryDto } from './dto/list-customers-query.dto';
@@ -20,13 +22,30 @@ import { UpdateCustomerDto } from './dto/update-customer.dto';
 @ApiTags('sales-customers')
 @Controller('customers')
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly customersExportService: CustomersExportService,
+  ) {}
 
   @Get()
   @RequirePermissions('sales.customers.view')
   @ApiOkResponse({ type: CustomerResponseDto, isArray: true })
   async list(@CurrentTenant() tenantId: string, @Query() query: ListCustomersQueryDto): Promise<PaginatedResult<CustomerResponseDto>> {
     return this.customersService.list(tenantId, query);
+  }
+
+  /** Excel/PDF of the filtered list. Declared before `:id` so `export` is never read as an id. */
+  @Get('export')
+  @RequirePermissions('sales.customers.view')
+  async exportCustomers(
+    @CurrentTenant() tenantId: string,
+    @Query() query: ExportCustomersQueryDto,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<Buffer> {
+    const file = await this.customersExportService.build(tenantId, query);
+    void reply.header('Content-Type', file.contentType);
+    void reply.header('Content-Disposition', `attachment; filename="${file.filename}"`);
+    return file.buffer;
   }
 
   @Get(':id')

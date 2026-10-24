@@ -1,4 +1,5 @@
-import { boolean, foreignKey, index, inet, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { boolean, check, foreignKey, index, inet, jsonb, pgTable, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core';
 import { createdAt, id, tenantId, updatedAt } from './_helpers';
 import { tenantIsolationPolicy } from './_policies';
 import { platformAdmins, tenants } from './01-platform';
@@ -58,6 +59,33 @@ export const tenantSettings = pgTable('tenant_settings', {
   // tenant-aware UNIQUE (tenant_id, id)..." coverage check).
   unique('tenant_settings_tenant_id_id_key').on(t.tenantId, t.id),
   tenantIsolationPolicy('tenant_settings'),
+]).enableRLS();
+
+/**
+ * The company logo shown in the app shell (owner request) — at most one per tenant. Its own small
+ * table rather than columns on `tenant_settings`: that table is a lazily-created singleton upserted
+ * wholesale by every settings PATCH, and a logo has a different lifecycle (uploaded/removed on its
+ * own, bytes live in object storage like `product_images`; only the pointer + mime type are here).
+ * Replaced or removed by uploading/deleting — the storage object is deleted best-effort.
+ */
+export const tenantLogos = pgTable('tenant_logos', {
+  id: id(),
+  tenantId: tenantId(),
+  /** Opaque pointer into `ObjectStorageService`'s bucket, never returned to a client. */
+  storageKey: text('storage_key').notNull(),
+  mimeType: text('mime_type').notNull(),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+}, (t) => [
+  foreignKey({
+    name: 'tenant_logos_tenant_fk',
+    columns: [t.tenantId],
+    foreignColumns: [tenants.id],
+  }).onDelete('restrict'),
+  unique('tenant_logos_tenant_id_key').on(t.tenantId),
+  unique('tenant_logos_tenant_id_id_key').on(t.tenantId, t.id),
+  check('tenant_logos_mime_type_check', sql`${t.mimeType} IN ('image/jpeg', 'image/png', 'image/webp')`),
+  tenantIsolationPolicy('tenant_logos'),
 ]).enableRLS();
 
 export const platformAdminRefreshTokens = pgTable('platform_admin_refresh_tokens', {

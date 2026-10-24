@@ -17,6 +17,16 @@ function isUniqueViolation(error: unknown): boolean {
   return code(error) === '23505' || (error instanceof Error && code(error.cause) === '23505');
 }
 
+/** "juan PÉREZ  gómez" → "Juan Pérez Gómez": every word starts upper-case, the rest lower-case, spaces collapsed. */
+export function standardizeName<T extends string | undefined>(value: T): T {
+  if (value === undefined) return value;
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((word) => word.charAt(0).toLocaleUpperCase('es') + word.slice(1).toLocaleLowerCase('es'))
+    .join(' ') as T;
+}
+
 function toResponse(row: CustomerRow): CustomerResponseDto {
   return {
     id: row.id,
@@ -83,8 +93,8 @@ export class CustomersService {
           id: generateId(),
           tenantId,
           type: dto.type,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
+          firstName: standardizeName(dto.firstName),
+          lastName: standardizeName(dto.lastName),
           taxId: dto.taxId,
           email: dto.email ?? null,
           phone: dto.phone ?? null,
@@ -121,8 +131,8 @@ export class CustomersService {
       try {
         updated = await this.customersRepository.update(tx, tenantId, id, {
           ...(dto.type !== undefined ? { type: dto.type } : {}),
-          ...(dto.firstName !== undefined ? { firstName: dto.firstName } : {}),
-          ...(dto.lastName !== undefined ? { lastName: dto.lastName } : {}),
+          ...(dto.firstName !== undefined ? { firstName: standardizeName(dto.firstName) } : {}),
+          ...(dto.lastName !== undefined ? { lastName: standardizeName(dto.lastName) } : {}),
           ...(dto.taxId !== undefined ? { taxId: dto.taxId } : {}),
           ...(dto.email !== undefined ? { email: dto.email } : {}),
           ...(dto.phone !== undefined ? { phone: dto.phone } : {}),

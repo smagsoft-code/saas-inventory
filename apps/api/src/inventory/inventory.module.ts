@@ -32,7 +32,9 @@ import { UserLocationAssignmentsRepository } from './repositories/user-location-
 import { WarehousesRepository } from './repositories/warehouses.repository';
 import { StockLedgerService } from './stock-ledger.service';
 import { TransfersController } from './transfers/transfers.controller';
+import { TransfersExportService } from './transfers/transfers-export.service';
 import { TransfersService } from './transfers/transfers.service';
+import { TabularExportService } from '../common/export/tabular-export.service';
 import { WarehousesController } from './warehouses/warehouses.controller';
 import { WarehousesService } from './warehouses/warehouses.service';
 
@@ -76,6 +78,8 @@ import { WarehousesService } from './warehouses/warehouses.service';
     BulkReceiptsLookupRepository,
     TenantSettingsRepository,
     TransfersService,
+    TransfersExportService,
+    TabularExportService,
     AuditLogService,
     LocationAuthorizationService,
     StockLedgerService,

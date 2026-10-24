@@ -17,6 +17,12 @@ import { KardexReportService } from './kardex/kardex-report.service';
 import { MovementsReportController } from './movements/movements-report.controller';
 import { MovementsReportRepository } from './movements/movements-report.repository';
 import { MovementsReportService } from './movements/movements-report.service';
+import { PaymentsExportService } from './payments/payments-export.service';
+import { PaymentsReportController } from './payments/payments-report.controller';
+import { PaymentsReportRepository } from './payments/payments-report.repository';
+import { PaymentsReportService } from './payments/payments-report.service';
+import { TabularExportService } from '../common/export/tabular-export.service';
+import { ProductsExportService } from './products/products-export.service';
 import { ProductsReportController } from './products/products-report.controller';
 import { ProductsReportRepository } from './products/products-report.repository';
 import { ProductsReportService } from './products/products-report.service';
@@ -68,6 +74,7 @@ import { TransfersReportService } from './transfers/transfers-report.service';
     ImportsReportController,
     ProductsReportController,
     KardexReportController,
+    PaymentsReportController,
   ],
   providers: [
     SalesReportService,
@@ -77,6 +84,11 @@ import { TransfersReportService } from './transfers/transfers-report.service';
     KardexReportService,
     KardexReportRepository,
     KardexExportService,
+    PaymentsReportService,
+    PaymentsReportRepository,
+    PaymentsExportService,
+    ProductsExportService,
+    TabularExportService,
     ReturnsReportService,
     ReturnsReportRepository,
     ApprovalsReportService,

@@ -588,7 +588,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
     });
 
     // ---- P25 — self-approval still blocked under the CAS -------------
-    it('P25: the requester still cannot approve/reject their own request (403), regardless of the lock/CAS', async () => {
+    it('P25: the tenant administrator can approve their own request (pricing.policy.manage); the CAS still resolves it once', async () => {
       const f = await seed();
       // Give the seller pricing.discount.approve too by using an Admin who is also the requester.
       const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(f.admin), payload: { locationId: f.locationId, customerId: f.customerId } });
@@ -603,9 +603,9 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
       const body = JSON.parse(order.body) as { items: { id: string }[] };
       const req = await c.inject({ method: 'POST', url: '/api/v1/price-approvals', headers: c.writeHeaders(f.admin), payload: { orderItemId: body.items[0]!.id, reason: 'self' } });
       const approvalId = (JSON.parse(req.body) as { id: string }).id;
-      expect((await approve(f.admin, approvalId)).statusCode).toBe(403);
-      expect((await reject(f.admin, approvalId)).statusCode).toBe(403);
-      expect(await approvalStatus(f, approvalId)).toBe('pending');
+      expect((await approve(f.admin, approvalId)).statusCode).toBe(200);
+      expect((await reject(f.admin, approvalId)).statusCode).toBe(409);
+      expect(await approvalStatus(f, approvalId)).toBe('approved');
     });
   });
 });

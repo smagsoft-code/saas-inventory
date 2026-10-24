@@ -105,6 +105,12 @@ describe.skipIf(!integrationTestsEnabled)('multi-tenancy and RLS', () => {
         insertColumns: ['id', 'tenant_id'],
         insertValuesFor: (tenantId, rowId) => [rowId, tenantId],
       },
+      {
+        // Company logo (migration 0048) — one row per tenant (unique(tenant_id)), like tenant_settings.
+        table: 'tenant_logos',
+        insertColumns: ['id', 'tenant_id', 'storage_key', 'mime_type'],
+        insertValuesFor: (tenantId, rowId) => [rowId, tenantId, `tenant-logos/${tenantId}/${rowId}.png`, 'image/png'],
+      },
     ];
 
     describe('auth_refresh_tokens (Prompt 04)', () => {

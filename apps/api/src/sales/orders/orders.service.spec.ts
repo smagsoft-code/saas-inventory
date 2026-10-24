@@ -343,7 +343,7 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
 
   it('confirm on a pending order releases the reservation and writes a SALE (commit boundary)', async () => {
     const { service, ordersRepository, orderItemsRepository, stockLedgerService } = build();
-    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00' });
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00', createdAt: new Date('2026-01-01T00:00:00Z') });
     orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2', skuSnapshot: 'SKU-1' }]);
     ordersRepository.updateStatus.mockResolvedValue({
       id: 'order-1',
@@ -364,6 +364,8 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
     await service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', cashPayment(190), META);
     const types = stockLedgerService.applyMovement.mock.calls.map((call) => (call[1] as { movementType: string }).movementType);
     expect(types).toEqual(['RESERVATION_RELEASE', 'SALE']);
+    // The sale closes here: the order's date is re-stamped to the confirmation instant.
+    expect(ordersRepository.updateStatus.mock.calls[0]?.[4]).toEqual({ stampClosedAt: true });
   });
 
   it('rejects confirm when the sum of payments does not match the order total', async () => {
@@ -375,7 +377,7 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
 
   it('accepts a split payment across multiple methods summing to the total, and persists every row', async () => {
     const { service, ordersRepository, orderItemsRepository, orderPaymentsRepository } = build();
-    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00' });
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00', createdAt: new Date('2026-01-01T00:00:00Z') });
     orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2', skuSnapshot: 'SKU-1' }]);
     ordersRepository.updateStatus.mockResolvedValue({
       id: 'order-1',

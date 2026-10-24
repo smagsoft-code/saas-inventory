@@ -15,33 +15,53 @@ import type { CreateAdjustmentDto } from './dto/create-adjustment.dto';
 import type { ListMovementsQueryDto } from './dto/list-movements-query.dto';
 import type { MovementResponseDto } from './dto/movement-response.dto';
 
-/** SALE → the order's number; TRANSFER_OUT/TRANSFER_IN → the transfer's own human-readable `code`
- * (e.g. "SUC-PRIN-ALM-PRIN-005", F17-TRANSFERS-AUDIT — `GAP-TRANSFER-CODE` resolved). Every other
- * movement type already has a plain `reason` and needs no resolved label. */
-function referenceLabelFor(
-  movement: InventoryMovementRow,
-  orderNumbersBySaleReference: Map<string, string>,
-  transferIdsByReceipt: Map<string, string>,
-  transferCodesByTransferId: Map<string, string>,
-  importJobNumbers: Map<string, number>,
-): string | undefined {
+/** The names the "Motivo / referencia" column shows instead of a raw id, keyed by the id each
+ * movement's `referenceId` holds. */
+interface ReferenceNames {
+  orderNumbers: Map<string, string>;
+  returnNumbers: Map<string, string>;
+  transferIdsByReceipt: Map<string, string>;
+  transferCodesByTransferId: Map<string, string>;
+  importJobNumbers: Map<string, number>;
+}
+
+/**
+ * A readable name for every movement that points at a document, whatever its type:
+ *  - an order — "Venta #ORD-000123" for the SALE, "Pedido #ORD-000123" for its reservation /
+ *    release / commitment movements (those used to fall back to `order 01a16b4d…`);
+ *  - a transfer or its receipt — "Transferencia #<code>" (F17-TRANSFERS-AUDIT, `GAP-TRANSFER-CODE`);
+ *  - a sales return — "Devolución #DEV-001";
+ *  - an Excel import — "Importación #N".
+ * Movements with no document (manual adjustments, receipts) keep their plain `reason`.
+ */
+function referenceLabelFor(movement: InventoryMovementRow, names: ReferenceNames): string | undefined {
+  const { orderNumbers, returnNumbers, transferIdsByReceipt, transferCodesByTransferId, importJobNumbers } = names;
+  const referenceId = movement.referenceId ?? undefined;
   // Excel import → "Importación #N" (the raw reason embeds the job's uuid and is not returned).
   if (movement.referenceType === 'import_job') {
     return importLabel(movement.referenceId, importJobNumbers);
   }
-  switch (movement.movementType) {
-    case 'SALE': {
-      const orderNumber = movement.referenceId ? orderNumbersBySaleReference.get(movement.referenceId) : undefined;
-      return orderNumber ? `Venta #${orderNumber}` : undefined;
+  if (!referenceId) {
+    return undefined;
+  }
+  switch (movement.referenceType) {
+    case 'order': {
+      const orderNumber = orderNumbers.get(referenceId);
+      if (!orderNumber) return undefined;
+      return movement.movementType === 'SALE' ? `Venta #${orderNumber}` : `Pedido #${orderNumber}`;
     }
-    case 'TRANSFER_OUT': {
-      const code = movement.referenceId ? transferCodesByTransferId.get(movement.referenceId) : undefined;
+    case 'transfer': {
+      const code = transferCodesByTransferId.get(referenceId);
       return code ? `Transferencia #${code}` : undefined;
     }
-    case 'TRANSFER_IN': {
-      const transferId = movement.referenceId ? transferIdsByReceipt.get(movement.referenceId) : undefined;
+    case 'transfer_receipt': {
+      const transferId = transferIdsByReceipt.get(referenceId);
       const code = transferId ? transferCodesByTransferId.get(transferId) : undefined;
       return code ? `Transferencia #${code}` : undefined;
+    }
+    case 'sales_return_item': {
+      const returnNumber = returnNumbers.get(referenceId);
+      return returnNumber ? `Devolución #${returnNumber}` : undefined;
     }
     default:
       return undefined;
@@ -107,14 +127,13 @@ export class MovementsService {
 
       // Batched, page-sized (never per-row) — the same N+1-avoidance `reports/kardex` uses for its
       // own label resolution.
-      const saleReferenceIds = rows.filter((row) => row.movementType === 'SALE' && row.referenceId).map((row) => row.referenceId!);
-      const transferOutIds = rows.filter((row) => row.movementType === 'TRANSFER_OUT' && row.referenceId).map((row) => row.referenceId!);
-      const receiptIds = rows.filter((row) => row.movementType === 'TRANSFER_IN' && row.referenceId).map((row) => row.referenceId!);
-      const importJobIds = rows.filter((row) => row.referenceType === 'import_job' && row.referenceId).map((row) => row.referenceId!);
-      const [orderNumbersBySaleReference, transferIdsByReceipt, importJobNumbers] = await Promise.all([
-        this.movementsRepository.resolveOrderNumbers(tx, tenantId, saleReferenceIds),
-        this.movementsRepository.resolveReceiptTransferIds(tx, tenantId, receiptIds),
-        this.movementsRepository.resolveImportJobNumbers(tx, tenantId, importJobIds),
+      const idsOf = (referenceType: string): string[] => rows.filter((row) => row.referenceType === referenceType && row.referenceId).map((row) => row.referenceId!);
+      const transferOutIds = idsOf('transfer');
+      const [orderNumbers, returnNumbers, transferIdsByReceipt, importJobNumbers] = await Promise.all([
+        this.movementsRepository.resolveOrderNumbers(tx, tenantId, idsOf('order')),
+        this.movementsRepository.resolveReturnNumbers(tx, tenantId, idsOf('sales_return_item')),
+        this.movementsRepository.resolveReceiptTransferIds(tx, tenantId, idsOf('transfer_receipt')),
+        this.movementsRepository.resolveImportJobNumbers(tx, tenantId, idsOf('import_job')),
       ]);
       // TRANSFER_OUT's own referenceId already IS the transfer id; TRANSFER_IN's only resolves to
       // one via the receipt lookup above — union both before the single, batched code lookup.
@@ -124,7 +143,7 @@ export class MovementsService {
       ]);
 
       return {
-        data: rows.map((row) => toResponse(row, canViewCost, referenceLabelFor(row, orderNumbersBySaleReference, transferIdsByReceipt, transferCodesByTransferId, importJobNumbers))),
+        data: rows.map((row) => toResponse(row, canViewCost, referenceLabelFor(row, { orderNumbers, returnNumbers, transferIdsByReceipt, transferCodesByTransferId, importJobNumbers }))),
         meta: {
           page: query.page,
           pageSize: query.pageSize,

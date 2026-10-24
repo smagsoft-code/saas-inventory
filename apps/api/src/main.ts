@@ -17,11 +17,17 @@ import { AppModule } from './app.module';
  * it runs before any guard and the value is available on the actual FastifyRequest object guards/
  * filters read from, not a wrapped copy.
  */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function registerCorrelationId(app: NestFastifyApplication): void {
   const fastifyInstance = app.getHttpAdapter().getInstance();
   fastifyInstance.addHook('onRequest', (request, reply, done) => {
     const incoming = request.headers['correlation-id'];
-    const correlationId = typeof incoming === 'string' && incoming.trim() !== '' ? incoming : randomUUID();
+    // Only a UUID is accepted from the client: `correlation_id` is a uuid column on several tables
+    // (orders, event_outbox, audit_log, ...), so any other string — e.g. the browser fallback id
+    // `web-<time>-<random>` it used to send over plain http — made those inserts fail with a 500
+    // ("invalid input syntax for type uuid"). Anything else is replaced by a fresh UUID.
+    const correlationId = typeof incoming === 'string' && UUID_PATTERN.test(incoming.trim()) ? incoming.trim() : randomUUID();
     request.correlationId = correlationId;
     void reply.header('Correlation-Id', correlationId);
     done();

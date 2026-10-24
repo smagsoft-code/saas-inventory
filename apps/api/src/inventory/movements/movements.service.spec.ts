@@ -37,6 +37,7 @@ function buildService() {
   const movementsRepository = {
     listByTenant: vi.fn(),
     resolveOrderNumbers: vi.fn().mockResolvedValue(new Map()),
+    resolveReturnNumbers: vi.fn().mockResolvedValue(new Map()),
     resolveImportJobNumbers: vi.fn().mockResolvedValue(new Map()),
     resolveReceiptTransferIds: vi.fn().mockResolvedValue(new Map()),
     resolveTransferCodes: vi.fn().mockResolvedValue(new Map()),
@@ -212,6 +213,51 @@ describe('MovementsService', () => {
         expect(movementsRepository.resolveReceiptTransferIds).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['receipt-1']);
         expect(movementsRepository.resolveTransferCodes).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['transfer-1']);
         expect(result.data[0]!.referenceLabel).toBe('Transferencia #SUC-PRIN-ALM-PRIN-005');
+      });
+
+      it('names the order behind a RESERVATION / RELEASE too ("Pedido #…") instead of leaving the raw id', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({
+          rows: [
+            { ...EXISTING_MOVEMENT, id: 'm1', movementType: 'RESERVATION', referenceType: 'order', referenceId: 'order-1', reason: null },
+            { ...EXISTING_MOVEMENT, id: 'm2', movementType: 'RESERVATION_RELEASE', referenceType: 'order', referenceId: 'order-1', reason: null },
+            { ...EXISTING_MOVEMENT, id: 'm3', movementType: 'SALE', referenceType: 'order', referenceId: 'order-1', reason: null },
+          ],
+          total: 3,
+        });
+        movementsRepository.resolveOrderNumbers.mockResolvedValue(new Map([['order-1', 'ORD-000046']]));
+
+        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(movementsRepository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['order-1', 'order-1', 'order-1']);
+        expect(result.data.map((m) => m.referenceLabel)).toEqual(['Pedido #ORD-000046', 'Pedido #ORD-000046', 'Venta #ORD-000046']);
+      });
+
+      it('names the return behind a RETURN movement ("Devolución #DEV-001")', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({
+          rows: [{ ...EXISTING_MOVEMENT, movementType: 'RETURN', referenceType: 'sales_return_item', referenceId: 'item-1', reason: null }],
+          total: 1,
+        });
+        movementsRepository.resolveReturnNumbers.mockResolvedValue(new Map([['item-1', 'DEV-001']]));
+
+        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(movementsRepository.resolveReturnNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['item-1']);
+        expect(result.data[0]!.referenceLabel).toBe('Devolución #DEV-001');
+      });
+
+      it('names the transfer behind a transfer RESERVATION (referenceType transfer, any movement type)', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({
+          rows: [{ ...EXISTING_MOVEMENT, movementType: 'RESERVATION', referenceType: 'transfer', referenceId: 'transfer-1', reason: null }],
+          total: 1,
+        });
+        movementsRepository.resolveTransferCodes.mockResolvedValue(new Map([['transfer-1', 'SUC-001']]));
+
+        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(result.data[0]!.referenceLabel).toBe('Transferencia #SUC-001');
       });
 
       it('leaves referenceLabel undefined for RECEIPT/ADJUSTMENT/etc. — those already show a plain reason', async () => {

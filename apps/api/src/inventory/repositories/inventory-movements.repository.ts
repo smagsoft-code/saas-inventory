@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, asc, count, desc, eq, gte, inArray, lt } from 'drizzle-orm';
-import { inventoryMovements, inventoryTransferReceipts, inventoryTransfers, orders } from '../../database/schema';
+import { inventoryMovements, inventoryTransferReceipts, inventoryTransfers, orders, salesReturnItems, salesReturns } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 import { resolveImportJobNumbers } from '../import-job-numbers';
 
@@ -154,6 +154,17 @@ export class InventoryMovementsRepository {
       .from(orders)
       .where(and(eq(orders.tenantId, tenantId), inArray(orders.id, orderIds)));
     return new Map(rows.map((row) => [row.id, row.orderNumber]));
+  }
+
+  /** referenceType='sales_return_item' (a RETURN movement) → the return's own number ("DEV-001"). */
+  async resolveReturnNumbers(tx: TenantTransaction, tenantId: string, returnItemIds: string[]): Promise<Map<string, string>> {
+    if (returnItemIds.length === 0) return new Map();
+    const rows = await tx
+      .select({ itemId: salesReturnItems.id, returnNumber: salesReturns.returnNumber })
+      .from(salesReturnItems)
+      .innerJoin(salesReturns, and(eq(salesReturns.tenantId, salesReturnItems.tenantId), eq(salesReturns.id, salesReturnItems.returnId)))
+      .where(and(eq(salesReturnItems.tenantId, tenantId), inArray(salesReturnItems.id, returnItemIds)));
+    return new Map(rows.map((row) => [row.itemId, row.returnNumber]));
   }
 
   /** referenceType='transfer_receipt' (TRANSFER_IN) → the parent transfer id, so a TRANSFER_IN can

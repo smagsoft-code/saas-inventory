@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /** GET/PATCH /tenant's response shape — only the fields §8 identifies as safe/meaningful to
  * expose to a tenant user: no infrastructure/internal-audit fields exist on `tenants` beyond what's
@@ -21,4 +21,7 @@ export class TenantResponseDto {
 
   @ApiProperty({ type: String })
   createdAt!: string;
+
+  @ApiPropertyOptional({ type: Number, description: 'Present only when the company has a logo: its last change in ms — the cache-buster for GET /tenant/logo.' })
+  logoVersion?: number;
 }

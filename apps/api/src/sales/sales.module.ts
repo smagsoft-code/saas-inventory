@@ -8,8 +8,11 @@ import { InventoryModule } from '../inventory/inventory.module';
 import { CartsController } from './carts/carts.controller';
 import { CartsService } from './carts/carts.service';
 import { CustomersController } from './customers/customers.controller';
+import { CustomersExportService } from './customers/customers-export.service';
 import { CustomersService } from './customers/customers.service';
+import { TabularExportService } from '../common/export/tabular-export.service';
 import { OrdersController } from './orders/orders.controller';
+import { OrdersExportService } from './orders/orders-export.service';
 import { OrdersService } from './orders/orders.service';
 import { PriceApprovalsController } from './pricing/price-approvals.controller';
 import { PriceApprovalsService } from './pricing/price-approvals.service';
@@ -58,8 +61,11 @@ import { ReturnsService } from './returns/returns.service';
   controllers: [CustomersController, CartsController, OrdersController, PriceApprovalsController, ReturnsController],
   providers: [
     CustomersService,
+    CustomersExportService,
     CartsService,
     OrdersService,
+    OrdersExportService,
+    TabularExportService,
     PriceApprovalsService,
     ReturnsService,
     SalesPricingService,

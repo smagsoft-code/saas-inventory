@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, Length } from 'class-validator';
+import { IsNotEmpty, IsString, Length, MaxLength } from 'class-validator';
 
 export class AcceptInvitationDto {
   @ApiProperty({ type: String, description: 'The raw invitation token from the link — never its hash.' })
@@ -7,8 +7,9 @@ export class AcceptInvitationDto {
   @Length(16, 256)
   token!: string;
 
-  @ApiProperty({ type: String, minLength: 10, maxLength: 128, description: 'Minimum 10 characters — same policy as registration.' })
+  @ApiProperty({ type: String, description: 'No composition or length rule — same policy as registration (it only must not be empty).' })
   @IsString()
-  @Length(10, 128)
+  @IsNotEmpty()
+  @MaxLength(1024)
   password!: string;
 }

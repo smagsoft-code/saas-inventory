@@ -12,6 +12,8 @@ import { PermissionsService } from './permissions/permissions.service';
 import { RolesController } from './roles/roles.controller';
 import { RolesService } from './roles/roles.service';
 import { TenantController } from './tenant/tenant.controller';
+import { TenantLogoRepository } from './tenant/tenant-logo.repository';
+import { TenantLogoService } from './tenant/tenant-logo.service';
 import { TenantService } from './tenant/tenant.service';
 import { UsersController } from './users/users.controller';
 import { UsersService } from './users/users.service';
@@ -29,6 +31,8 @@ import { UsersService } from './users/users.service';
   controllers: [TenantController, UsersController, RolesController, PermissionsController],
   providers: [
     TenantService,
+    TenantLogoService,
+    TenantLogoRepository,
     UsersService,
     RolesService,
     PermissionsService,

@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, Length } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, Length, MaxLength } from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ type: String, description: 'The new company/tenant name.', minLength: 2, maxLength: 120 })
@@ -11,9 +11,14 @@ export class RegisterDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ type: String, minLength: 10, maxLength: 128, description: 'Minimum 10 characters.' })
+  @ApiProperty({
+    type: String,
+    description:
+      'No composition or length rule (owner decision for company creation) — only that it is not empty. The 1024 cap is not a policy: it only bounds the work a single hash request can cost.',
+  })
   @IsString()
-  @Length(10, 128)
+  @IsNotEmpty()
+  @MaxLength(1024)
   password!: string;
 
   @ApiProperty({ type: String, minLength: 2, maxLength: 120 })

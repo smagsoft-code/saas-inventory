@@ -330,6 +330,27 @@
       "when": 1792724744479,
       "tag": "0046_remove_product_draft_status",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1792800000000,
+      "tag": "0047_backfill_confirmed_order_dates",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1792800100000,
+      "tag": "0048_tenant_logos",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1792800200000,
+      "tag": "0049_backfill_admin_pricing_permissions",
+      "breakpoints": true
     }
   ]
 }
