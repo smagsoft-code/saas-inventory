@@ -27,12 +27,15 @@ export type InventoryTotalsRow = {
   availableQuantity: string;
   reservedQuantity: string;
   outOfStockCount: string;
-  /** Σ (product_variants.cost × available_sum) per variant, NULL cost treated as 0 — "current cost"
+  /** Σ (product_variants.cost × physical_sum) per variant — physical on-hand, so a pending order's
+   * reservation does NOT reduce the value: stock only leaves the books when the sale is confirmed
+   * (the SALE movement lowers quantity_physical). Previously multiplied available_sum (physical −
+   * reserved − committed), which wrongly dropped the value as soon as an order was created. NULL cost treated as 0 — "current cost"
    * valuation, never FIFO/weighted-average (no costing method exists, GAP-COST). Always computed by
    * this query (the join is already there for nothing extra); the service layer decides whether to
    * put it on the response, gated on `pricing.cost.view` (ADR-0028's existing precedent). */
   totalCostValue: string;
-  /** Distinct variants with available_sum > 0 whose product_variants.cost is NULL — excluded from
+  /** Distinct variants with physical_sum > 0 whose product_variants.cost is NULL — excluded from
    * `totalCostValue` above, so this count is the honest "how much of that total might be missing"
    * companion, never silently folded into the total as a false 0. */
   missingCostCount: string;
@@ -161,6 +164,7 @@ export class InventoryReportRepository {
           ib.product_variant_id AS variant_id,
           SUM(ib.quantity_available) AS available_sum,
           SUM(ib.quantity_reserved) AS reserved_sum,
+          SUM(ib.quantity_physical) AS physical_sum,
           MAX(pv.cost) AS variant_cost
         FROM inventory_balances ib
         JOIN locations l ON l.tenant_id = ib.tenant_id AND l.id = ib.location_id
@@ -176,8 +180,8 @@ export class InventoryReportRepository {
         COALESCE(SUM(available_sum), 0) AS "availableQuantity",
         COALESCE(SUM(reserved_sum), 0) AS "reservedQuantity",
         COUNT(*) FILTER (WHERE available_sum = 0) AS "outOfStockCount",
-        COALESCE(SUM(COALESCE(variant_cost, 0) * available_sum), 0) AS "totalCostValue",
-        COUNT(*) FILTER (WHERE available_sum > 0 AND variant_cost IS NULL) AS "missingCostCount"
+        COALESCE(SUM(COALESCE(variant_cost, 0) * physical_sum), 0) AS "totalCostValue",
+        COUNT(*) FILTER (WHERE physical_sum > 0 AND variant_cost IS NULL) AS "missingCostCount"
       FROM per_variant
     `);
     return (
