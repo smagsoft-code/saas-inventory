@@ -6,6 +6,7 @@ import { ValidationPipe, VersioningType } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from '../../src/app.module';
+import { registerLenientJsonBody } from '../../src/main';
 import { ObjectStorageService } from '../../src/common/storage/object-storage.service';
 
 /**
@@ -50,7 +51,9 @@ export async function buildImportTestApp(): Promise<NestFastifyApplication> {
     .useClass(InMemoryObjectStorageService)
     .compile();
 
-  const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+  const adapter = new FastifyAdapter();
+  const app = moduleRef.createNestApplication<NestFastifyApplication>(adapter);
+  registerLenientJsonBody(adapter); // same empty-JSON-body handling as buildApp()
 
   await app.register(helmet);
   await app.register(fastifyCookie);

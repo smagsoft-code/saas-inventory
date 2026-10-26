@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { DEFAULT_ROLE_TEMPLATES } from '@saas-inventory/shared';
 import { and, eq } from 'drizzle-orm';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -385,7 +386,11 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: order transition co
       // LocationAuthorizationService.assertAccess (on order.locationId = f.locationId) throws. No
       // stock is put there; the variant only ever exists at f.locationId.
       const otherLocation = await c.createLocation(f.admin, (await warehouseOf(f))!, `LB-${Date.now()}`);
-      const vendedor = await c.createAndLoginAs(f.admin, 'vendedor@t3.example', 'Vendedor');
+      // The actor must pass the seller-scope check (FINDING-VA-WRITE-SCOPE: a seller without `sales.orders.view_all` cannot
+      // even see — hence cannot confirm — an order another user placed) so that the failure under test is still the
+      // LOCATION authorization, not the seller scope.
+      await c.createRole(f.admin, 'Vendedor vista total', [...new Set([...DEFAULT_ROLE_TEMPLATES.Vendedor.permissionCodes, 'sales.orders.view_all'])]);
+      const vendedor = await c.createAndLoginAs(f.admin, 'vendedor@t3.example', 'Vendedor vista total');
       await c.inject({ method: 'PUT', url: `/api/v1/users/${vendedor.user.id}/locations`, headers: c.writeHeaders(f.admin), payload: { locationIds: [otherLocation] } });
 
       const orderId = await pendingOrder(f, 3); // reserved by the admin at f.locationId

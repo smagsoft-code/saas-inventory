@@ -47,7 +47,7 @@ function registerCorrelationId(app: NestFastifyApplication): void {
  *    protections, same 400 on malformed JSON), and the body-size limit is unchanged.
  * `useBodyParser` is Nest's supported hook: it also stops `app.init()` from overriding this parser.
  */
-function registerLenientJsonBody(adapter: FastifyAdapter): void {
+export function registerLenientJsonBody(adapter: FastifyAdapter): void {
   const fastify = adapter.getInstance();
   const { bodyLimit, onProtoPoisoning, onConstructorPoisoning } = fastify.initialConfig;
   const defaultJsonParser = fastify.getDefaultJsonParser(onProtoPoisoning ?? 'error', onConstructorPoisoning ?? 'error');
