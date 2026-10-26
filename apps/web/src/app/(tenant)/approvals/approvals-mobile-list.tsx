@@ -205,6 +205,7 @@ export function ApprovalsMobileList({
                     </span>
                   </span>
                   <span className={T.title}>{a.productName ?? '—'}</span>
+                  <span className="text-xs leading-snug text-slate-500">{a.reason}</span>
                   <span
                     className={cn(
                       'flex items-center justify-between gap-2 border-t pt-2',
@@ -236,9 +237,6 @@ export function ApprovalsMobileList({
                       <DetailTile label="Descuento">{a.discountLabel}</DetailTile>
                       <DetailTile label="Almacén" wide>
                         {a.locationLabel}
-                      </DetailTile>
-                      <DetailTile label="Motivo" wide>
-                        {a.reason}
                       </DetailTile>
                     </div>
                     <Link href={`/approvals/${a.id}`} className={T.primaryButton}>

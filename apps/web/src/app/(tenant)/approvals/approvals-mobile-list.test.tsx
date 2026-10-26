@@ -60,10 +60,10 @@ describe('ApprovalsMobileList', () => {
     expect(screen.getByText('Peinadora clásica')).toBeInTheDocument();
     expect(screen.getByText('Pendiente')).toBeInTheDocument();
     expect(screen.getByText('1 registro encontrado')).toBeInTheDocument();
-    expect(screen.queryByText('Descuento solicitado por QA Admin.')).toBeNull();
+    // the reason sits under the product name, in small type, without opening the card
+    expect(screen.getByText('Descuento solicitado por QA Admin.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: /ORD-000049/ }));
-    expect(screen.getByText('Descuento solicitado por QA Admin.')).toBeInTheDocument();
     expect(screen.getByText('10.00')).toBeInTheDocument();
     expect(screen.getByText('Sucursal Principal · Almacén Principal')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Ver solicitud' })).toHaveAttribute('href', '/approvals/a1');
