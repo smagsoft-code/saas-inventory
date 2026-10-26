@@ -234,9 +234,9 @@ re-runnable proof exists, which for most blocks it does not yet** — see
 | **Roles & permissions + warehouse scope** (`c8d3305`) | Role CRUD, `core.roles.manage` (migration `0032`), ADR-0034 (role-permission self-escalation), ADR-0035 (zero location assignments now denies, except the founding Administrador); `TransfersService.create` now checks the source location. | `roles-crud` and `users-rbac` passed in the full real-PostgreSQL run of 2026-10-26 (that run as a whole was **not** green — see `PG-VERIFY-FULL-RUN`). |
 | **Tenant onboarding + support** (`4c1e31a`, `abdbba3`) | `POST /platform/tenants` with invitation acceptance, audited time-boxed support sessions, migration `0033`, ADR-0036. | `platform-support` and `platform-tenant-onboarding` passed in the full real-PostgreSQL run of 2026-10-26 (run not green overall). |
 | **Login & Users UI** | "Crear cuenta" removed from `/login`; login/user identifier relaxed from email to a 10+ character string; `GET /users?q=`. | Reported in `CLAUDE.md`; the 557-test run it cites had 5–7 failures attributed to contention without proof. |
-| **Inventory / Kardex** (`1283de8`, `07d6fc3`, `2e5eded`) | Costed Kardex, `GET /reports/kardex`, weighted-average cost (ADR-0037, migration `0034`), rebuilt movements history. | Code present. In the 2026-10-26 full run the inventory/report suites that cover it **fail** (`inventory-stock` 11, `movements-summary` 7, …) — read as outdated tests, not proven (`DEFECT-INTEGRATION-STALE-TESTS`). |
-| **Transfers overhaul** | Transfer codes (`0035`), tenant-configurable approval/preparation workflow (`0036`), modal actions, date filter, product search. | Same run: `inventory-transfers` 1 failure, `transfers-summary` 2 failures. |
-| **Sales rework** (`24cc91b`, `b198a7d`, `3bae5aa`, `bdbd28e`, …) | Split payments (`0039` `order_payments`), PDF export by browser print (ADR-0038), approver price editing with an `order_items` price-edit grant (`0040`), return numbers (`0041`), `sales.orders.view_all` seller scope (`0044`), confirmed-order date backfill (`0047`), approval numbers (`0050`), exports and payments report, customers redesign (`0037`). **The exceptional-discount trigger moved from `min_price` to `base_price`** (ADR-0022 amendment of 2026-10-05, `base_price_at_request` in `0038`; `min_price` stays the hard floor) — FASE 12/13 text elsewhere still says "below `min_price`" (`DOC-ADR0022-TRIGGER-DRIFT`). **Also: the requester-cannot-resolve-own-request rule was first bypassed for `pricing.policy.manage` (`b198a7d`, no ADR) and then, by owner decision of 2026-10-26, replaced by "any holder of `pricing.discount.approve` may resolve their own request" (ADR-0022 amendment; see `DECISION-SELF-APPROVAL`).** | Same run: `sales-customers` 4, `sales-cart-orders` 3, `sales-exceptional-pricing` 3, `sales-returns-approvals-history` 3, `sales-returns` 1 failures (outdated tests, not proven). |
+| **Inventory / Kardex** (`1283de8`, `07d6fc3`, `2e5eded`) | Costed Kardex, `GET /reports/kardex`, weighted-average cost (ADR-0037, migration `0034`), rebuilt movements history. | Code present; the inventory/report suites that cover it are green in the 2026-10-26 full real-PostgreSQL run (tests updated to current rules, commit `3e86244`). |
+| **Transfers overhaul** | Transfer codes (`0035`), tenant-configurable approval/preparation workflow (`0036`), modal actions, date filter, product search. | Green in the same run (3 outdated tests updated). |
+| **Sales rework** (`24cc91b`, `b198a7d`, `3bae5aa`, `bdbd28e`, …) | Split payments (`0039` `order_payments`), PDF export by browser print (ADR-0038), approver price editing with an `order_items` price-edit grant (`0040`), return numbers (`0041`), `sales.orders.view_all` seller scope (`0044`), confirmed-order date backfill (`0047`), approval numbers (`0050`), exports and payments report, customers redesign (`0037`). **The exceptional-discount trigger moved from `min_price` to `base_price`** (ADR-0022 amendment of 2026-10-05, `base_price_at_request` in `0038`; `min_price` stays the hard floor) — FASE 12/13 text elsewhere still says "below `min_price`" (`DOC-ADR0022-TRIGGER-DRIFT`). **Also: the requester-cannot-resolve-own-request rule was first bypassed for `pricing.policy.manage` (`b198a7d`, no ADR) and then, by owner decision of 2026-10-26, replaced by "any holder of `pricing.discount.approve` may resolve their own request" (ADR-0022 amendment; see `DECISION-SELF-APPROVAL`).** | Green in the same run after updating 14 outdated tests (customers, cart/orders, exceptional pricing, returns/approvals history). |
 | **Catalog & stock loading** | Category codes and SKU prefix (`0042`), uppercase names (`0043`), `draft` product status removed (`0045`–`0046`), bulk stock load from Excel, import pipeline fixes, bulk/printable QR. | Import and bulk-receipt suites passed in the 2026-10-26 run; QR and catalog not individually reviewed. |
 | **Home & tenant branding** (`88acde0`, `0048`) | Home KPIs with per-warehouse filter and yearly trend chart; tenant logos. | `tenant-logo` passed in the 2026-10-26 run; home KPIs covered by web unit tests only. |
 | **UI/UX redesign** | Spanish UI, 64 px hover-expand navigation rail, mobile tab bar, and phone layouts for transfers, new sale, order detail, payments, approvals, returns and movements (≈35 web commits, 2026-10-22…26). The design tokens, blue primary and Lotes 2–3 of `UI-UX-SPEC-001` were **not** delivered; the owner chose to close the spec with a delivered/deferred table and to schedule a tokens + blue block before FASE 22 (`UIUX-SPEC-VS-IMPLEMENTATION`). | Unit tests only; no browser regression. |
@@ -378,12 +378,14 @@ explicit review/commit.
 - **Numbered phases:** FASE 0–18 implemented and committed. FASE 19–24 **not started**.
 - **Work after FASE 18** (roles, onboarding/support, Kardex, sales rework, UI/UX redesign, …) is
   implemented and committed but **not formally validated** — see "Work after FASE 18" above.
-- **Tests (run 2026-10-26):** `apps/api` unit 778 passed (70 files); `apps/web` unit 1008 passed
-  (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
-  (`DEFECT-WEB-TEST-UNHANDLED`). **First full real-PostgreSQL run of the current tree: not green** —
-  635 tests, 582 passed, 45 failed, 8 skipped, plus 2 aborted suites; the failures read as outdated
-  tests after the October rework, not proven product regressions (`PG-VERIFY-FULL-RUN`,
-  `DEFECT-INTEGRATION-STALE-TESTS`).
+- **Tests (2026-10-26, after the pre-FASE 19 fixes):** `apps/api` unit 790 passed (72 files);
+  `apps/web` unit 1010 passed (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
+  (`DEFECT-WEB-TEST-UNHANDLED`, open). **Full real-PostgreSQL run of the current tree: green** — isolated
+  instance, port 55433, development database untouched: 685 tests (662 parallel + 23 serial), 0 failed,
+  0 skipped, all structural/RLS catalog checks passed. It was **not green** the first time (45 failing tests,
+  outdated after the October rework) and two intermediate runs each had one deadlock failure, root-caused to
+  test files that replay migration SQL over the shared database (now a serial phase). One clean final run is
+  not a stability proof. See `PG-VERIFY-FULL-RUN`, `DEFECT-INTEGRATION-STALE-TESTS`, `TEST-FLAKY-DEADLOCKS`.
 - **Notifications:** backend flag `N8N_EVENTS_ENABLED=false` by default; the n8n → Telegram path was
   validated end to end in 015-A and 5R/5R-A against a test destination; which event types produce a
   Telegram message is defined in the operator's n8n workflow, not in this repository — 5S notes
@@ -391,8 +393,12 @@ explicit review/commit.
   this documentation pass. Retry from the UI does not exist (`GAP-NOTIF-RETRY-BACKEND`).
 - **Open items:** every pending security item, defect, limitation, verification gap and owner
   decision is in [pending-register.md](pending-register.md). Headline open items:
-  `GAP-F19-PARSE-UUID`, `GAP-F19-EMPTY-BODY`, `GAP-F19-RLS-IDOR-DEPTH`, `PG-VERIFY-FULL-RUN` /
-  `DEFECT-INTEGRATION-STALE-TESTS`, `DEFECT-TZ-DEFAULT-UNSETTABLE`, `DEFECT-WEB-TEST-UNHANDLED`.
+  `GAP-F19-RLS-IDOR-DEPTH` (database-level isolation proven for the representative tables incl. `categories` /
+  `customers`; HTTP-level probing of the post-5S surface **not done** — tenant isolation is not declared fully
+  validated), `DEFECT-WEB-TEST-UNHANDLED`, `GAP-NOTIF-RETRY-BACKEND`, `QA-EVIDENCE-PERSISTENCE`.
+  Closed with evidence on 2026-10-26: `GAP-F19-PARSE-UUID`, `GAP-F19-EMPTY-BODY`,
+  `DEFECT-TZ-DEFAULT-UNSETTABLE`, `PG-VERIFY-FULL-RUN`, `DEFECT-INTEGRATION-STALE-TESTS`,
+  `DEFECT-API-TEST-TYPECHECK`, `TEST-FLAKY-DEADLOCKS`, `OBS-DEV-CREDENTIAL-IN-SPEC` (rotation still advised).
 - **Owner decisions of 2026-10-26:** self-approval of price requests allowed for any
   `pricing.discount.approve` holder (ADR-0022 amendment); `base_price` confirmed as the exceptional
   trigger; UI spec closed with a delivered/deferred table and a tokens + blue block scheduled before

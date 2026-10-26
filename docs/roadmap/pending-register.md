@@ -43,7 +43,13 @@ improvement or limitation.
 - **Acceptance:** every UUID path param rejects a malformed value with a deterministic 4xx; a test
   enumerates all routes with an id param; no PostgreSQL error text reaches a response or log at
   `error` level.
-- **Status:** `open` (static) — reproduce first.
+- **Status:** `closed-with-evidence` (2026-10-26, commit `7855019`). **Before** (real PostgreSQL, same suite): all 20 sampled
+  routes answered **500** to a malformed UUID. **After:** all 20 answer **400** in the standard envelope with no database
+  text, and a well-formed but unknown UUID still answers **404** (the pipe is not over-broad). `ParseUUIDPipe` is on all 81
+  UUID path params in 22 controllers; `uuid-path-params.spec.ts` fails if a new `@Param` is added without it (`code` and
+  `token` are the only documented exceptions, and are verified untouched). **Limits:** HTTP behaviour was exercised on 20
+  tenant routes with an admin session; the other params rely on the source guard, and `/platform/*` routes were not
+  exercised over HTTP.
 
 ### GAP-F19-EMPTY-BODY *(ID created by this register; 5S recorded it without one)*
 
@@ -56,7 +62,16 @@ improvement or limitation.
 - **Proposed phase:** FASE 19. **Dependencies:** none.
 - **Acceptance:** every bodyless POST action succeeds or returns 4xx with and without the JSON
   content type; one integration test per action class.
-- **Status:** `to-verify`.
+- **Reproduction (2026-10-26, real PostgreSQL, before the fix):** `Content-Type: application/json` with no body answered
+  **500 `INTERNAL_ERROR`** (server log: `FastifyError: Body cannot be empty when content-type is set to 'application/json'`)
+  on a bodyless action (`POST /orders/:id/cancel`) and on a body-requiring endpoint (`POST /customers`). Malformed JSON was
+  already 400; `text/plain` is parsed by Fastify (not a 415).
+- **Fix (commit `7855019`):** an empty/whitespace JSON body is read as "no body" (bodyless actions run; body-requiring
+  endpoints still answer 400 `VALIDATION_ERROR`, nothing is silently accepted); Fastify `FST_*` 4xx errors (415, 413, …) are
+  mapped to their real status with fixed messages instead of 500.
+- **Status:** `closed-with-evidence` — after the fix the same 5 cases pass against real PostgreSQL. **Limit:** the exact
+  route in the original report (`POST /platform/tenants/:id/suspend`, needs a platform session) was not exercised; it goes
+  through the same parser.
 
 ### GAP-F19-RLS-IDOR-DEPTH
 
@@ -73,7 +88,13 @@ improvement or limitation.
 - **Added 2026-10-26:** the existing per-table isolation suite (`multi-tenancy-rls`) aborted for
   `categories` and `customers` because its fixtures are out of date, so even those two tables have no
   current isolation proof (`DEFECT-INTEGRATION-STALE-TESTS`).
-- **Status:** `to-verify`.
+- **Status:** `to-verify` — **partially evidenced.** Proven against real PostgreSQL on 2026-10-26 (run of 685 tests, 0 failed,
+  0 skipped): for 7 representative tables incl. `categories` and `customers` — own read, cross-tenant read by primary key, cross-
+  tenant UPDATE (0 rows) and DELETE, empty tenant context (0 rows / fails closed), cross-tenant INSERT rejected; plus
+  `auth_refresh_tokens`; every one of the 45 tenant-owned tables has RLS + FORCE + a policy (pg-verify catalog check); HTTP
+  cross-tenant 404s for categories/customers/products exist in `catalog.integration`/`sales-customers`. **Still NOT
+  probed:** HTTP-level cross-tenant read/mutate for the surface added after 5S (support sessions, tenant onboarding,
+  `view_all`, order payments, bulk stock load, exports, bulk QR, Kardex). Do not read this item as "isolation validated".
 
 ### DECISION-SELF-APPROVAL — **decided 2026-10-26 (owner)**
 
@@ -167,7 +188,13 @@ improvement or limitation.
   validation. HTTP-level reproduction not run.
 - **Severity / risk:** P3 (workaround: any other zone). **Phase:** small fix, any block.
 - **Acceptance:** `PATCH {timezone:"UTC"}` returns 200 and the same value on `GET`; test added.
-- **Status:** `open` (confirmed by validator contents).
+- **Reproduction (2026-10-26):** over HTTP, before the fix, `PATCH /administration/tenant-settings {"timezone":"UTC"}` → **400**
+  (`timezone must be one of the following values: …`), on Node v24.19.0 where the list has 418 names and no `UTC`. The web
+  picker had the same gap (it also could not offer `UTC` to a tenant on another zone).
+- **Fix (commit `7855019`):** API accepts every runtime name plus exactly `UTC`; the web helper offers `UTC` once.
+- **Status:** `closed-with-evidence` — after the fix: `UTC` → 200 and read back; `America/Guayaquil` → 200 then back to `UTC`;
+  `Mars/Phobos`, `utc `, ``, `UTC+5`, `Not/AZone`, `123` → 400. Unit tests on the DTO and the web helper/form. (`null` is
+  treated by `@IsOptional` as "omitted" — unchanged, not part of this defect.)
 
 ### LIMIT-SERIALIZED-LOT-SALES — **decided 2026-10-26 (owner): MVP scope decision, not a defect**
 
@@ -235,7 +262,12 @@ improvement or limitation.
   used in earlier blocks (revert afterwards).
 - **Acceptance:** one run reports 0 failed / 0 skipped; the "flaky under contention" claim is either
   demonstrated (isolated reruns of failing tests pass) or the deadlock is fixed.
-- **Status:** `to-verify`.
+- **Status:** `closed-with-evidence` (2026-10-26). **Before:** 635 tests, 45 failed, 8 skipped, 2 aborted suites, 4 structural
+  checks failed. **After** (commits `7855019` + `3e86244`): `pnpm … verify` on an isolated instance — **parallel phase 52
+  files / 662 tests passed; serial phase 2 files / 23 tests passed; 0 failed, 0 skipped; "All checks PASSED"** (54 tables,
+  45 tenant-owned all with RLS + FORCE + policy, 43 permissions, role/grant audits). **Not** proven: stability over repeated
+  runs — two intermediate runs each showed one failure, both root-caused to the deadlock described in
+  `TEST-FLAKY-DEADLOCKS`; the final run was a single clean pass.
 - **Known environmental noise:** the harness's `EBUSY` on `.verify-pgdata` teardown (documented
   since F18-04) and the web build's Windows `EPERM` symlink step (documented since FASE 12) were
   **not re-checked** here.
@@ -257,7 +289,9 @@ improvement or limitation.
   `customers` did not run**, so that proof is currently missing (other tables in that suite passed).
 - **Phase:** first step of FASE 19. **Acceptance:** each failing test is either updated to the current
   rules (with the rule it now encodes stated) or the product bug is fixed; a full run reports 0 failed.
-- **Status:** `open`.
+- **Status:** `closed-with-evidence` — all 45 tests updated to the current schema/rules (intent kept, no test removed or
+  weakened; one count assertion relaxed with a stated reason: `platform-summary`, parallel files register tenants), green in
+  the 2026-10-26 full run. Details in commit `3e86244`.
 
 ### DEFECT-API-TEST-TYPECHECK *(new)*
 
@@ -266,7 +300,23 @@ improvement or limitation.
   inject helper) and `test/sales/sales-order-transitions.integration.test.ts(203)` (`import.meta`
   needs a newer `module` setting). `pnpm --filter … typecheck` therefore cannot pass.
 - **Evidence:** *runtime*, 2026-10-26. **Severity:** P3 (CI hygiene). **Phase:** before FASE 19.
-- **Acceptance:** the API `typecheck` script exits 0. **Status:** `open`.
+- **Acceptance:** the API `typecheck` script exits 0. **Status:** `closed-with-evidence` (commit `3e86244`; `tsc --noEmit -p test/tsconfig.json` exits 0).
+
+### TEST-FLAKY-DEADLOCKS *(new)* — root cause found
+
+- **Description:** earlier notes (CLAUDE.md, the 557/43 run) attributed random integration failures to "contention under
+  `fileParallelism`" without proof. On 2026-10-26 the PostgreSQL log of three consecutive full runs showed the real cause:
+  `deadlock detected` between ordinary test queries and statements that **replay migration SQL over the whole shared
+  database** — `ALTER TABLE "audit_log" NO FORCE ROW LEVEL SECURITY` / `ALTER TABLE "orders" …` (the migration-0047 backfill test)
+  and `INSERT INTO tenant_memberships … SELECT … FROM users` (the migration-0029 backfill test). The victim was an unrelated
+  test each time (R15, U9, the migrations RLS check): a 500 or a flipped `relforcerowsecurity`.
+- **Fix (commit `3e86244`):** those two files are renamed `*.serial.integration.test.ts`, excluded from the parallel phase
+  and run afterwards, one file at a time (`vitest.integration.serial.config.ts`; `pnpm test:integration:all` runs both;
+  `pg-verify` runs both). The 0047 replay is faithful again (full SQL, with its ALTERs).
+- **Evidence:** run with the two phases → 662 + 23 tests passed, no `deadlock detected` in the log.
+  **Limit:** one clean run, not a statistical proof of stability.
+- **Status:** `closed-with-evidence`. Any new test that replays migration SQL or does DDL on shared tables must use the
+  `.serial.` suffix.
 
 ### OBS-DEV-CREDENTIAL-IN-SPEC *(new, informational)*
 
@@ -290,10 +340,11 @@ improvement or limitation.
 
 | Suite | Result |
 | --- | --- |
-| `apps/api` | 70 files, **778 passed**, exit 0 |
-| `apps/web` | 138 files, **1009 passed**, 1 unhandled error, exit non-zero (`DEFECT-WEB-TEST-UNHANDLED`) |
-
-Lint, typecheck and the web build were not run in this documentation-only pass.
+| `apps/api` unit | 72 files, **790 passed**, exit 0 (was 70 / 778; +12 = UUID guard, filter, DTO) |
+| `apps/web` unit | 138 files, **1010 passed**, 1 unhandled error, exit non-zero (`DEFECT-WEB-TEST-UNHANDLED`, still open) |
+| `apps/api` typecheck (src + `test/tsconfig.json`) / eslint | pass / pass (2026-10-26, after the fixes) |
+| `apps/web` typecheck / eslint | pass / pass |
+| Web build | not run (known Windows `EPERM` at the trace step, unchanged) |
 
 ### QA-EVIDENCE-PERSISTENCE
 
@@ -403,3 +454,33 @@ Lint, typecheck and the web build were not run in this documentation-only pass.
 | `GAP-5RA-DEDUPE-MARK-COMPLETED` | missing "Mark Completed" node | *notes* only: re-validated with a fresh cancellation |
 
 A `closed` row whose evidence is *notes* only should be re-confirmed during FASE 19 / FASE 23.
+
+## I. Verification log — pre-FASE 19 closure (2026-10-26)
+
+**Environment.** Windows 11, Node v24.19.0, pnpm workspace, `embedded-postgres` 18.4.0-beta.17. Integration runs used
+`tools/pg-verify` with **`PG_VERIFY_PORT=55433`** — a throwaway instance whose data directory is deleted at the end. No
+real customer data: every fixture is generated by the tests.
+
+**The development database `saas_inventory_dev` on port 55432 was not modified.** Evidence: every connection string the
+runs used is built from the 55433 port (the run logs contain no reference to 55432); the same process (PID 19128) was
+listening on 55432 before, during and after; the tool's default is unchanged and its data directory
+(`tools/pg-verify/.verify-pgdata`) did not remain. This is evidence of non-use, not a before/after dump of that database.
+
+| Step | Command | Before | After |
+| --- | --- | --- | --- |
+| Full integration (reproduction) | `pnpm --filter @saas-inventory/pg-verify verify` (port 55433) | 635 tests: 582 pass / 45 fail / 8 skipped, 2 aborted suites, 4 structural checks failed | — |
+| HTTP defects (reproduction) | same, `PG_VERIFY_TEST_FILTER="test/http/http-input-validation"`, controllers reverted | 50 tests: 24 pass / 26 fail (UUID 500 ×20, empty body 500 ×2, `UTC` 400 ×2, 2 wrong expectations of mine) | — |
+| Full integration (final) | `PG_VERIFY_PORT=55433 pnpm --filter @saas-inventory/pg-verify verify` | — | parallel 52 files / 662 pass; serial 2 files / 23 pass; **0 failed, 0 skipped; All checks PASSED** |
+| API unit | `pnpm --filter @saas-inventory/api test` | 778 | 790 |
+| Web unit | `pnpm --filter @saas-inventory/web test` | 1009 (+1 unhandled error) | 1010 (+1 unhandled error, unchanged) |
+| API typecheck / lint | `tsc --noEmit` (+ `-p test/tsconfig.json`), `eslint .` | 2 test type errors | 0 / clean |
+
+**Effective coverage of the isolation question** — see `GAP-F19-RLS-IDOR-DEPTH`: database-level isolation is now proven for the
+representative tables (incl. `categories`, `customers`) and every tenant-owned table has RLS + FORCE + a policy; HTTP-level
+cross-tenant probing of the post-5S surface is **not** done. FASE 19 is **not** complete and tenant isolation is **not**
+declared fully validated.
+
+**Open risks after this pass:** `GAP-F19-RLS-IDOR-DEPTH` (new surface unprobed); `DEFECT-WEB-TEST-UNHANDLED`;
+`GAP-NOTIF-RETRY-BACKEND`; `FINDING-N8N-RESPOND-INVALID` and `GAP-NOTIF-COVERAGE` (n8n side, unverifiable from the repo);
+`QA-EVIDENCE-PERSISTENCE` / `QA-VISUAL-REGRESSION`; `UIUX-SPEC-VS-IMPLEMENTATION`; the credential still present in Git
+history (`OBS-DEV-CREDENTIAL-IN-SPEC`, rotation advised); repeated-run stability of the integration suite not demonstrated.

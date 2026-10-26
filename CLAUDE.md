@@ -161,8 +161,8 @@ and get it agreed before implementing.
 > [docs/roadmap/roadmap.md](docs/roadmap/roadmap.md) ("Verified status" + "Work after FASE 18"),
 > then [docs/roadmap/pending-register.md](docs/roadmap/pending-register.md) (open items with
 > evidence), then the ADR index. In short: FASE 0–18 are implemented; FASE 19–24 are not started;
-> much of the work after FASE 18 is implemented but **not validated** (no full real-PostgreSQL run
-> for the current tree is green — the first full run, 2026-10-26, had 45 failing tests, read as
+> much of the work after FASE 18 is implemented but **not validated** (the full real-PostgreSQL run
+> of 2026-10-26 is green after the pre-FASE 19 fixes — 685 tests, 0 failed, 0 skipped — but its first run had 45 failing
 > outdated tests; `apps/web` unit tests exit non-zero because of one unhandled error). Several rules
 > described below were **changed by owner decision on 2026-10-26 / earlier** and are recorded in
 > ADRs: the exceptional-discount trigger is `base_price`, not `min_price` (ADR-0022 amendment,
@@ -1380,11 +1380,19 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
   navigation rail, mobile tab bar and phone layouts for transfers, new sale, order detail, payments,
   approvals, returns and movements. The design-token layer, blue primary and Lotes 2–3 specified in
   `docs/ui-ux/UI-UX-SPEC-001.md` were **not** delivered (`UIUX-SPEC-VS-IMPLEMENTATION`).
-- **Verification baseline (2026-10-26):** `apps/api` unit 778/778 (70 files); `apps/web` unit
-  1008 passed (138 files) plus 1 unhandled error → non-zero exit (`DEFECT-WEB-TEST-UNHANDLED`);
-  `pg-verify`, first full run on the current tree, on an isolated instance (:55433, the development
-  database on :55432 untouched): 635 tests — 582 passed, 45 failed, 8 skipped, plus 2 aborted suites in
-  `multi-tenancy-rls`. The failures read as outdated tests, not proven regressions
-  (`PG-VERIFY-FULL-RUN`, `DEFECT-INTEGRATION-STALE-TESTS`).
+- **Verification baseline (2026-10-26, after the pre-FASE 19 fixes):** `apps/api` unit 790/790 (72 files);
+  `apps/web` unit 1010 passed (138 files) plus 1 unhandled error → non-zero exit
+  (`DEFECT-WEB-TEST-UNHANDLED`, open); typecheck (incl. `test/tsconfig.json`) and eslint pass on both apps.
+  Real PostgreSQL, `tools/pg-verify` on an isolated instance (`PG_VERIFY_PORT=55433`; the development
+  database on :55432 untouched): the first full run had 45 failing tests (outdated after the October
+  rework); after the fixes — **685 tests, 0 failed, 0 skipped** (662 in the parallel phase + 23 in the serial
+  phase) and all catalog checks passed. **Test-suite rule:** a test file that replays migration SQL or does DDL
+  on shared tables must be named `*.serial.integration.test.ts` (run alone, afterwards — `pnpm
+  test:integration:all`); the "flaky under contention" runs noted in earlier blocks were deadlocks caused by such
+  files (`TEST-FLAKY-DEADLOCKS`). Also fixed: malformed UUID path params → 400 (`ParseUUIDPipe` on all UUID params;
+  guard `src/common/uuid-path-params.spec.ts`), empty `application/json` bodies are read as "no body", Fastify
+  `FST_*` 4xx errors are mapped instead of 500, and `UTC` is an accepted timezone (API and web). Tenant isolation is
+  proven at database level for the representative tables only — HTTP-level probing of the post-5S surface is
+  still open (`GAP-F19-RLS-IDOR-DEPTH`).
 - **UI/UX spec closure (owner, option B):** `UI-UX-SPEC-001` is closed with a delivered/deferred table
   (its §0); a tokens + blue primary block is scheduled after FASE 19 and before FASE 22.
