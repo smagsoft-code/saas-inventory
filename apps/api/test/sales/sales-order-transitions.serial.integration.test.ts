@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -200,7 +200,11 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: order transition co
       try {
         await client`update orders set created_at = created_at - interval '3 days' where id = ${orderId}`;
         const [before] = await client<{ created_at: string; updated_at: string }[]>`select to_char(created_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as created_at, updated_at::text as updated_at from orders where id = ${orderId}`;
-        const migration = readFileSync(fileURLToPath(new URL('../../../../database/migrations/0047_backfill_confirmed_order_dates.sql', import.meta.url)), 'utf8');
+        const migration = readFileSync(resolve(__dirname, '../../../../database/migrations/0047_backfill_confirmed_order_dates.sql'), 'utf8');
+        // The migration is replayed IN FULL, ALTER TABLE statements included — faithful to production. That
+        // takes ACCESS EXCLUSIVE locks and rewrites every confirmed order of the shared database, which
+        // deadlocked unrelated parallel test files; this file is therefore named `*.serial.*` and runs
+        // alone, after the parallel phase (vitest.integration.serial.config.ts).
         const statements = migration.split('--> statement-breakpoint').map((s) => s.trim()).filter(Boolean);
         const run = () =>
           client.begin(async (tx) => {

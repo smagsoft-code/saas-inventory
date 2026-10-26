@@ -28,6 +28,12 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['test/**/*.integration.test.ts'],
+    // Files that replay migration SQL over the WHOLE shared database (an INSERT … SELECT over every
+    // user, DDL on hot tables) deadlock with the parallel files that register users / confirm orders
+    // at the same time (seen as random 500s in unrelated tests). They are named
+    // *.serial.integration.test.ts and run afterwards, one file at a time, by
+    // vitest.integration.serial.config.ts (`pnpm test:integration:serial`).
+    exclude: ['**/node_modules/**', '**/dist/**', '**/*.serial.integration.test.ts'],
     root: './',
     testTimeout: 30_000,
     hookTimeout: 30_000,

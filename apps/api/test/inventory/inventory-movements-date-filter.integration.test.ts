@@ -46,7 +46,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: movements occur
       method: 'POST',
       url: '/api/v1/inventory/adjustments',
       headers: c.writeHeaders(session),
-      payload: { productVariantId: variantId, locationId, movementType: 'RECEIPT', quantity: 1, reason, occurredAt },
+      payload: { productVariantId: variantId, locationId, movementType: 'RECEIPT', quantity: 1, unitCost: 10, reason, occurredAt },
     });
     expect(res.statusCode, res.body).toBe(201);
   }

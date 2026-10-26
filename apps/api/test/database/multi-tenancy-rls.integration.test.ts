@@ -78,8 +78,9 @@ describe.skipIf(!integrationTestsEnabled)('multi-tenancy and RLS', () => {
       },
       {
         table: 'categories',
-        insertColumns: ['id', 'tenant_id', 'name', 'slug'],
-        insertValuesFor: (tenantId, rowId) => [rowId, tenantId, 'Isolation Cat', `iso-cat-${rowId.slice(0, 8)}`],
+        // `slug` became `code` (migration 0042): a per-tenant, case-insensitively unique code.
+        insertColumns: ['id', 'tenant_id', 'name', 'code'],
+        insertValuesFor: (tenantId, rowId) => [rowId, tenantId, 'Isolation Cat', `ISO-CAT-${rowId.slice(0, 8)}`],
       },
       {
         table: 'brands',
@@ -88,8 +89,10 @@ describe.skipIf(!integrationTestsEnabled)('multi-tenancy and RLS', () => {
       },
       {
         table: 'customers',
-        insertColumns: ['id', 'tenant_id', 'type', 'display_name'],
-        insertValuesFor: (tenantId, rowId) => [rowId, tenantId, 'individual', 'Isolation Customer'],
+        // `type` is now the identification-document type (cedula | ruc | pasaporte) and
+        // `display_name` is GENERATED from first_name/last_name (migration 0037) — never inserted.
+        insertColumns: ['id', 'tenant_id', 'type', 'first_name', 'last_name'],
+        insertValuesFor: (tenantId, rowId) => [rowId, tenantId, 'pasaporte', 'Isolation', 'Customer'],
       },
       {
         table: 'users',

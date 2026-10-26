@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { priceApprovals, salesReturns } from '../../src/database/schema';
 import { appPlatformIntegrationTestsEnabled, getMigratorDb } from '../database/helpers';
+import { DEFAULT_ROLE_TEMPLATES } from '@saas-inventory/shared';
 import { makeClient, setIntegrationEnv, type Session } from './sales-harness';
 
 /**
@@ -153,7 +154,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: returns + approvals
     expect(day.data[0]).toMatchObject({ returnNumber: 'DEV-001', requestedByName: 'Test Admin' });
     expect(day.data[0]!.orderNumber).toMatch(/^ORD-/);
     expect(day.data[0]!.receivedByName).toBeUndefined(); // not received until inspected
-    expect(day.data[0]!.items[0]!.productName).toContain('Product SKU-');
+    expect(day.data[0]!.items[0]!.productName).toMatch(/product sku-/i);
     expect(day.data[0]!.items[0]!.sku).toMatch(/^SKU-/);
 
     const range = JSON.parse((await get(f, '/api/v1/sales-returns?dateFrom=2026-10-11&dateTo=2026-10-13')).body) as { meta: { total: number } };
@@ -226,7 +227,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: returns + approvals
     };
     expect(list.data.map((a) => a.id)).toEqual([idA]);
     expect(list.data[0]).toMatchObject({ locationId: f.locationA });
-    expect(list.data[0]!.productName).toContain('Product SKU-');
+    expect(list.data[0]!.productName).toMatch(/product sku-/i);
 
     const wide = '/api/v1/price-approvals?dateFrom=2026-10-11&dateTo=2026-10-13';
     expect((JSON.parse((await get(f, wide)).body) as { meta: { total: number } }).meta.total).toBe(2);
@@ -259,9 +260,13 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: returns + approvals
     const apprA = await fileApproval(pendA);
     const apprB = await fileApproval(pendB);
 
-    const seller = await c.createAndLoginAs(f.admin, `seller-${uniq()}@ex.com`, 'Vendedor');
+    // Since migration 0044 a plain Vendedor sees only the orders THEY placed; this test is about the
+    // LOCATION read scope across several sellers' documents, so the seller gets the Vendedor
+    // permissions plus `sales.orders.view_all` (the seller-wide view the Administrador has).
+    await c.createRole(f.admin, 'Vendedor con vista total', [...DEFAULT_ROLE_TEMPLATES.Vendedor.permissionCodes, 'sales.orders.view_all']);
+    const seller = await c.createAndLoginAs(f.admin, `seller-${uniq()}@ex.com`, 'Vendedor con vista total');
     await c.setUserLocations(f.admin, seller.user.id, [f.locationA]);
-    const idle = await c.createAndLoginAs(f.admin, `idle-${uniq()}@ex.com`, 'Vendedor'); // no assignment at all
+    const idle = await c.createAndLoginAs(f.admin, `idle-${uniq()}@ex.com`, 'Vendedor con vista total'); // no assignment at all
 
     const ids = (body: string): string[] => (JSON.parse(body) as { data: Array<{ id: string }> }).data.map((r) => r.id).sort();
     const status = async (who: Session, url: string): Promise<number> => (await c.inject({ method: 'GET', url, headers: c.readHeaders(who) })).statusCode;

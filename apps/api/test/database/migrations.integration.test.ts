@@ -86,6 +86,8 @@ describe.skipIf(!integrationTestsEnabled)('migrations', () => {
         'idempotency_keys',
         'auth_refresh_tokens',
         'tenant_settings',
+        'tenant_logos',
+        'order_payments',
         'platform_admin_refresh_tokens',
         'identities',
         'tenant_memberships',

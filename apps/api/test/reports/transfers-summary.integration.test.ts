@@ -143,8 +143,9 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: transfers summary
     expect(res.statusCode).toBe(401);
   });
 
-  it('requires inventory.view — a Vendedor (no inventory.view in the default template) is 403', async () => {
-    const vendedor = await c.createAndLoginAs(f.admin, `vendedor-${uniq()}@ex.example`, 'Vendedor');
+  it('requires inventory.view — a user whose role lacks inventory.view is 403', async () => {
+    await c.createRole(f.admin, 'Sin permisos');
+    const vendedor = await c.createAndLoginAs(f.admin, `sinpermisos-${uniq()}@ex.example`, 'Sin permisos');
     expect((await summary(vendedor, 'status')).statusCode).toBe(403);
   });
 
@@ -228,7 +229,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: transfers summary
     const bucket = parse(res).buckets.find((b) => b['key'] === v);
     expect(bucket).toBeDefined();
     expect(bucket!['sku']).toMatch(/^SKU-/);
-    expect(bucket!['productName']).toMatch(/^Product SKU-/);
+    expect(bucket!['productName']).toMatch(/^product sku-/i);
     expect(bucket!['inTransitQuantity']).toBe(11); // 4 + 7
   });
 

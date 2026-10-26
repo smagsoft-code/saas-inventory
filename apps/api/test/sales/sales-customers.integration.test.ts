@@ -29,15 +29,25 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: customers (integrat
     return c.registerTenant(company, email);
   }
 
+  /** A valid customer payload in the current contract: `type` is the identification-document type
+   * (cedula | ruc | pasaporte), first/last name replace the old free-form `displayName` (it is now
+   * GENERATED), and `taxId` is mandatory and validated against `type`. A unique alphanumeric
+   * passport number is used so two customers in one tenant never collide. */
+  let seq = 0;
+  const person = (firstName: string, lastName: string, extra: Record<string, unknown> = {}): Record<string, unknown> => {
+    seq += 1;
+    return { type: 'pasaporte', firstName, lastName, taxId: `PS${Date.now().toString(36)}${seq}`.toUpperCase(), ...extra };
+  };
+
   describe('CRUD + validation (§100, §103)', () => {
     it('creates, reads, lists, updates a customer; tenant/status are server-derived', async () => {
       const admin = await seedAdmin('Cust Alpha Co', 'admin@cust-alpha.example');
-      const id = await c.createCustomer(admin, { type: 'individual', displayName: 'Ada Lovelace', email: 'ada@example.com' });
+      const id = await c.createCustomer(admin, person('Ada', 'Lovelace', { email: 'ada@example.com' }));
 
       const read = await c.inject({ method: 'GET', url: `/api/v1/customers/${id}`, headers: c.readHeaders(admin) });
       expect(read.statusCode).toBe(200);
       const body = JSON.parse(read.body) as Record<string, unknown>;
-      expect(body).toEqual(expect.objectContaining({ displayName: 'Ada Lovelace', status: 'active', type: 'individual' }));
+      expect(body).toEqual(expect.objectContaining({ displayName: 'Ada Lovelace', status: 'active', type: 'pasaporte' }));
       expect(body['tenantId']).toBeUndefined();
 
       const list = await c.inject({ method: 'GET', url: '/api/v1/customers?q=Ada', headers: c.readHeaders(admin) });
@@ -60,7 +70,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: customers (integrat
         method: 'POST',
         url: '/api/v1/customers',
         headers: c.writeHeaders(admin),
-        payload: { type: 'individual', displayName: 'X', tenantId: '00000000-0000-0000-0000-000000000000', status: 'inactive', createdBy: 'x' },
+        payload: person('X', 'Y', { tenantId: '00000000-0000-0000-0000-000000000000', status: 'inactive', createdBy: 'x' }),
       });
       expect(response.statusCode).toBe(400);
     });
@@ -71,7 +81,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: customers (integrat
         method: 'POST',
         url: '/api/v1/customers',
         headers: c.writeHeaders(admin),
-        payload: { type: 'individual', displayName: 'X', email: 'not-an-email' },
+        payload: person('X', 'Y', { email: 'not-an-email' }),
       });
       expect(response.statusCode).toBe(400);
     });
@@ -86,15 +96,15 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: customers (integrat
         method: 'POST',
         url: '/api/v1/customers',
         headers: c.writeHeaders(tenantA),
-        payload: { type: 'business', displayName: 'Contoso', taxId: '1790012345001' },
+        payload: { type: 'ruc', firstName: 'Contoso', lastName: 'Uno', taxId: '1790012345001' },
       });
-      expect(first.statusCode).toBe(201);
+      expect(first.statusCode, first.body).toBe(201);
 
       const dupSameTenant = await c.inject({
         method: 'POST',
         url: '/api/v1/customers',
         headers: c.writeHeaders(tenantA),
-        payload: { type: 'business', displayName: 'Contoso 2', taxId: '1790012345001' },
+        payload: { type: 'ruc', firstName: 'Contoso', lastName: 'Dos', taxId: '1790012345001' },
       });
       expect(dupSameTenant.statusCode).toBe(409);
 
@@ -102,9 +112,9 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: customers (integrat
         method: 'POST',
         url: '/api/v1/customers',
         headers: c.writeHeaders(tenantB),
-        payload: { type: 'business', displayName: 'Contoso EC', taxId: '1790012345001' },
+        payload: { type: 'ruc', firstName: 'Contoso', lastName: 'Ec', taxId: '1790012345001' },
       });
-      expect(sameIdOtherTenant.statusCode).toBe(201);
+      expect(sameIdOtherTenant.statusCode, sameIdOtherTenant.body).toBe(201);
     });
   });
 
@@ -112,7 +122,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: customers (integrat
     it('tenant A cannot read or modify tenant B customers — 404, not a leak', async () => {
       const tenantA = await seedAdmin('Cust IdorA Co', 'admin@cust-idora.example');
       const tenantB = await seedAdmin('Cust IdorB Co', 'admin@cust-idorb.example');
-      const bCustomer = await c.createCustomer(tenantB, { type: 'individual', displayName: 'B Only' });
+      const bCustomer = await c.createCustomer(tenantB, person('B', 'Only'));
 
       const read = await c.inject({ method: 'GET', url: `/api/v1/customers/${bCustomer}`, headers: c.readHeaders(tenantA) });
       expect(read.statusCode).toBe(404);
@@ -145,7 +155,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: customers (integrat
         method: 'POST',
         url: '/api/v1/customers',
         headers: c.writeHeaders(vendedor),
-        payload: { type: 'individual', displayName: 'Vendedor made me' },
+        payload: person('Vendedor', 'Made Me'),
       });
       expect(create.statusCode).toBe(201);
     });

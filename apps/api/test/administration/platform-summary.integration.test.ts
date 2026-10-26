@@ -167,7 +167,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: platform s
 
   // ---- cardinality + multi-tenant aggregation --------------------------------
 
-  it('registering N tenants raises totalCount by exactly N; byStatus always sums to totalCount', async () => {
+  it('registering N tenants raises totalCount by at least N; byStatus always sums to totalCount exactly', async () => {
     const session = await loginPlatformAdmin();
     const before = parse(await summary(session));
 
@@ -176,8 +176,11 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: platform s
     await registerTenant(`PlatSummary C ${uniq()}`, `c-${uniq()}@plat-sum.example`);
 
     const after = parse(await summary(session));
-    expect(after.totalCount - before.totalCount).toBe(3);
-    expect(after.byStatus.active - before.byStatus.active).toBe(3);
+    // >= 3, not === 3: the integration files run in parallel against ONE database and every file
+    // registers its own tenants, so the platform-wide count can rise by more than this test's own 3.
+    // It can never rise by less; the exact invariant (buckets partition the table) is asserted below.
+    expect(after.totalCount - before.totalCount).toBeGreaterThanOrEqual(3);
+    expect(after.byStatus.active - before.byStatus.active).toBeGreaterThanOrEqual(3);
     // single-table COUNT — the status buckets partition the whole table, exactly, with no fan-out
     expect(after.byStatus.active + after.byStatus.suspended + after.byStatus.archived).toBe(after.totalCount);
   });

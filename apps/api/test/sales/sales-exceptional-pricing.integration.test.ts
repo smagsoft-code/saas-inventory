@@ -283,6 +283,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
   it('P13: an approval is bound to one order line — after confirm it stays approved and cannot re-authorize', async () => {
     const f = await seed('P13 Co', `p13-${uniq()}@ex.com`);
     const supervisor = await c.createAndLoginAs(f.admin, `sup13-${uniq()}@ex.com`, 'Supervisor');
+    await grantLocation(f, supervisor); // read scope: ADR-0035 denies a non-founding user with zero location assignments
     const { orderId, orderItemId, total } = await pendingOrder(f, f.admin, { unitPrice: 70 });
     const req = await requestApproval(f.admin, { orderItemId, reason: 'once' });
     const approvalId = (JSON.parse(req.body) as { id: string }).id;
@@ -324,6 +325,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
 
     // Supervisor has pricing.floor.view + pricing.discount.approve -> sees minPriceAtRequest.
     const supervisor = await c.createAndLoginAs(f.admin, `sup15-${uniq()}@ex.com`, 'Supervisor');
+    await grantLocation(f, supervisor); // read scope: ADR-0035 denies a non-founding user with zero location assignments
     const withFloor = JSON.parse(
       (await c.inject({ method: 'GET', url: `/api/v1/price-approvals/${approvalId}`, headers: c.readHeaders(supervisor) })).body,
     );
@@ -397,6 +399,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
 
     // Vendedor holds pricing.discount.request (not .approve) — can read the queue and the row.
     const seller = await c.createAndLoginAs(f.admin, `ap-seller-${uniq()}@ex.com`, 'Vendedor');
+    await grantLocation(f, seller); // read scope: ADR-0035 denies a non-founding user with zero location assignments
     expect((await c.inject({ method: 'GET', url: '/api/v1/price-approvals', headers: c.readHeaders(seller) })).statusCode).toBe(200);
     expect(
       (await c.inject({ method: 'GET', url: `/api/v1/price-approvals/${approvalId}`, headers: c.readHeaders(seller) })).statusCode,
@@ -404,6 +407,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
 
     // Supervisor holds pricing.discount.approve (not .request) — also reads it.
     const supervisor = await c.createAndLoginAs(f.admin, `ap-sup-${uniq()}@ex.com`, 'Supervisor');
+    await grantLocation(f, supervisor); // read scope: ADR-0035 denies a non-founding user with zero location assignments
     expect((await c.inject({ method: 'GET', url: '/api/v1/price-approvals', headers: c.readHeaders(supervisor) })).statusCode).toBe(200);
 
     // Bodega holds neither — 403 on the list and the row (was previously only enforced in the service).

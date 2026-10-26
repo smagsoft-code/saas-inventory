@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { auditLog, rolePermissions, roles } from '../../src/database/schema';
+import { auditLog, customers, rolePermissions, roles } from '../../src/database/schema';
 import { appPlatformIntegrationTestsEnabled, getMigratorDb } from '../database/helpers';
 import { makeClient, setIntegrationEnv, type Session } from './sales-harness';
 
@@ -284,13 +284,26 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
       const body = JSON.parse(response.body) as { documentType: string; invoiceStatus?: string; customer: { name: string; taxId?: string; email?: string; phone?: string; address?: unknown } };
       expect(body.documentType).toBe('sales_note');
       expect(body.invoiceStatus).toBeUndefined();
-      expect(body.customer).toEqual(expect.objectContaining({ name: 'Customer c1', taxId: expect.any(String), email: expect.any(String), phone: expect.any(String) }));
+      expect(body.customer).toEqual(expect.objectContaining({ name: 'Customer C1', taxId: expect.any(String), email: expect.any(String), phone: expect.any(String) }));
       expect(body.customer.address).toBeTruthy();
     });
 
+    /** taxId is mandatory when a customer is created (the create DTO rejects a missing one), so a
+     * customer WITHOUT it can only exist as a legacy / backfilled row (the column is nullable). Make
+     * one directly in the database — the sale must still refuse it with a 422. */
+    async function clearTaxId(tenantId: string, customerId: string): Promise<void> {
+      const { client, db } = getMigratorDb();
+      try {
+        await db.update(customers).set({ taxId: null }).where(and(eq(customers.tenantId, tenantId), eq(customers.id, customerId)));
+      } finally {
+        await client.end();
+      }
+    }
+
     it('C2: sales_note missing taxId -> 422, no order, no reservation', async () => {
       const f = await docTypeFixture('DocType C2 Co', 'admin@dt-c2.example');
-      const customerId = await c.createCustomer(f.admin, withoutField('c2', 'taxId'));
+      const customerId = await c.createCustomer(f.admin, c.fullCustomer('c2'));
+      await clearTaxId(f.admin.user.tenantId, customerId);
       const { response } = await checkoutFor(f.admin, f.loc, f.variantId, customerId, 'sales_note');
       expect(response.statusCode).toBe(422);
       expect(JSON.parse(response.body).message).toMatch(/taxId/);
@@ -364,7 +377,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
       expect(order.items[0]!.unitPrice).toBe(95);
 
       // mutate the customer
-      await c.inject({ method: 'PATCH', url: `/api/v1/customers/${f.customerId}`, headers: c.writeHeaders(f.admin), payload: { displayName: 'RENAMED', email: 'new@example.com' } });
+      await c.inject({ method: 'PATCH', url: `/api/v1/customers/${f.customerId}`, headers: c.writeHeaders(f.admin), payload: { firstName: 'renamed', email: 'new@example.com' } });
       // mutate the catalog price
       await c.inject({
         method: 'PATCH',
@@ -384,7 +397,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
 
       // the live customer shows the new data
       const liveCustomer = JSON.parse((await c.inject({ method: 'GET', url: `/api/v1/customers/${f.customerId}`, headers: c.readHeaders(f.admin) })).body) as { displayName: string };
-      expect(liveCustomer.displayName).toBe('RENAMED');
+      // displayName is generated from first/last name; names are Title-Cased by the service.
+      expect(liveCustomer.displayName).toBe('Renamed Admin');
     });
   });
 

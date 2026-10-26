@@ -108,6 +108,13 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: balances/moveme
     return role.id;
   }
 
+  /** A tenant role with NO permissions — "a user without inventory.view/adjust" now that the default
+   * Vendedor template holds inventory.view. */
+  async function createEmptyRole(admin: Session, name: string): Promise<void> {
+    const created = await inject({ method: 'POST', url: '/api/v1/roles', headers: writeHeaders(admin), payload: { name, permissionCodes: [] } });
+    expect(created.statusCode, created.body).toBe(201);
+  }
+
   async function createAndLoginAs(admin: Session, email: string, roleName: string): Promise<Session> {
     const roleId = await roleIdByName(admin, roleName);
     const createResponse = await inject({
@@ -157,7 +164,15 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: balances/moveme
   }
 
   async function adjust(session: Session, payload: Record<string, unknown>): Promise<LightMyRequestResponse> {
-    return inject({ method: 'POST', url: '/api/v1/inventory/adjustments', headers: writeHeaders(session), payload });
+    // RECEIPT now requires a unit cost (weighted-average costing, ADR-0037) — default one in
+    // so each test keeps exercising what it was written for (locking, scope, isolation).
+    const inbound = payload['movementType'] === 'RECEIPT';
+    return inject({
+      method: 'POST',
+      url: '/api/v1/inventory/adjustments',
+      headers: writeHeaders(session),
+      payload: inbound && payload['unitCost'] === undefined ? { ...payload, unitCost: 10 } : payload,
+    });
   }
 
   describe('adjustments and the ledger (§8, §9, §13)', () => {
@@ -224,12 +239,13 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: balances/moveme
 
     it('401 anonymous, 403 without inventory.adjust, 200 with inventory.view (RBAC matrix)', async () => {
       const { admin, locationId, productVariantId } = await seedTenant('Stock Epsilon Co', 'admin@stock-epsilon.example');
-      const vendedor = await createAndLoginAs(admin, 'vendedor@stock-epsilon.example', 'Vendedor');
+      await createEmptyRole(admin, 'Sin permisos');
+      const vendedor = await createAndLoginAs(admin, 'sinpermisos@stock-epsilon.example', 'Sin permisos');
 
       const anon = await inject({ method: 'GET', url: '/api/v1/inventory/balances' });
       expect(anon.statusCode).toBe(401);
 
-      // Vendedor has neither inventory.view nor inventory.adjust in the default template.
+      // A role with no permissions has neither inventory.view nor inventory.adjust.
       const viewForbidden = await inject({ method: 'GET', url: '/api/v1/inventory/balances', headers: readHeaders(vendedor) });
       expect(viewForbidden.statusCode).toBe(403);
 

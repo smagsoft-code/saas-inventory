@@ -108,6 +108,13 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
     return role.id;
   }
 
+  /** A tenant role with NO permissions — "a user without inventory.view/adjust" now that the default
+   * Vendedor template holds inventory.view. */
+  async function createEmptyRole(admin: Session, name: string): Promise<void> {
+    const created = await inject({ method: 'POST', url: '/api/v1/roles', headers: writeHeaders(admin), payload: { name, permissionCodes: [] } });
+    expect(created.statusCode, created.body).toBe(201);
+  }
+
   async function createAndLoginAs(admin: Session, email: string, roleName: string): Promise<Session> {
     const roleId = await roleIdByName(admin, roleName);
     const createResponse = await inject({
@@ -747,7 +754,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: transfers (inte
       const anonymous = await inject({ method: 'GET', url: `/api/v1/inventory/products-in-stock?locationId=${sourceLocationId}` });
       expect(anonymous.statusCode).toBe(401);
 
-      const vendedor = await createAndLoginAs(admin, 'vendedor@products-in-stock-rbac.example', 'Vendedor');
+      await createEmptyRole(admin, 'Sin permisos');
+      const vendedor = await createAndLoginAs(admin, 'sinpermisos@products-in-stock-rbac.example', 'Sin permisos');
       const forbidden = await inject({ method: 'GET', url: `/api/v1/inventory/products-in-stock?locationId=${sourceLocationId}`, headers: readHeaders(vendedor) });
       expect(forbidden.statusCode).toBe(403);
 

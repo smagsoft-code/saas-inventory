@@ -14,6 +14,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:integration:serial": "vitest run --config vitest.integration.serial.config.ts",
+    "test:integration:all": "pnpm test:integration && pnpm test:integration:serial",
     "db:generate": "drizzle-kit generate",
     "db:generate:custom": "drizzle-kit generate --custom",
     "db:migrate": "tsx src/database/migrate.ts",

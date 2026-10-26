@@ -121,14 +121,15 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: inventory summary
   interface SummaryBody {
     generatedAt: string;
     groupBy: string;
-    totals: { availableQuantity: number; reservedQuantity: number; outOfStockCount: number };
+    totals: { availableQuantity: number; reservedQuantity: number; outOfStockCount: number; totalCostValue?: number; missingCostCount?: number };
     buckets: (WarehouseBucket | CategoryBucket)[];
   }
 
   describe('access control', () => {
-    it('requires inventory.view — a Vendedor user (no inventory.view in the default template) is 403', async () => {
+    it('requires inventory.view — a user whose role lacks inventory.view is 403', async () => {
       const admin = await registerTenantOnly('InvSummary Access Co', 'admin@inv-summary-access.example');
-      const vendedor = await c.createAndLoginAs(admin, 'vendedor@inv-summary-access.example', 'Vendedor');
+      await c.createRole(admin, 'Sin permisos');
+      const vendedor = await c.createAndLoginAs(admin, 'sinpermisos@inv-summary-access.example', 'Sin permisos');
       const res = await summary(vendedor);
       expect(res.statusCode).toBe(403);
     });
@@ -152,7 +153,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: inventory summary
       const res = await summary(admin);
       expect(res.statusCode, res.body).toBe(200);
       const body = JSON.parse(res.body) as SummaryBody;
-      expect(body.totals).toEqual({ availableQuantity: 0, reservedQuantity: 0, outOfStockCount: 0 });
+      // totalCostValue / missingCostCount are present for a caller holding pricing.cost.view (the admin) and are 0 with no stock.
+      expect(body.totals).toEqual({ availableQuantity: 0, reservedQuantity: 0, outOfStockCount: 0, totalCostValue: 0, missingCostCount: 0 });
       expect(body.buckets).toEqual([]);
       expect(body.groupBy).toBe('warehouse');
     });
@@ -278,7 +280,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: inventory summary
       const res = await summary(admin, { warehouseId: '00000000-0000-0000-0000-000000000000' });
       expect(res.statusCode, res.body).toBe(200);
       const body = JSON.parse(res.body) as SummaryBody;
-      expect(body.totals).toEqual({ availableQuantity: 0, reservedQuantity: 0, outOfStockCount: 0 });
+      // totalCostValue / missingCostCount are present for a caller holding pricing.cost.view (the admin) and are 0 with no stock.
+      expect(body.totals).toEqual({ availableQuantity: 0, reservedQuantity: 0, outOfStockCount: 0, totalCostValue: 0, missingCostCount: 0 });
       expect(body.buckets).toEqual([]);
     });
 

@@ -26,7 +26,13 @@ import path from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
 import postgres from 'postgres';
 
-const PORT = 55432;
+// The disposable instance's port. Default 55432 (the original, unchanged); set PG_VERIFY_PORT to run
+// beside a live development database that already holds 55432 (never point this at it: the run
+// drops and recreates the database it starts).
+const PORT = Number(process.env['PG_VERIFY_PORT'] ?? 55432);
+// Optional space-separated vitest file filters (e.g. "test/http test/sales/sales-customers") so one
+// area can be verified without the whole suite. Unset = the complete suite (the default).
+const TEST_FILTER = (process.env['PG_VERIFY_TEST_FILTER'] ?? '').split(/\s+/).filter(Boolean);
 const SUPERUSER = 'postgres';
 const SUPERUSER_PASSWORD = 'verify-only-ephemeral-instance';
 const DB_NAME = 'saas_inventory_verify';
@@ -176,7 +182,7 @@ async function main(): Promise<void> {
     // Prompt 09 requires both. Without them those files' describe.skipIf() silently skips every
     // test in them, even with a real Postgres running — this ran unnoticed until Prompt 05-B
     // because this harness predates Prompt 04.
-    run('test:integration', ['run', 'test:integration'], {
+    const integrationEnv = {
       TEST_MIGRATOR_DATABASE_URL: MIGRATOR_URL,
       TEST_APP_TENANT_DATABASE_URL: APP_TENANT_URL,
       TEST_APP_PLATFORM_DATABASE_URL: APP_PLATFORM_URL,
@@ -189,7 +195,13 @@ async function main(): Promise<void> {
       // (transactional outbox atomicity, SALES event exactly-once, and the Event Processor
       // claim/retry/stale/crash-window suite) all run here — 0 skipped (§127/§177).
       TEST_APP_EVENT_PROCESSOR_DATABASE_URL: APP_EVENT_PROCESSOR_URL,
-    });
+    };
+    // Phase 1: every file except *.serial.* in parallel. Phase 2: the *.serial.* files (they replay
+    // migration SQL over the whole shared database and deadlock with parallel files) one at a time.
+    // With a filter, a phase with no matching file is not an error.
+    const noTests = TEST_FILTER.length > 0 ? ['--passWithNoTests'] : [];
+    run('test:integration', ['run', 'test:integration', ...TEST_FILTER, ...noTests], integrationEnv);
+    run('test:integration:serial', ['run', 'test:integration:serial', ...TEST_FILTER, ...noTests], integrationEnv);
   } finally {
     section('Stopping PostgreSQL (data directory is wiped — persistent: false)');
     await pg.stop();
@@ -215,7 +227,8 @@ async function verifySchema(): Promise<void> {
     // then tenant_admin_invitations + platform_support_sessions (migration 0033, ADR-0036) took it
     // to 52; this check was not updated at either point (same class of drift this comment already
     // documents — see the 45->46->48->50 history).
-    check('52 tables exist', tables.length === 52, `found ${tables.length}`);
+    // 54: order_payments (migration 0039, split payments) + tenant_logos (migration 0048) took it to 54.
+    check('54 tables exist', tables.length === 54, `found ${tables.length}`);
 
     const fks = await sql<{ count: number }[]>`
       select count(*)::int as count from information_schema.table_constraints
@@ -402,11 +415,11 @@ async function verifyRls(): Promise<void> {
         and c.relname not in ('tenants', 'platform_admins', 'permissions', 'measurement_units', 'platform_admin_refresh_tokens', 'identities', 'tenant_memberships', 'platform_support_sessions', 'tenant_admin_invitations')`;
     // Filtering an empty `rows` is vacuously "zero without RLS" — assert the expected table count
     // explicitly first (same class of false-positive this file already got burned by in §8).
-    // 52 total tables - 9 platform-scoped (tenants, platform_admins, permissions,
+    // 54 total tables - 9 platform-scoped (tenants, platform_admins, permissions,
     // measurement_units, platform_admin_refresh_tokens, identities, tenant_memberships,
-    // platform_support_sessions, tenant_admin_invitations — ADR-0036) = 43 tenant-owned tables
-    // (see the 52-tables comment above for why this isn't 42/41 any more).
-    check('43 tenant-owned tables were found to check', rows.length === 43, `found ${rows.length}`);
+    // platform_support_sessions, tenant_admin_invitations — ADR-0036) = 45 tenant-owned tables
+    // (see the 54-tables comment above for why this isn't 43/42/41 any more).
+    check('45 tenant-owned tables were found to check', rows.length === 45, `found ${rows.length}`);
     const withoutRls = rows.filter((r) => !r.relrowsecurity);
     const withoutForce = rows.filter((r) => !r.relforcerowsecurity);
     const withoutPolicy = rows.filter((r) => r.policy_count === 0);
@@ -557,13 +570,15 @@ async function verifyPermissionsCatalog(): Promise<void> {
     'sales.returns.create',
     // ROLES/PERMISSIONS block (migration 0032) — custom role/permission CRUD, see ADR-0034.
     'core.roles.manage',
+    // Migration 0044 — see every seller's orders, not just your own (database.md#sales.orders.view_all).
+    'sales.orders.view_all',
   ].sort();
 
   const sql = postgres(MIGRATOR_URL, { max: 1 });
   try {
     const rows = await sql<{ code: string }[]>`select code from permissions order by code`;
     const actual = rows.map((r) => r.code).sort();
-    check('permissions catalog has exactly 42 rows', actual.length === 42, `found ${actual.length}`);
+    check('permissions catalog has exactly 43 rows', actual.length === 43, `found ${actual.length}`);
     check('permissions catalog matches database.md exactly, no narrative examples added', JSON.stringify(actual) === JSON.stringify(expected));
     if (JSON.stringify(actual) !== JSON.stringify(expected)) {
       console.log('  expected:', expected);

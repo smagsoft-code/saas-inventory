@@ -30,7 +30,7 @@ export function setIntegrationEnv(): void {
 }
 
 export function makeClient(app: NestFastifyApplication) {
-  const inject = (options: { method: HTTPMethods; url: string; payload?: unknown; headers?: Record<string, string> }): Promise<LightMyRequestResponse> =>
+  const inject = (options: { method: HTTPMethods; url: string; payload?: unknown; body?: Buffer | string; headers?: Record<string, string> }): Promise<LightMyRequestResponse> =>
     app.getHttpAdapter().getInstance().inject(options as InjectOptions);
 
   const cookieValue = (response: LightMyRequestResponse, name: string): string | undefined => {
@@ -83,6 +83,15 @@ export function makeClient(app: NestFastifyApplication) {
     const role = roles.find((r) => r.name === name);
     if (!role) throw new Error(`Role "${name}" not found`);
     return role.id;
+  }
+
+  /** Creates a tenant role holding exactly `permissionCodes` (default: none). Used for "a user WITHOUT
+   * permission X" cases — the default role templates change over time (e.g. Vendedor gained
+   * `inventory.view`), so a hard-coded template name is no longer a reliable "lacks X". */
+  async function createRole(admin: Session, name: string, permissionCodes: string[] = []): Promise<string> {
+    const created = await inject({ method: 'POST', url: '/api/v1/roles', headers: writeHeaders(admin), payload: { name, permissionCodes } });
+    expect(created.statusCode, created.body).toBe(201);
+    return (JSON.parse(created.body) as { id: string }).id;
   }
 
   async function createAndLoginAs(admin: Session, email: string, roleName: string): Promise<Session> {
@@ -216,6 +225,7 @@ export function makeClient(app: NestFastifyApplication) {
     writeHeaders,
     registerTenant,
     loginAs,
+    createRole,
     createAndLoginAs,
     createWarehouse,
     createLocation,

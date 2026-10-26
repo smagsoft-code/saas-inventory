@@ -69,6 +69,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: movements summary
         locationId: opts.locationId,
         movementType: opts.movementType,
         quantity: opts.quantity,
+        // RECEIPT requires a unit cost (ADR-0037); the other movement types omit it.
+        ...(opts.movementType === 'RECEIPT' ? { unitCost: 10 } : {}),
         reason: 'F18-07 integration fixture',
         occurredAt: opts.occurredAt,
       },
@@ -120,8 +122,9 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('reports: movements summary
     expect(res.statusCode).toBe(401);
   });
 
-  it('requires inventory.view — a Vendedor user (no inventory.view in the default template) is 403', async () => {
-    const vendedor = await c.createAndLoginAs(f.admin, `vendedor-${uniq()}@ex.example`, 'Vendedor');
+  it('requires inventory.view — a user whose role lacks inventory.view is 403', async () => {
+    await c.createRole(f.admin, 'Sin permisos');
+    const vendedor = await c.createAndLoginAs(f.admin, `sinpermisos-${uniq()}@ex.example`, 'Sin permisos');
     const res = await summary(vendedor, { from: HOUR_AGO, to: IN_AN_HOUR, groupBy: 'day' });
     expect(res.statusCode).toBe(403);
   });

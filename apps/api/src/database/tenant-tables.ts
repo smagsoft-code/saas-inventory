@@ -15,6 +15,7 @@ import * as schema from './schema';
  */
 export const TENANT_TABLES_CHILDREN_FIRST = [
   schema.tenantSettings,
+  schema.tenantLogos,
   schema.authRefreshTokens,
   schema.importJobRows,
   schema.importJobs,
@@ -22,6 +23,7 @@ export const TENANT_TABLES_CHILDREN_FIRST = [
   schema.salesReturnItems,
   schema.salesReturns,
   schema.priceApprovals,
+  schema.orderPayments,
   schema.orderItems,
   schema.orders,
   schema.cartItems,

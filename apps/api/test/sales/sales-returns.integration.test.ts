@@ -311,6 +311,7 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: returns + dispositi
   it('inspect requires inventory.returns.manage (a plain Vendedor cannot)', async () => {
     const f = await seed('R-INSP Co', `rinsp-${uniq()}@ex.com`);
     const seller = await c.createAndLoginAs(f.admin, `rs-${uniq()}@ex.com`, 'Vendedor');
+    await c.setUserLocations(f.admin, seller.user.id, [f.sellLocationId]); // ADR-0035: no assignment = denied
     const { orderId, orderItemId } = await confirmedOrder(f, 3);
     const created = await createReturn(seller, { orderId, locationId: f.sellLocationId, reason: 'returned', items: [{ orderItemId, quantity: 1 }] });
     expect(created.statusCode, created.body).toBe(201);
