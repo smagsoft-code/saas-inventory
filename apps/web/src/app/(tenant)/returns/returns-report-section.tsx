@@ -12,15 +12,25 @@ export function ReturnsReportError({
   message: string;
   correlationId?: string | undefined;
 }): React.JSX.Element {
-  const title = status === 403 ? 'Acceso denegado' : status >= 500 ? 'Algo salió mal de nuestro lado' : 'No se pudo cargar el reporte';
+  const title =
+    status === 403
+      ? 'Acceso denegado'
+      : status >= 500
+        ? 'Algo salió mal de nuestro lado'
+        : 'No se pudo cargar el reporte';
   return (
     <div className="flex flex-col items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4">
       <div>
         <p className="text-sm font-medium text-red-800">{title}</p>
         <p className="mt-0.5 text-sm text-red-700">{message}</p>
-        {correlationId && <p className="mt-1 text-xs text-red-600/80">Referencia: {correlationId}</p>}
+        {correlationId && (
+          <p className="mt-1 text-xs text-red-600/80">Referencia: {correlationId}</p>
+        )}
       </div>
-      <a href="#report" className="text-sm font-medium text-red-800 underline-offset-2 hover:underline">
+      <a
+        href="#report"
+        className="text-sm font-medium text-red-800 underline-offset-2 hover:underline"
+      >
         Reintentar
       </a>
     </div>
@@ -33,9 +43,13 @@ function money(value: number, currency: string): string {
 
 function KpiTile({ label, value }: { label: string; value: string }): React.JSX.Element {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</p>
-      <p className="mt-2 break-words text-2xl font-semibold tabular-nums text-slate-900">{value}</p>
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3 sm:p-4">
+      <p className="truncate text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:text-xs">
+        {label}
+      </p>
+      <p className="mt-1 break-words text-xl font-semibold tabular-nums text-slate-900 sm:mt-2 sm:text-2xl">
+        {value}
+      </p>
     </div>
   );
 }
@@ -61,11 +75,19 @@ export function summarizeReturns(buckets: ReturnsPeriodBucket[]): {
 
 /** The returns cards. Success rendering only; an empty period shows real zeros, never a fake table.
  * `statusLabel` names which return status the figures count. */
-export function ReturnsSummaryCards({ summary, statusLabel }: { summary: ReturnsSummary; statusLabel: string }): React.JSX.Element {
-  const { returnCount, quantity, returnedValue, avgReturnValue } = summarizeReturns(summary.buckets as ReturnsPeriodBucket[]);
+export function ReturnsSummaryCards({
+  summary,
+  statusLabel,
+}: {
+  summary: ReturnsSummary;
+  statusLabel: string;
+}): React.JSX.Element {
+  const { returnCount, quantity, returnedValue, avgReturnValue } = summarizeReturns(
+    summary.buckets as ReturnsPeriodBucket[],
+  );
   return (
     <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <KpiTile label="Devoluciones" value={String(returnCount)} />
         <KpiTile label="Unidades devueltas" value={String(quantity)} />
         <KpiTile label="Valor devuelto" value={money(returnedValue, summary.currency)} />
@@ -74,7 +96,8 @@ export function ReturnsSummaryCards({ summary, statusLabel }: { summary: Returns
       <p className="flex items-center gap-1.5 text-xs text-slate-500">
         Cómo se calculan las tarjetas
         <HelpTip>
-          Las tarjetas cuentan devoluciones {statusLabel} con los filtros activos. El valor devuelto es informativo: no es un reembolso.
+          Las tarjetas cuentan devoluciones {statusLabel} con los filtros activos. El valor devuelto
+          es informativo: no es un reembolso.
         </HelpTip>
       </p>
     </div>
