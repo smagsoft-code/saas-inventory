@@ -21,7 +21,12 @@ import { EmptyState } from '../../../components/ui/empty-state';
 import { NoAccess } from '../../../components/ui/no-access';
 import { Pagination } from '../../../components/ui/pagination';
 import { Table, TBody, TD, TH, THead, TR } from '../../../components/ui/table';
-import { HistoryFilters, type HistoryFilterValues } from '../../../components/history-filters';
+import {
+  HistoryDateFilters,
+  HistoryFilters,
+  type HistoryFilterValues,
+} from '../../../components/history-filters';
+import { ApprovalsMobileList, type MobileApproval } from './approvals-mobile-list';
 import { ApprovalsReportError, ApprovalsSummaryCards } from './approvals-report-section';
 
 export const metadata = { title: 'Aprobaciones · SaaS Inventory' };
@@ -29,7 +34,9 @@ export const metadata = { title: 'Aprobaciones · SaaS Inventory' };
 const PAGE_SIZE = 20;
 
 function pickStatus(value: string | undefined): PriceApprovalStatus | undefined {
-  return (PRICE_APPROVAL_STATUSES as readonly string[]).includes(value ?? '') ? (value as PriceApprovalStatus) : undefined;
+  return (PRICE_APPROVAL_STATUSES as readonly string[]).includes(value ?? '')
+    ? (value as PriceApprovalStatus)
+    : undefined;
 }
 
 /**
@@ -94,15 +101,13 @@ export default async function ApprovalsPage({
   const summaryPromise: Promise<SummaryOutcome> = canViewReport
     ? getApprovalsSummary({ ...common, groupBy: 'day' })
         .then((summary): SummaryOutcome => ({ summary }))
-        .catch(
-          (error: unknown): SummaryOutcome => ({
-            error: {
-              status: isApiError(error) ? error.status : 0,
-              message: httpErrorMessage(error),
-              correlationId: isApiError(error) ? error.correlationId : undefined,
-            },
-          }),
-        )
+        .catch((error: unknown): SummaryOutcome => ({
+          error: {
+            status: isApiError(error) ? error.status : 0,
+            message: httpErrorMessage(error),
+            correlationId: isApiError(error) ? error.correlationId : undefined,
+          },
+        }))
     : Promise.resolve(null);
 
   const [result, outcome] = await Promise.all([
@@ -110,14 +115,55 @@ export default async function ApprovalsPage({
     summaryPromise,
   ]);
 
-  const hasNarrowing = Boolean(status || orderId || dateTo || dateFrom !== today || locationId !== location.defaultId);
+  const hasNarrowing = Boolean(
+    status || orderId || dateTo || dateFrom !== today || locationId !== location.defaultId,
+  );
   const dateFormat = (() => {
     try {
-      return new Intl.DateTimeFormat('es', { timeZone: timezone, dateStyle: 'short', timeStyle: 'short' });
+      return new Intl.DateTimeFormat('es', {
+        timeZone: timezone,
+        dateStyle: 'short',
+        timeStyle: 'short',
+      });
     } catch {
-      return new Intl.DateTimeFormat('es', { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' });
+      return new Intl.DateTimeFormat('es', {
+        timeZone: 'UTC',
+        dateStyle: 'short',
+        timeStyle: 'short',
+      });
     }
   })();
+
+  const locationLabelOf = (id: string): string => {
+    const warehouse = location.index.warehouseName(id);
+    const name = location.index.locationName(id);
+    return warehouse !== '—' ? `${warehouse} · ${name}` : name;
+  };
+  const mobileApprovals: MobileApproval[] = result.data.map((approval) => ({
+    id: approval.id,
+    orderId: approval.orderId,
+    orderNumber: approval.orderNumber,
+    requestedAtLabel: dateFormat.format(new Date(approval.requestedAt)),
+    productName: approval.productName ?? null,
+    locationLabel: locationLabelOf(approval.locationId),
+    requestedPriceLabel: approval.requestedPrice.toFixed(2),
+    discountLabel: approval.discountAmount.toFixed(2),
+    reason: approval.reason,
+    statusLabel:
+      PRICE_APPROVAL_STATUS_LABELS[approval.status as PriceApprovalStatus] ?? approval.status,
+    statusTone: priceApprovalStatusTone(approval.status),
+  }));
+  // Every param (besides the page) a phone control must keep when it changes one of them.
+  const carried: Record<string, string> = {
+    dateFrom,
+    ...(dateTo ? { dateTo } : {}),
+    ...(locationId ? { locationId } : {}),
+    ...(status ? { status } : {}),
+    ...(orderId ? { orderId } : {}),
+  };
+  const emptyText = hasNarrowing
+    ? 'Ninguna solicitud coincide con estos filtros. Prueba con otro estado, almacén o rango de fechas.'
+    : 'No hay solicitudes de descuento excepcional hoy. Cambia el rango de fechas para ver días anteriores.';
 
   function buildHref(nextPage: number): string {
     const params = new URLSearchParams();
@@ -145,26 +191,49 @@ export default async function ApprovalsPage({
       <PageHeader
         title="Aprobaciones"
         help="Solicitudes de descuento excepcional: precios bajo el mínimo a la espera de una decisión."
+        actions={
+          <div className="md:hidden">
+            <HistoryDateFilters
+              basePath="/approvals"
+              initial={filters}
+              today={today}
+              preserve={{
+                ...(status ? { status } : {}),
+                ...(locationId ? { locationId } : {}),
+                ...(orderId ? { orderId } : {}),
+              }}
+            />
+          </div>
+        }
       />
 
-      <HistoryFilters
-        basePath="/approvals"
-        initial={filters}
-        today={today}
-        defaultLocationId={location.defaultId}
-        locations={location.options}
-        allowAllLocations={location.allowAll}
-        statusOptions={PRICE_APPROVAL_STATUSES.map((value) => ({ value, label: PRICE_APPROVAL_STATUS_LABELS[value] }))}
-        preserve={preserve}
-        includeDates
-      />
+      <div className="hidden md:block">
+        <HistoryFilters
+          basePath="/approvals"
+          initial={filters}
+          today={today}
+          defaultLocationId={location.defaultId}
+          locations={location.options}
+          allowAllLocations={location.allowAll}
+          statusOptions={PRICE_APPROVAL_STATUSES.map((value) => ({
+            value,
+            label: PRICE_APPROVAL_STATUS_LABELS[value],
+          }))}
+          preserve={preserve}
+          includeDates
+        />
+      </div>
 
       {outcome && (
         <section aria-label="Resumen de aprobaciones" id="report">
           {'summary' in outcome ? (
             <ApprovalsSummaryCards summary={outcome.summary} />
           ) : (
-            <ApprovalsReportError status={outcome.error.status} message={outcome.error.message} correlationId={outcome.error.correlationId} />
+            <ApprovalsReportError
+              status={outcome.error.status}
+              message={outcome.error.message}
+              correlationId={outcome.error.correlationId}
+            />
           )}
         </section>
       )}
@@ -174,99 +243,157 @@ export default async function ApprovalsPage({
       {orderId && (
         <p className="flex items-center gap-2 text-sm text-slate-600">
           Filtrado a un pedido
-          <Link href={`/sales/${orderId}`} className="font-medium text-slate-700 underline underline-offset-2">
+          <Link
+            href={`/sales/${orderId}`}
+            className="font-medium text-slate-700 underline underline-offset-2"
+          >
             {shortId(orderId)}
           </Link>
-          <Link href={withoutOrderHref} className="text-xs font-medium text-slate-500 hover:underline">
+          <Link
+            href={withoutOrderHref}
+            className="text-xs font-medium text-slate-500 hover:underline"
+          >
             Quitar
           </Link>
         </p>
       )}
 
-      {result.data.length === 0 ? (
-        <EmptyState
-          title={hasNarrowing ? 'Ninguna solicitud coincide con estos filtros' : 'No hay solicitudes de descuento excepcional hoy'}
-          description={
-            hasNarrowing
-              ? 'Prueba con otro estado, almacén o rango de fechas.'
-              : 'Una solicitud aparece aquí cuando un vendedor vende una línea bajo su precio mínimo. Cambia el rango de fechas para ver días anteriores.'
-          }
+      <div className="md:hidden">
+        <ApprovalsMobileList
+          approvals={mobileApprovals}
+          count={result.meta.total}
+          params={carried}
+          statusOptions={PRICE_APPROVAL_STATUSES.map((value) => ({
+            value,
+            label: PRICE_APPROVAL_STATUS_LABELS[value],
+          }))}
+          locationOptions={location.options.map((o) => ({
+            value: o.id,
+            label: locationLabelOf(o.id),
+          }))}
+          allowAllLocations={location.allowAll}
+          defaultLocationId={location.defaultId}
+          empty={emptyText}
         />
-      ) : (
-        <>
-          <Table className="table-fixed">
-            <THead>
-              <TR>
-                <TH className="w-[12%]">Pedido</TH>
-                <TH className="w-[16%]">Producto</TH>
-                <TH className="w-[12%]">Almacén</TH>
-                <TH className="w-[10%] text-right" title="Precio solicitado">
-                  P. solicitado
-                </TH>
-                <TH className="w-[10%] text-right">Descuento</TH>
-                <TH className="w-[16%]">Motivo</TH>
-                <TH className="w-[11%]">Solicitado</TH>
-                <TH className="w-[9%]">Estado</TH>
-                <TH className="w-[4%]">
-                  <span className="sr-only">Acciones</span>
-                </TH>
-              </TR>
-            </THead>
-            <TBody>
-              {result.data.map((approval) => (
-                <TR key={approval.id}>
-                  <TD className="break-words">
-                    <Link
-                      href={`/sales/${approval.orderId}`}
-                      className="font-medium text-slate-700 underline-offset-2 hover:underline"
-                    >
-                      {approval.orderNumber}
-                    </Link>
-                  </TD>
-                  <TD className="text-slate-700">
-                    {approval.productName ? (
-                      <span className="block truncate" title={approval.sku ? `${approval.sku} · ${approval.productName}` : approval.productName}>
-                        {approval.productName}
-                      </span>
-                    ) : (
-                      '—'
-                    )}
-                  </TD>
-                  <TD className="break-words text-slate-500">{location.index.locationName(approval.locationId)}</TD>
-                  <TD className="text-right text-slate-700">{approval.requestedPrice.toFixed(2)}</TD>
-                  <TD className="text-right text-slate-500">{approval.discountAmount.toFixed(2)}</TD>
-                  <TD className="text-xs leading-snug text-slate-500">
-                    <span className="line-clamp-2" title={approval.reason}>
-                      {approval.reason}
-                    </span>
-                  </TD>
-                  <TD className="text-slate-500">{dateFormat.format(new Date(approval.requestedAt))}</TD>
-                  <TD>
-                    <Badge tone={priceApprovalStatusTone(approval.status)}>
-                      {PRICE_APPROVAL_STATUS_LABELS[approval.status as PriceApprovalStatus] ?? approval.status}
-                    </Badge>
-                  </TD>
-                  <TD>
-                    <Link
-                      href={`/approvals/${approval.id}`}
-                      className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
-                    >
-                      Ver
-                    </Link>
-                  </TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-          <Pagination
-            page={result.meta.page}
-            pageSize={result.meta.pageSize}
-            total={result.meta.total}
-            totalPages={result.meta.totalPages}
-            buildHref={buildHref}
+        {result.data.length > 0 && (
+          <div className="mt-3">
+            <Pagination
+              page={result.meta.page}
+              pageSize={result.meta.pageSize}
+              total={result.meta.total}
+              totalPages={result.meta.totalPages}
+              buildHref={buildHref}
+            />
+          </div>
+        )}
+      </div>
+
+      <div className="hidden md:contents">
+        {result.data.length === 0 ? (
+          <EmptyState
+            title={
+              hasNarrowing
+                ? 'Ninguna solicitud coincide con estos filtros'
+                : 'No hay solicitudes de descuento excepcional hoy'
+            }
+            description={
+              hasNarrowing
+                ? 'Prueba con otro estado, almacén o rango de fechas.'
+                : 'Una solicitud aparece aquí cuando un vendedor vende una línea bajo su precio mínimo. Cambia el rango de fechas para ver días anteriores.'
+            }
           />
-        </>
-      )}
+        ) : (
+          <>
+            <Table className="table-fixed">
+              <THead>
+                <TR>
+                  <TH className="w-[12%]">Pedido</TH>
+                  <TH className="w-[16%]">Producto</TH>
+                  <TH className="w-[12%]">Almacén</TH>
+                  <TH className="w-[10%] text-right" title="Precio solicitado">
+                    P. solicitado
+                  </TH>
+                  <TH className="w-[10%] text-right">Descuento</TH>
+                  <TH className="w-[16%]">Motivo</TH>
+                  <TH className="w-[11%]">Solicitado</TH>
+                  <TH className="w-[9%]">Estado</TH>
+                  <TH className="w-[4%]">
+                    <span className="sr-only">Acciones</span>
+                  </TH>
+                </TR>
+              </THead>
+              <TBody>
+                {result.data.map((approval) => (
+                  <TR key={approval.id}>
+                    <TD className="break-words">
+                      <Link
+                        href={`/sales/${approval.orderId}`}
+                        className="font-medium text-slate-700 underline-offset-2 hover:underline"
+                      >
+                        {approval.orderNumber}
+                      </Link>
+                    </TD>
+                    <TD className="text-slate-700">
+                      {approval.productName ? (
+                        <span
+                          className="block truncate"
+                          title={
+                            approval.sku
+                              ? `${approval.sku} · ${approval.productName}`
+                              : approval.productName
+                          }
+                        >
+                          {approval.productName}
+                        </span>
+                      ) : (
+                        '—'
+                      )}
+                    </TD>
+                    <TD className="break-words text-slate-500">
+                      {location.index.locationName(approval.locationId)}
+                    </TD>
+                    <TD className="text-right text-slate-700">
+                      {approval.requestedPrice.toFixed(2)}
+                    </TD>
+                    <TD className="text-right text-slate-500">
+                      {approval.discountAmount.toFixed(2)}
+                    </TD>
+                    <TD className="text-xs leading-snug text-slate-500">
+                      <span className="line-clamp-2" title={approval.reason}>
+                        {approval.reason}
+                      </span>
+                    </TD>
+                    <TD className="text-slate-500">
+                      {dateFormat.format(new Date(approval.requestedAt))}
+                    </TD>
+                    <TD>
+                      <Badge tone={priceApprovalStatusTone(approval.status)}>
+                        {PRICE_APPROVAL_STATUS_LABELS[approval.status as PriceApprovalStatus] ??
+                          approval.status}
+                      </Badge>
+                    </TD>
+                    <TD>
+                      <Link
+                        href={`/approvals/${approval.id}`}
+                        className="text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
+                      >
+                        Ver
+                      </Link>
+                    </TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+            <Pagination
+              page={result.meta.page}
+              pageSize={result.meta.pageSize}
+              total={result.meta.total}
+              totalPages={result.meta.totalPages}
+              buildHref={buildHref}
+            />
+          </>
+        )}
+      </div>
     </PageContainer>
   );
 }
