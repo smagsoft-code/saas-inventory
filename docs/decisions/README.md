@@ -73,6 +73,7 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0037](0037-inventory-moving-average-cost.md) | Inventory Costing — Weighted-Average, Computed Never Stored | Accepted |
 | [0038](0038-order-pdf-export.md) | Order PDF Export — Browser Print Now, Server-Side Generation Deferred | Accepted |
 | [0039](0039-mvp-scope-serialized-lot-sales.md) | MVP Scope — Serialized and Lot-Tracked Variants Are Not Sellable | Accepted |
+| [0040](0040-seller-scope-for-order-derived-operations.md) | Seller Scope for Order-Derived Operations and Reads | Accepted |
 
 ADRs 0001–0015 were produced in Prompt 01 (architecture phase) alongside
 [docs/architecture/](../architecture/) and [docs/security/threat-model.md](../security/threat-model.md).

@@ -29,8 +29,9 @@ allowed set and records it.
 | Import jobs, tracking, results, downloads | `ISO-IMP-01…06` | **Failed on first run → fixed.** `FINDING-IMP-FOREIGN-REF-500` (P3). Approved after the fix. |
 | Exports (orders, customers, transfers, payments, product catalogue, Kardex) | `ISO-EXP-xx`, `ISO-EXP-07` | **Approved.** |
 | Kardex and inventory movements | `ISO-KRD-01…04` | **Approved.** |
+| Seller scope on approvals and returns — follow-up: writes, **reads** and the approver / warehouse workflows | `ISO-APR-01…14`, `ISO-RET-01…16`, `ISO-APV-01…07`, `ISO-RTW-01…07` | **Writes:** failed on first run → fixed (4 findings). **Reads:** owner decision applied (approvals option B, returns option C) and verified. **`approve` / `reject` / `inspect` / `resolve`:** approved — no defect found. |
 
-No **cross-tenant** read or write succeeded in any case. The two findings are an intra-tenant authorization gap and a
+No **cross-tenant** read or write succeeded in any case. The findings are intra-tenant authorization gaps and a
 robustness defect; both were reproduced, documented in `roadmap/pending-register.md`, then fixed with regression tests.
 
 ## Findings
@@ -39,6 +40,11 @@ robustness defect; both were reproduced, documented in `roadmap/pending-register
 | --- | --- | --- | --- | --- |
 | `FINDING-VA-WRITE-SCOPE` | P2 | A seller without `view_all` got **404** reading another seller's order but **200** cancelling it (`ISO-VA-03a`) and **200** confirming it with a payment (`ISO-VA-03b`); the idempotent "already confirmed" return also exposed the order body. | `OrdersService.confirm` / `cancel` apply `canSeeSellerOf` first → 404. Unit tests added. | `ISO-VA-03a/b/c`; unit `orders.service.spec.ts` |
 | `FINDING-IMP-FOREIGN-REF-500` | P3 | `POST /imports` with another tenant's `defaultLocationId` → **500** (the composite FK blocked the write, but unhandled and after the file was stored). | UUID check (400) and ownership check (404) before storing. | `ISO-IMP-05` |
+| `FINDING-APR-REQUEST-SCOPE` | P2 | `POST /price-approvals` by another seller → **201** (pending approval under their name), also with `newPrice` (which can rewrite the line price) (`ISO-APR-02`). | `PriceApprovalsService.request` applies the shared seller scope first → 404; no row, no price edit, no event. | `ISO-APR-02`, `ISO-APR-08`; unit specs |
+| `FINDING-RET-CREATE-SCOPE` | P2 | `POST /sales-returns` by another seller → **201**; the default **Supervisor** too (`ISO-RET-02`, `ISO-RET-05`). | `ReturnsService.create` applies the shared seller scope → 404. | `ISO-RET-02/05/08`; unit specs |
+| `FINDING-RET-CANCEL-SCOPE` | P2 | `POST /sales-returns/:id/cancel` by another seller → **200** (`ISO-RET-11`). | `ReturnsService.cancel` checks the return's order seller → 404. | `ISO-RET-11`; unit specs |
+| `FINDING-RET-IDEMPOTENCY-REPLAY` | P3 | the same `Idempotency-Key` + payload by another seller → **201** (`ISO-RET-07`). | the request hash now includes the actor → another user gets a conflict, never the stored return. | `ISO-RET-07`; unit spec |
+| `FINDING-APR-RET-READ-SCOPE` | P3 | another seller could **read** the owner's approval request and return, by id and in the list (`ISO-APR-11`, `ISO-RET-12`) — scoped by location only. | **Owner decision applied** ([ADR-0040](../decisions/0040-seller-scope-for-order-derived-operations.md)): a seller reads only their own orders' requests/returns; approvers keep the queue, the warehouse keeps every return, `view_all` widens both; the `returns-summary` aggregate carries the same scope. | `ISO-APR-11…14`, `ISO-RET-12…16`; unit specs |
 | *(characterised, not fixed)* `SUP-READ-NOT-AUDITED` | P3 / accountability | Under an active support session, tenant `GET`s (the documented ADR-0036 "read-through") leave **no per-request audit row**; only session start/end and the one write action are audited. | none — owner decision needed (see register). | `ISO-SUP-14` |
 
 ## Matrix — support sessions (`/platform/…`)
@@ -102,12 +108,82 @@ robustness defect; both were reproduced, documented in `roadmap/pending-register
 | KRD-03 | `POST /inventory/adjustments`, `/inventory/transfers` | B writes against A's variant/location (and vice-versa) | 404/403/422; no movement, no balance change in A or B | ✔ |
 | KRD-04 | Kardex, movements, balances, adjustments | anonymous; no permission; seller | 401 / 403; seller cannot adjust; **cost fields hidden without `pricing.cost.view`** | ✔ |
 
+## Matrix — seller scope on approvals and returns (follow-up)
+
+Fixture: one tenant, two sellers (default Vendedor permissions, same location, **no** `view_all`), an Administrador, a role with
+**only** `view_all`, a role with Vendedor permissions + `view_all`, the default Supervisor, a no-permission role, and a second
+tenant. After every refused attempt the database is read back: approval / return / item rows, the order line price and total,
+payments, stock, `RETURN` movements, outbox events and audit rows are unchanged.
+
+| Case | Endpoint | Probe | Expected | Observed |
+| --- | --- | --- | --- | --- |
+| APR-01 | `POST /price-approvals` | owner, own exceptional line | 201; 1 row, 1 event, 1 audit, requester = owner | ✔ |
+| APR-02 | same | other seller, **no view_all**, incl. `newPrice: 95 / 120` and `requestedPrice` | 404; **nothing changes — no row, no price edit** | **✘ then ✔** |
+| APR-03 | same | `view_all` **without** `pricing.discount.request` | 403 (`view_all` grants no action) | ✔ |
+| APR-04 | same | `view_all` + functional; Administrador | 201 | ✔ |
+| APR-05 | same | default Supervisor | follows its template (no request permission → 403) | ✔ |
+| APR-06 | same | unknown / malformed line id, other tenant, tampered fields (`orderId`, `requestedBy`, `tenantId`, `status`, `approvedBy`), missing reason | 404 / 400 / 404 / 400 / 400 | ✔ |
+| APR-07 | same | confirmed order, cancelled order, line inside the authorized range, duplicate pending | 409 / 409 / 422 / 409; no new rows | ✔ |
+| APR-08 | same | two concurrent requests by the owner; owner ‖ other seller (with `newPrice`) | exactly one 201 + one 409, one row/event/audit; 201 + 404, line unchanged | **✘ then ✔** |
+| APR-09 | same | anonymous; no permission | 401; 403 | ✔ |
+| APR-10 | `…/approve`, `…/reject`, `POST /orders/:id/confirm` | a seller approving/rejecting; Administrador approving; owner confirming | 403; 200; 200 (approver capabilities unchanged) | ✔ |
+| APR-11 | `GET /price-approvals[/:id]` | seller reads own vs another seller's request; filters (`orderId`, `status`); hidden vs missing | own only in list **and totals** and by id; a hidden request answers exactly like a missing one (same body); filters cannot widen | ✔ |
+| APR-12 | same | approvers (Supervisor, Administrador, seller + approver), Vendedor + `view_all`; `view_all` alone; no permission; anonymous | whole queue / 403 / 403 / 401 | ✔ |
+| APR-13 | same | list vs by-id for every viewer; another tenant | never listed-yet-404 nor retrievable-yet-unlisted; other tenant sees nothing | ✔ |
+| APR-14 | `GET /reports/approvals-summary` | a seller | 403 (approver-only: no aggregate path around the list scope) | ✔ |
+| RET-01 | `POST /sales-returns` | owner, own confirmed order | 201; 1 return, 1 item, 1 event, 1 audit; **no stock movement until resolve** | ✔ |
+| RET-02 | same | other seller, no `view_all` | 404; nothing changes | **✘ then ✔** |
+| RET-03 | same | `view_all` **without** `sales.returns.create` | 403 | ✔ |
+| RET-04 | same | `view_all` + functional; Administrador | 201 | ✔ |
+| RET-05 | same | default Supervisor (`sales.returns.create`, no `view_all`) | 404 (behaviour change) | **✘ then ✔** |
+| RET-06 | same | unknown / malformed order, other tenant, foreign receiving location, line of another order, over-return, pending / cancelled order, tampered fields, missing `Idempotency-Key`, short reason, no items, negative quantity | 404 / 400 / 404 / 404 / 422 / 409 / 409 / 409 / 400 …; no side effect | ✔ |
+| RET-07 | same | owner replay; same key different payload; **another seller replaying the owner's key** | same return; 409; refused, nothing of the owner's return | **✘ then ✔** |
+| RET-08 | same | same key twice; two over-returning requests; owner ‖ other seller | one return; one 201 + one 409; 201 + 404 | ✔ |
+| RET-09 | same | anonymous; no permission | 401; 403 | ✔ |
+| RET-10 | `…/inspect`, `…/resolve` | Administrador processes the owner's return | 200; exactly one `RETURN` movement, stock restocked | ✔ |
+| RET-11 | `POST /sales-returns/:id/cancel` | other seller; the owner | 404, status stays `requested`; 200 | **✘ then ✔** |
+| RET-12 | `GET /sales-returns[/:id]` | seller reads own vs another seller's return; filters; hidden vs missing | own only in list and totals and by id; hidden = missing (same body) | ✔ |
+| RET-13 | same | Administrador, Supervisor, Bodega (with its location), Vendedor + `view_all`; role without `sales.returns.view`; anonymous | all returns / 403 / 401 | ✔ |
+| RET-14 | same | Bodega with **no location assignment** | nothing (location scope still bounds the warehouse) | ✔ |
+| RET-15 | same | list vs by-id for every viewer; another tenant | consistent; nothing across tenants | ✔ |
+| RET-16 | `GET /reports/returns-summary` (every `groupBy`) | seller vs Administrador / Bodega / `view_all`, against the database truth | seller counts only own returns; the others count all | ✔ |
+
+### Approver and warehouse workflows (cross-seller attack matrix)
+
+`approve`/`reject` and `inspect`/`resolve` are **not** seller-scoped by design: they are gated by their functional permission (and the location scope for the warehouse). Each case reads the database back after a refusal (status, dispositions, line price/total, payments, stock, `RETURN` movements, outbox events, audit).
+
+| Case | Endpoint | Probe | Expected | Observed |
+| --- | --- | --- | --- | --- |
+| APV-01 | `POST /price-approvals/:id/approve|reject` | owner and another seller (also with a `price` edit) | 403; nothing changes | ✔ |
+| APV-02 | same | `view_all` alone, Vendedor + `view_all`, no permission, anonymous | 403 / 403 / 403 / 401 | ✔ |
+| APV-03 | same | Supervisor approves, Administrador rejects, a seller who is also an approver approves — across sellers | 200; exactly one event and one audit each; owner then confirms / is blocked (409) | ✔ |
+| APV-04 | same | other tenant; unknown / malformed id | 404 / 404 / 400; no change | ✔ |
+| APV-05 | same | reject after approve; repeat; request of a cancelled order | 409; idempotent / 409; no extra event or audit | ✔ |
+| APV-06 | `…/approve` with `{ price }` | seller vs approver | seller: 403, line unchanged; approver: 200, line price updated | ✔ |
+| APV-07 | same | approve ‖ reject; approve ‖ approve; approver ‖ seller | one 200 + one 409; one event; 200 + 403 | ✔ |
+| RTW-01 | `POST /sales-returns/:id/inspect|resolve` | owner and another seller | 403; nothing changes | ✔ |
+| RTW-02 | same | `view_all` alone, Vendedor + `view_all`, no permission, anonymous | 403 / 403 / 403 / 401 | ✔ |
+| RTW-03 | same | Bodega (with its location) processes another seller's return | 200 / 200; one `RETURN` movement, stock +quantity, one event, one audit each | ✔ |
+| RTW-04 | same | Supervisor, Administrador; Bodega **without** a location | 200; the unassigned Bodega 403/404 with no change | ✔ |
+| RTW-05 | same | other tenant; unknown / malformed id; foreign disposition location; unknown item; invalid disposition; no items | 404 / 404 / 400 / 400-422 / 400; no change | ✔ |
+| RTW-06 | same | resolve before inspect; cancelled / resolved returns; resolve without `Idempotency-Key` | 409 / 409 / 400; a resolved return is immutable | ✔ |
+| RTW-07 | `…/resolve` | same key twice; two keys at once; resolve ‖ the owner's cancel | exactly one `RETURN` movement; one winner, a cancelled return never restocks | ✔ |
+
+
+**Behaviour change:** the default **Supervisor** (no `sales.orders.view_all`) can no longer **create or cancel** a return, nor confirm /
+cancel an order, for another seller's order — it keeps the whole approvals queue (`pricing.discount.approve`) and every return
+(`inventory.returns.manage`), and still approves, rejects, inspects and resolves. A tenant that wants Supervisors to act across sellers
+grants `sales.orders.view_all`. Policy and rationale: [ADR-0040](../decisions/0040-seller-scope-for-order-derived-operations.md). Sellers'
+approvals and returns screens now show their own documents only.
+
 ## What this does NOT prove (not verified in this sweep)
 
 - **FASE 19 as a whole.** Threat-model re-validation, RBAC review beyond these surfaces, mass-assignment and concurrency
   regression across the whole API, dependency review, and the remaining pending-register items are not covered here.
-- Other order-id **write** routes that may need the same seller scope as `confirm`/`cancel`: `POST /price-approvals`
-  (request against another seller's line) and `POST /sales-returns` (return of another seller's order). Not exercised.
+- **Inventory ledger labels:** movement and Kardex responses (`inventory.view`) label order/return movements with their document
+  numbers (`movement-reference-names`); whether that discloses another seller's document numbers to a seller was not probed.
+- Price-approval **editing** beyond the approver price edit exercised in `APV-06`, and the remaining order-derived routes (e.g. order
+  PDF/print views) were not attacked cross-seller.
 - Surfaces outside the mandatory list: product images, QR management, customers CRUD beyond their export, roles/users
   admin, reports other than payments/movements/inventory summary, the public QR resolver (covered by 5S).
 - **PDF** exports (`format=pdf`) — only `xlsx` downloads were parsed and inspected.

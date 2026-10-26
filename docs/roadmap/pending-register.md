@@ -96,9 +96,12 @@ improvement or limitation.
   inventory movements. **No cross-tenant read or write succeeded in any case**; every refused write was checked for side
   effects in the database. The sweep did find two defects (below), both reproduced, documented, fixed and covered by regression
   tests.
+- **Update 2026-10-26 (seller-scope follow-up):** `POST /price-approvals` and `POST /sales-returns` (and return cancel) were swept
+  with 23 further cases — four findings, fixed (`FINDING-SELLER-SCOPE-APPROVALS-RETURNS`); the reads of approvals/returns were then scoped by owner decision
+  (`FINDING-APR-RET-READ-SCOPE`, ADR-0040) and the approver / warehouse workflows attacked with no defect
+  (`FINDING-APPROVER-WAREHOUSE-WORKFLOWS`).
 - **Status:** `closed-with-evidence` **for the listed surfaces and the stated probes only.** Not covered, and therefore still
-  open under FASE 19: `POST /price-approvals` and `POST /sales-returns` against another seller's order (same seller-scope
-  question as `FINDING-VA-WRITE-SCOPE`), PDF exports, product images / QR management / roles-users admin / other reports,
+  open under FASE 19: PDF exports, product images / QR management / roles-users admin / other reports,
   repeated-run stability. **This is not "tenant isolation validated" for the whole system, and FASE 19 is not complete.**
 
 ### SUP-READ-NOT-AUDITED *(new, characterised — owner decision needed)*
@@ -136,6 +139,74 @@ improvement or limitation.
 - **Not covered / still to verify:** other order-id write routes that may need the same scope — `POST /price-approvals`
   (request for a line of another seller's order) and `POST /sales-returns` (return of another seller's order) — were not
   exercised in this sweep.
+
+### FINDING-SELLER-SCOPE-APPROVALS-RETURNS *(new, found by the 2026-10-26 seller-scope follow-up — 4 sub-findings)*
+
+Follow-up to `FINDING-VA-WRITE-SCOPE`: the two order-id write routes the first sweep left open. All are **intra-tenant**
+authorization gaps (tenant isolation held: another tenant got 404 and no side effect). Reproduced on 2026-10-26 against real
+PostgreSQL **before any fix** with `apps/api/test/security/isolation-seller-scope-approvals-returns.integration.test.ts`
+(a seller without `sales.orders.view_all` gets **404** reading the order, yet:)
+
+| ID | Severity | Observed before the fix | Root cause |
+| --- | --- | --- | --- |
+| `FINDING-APR-REQUEST-SCOPE` | **P2** | `POST /price-approvals` by another seller → **201** (pending approval created under their name, event + audit written), also with `newPrice: 95` (`ISO-APR-02`) | `PriceApprovalsService.request` locks the order but never applies the seller scope; the optional `newPrice` path (`applyPriceEdit`) can **rewrite the unit price and totals of the line**. |
+| `FINDING-RET-CREATE-SCOPE` | **P2** | `POST /sales-returns` by another seller → **201**; the default **Supervisor** (`sales.returns.create`, no `view_all`) → **201** (`ISO-RET-02`, `ISO-RET-05`) | `ReturnsService.create` applies only the location check. |
+| `FINDING-RET-CANCEL-SCOPE` | **P2** | `POST /sales-returns/:id/cancel` by another seller → **200** (return cancelled, event + audit) (`ISO-RET-11`) | `ReturnsService.cancel` has no scope check at all. |
+| `FINDING-RET-IDEMPOTENCY-REPLAY` | P3 | the same `Idempotency-Key` + payload sent by another seller → **201** instead of being refused (`ISO-RET-07`) | the idempotency record is keyed by tenant + scope + key, not by actor, and its lookup runs before any scope check. |
+
+**Impact:** a seller can file price-approval requests (and attempt price edits) on a colleague's sale, and register or cancel
+returns of orders they cannot even see — integrity/attribution risk and noise for approvers/warehouse; no data disclosure
+across tenants. **What already held (positive controls, all passed before the fix):** `view_all` alone grants no functional
+permission (403 without `pricing.discount.request` / `sales.returns.create`); anonymous 401; no-permission 403; malformed and
+foreign ids; non-pending / non-confirmed orders (409), non-exceptional line (422), over-return (409); duplicate and concurrent
+requests; the owner, the Administrador and a `view_all`+functional role keep working; approvers approve, the warehouse
+inspects/resolves.
+
+**Evidence after the fix (23 cases, `ISO-APR-01…11`, `ISO-RET-01…12`, all pass):** the three refusals are 404 with the database
+read back unchanged (no approval / return / item row, line price and total, payments, stock, `RETURN` movements, outbox events, audit);
+the cross-user idempotency replay is refused; races end 201 + 409 / 201 + 404 with exactly one row and one event; the owner, the
+Administrador, a `view_all` + functional role, approvers (approve/reject, confirm) and the warehouse flow (inspect/resolve → one
+`RETURN` movement) keep working. Unit specs added in `price-approvals.service.spec.ts` and `returns.service.spec.ts`.
+
+**Status:** `closed-with-evidence` for the four sub-findings.
+
+**Fix (this block):** the seller rule of `FINDING-VA-WRITE-SCOPE` is now one shared function
+(`orders/order-seller-scope.ts`) used by order confirm/cancel, `PriceApprovalsService.request` and
+`ReturnsService.create`/`cancel` (404 first, before any status-dependent answer); the return idempotency hash now includes the
+actor. **Behaviour change to note:** the default **Supervisor** can no longer register a return for another seller's order unless
+granted `sales.orders.view_all` (same consequence as order confirm/cancel); approvers still approve/reject any request.
+
+### FINDING-APR-RET-READ-SCOPE — **decided and fixed 2026-10-26 (owner)**
+
+- **Severity: P3.** A seller without `view_all` could **read** another seller's price-approval request and sales return (by id and in the
+  list) — those reads were scoped by location only (`ISO-APR-11` / `ISO-RET-12` observations).
+- **Decision (owner):** approvals — **option B** with an exception for approvers; returns — **option C**. Recorded as
+  [ADR-0040](../decisions/0040-seller-scope-for-order-derived-operations.md); **no new permission**.
+  - Approval requests: a seller sees only the requests on their own orders; `pricing.discount.approve` keeps the whole queue; `view_all`
+    widens it; `view_all` alone does not open the queue (still needs `pricing.discount.request` or `.approve`) and grants no action.
+  - Sales returns: a seller sees the returns of their own orders; `inventory.returns.manage` (warehouse) keeps every return, bounded by its
+    location scope; `view_all` widens it; it grants no inspect/resolve. The `returns-summary` aggregate carries the same predicate.
+  - Common: the scope is a SQL predicate (list **and totals**) and a 404 by id with the **same body as a missing resource**; tenant
+    isolation and the location scope still apply.
+- **Evidence (`ISO-APR-11…14`, `ISO-RET-12…16`, all pass):** own-only lists/totals/by-id, hidden = missing (same body), filters cannot
+  widen, list ⇔ by-id for every viewer, approvers / warehouse / `view_all` keep their views, an unassigned Bodega sees nothing, the
+  aggregate matches the database truth per role. Unit specs in `returns.service.spec.ts`, `price-approvals.service.spec.ts`,
+  `returns-report.service.spec.ts`.
+- **Behaviour change / tests touched:** the default Supervisor keeps the queue and every return; sellers' screens show only their own
+  documents. One existing test (`GET /price-approvals is gated by @RequireAnyPermission`) had the Administrador file the request and a
+  Vendedor read it — it now has the Vendedor own the order, so it still proves the permission gate.
+- **Status:** `closed-with-evidence`.
+
+### FINDING-APPROVER-WAREHOUSE-WORKFLOWS *(new — result of the cross-seller attack matrix, no defect)*
+
+- `approve` / `reject` (`ISO-APV-01…07`) and `inspect` / `resolve` (`ISO-RTW-01…07`) were attacked by the owner, another seller, `view_all`
+  alone, `view_all` + seller permissions, no-permission and anonymous callers, other-tenant and malformed ids, invalid states and
+  concurrent requests, with a database read-back after every refusal (status, dispositions, line price / totals, payments, stock,
+  `RETURN` movements, outbox events, audit). **No defect found:** sellers and `view_all` get 403 with nothing changed; approvers and
+  the warehouse (Supervisor, Administrador, Bodega with its location) act across sellers by design; races end with exactly one decision
+  event / one `RETURN` movement. **Limits:** the unassigned-location Bodega is refused by the location scope; price edits beyond the
+  approver edit and the inventory-ledger document labels (movement / Kardex responses) were not attacked.
+- **Status:** `closed-with-evidence` (no finding).
 
 ### FINDING-IMP-FOREIGN-REF-500 *(new)*
 

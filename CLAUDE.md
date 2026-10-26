@@ -1380,11 +1380,11 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
   navigation rail, mobile tab bar and phone layouts for transfers, new sale, order detail, payments,
   approvals, returns and movements. The design-token layer, blue primary and Lotes 2–3 specified in
   `docs/ui-ux/UI-UX-SPEC-001.md` were **not** delivered (`UIUX-SPEC-VS-IMPLEMENTATION`).
-- **Verification baseline (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 794/794 (72 files);
+- **Verification baseline (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 813/813 (72 files);
   `apps/web` unit 1010 passed (138 files) plus 1 unhandled error → non-zero exit
   (`DEFECT-WEB-TEST-UNHANDLED`, open); typecheck (incl. `test/tsconfig.json`) and eslint pass on both apps.
   Real PostgreSQL, `tools/pg-verify` on an isolated instance (`PG_VERIFY_PORT=55433`; the development
-  database on :55432 untouched): **732 tests, 0 failed** (709 in the parallel phase + 23 in the serial phase) and all
+  database on :55432 untouched): **776 tests, 0 failed** (753 in the parallel phase + 23 in the serial phase) and all
   catalog checks passed. **Test-suite rules:** a file that replays migration SQL or does DDL on shared tables must be
   named `*.serial.integration.test.ts` (`pnpm test:integration:all`; the earlier "flaky under contention" runs were
   deadlocks caused by such files, `TEST-FLAKY-DEADLOCKS`); `pg-verify` accepts `PG_VERIFY_PORT` and
@@ -1396,7 +1396,7 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
   `docs/security/tenant-isolation-http-matrix.md`. No cross-tenant access succeeded. Two defects were found and fixed:
   `confirm`/`cancel` of an order now honour the same seller scope as the reads (a seller without
   `sales.orders.view_all` gets 404 for another seller's order — **behaviour change**), and `POST /imports` validates
-  `defaultLocationId` / `mappingTemplateId` (400/404 instead of a 500). Known gap, not fixed: support read-through
+  `defaultLocationId` / `mappingTemplateId` (400/404 instead of a 500). A follow-up sweep (23 more cases) closed the seller scope of `POST /price-approvals`, `POST /sales-returns` and return cancel — the rule lives in `sales/orders/order-seller-scope.ts` and also governs order confirm/cancel; the return idempotency hash includes the actor; the default Supervisor can no longer create/cancel a return, or confirm/cancel an order, for another seller's order without `sales.orders.view_all`, but keeps the approvals queue and every return (**behaviour change**). The **reads** follow the same rule by owner decision ([ADR-0040](docs/decisions/0040-seller-scope-for-order-derived-operations.md), no new permission): a seller reads only the approval requests and returns of their own orders; approvers (`pricing.discount.approve`) keep the whole queue, the warehouse (`inventory.returns.manage`) keeps every return, `sales.orders.view_all` widens both and grants no action; the returns-summary report carries the same scope. `approve`/`reject`/`inspect`/`resolve` were attacked cross-seller with no defect (20 more cases). Known gap, not fixed: support read-through
   `GET`s are not audited (`SUP-READ-NOT-AUDITED`). FASE 19 is **not** complete and isolation is not validated for
   surfaces outside that sweep.
 - **UI/UX spec closure (owner, option B):** `UI-UX-SPEC-001` is closed with a delivered/deferred table

@@ -378,12 +378,12 @@ explicit review/commit.
 - **Numbered phases:** FASE 0–18 implemented and committed. FASE 19–24 **not started**.
 - **Work after FASE 18** (roles, onboarding/support, Kardex, sales rework, UI/UX redesign, …) is
   implemented and committed but **not formally validated** — see "Work after FASE 18" above.
-- **Tests (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 794 passed (72 files);
+- **Tests (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 813 passed (72 files);
   `apps/web` unit 1010 passed (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
   (`DEFECT-WEB-TEST-UNHANDLED`, open). **Full real-PostgreSQL run of the current tree: green** — isolated
-  instance, port 55433, development database untouched: **732 tests (709 parallel + 23 serial), 0 failed**,
-  all structural/RLS catalog checks passed; 47 of those are the new HTTP isolation cases
-  (`apps/api/test/security/`). Earlier in the day the same suite was not green (45 outdated tests; deadlocks from
+  instance, port 55433, development database untouched: **776 tests (753 parallel + 23 serial), 0 failed**,
+  all structural/RLS catalog checks passed; 90 of those are the new HTTP isolation cases
+  (`apps/api/test/security/`: 47 platform/tenant surfaces + 43 seller-scope on approvals/returns: writes, reads, approver and warehouse workflows). Earlier in the day the same suite was not green (45 outdated tests; deadlocks from
   files replaying migration SQL, now a serial phase). One clean final run is not a stability proof. See
   `PG-VERIFY-FULL-RUN`, `TEST-FLAKY-DEADLOCKS`, and [the sweep matrix](../security/tenant-isolation-http-matrix.md).
 - **Notifications:** backend flag `N8N_EVENTS_ENABLED=false` by default; the n8n → Telegram path was
@@ -399,7 +399,11 @@ explicit review/commit.
   mandatory list). **HTTP tenant isolation:** the mandatory post-5S surfaces (support sessions, onboarding / invitations /
   revocation, `view_all`, order payments, bulk load, import jobs, exports, Kardex / movements) were probed with 47 real-HTTP
   cases — no cross-tenant access succeeded; two defects found and fixed (`FINDING-VA-WRITE-SCOPE` P2,
-  `FINDING-IMP-FOREIGN-REF-500` P3). **This is not "FASE 19 complete" nor "tenant isolation validated" system-wide.**
+  `FINDING-IMP-FOREIGN-REF-500` P3). A follow-up sweep of `POST /price-approvals` and `POST /sales-returns` (23 cases) found
+  four more intra-tenant seller-scope gaps (`FINDING-SELLER-SCOPE-APPROVALS-RETURNS`: 3 × P2, 1 × P3), all fixed. The owner then decided the **read** scope of
+  approvals (own orders; approvers keep the queue) and returns (own orders; the warehouse keeps every return; `view_all` widens both) —
+  applied and verified ([ADR-0040](../decisions/0040-seller-scope-for-order-derived-operations.md)); `approve` / `reject` / `inspect` / `resolve`
+  were attacked cross-seller with no defect found. **This is not "FASE 19 complete" nor "tenant isolation validated" system-wide.**
   Closed with evidence on 2026-10-26: `GAP-F19-PARSE-UUID`, `GAP-F19-EMPTY-BODY`,
   `DEFECT-TZ-DEFAULT-UNSETTABLE`, `PG-VERIFY-FULL-RUN`, `DEFECT-INTEGRATION-STALE-TESTS`,
   `DEFECT-API-TEST-TYPECHECK`, `TEST-FLAKY-DEADLOCKS`, `GAP-F19-RLS-IDOR-DEPTH` (for the listed surfaces only),
