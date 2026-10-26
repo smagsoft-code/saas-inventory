@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import type { PlatformPrincipal } from '../../common/context/request-context';
@@ -36,7 +36,7 @@ export class PlatformSupportSessionsController {
   @Post('tenants/:tenantId/support-sessions')
   @ApiOkResponse({ type: SupportSessionResponseDto })
   async start(
-    @Param('tenantId') tenantId: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @CurrentPlatformAdmin() principal: PlatformPrincipal,
     @Body() dto: StartSupportSessionDto,
     @Req() request: FastifyRequest,

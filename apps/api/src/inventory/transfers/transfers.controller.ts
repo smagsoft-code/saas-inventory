@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -53,7 +53,7 @@ export class TransfersController {
   @Get(':id')
   @RequirePermissions('inventory.view')
   @ApiOkResponse({ type: TransferResponseDto })
-  async getById(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<TransferResponseDto> {
+  async getById(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<TransferResponseDto> {
     return this.transfersService.getById(tenantId, id);
   }
 
@@ -76,7 +76,7 @@ export class TransfersController {
   async approve(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: FastifyRequest,
   ): Promise<TransferResponseDto> {
     return this.transfersService.approve(tenantId, principal.userId, id, { correlationId: request.correlationId, ipAddress: request.ip });
@@ -89,7 +89,7 @@ export class TransfersController {
   async prepare(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: FastifyRequest,
   ): Promise<TransferResponseDto> {
     return this.transfersService.prepare(tenantId, principal.userId, id, { correlationId: request.correlationId, ipAddress: request.ip });
@@ -102,7 +102,7 @@ export class TransfersController {
   async dispatch(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: DispatchTransferDto,
     @Req() request: FastifyRequest,
   ): Promise<TransferResponseDto> {
@@ -116,7 +116,7 @@ export class TransfersController {
   async receive(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ReceiveTransferDto,
     @Req() request: FastifyRequest,
     @Headers('idempotency-key') idempotencyKey?: string,
@@ -131,7 +131,7 @@ export class TransfersController {
   async cancel(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: FastifyRequest,
   ): Promise<TransferResponseDto> {
     return this.transfersService.cancel(tenantId, principal.userId, id, { correlationId: request.correlationId, ipAddress: request.ip });

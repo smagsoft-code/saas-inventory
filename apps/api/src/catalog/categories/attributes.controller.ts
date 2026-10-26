@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
@@ -47,7 +47,7 @@ export class AttributesController {
   @ApiOkResponse({ type: AttributeDefinitionResponseDto })
   async updateDefinition(
     @CurrentTenant() tenantId: string,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAttributeDefinitionDto,
   ): Promise<AttributeDefinitionResponseDto> {
     return this.attributesService.updateDefinition(tenantId, id, dto);
@@ -58,7 +58,7 @@ export class AttributesController {
   @ApiOkResponse({ type: AttributeOptionResponseDto, isArray: true })
   async listOptions(
     @CurrentTenant() tenantId: string,
-    @Param('id') definitionId: string,
+    @Param('id', ParseUUIDPipe) definitionId: string,
   ): Promise<AttributeOptionResponseDto[]> {
     return this.attributesService.listOptions(tenantId, definitionId);
   }
@@ -68,7 +68,7 @@ export class AttributesController {
   @ApiCreatedResponse({ type: AttributeOptionResponseDto })
   async createOption(
     @CurrentTenant() tenantId: string,
-    @Param('id') definitionId: string,
+    @Param('id', ParseUUIDPipe) definitionId: string,
     @Body() dto: CreateAttributeOptionDto,
   ): Promise<AttributeOptionResponseDto> {
     return this.attributesService.createOption(tenantId, definitionId, dto);
@@ -79,8 +79,8 @@ export class AttributesController {
   @ApiOkResponse({ type: AttributeOptionResponseDto })
   async updateOption(
     @CurrentTenant() tenantId: string,
-    @Param('id') definitionId: string,
-    @Param('optionId') optionId: string,
+    @Param('id', ParseUUIDPipe) definitionId: string,
+    @Param('optionId', ParseUUIDPipe) optionId: string,
     @Body() dto: UpdateAttributeOptionDto,
   ): Promise<AttributeOptionResponseDto> {
     return this.attributesService.updateOption(tenantId, definitionId, optionId, dto);

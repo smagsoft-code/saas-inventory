@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Put, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyRequest } from 'fastify';
@@ -45,7 +45,7 @@ export class CategoriesController {
   @Get(':id')
   @RequirePermissions('categories.view')
   @ApiOkResponse({ type: CategoryResponseDto })
-  async getById(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<CategoryResponseDto> {
+  async getById(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<CategoryResponseDto> {
     return this.categoriesService.getById(tenantId, id);
   }
 
@@ -70,7 +70,7 @@ export class CategoriesController {
   async update(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateCategoryDto,
     @Req() request: FastifyRequest,
   ): Promise<CategoryResponseDto> {
@@ -83,7 +83,7 @@ export class CategoriesController {
   @Get(':id/attributes')
   @RequirePermissions('categories.view')
   @ApiOkResponse({ type: CategoryAttributeResponseDto, isArray: true })
-  async getAttributes(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<CategoryAttributeResponseDto[]> {
+  async getAttributes(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<CategoryAttributeResponseDto[]> {
     return this.categoriesService.getAttributes(tenantId, id);
   }
 
@@ -93,7 +93,7 @@ export class CategoriesController {
   async setAttributes(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetCategoryAttributesDto,
     @Req() request: FastifyRequest,
   ): Promise<CategoryAttributeResponseDto[]> {

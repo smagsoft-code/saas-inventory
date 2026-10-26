@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -129,55 +129,55 @@ export class ImportJobsController {
   @Get(':id')
   @RequirePermissions('import.execute')
   @ApiOkResponse({ type: ImportJobResponseDto })
-  async getById(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<ImportJobResponseDto> {
+  async getById(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<ImportJobResponseDto> {
     return this.jobService.getById(tenantId, id);
   }
 
   @Post(':id/mapping')
   @RequirePermissions('import.execute')
   @ApiOkResponse({ type: ImportJobResponseDto })
-  async setMapping(@CurrentTenant() tenantId: string, @Param('id') id: string, @Body() dto: SetMappingDto): Promise<ImportJobResponseDto> {
+  async setMapping(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SetMappingDto): Promise<ImportJobResponseDto> {
     return this.mappingService.setMapping(tenantId, id, dto);
   }
 
   @Post(':id/validate')
   @RequirePermissions('import.execute')
   @ApiOkResponse({ type: ImportJobResponseDto })
-  async validate(@CurrentTenant() tenantId: string, @CurrentUser() principal: AuthPrincipal, @Param('id') id: string): Promise<ImportJobResponseDto> {
+  async validate(@CurrentTenant() tenantId: string, @CurrentUser() principal: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string): Promise<ImportJobResponseDto> {
     return this.jobService.triggerValidate(tenantId, id, principal.userId);
   }
 
   @Get(':id/preview')
   @RequirePermissions('import.execute')
   @ApiOkResponse({ type: ImportPreviewResponseDto })
-  async preview(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<ImportPreviewResponseDto> {
+  async preview(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<ImportPreviewResponseDto> {
     return this.previewService.preview(tenantId, id);
   }
 
   @Get(':id/rows')
   @RequirePermissions('import.execute')
   @ApiOkResponse({ type: ImportJobRowResponseDto, isArray: true })
-  async rows(@CurrentTenant() tenantId: string, @Param('id') id: string, @Query() query: ListImportJobRowsQueryDto): Promise<PaginatedResult<ImportJobRowResponseDto>> {
+  async rows(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string, @Query() query: ListImportJobRowsQueryDto): Promise<PaginatedResult<ImportJobRowResponseDto>> {
     return this.previewService.listRows(tenantId, id, query);
   }
 
   @Post(':id/confirm')
   @RequirePermissions('import.execute')
   @ApiOkResponse({ type: ImportJobResponseDto })
-  async confirm(@CurrentTenant() tenantId: string, @CurrentUser() principal: AuthPrincipal, @CurrentPermissions() permissions: string[], @Param('id') id: string): Promise<ImportJobResponseDto> {
+  async confirm(@CurrentTenant() tenantId: string, @CurrentUser() principal: AuthPrincipal, @CurrentPermissions() permissions: string[], @Param('id', ParseUUIDPipe) id: string): Promise<ImportJobResponseDto> {
     return this.jobService.triggerConfirm(tenantId, id, principal.userId, permissions);
   }
 
   @Post(':id/cancel')
   @RequirePermissions('import.execute')
   @ApiOkResponse({ type: ImportJobResponseDto })
-  async cancel(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<ImportJobResponseDto> {
+  async cancel(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<ImportJobResponseDto> {
     return this.jobService.cancel(tenantId, id);
   }
 
   @Get(':id/errors')
   @RequirePermissions('import.execute')
-  async errors(@CurrentTenant() tenantId: string, @Param('id') id: string, @Query('includeWarnings') includeWarnings: string | undefined, @Res({ passthrough: true }) reply: FastifyReply): Promise<Buffer> {
+  async errors(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string, @Query('includeWarnings') includeWarnings: string | undefined, @Res({ passthrough: true }) reply: FastifyReply): Promise<Buffer> {
     const buffer = await this.errorReportService.generate(tenantId, id, includeWarnings === 'true');
     void reply.header('Content-Type', XLSX_MIME);
     void reply.header('Content-Disposition', 'attachment; filename="import-errors.xlsx"');

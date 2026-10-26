@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Delete, Get, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
+import { BadRequestException, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, Res } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
@@ -47,7 +47,7 @@ export class ProductImagesController {
   @ApiOkResponse({ type: ProductImageResponseDto, isArray: true })
   async list(
     @CurrentTenant() tenantId: string,
-    @Param('productId') productId: string,
+    @Param('productId', ParseUUIDPipe) productId: string,
   ): Promise<ProductImageResponseDto[]> {
     return this.productImagesService.list(tenantId, productId);
   }
@@ -57,7 +57,7 @@ export class ProductImagesController {
   @ApiCreatedResponse({ type: ProductImageResponseDto })
   async upload(
     @CurrentTenant() tenantId: string,
-    @Param('productId') productId: string,
+    @Param('productId', ParseUUIDPipe) productId: string,
     @Req() request: FastifyRequest,
   ): Promise<ProductImageResponseDto> {
     const { productVariantId, ...file } = await readImageUpload(request);
@@ -68,8 +68,8 @@ export class ProductImagesController {
   @RequirePermissions('products.view')
   async getImage(
     @CurrentTenant() tenantId: string,
-    @Param('productId') productId: string,
-    @Param('imageId') imageId: string,
+    @Param('productId', ParseUUIDPipe) productId: string,
+    @Param('imageId', ParseUUIDPipe) imageId: string,
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<Buffer> {
     const { buffer, mimeType } = await this.productImagesService.getImageBinary(tenantId, productId, imageId);
@@ -85,8 +85,8 @@ export class ProductImagesController {
   @HttpCode(204)
   async remove(
     @CurrentTenant() tenantId: string,
-    @Param('productId') productId: string,
-    @Param('imageId') imageId: string,
+    @Param('productId', ParseUUIDPipe) productId: string,
+    @Param('imageId', ParseUUIDPipe) imageId: string,
   ): Promise<void> {
     await this.productImagesService.delete(tenantId, productId, imageId);
   }

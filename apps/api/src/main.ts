@@ -35,13 +35,41 @@ function registerCorrelationId(app: NestFastifyApplication): void {
 }
 
 /**
+ * GAP-F19-EMPTY-BODY. Fastify's stock JSON parser answers a request that declares
+ * `Content-Type: application/json` but carries NO body with `FST_ERR_CTP_EMPTY_JSON_BODY` — which
+ * made every bodyless action POST (`confirm`, `cancel`, `approve`, platform `suspend`, …) fail for
+ * any client that sends that header by default (curl `-H`, n8n/Postman HTTP nodes). An empty (or
+ * whitespace-only) body is now read as "no body" (`undefined`):
+ *  - an action with no body DTO simply runs;
+ *  - an endpoint that REQUIRES a body still rejects it — the global `ValidationPipe` turns the
+ *    missing body into the DTO's per-field `400 VALIDATION_ERROR`, so nothing is silently accepted;
+ *  - a non-empty body goes through Fastify's own default parser unchanged (same prototype-poisoning
+ *    protections, same 400 on malformed JSON), and the body-size limit is unchanged.
+ * `useBodyParser` is Nest's supported hook: it also stops `app.init()` from overriding this parser.
+ */
+function registerLenientJsonBody(adapter: FastifyAdapter): void {
+  const fastify = adapter.getInstance();
+  const { bodyLimit, onProtoPoisoning, onConstructorPoisoning } = fastify.initialConfig;
+  const defaultJsonParser = fastify.getDefaultJsonParser(onProtoPoisoning ?? 'error', onConstructorPoisoning ?? 'error');
+  adapter.useBodyParser('application/json', false, bodyLimit === undefined ? {} : { bodyLimit }, (request, body, done) => {
+    const text = body.toString('utf8');
+    if (text.trim() === '') {
+      done(null, undefined);
+      return;
+    }
+    defaultJsonParser(request, text, done);
+  });
+}
+
+/**
  * All process-wide app configuration in one place, shared between the real `bootstrap()` below
  * and the integration test suite (test/auth/*.integration.test.ts), which needs the exact same
  * cookie/versioning/validation setup but calls `app.init()` instead of `app.listen()` — extracted
  * so the two paths can never drift apart.
  */
 export async function buildApp(): Promise<NestFastifyApplication> {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+  const adapter = new FastifyAdapter();
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter);
 
   await app.register(helmet);
   await app.register(fastifyCookie);
@@ -54,6 +82,7 @@ export async function buildApp(): Promise<NestFastifyApplication> {
   });
 
   registerCorrelationId(app);
+  registerLenientJsonBody(adapter);
 
   const corsOrigins = (process.env['CORS_ORIGINS'] ?? '')
     .split(',')

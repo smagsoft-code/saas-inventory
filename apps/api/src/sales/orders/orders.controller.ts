@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -65,7 +65,7 @@ export class OrdersController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<OrderResponseDto> {
     return this.ordersService.getById(tenantId, principal.userId, permissions, id);
   }
@@ -77,7 +77,7 @@ export class OrdersController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<OrderNotificationsResponseDto> {
     return this.ordersService.getNotifications(tenantId, principal.userId, permissions, id);
   }
@@ -111,7 +111,7 @@ export class OrdersController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ConfirmOrderDto,
     @Req() request: FastifyRequest,
   ): Promise<OrderResponseDto> {
@@ -129,7 +129,7 @@ export class OrdersController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: FastifyRequest,
   ): Promise<OrderResponseDto> {
     return this.ordersService.cancel(tenantId, principal.userId, permissions, id, {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyRequest } from 'fastify';
@@ -36,7 +36,7 @@ export class WarehousesController {
   @Get(':id')
   @RequirePermissions('warehouses.view')
   @ApiOkResponse({ type: WarehouseResponseDto })
-  async getById(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<WarehouseResponseDto> {
+  async getById(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<WarehouseResponseDto> {
     return this.warehousesService.getById(tenantId, id);
   }
 
@@ -61,7 +61,7 @@ export class WarehousesController {
   async update(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateWarehouseDto,
     @Req() request: FastifyRequest,
   ): Promise<WarehouseResponseDto> {

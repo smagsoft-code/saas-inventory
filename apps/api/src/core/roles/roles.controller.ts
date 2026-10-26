@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Put, Req } from '@nestjs/common';
 import { ApiCreatedResponse, ApiNoContentResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import type { AuthPrincipal } from '../../common/context/request-context';
@@ -36,7 +36,7 @@ export class RolesController {
   async getById(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<RoleResponseDto> {
     return this.rolesService.getById(tenantId, principal.userId, id);
   }
@@ -62,7 +62,7 @@ export class RolesController {
   async update(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateRoleDto,
     @Req() request: FastifyRequest,
   ): Promise<RoleResponseDto> {
@@ -78,7 +78,7 @@ export class RolesController {
   async setPermissions(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: SetRolePermissionsDto,
     @Req() request: FastifyRequest,
   ): Promise<RoleResponseDto> {
@@ -95,7 +95,7 @@ export class RolesController {
   async remove(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: FastifyRequest,
   ): Promise<void> {
     return this.rolesService.remove(tenantId, principal.userId, id, {

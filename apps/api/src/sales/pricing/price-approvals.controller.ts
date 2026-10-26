@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyRequest } from 'fastify';
@@ -47,7 +47,7 @@ export class PriceApprovalsController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<PriceApprovalResponseDto> {
     return this.priceApprovalsService.getById(tenantId, principal.userId, permissions, id);
   }
@@ -76,7 +76,7 @@ export class PriceApprovalsController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: ResolvePriceApprovalDto,
     @Req() request: FastifyRequest,
   ): Promise<PriceApprovalResponseDto> {
@@ -98,7 +98,7 @@ export class PriceApprovalsController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: FastifyRequest,
   ): Promise<PriceApprovalResponseDto> {
     return this.priceApprovalsService.reject(tenantId, principal.userId, permissions, id, {

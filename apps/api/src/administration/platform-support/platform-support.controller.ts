@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Req, UseGuards } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { CurrentPlatformAdmin } from '../../common/decorators/current-platform-admin.decorator';
@@ -29,7 +29,7 @@ export class PlatformSupportController {
   @Get('users')
   @RequireSupportSession('read')
   @ApiOkResponse({ type: SupportUserResponseDto, isArray: true })
-  async listUsers(@Param('tenantId') tenantId: string): Promise<SupportUserResponseDto[]> {
+  async listUsers(@Param('tenantId', ParseUUIDPipe) tenantId: string): Promise<SupportUserResponseDto[]> {
     const rows = await this.supportService.listUsers(tenantId);
     return rows.map((row) => ({
       id: row.id,
@@ -44,7 +44,7 @@ export class PlatformSupportController {
   @Get('warehouses')
   @RequireSupportSession('read')
   @ApiOkResponse({ type: SupportWarehouseResponseDto, isArray: true })
-  async listWarehouses(@Param('tenantId') tenantId: string): Promise<SupportWarehouseResponseDto[]> {
+  async listWarehouses(@Param('tenantId', ParseUUIDPipe) tenantId: string): Promise<SupportWarehouseResponseDto[]> {
     return this.supportService.listWarehouses(tenantId);
   }
 
@@ -52,8 +52,8 @@ export class PlatformSupportController {
   @RequireSupportSession('write')
   @ApiOkResponse({ type: SupportWarehouseResponseDto })
   async setWarehouseStatus(
-    @Param('tenantId') tenantId: string,
-    @Param('warehouseId') warehouseId: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
+    @Param('warehouseId', ParseUUIDPipe) warehouseId: string,
     @Body() dto: SetSupportWarehouseStatusDto,
     @CurrentPlatformAdmin() principal: PlatformPrincipal,
     @CurrentSupportSession() session: SupportSessionContext,

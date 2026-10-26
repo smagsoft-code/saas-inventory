@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import type { TenantRequestContext } from '../../common/context/request-context';
@@ -106,7 +106,7 @@ export class CartsController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
-    @Param('itemId') itemId: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
     @Body() dto: UpdateCartItemDto,
     @Req() request: FastifyRequest,
   ): Promise<CartResponseDto> {
@@ -124,7 +124,7 @@ export class CartsController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: TenantRequestContext['permissions'],
-    @Param('itemId') itemId: string,
+    @Param('itemId', ParseUUIDPipe) itemId: string,
     @Req() request: FastifyRequest,
   ): Promise<CartResponseDto> {
     return this.cartsService.removeItem(tenantId, principal.userId, permissions, itemId, {

@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
@@ -27,7 +27,7 @@ export class BalancesController {
   @Get(':id')
   @RequirePermissions('inventory.view')
   @ApiOkResponse({ type: BalanceResponseDto })
-  async getById(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<BalanceResponseDto> {
+  async getById(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<BalanceResponseDto> {
     return this.balancesService.getById(tenantId, id);
   }
 }

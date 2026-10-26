@@ -38,10 +38,42 @@ function resolve(exception: unknown): { statusCode: number; code: string; messag
     const status = exception.getStatus();
     return { statusCode: status, code: extractCode(exception) ?? codeForStatus(status), message: extractMessage(exception) };
   }
+  const fastifyClientError = resolveFastifyClientError(exception);
+  if (fastifyClientError) {
+    return fastifyClientError;
+  }
   return {
     statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
     code: 'INTERNAL_ERROR',
     message: 'An unexpected error occurred.',
+  };
+}
+
+/** Fixed, safe messages for the framework's own request-parsing errors — never the framework's text. */
+const FASTIFY_CLIENT_ERROR_MESSAGES: Record<string, string> = {
+  FST_ERR_CTP_EMPTY_JSON_BODY: 'The request body must not be empty when the content type is application/json.',
+  FST_ERR_CTP_INVALID_MEDIA_TYPE: 'Unsupported media type.',
+  FST_ERR_CTP_BODY_TOO_LARGE: 'The request body is too large.',
+  FST_ERR_CTP_INVALID_CONTENT_LENGTH: 'The request body does not match its declared length.',
+};
+
+/**
+ * GAP-F19-EMPTY-BODY. Fastify raises its own errors (`FST_ERR_CTP_*`: empty JSON body, unsupported
+ * media type, body too large, …) BEFORE any controller runs. They are plain `FastifyError`s with a
+ * 4xx `statusCode`, not Nest `HttpException`s, so they used to fall through to the generic branch
+ * and be answered `500 INTERNAL_ERROR` — a client mistake reported as a server fault (and logged at
+ * error level). Map them to their real 4xx status in the standard envelope, with a fixed message:
+ * the framework's own text is never echoed. Anything that is not a Fastify 4xx stays a 500.
+ */
+function resolveFastifyClientError(exception: unknown): { statusCode: number; code: string; message: string } | undefined {
+  if (typeof exception !== 'object' || exception === null) return undefined;
+  const { code, statusCode } = exception as { code?: unknown; statusCode?: unknown };
+  if (typeof code !== 'string' || !code.startsWith('FST_')) return undefined;
+  if (typeof statusCode !== 'number' || statusCode < 400 || statusCode >= 500) return undefined;
+  return {
+    statusCode,
+    code: codeForStatus(statusCode),
+    message: FASTIFY_CLIENT_ERROR_MESSAGES[code] ?? 'The request could not be processed.',
   };
 }
 
@@ -85,6 +117,10 @@ function codeForStatus(status: number): string {
       return 'NOT_FOUND';
     case HttpStatus.CONFLICT:
       return 'CONFLICT';
+    case HttpStatus.PAYLOAD_TOO_LARGE:
+      return 'PAYLOAD_TOO_LARGE';
+    case HttpStatus.UNSUPPORTED_MEDIA_TYPE:
+      return 'UNSUPPORTED_MEDIA_TYPE';
     case HttpStatus.TOO_MANY_REQUESTS:
       return 'TOO_MANY_REQUESTS';
     default:

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyRequest } from 'fastify';
@@ -60,7 +60,7 @@ export class QrCodesController {
   @Get(':id')
   @RequirePermissions('catalog.qr.manage')
   @ApiOkResponse({ type: QrCodeResponseDto })
-  async getById(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<QrCodeResponseDto> {
+  async getById(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<QrCodeResponseDto> {
     return this.qrCodesService.getById(tenantId, id);
   }
 
@@ -100,7 +100,7 @@ export class QrCodesController {
   async update(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateQrCodeDto,
     @Req() request: FastifyRequest,
   ): Promise<QrCodeResponseDto> {

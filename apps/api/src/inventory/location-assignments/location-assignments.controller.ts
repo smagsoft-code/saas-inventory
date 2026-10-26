@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Put, Req } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import type { AuthPrincipal } from '../../common/context/request-context';
@@ -23,7 +23,7 @@ export class LocationAssignmentsController {
   @Get()
   @RequirePermissions('core.users.locations.manage')
   @ApiOkResponse({ type: UserLocationResponseDto, isArray: true })
-  async list(@CurrentTenant() tenantId: string, @Param('userId') userId: string): Promise<UserLocationResponseDto[]> {
+  async list(@CurrentTenant() tenantId: string, @Param('userId', ParseUUIDPipe) userId: string): Promise<UserLocationResponseDto[]> {
     return this.locationAssignmentsService.list(tenantId, userId);
   }
 
@@ -33,7 +33,7 @@ export class LocationAssignmentsController {
   async replace(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('userId') userId: string,
+    @Param('userId', ParseUUIDPipe) userId: string,
     @Body() dto: SetUserLocationsDto,
     @Req() request: FastifyRequest,
   ): Promise<UserLocationResponseDto[]> {

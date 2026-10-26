@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { Type } from 'class-transformer';
@@ -45,7 +45,7 @@ export class ImportMappingTemplatesController {
   @Get(':id')
   @RequirePermissions('import.execute')
   @ApiOkResponse({ type: MappingTemplateResponseDto })
-  async getById(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<MappingTemplateResponseDto> {
+  async getById(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<MappingTemplateResponseDto> {
     return this.mappingService.getTemplate(tenantId, id);
   }
 
@@ -59,14 +59,14 @@ export class ImportMappingTemplatesController {
   @Patch(':id')
   @RequirePermissions('import.execute')
   @ApiOkResponse({ type: MappingTemplateResponseDto })
-  async update(@CurrentTenant() tenantId: string, @Param('id') id: string, @Body() dto: UpdateMappingTemplateDto): Promise<MappingTemplateResponseDto> {
+  async update(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateMappingTemplateDto): Promise<MappingTemplateResponseDto> {
     return this.mappingService.updateTemplate(tenantId, id, dto);
   }
 
   @Delete(':id')
   @RequirePermissions('import.execute')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<void> {
+  async delete(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<void> {
     return this.mappingService.deleteTemplate(tenantId, id);
   }
 }

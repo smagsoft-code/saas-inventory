@@ -6,8 +6,12 @@ import { BusinessHoursEntryDto } from './business-hours-entry.dto';
 /** Every IANA timezone name Node itself recognizes — the same source of truth the runtime uses to
  * interpret a timezone, not a hand-maintained list that can drift out of date (rule 21's "valid
  * reference" requirement, applied to a platform-provided reference set instead of a tenant-owned
- * table). Computed once at module load, not per-request. */
-const IANA_TIME_ZONES = Intl.supportedValuesOf('timeZone');
+ * table) — plus `UTC`. `UTC` is the platform default (`DEFAULT_TIMEZONE`) and a valid zone for
+ * `Intl.DateTimeFormat`, but `Intl.supportedValuesOf('timeZone')` does not list it (Node 24.19: 418
+ * names, no `UTC`), so without this a tenant could never set its timezone back to the default
+ * (DEFECT-TZ-DEFAULT-UNSETTABLE). Exact match only: `utc`, `UTC+5`, `Etc/UTC` stay rejected.
+ * Computed once at module load, not per-request. */
+const IANA_TIME_ZONES = [...Intl.supportedValuesOf('timeZone'), 'UTC'];
 
 /** PATCH semantics for both fields (either may be omitted to leave it unchanged) — `businessHours`
  * itself is whole-array-replace when present (same PUT-shaped-field convention as

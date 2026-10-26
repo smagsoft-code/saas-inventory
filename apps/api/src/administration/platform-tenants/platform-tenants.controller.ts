@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Req } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { CurrentPlatformAdmin } from '../../common/decorators/current-platform-admin.decorator';
@@ -76,7 +76,7 @@ export class PlatformTenantsController {
 
   @Get(':tenantId')
   @ApiOkResponse({ type: PlatformTenantResponseDto })
-  async getById(@Param('tenantId') tenantId: string): Promise<PlatformTenantResponseDto> {
+  async getById(@Param('tenantId', ParseUUIDPipe) tenantId: string): Promise<PlatformTenantResponseDto> {
     return toResponse(await this.platformTenantsService.getById(tenantId));
   }
 
@@ -100,7 +100,7 @@ export class PlatformTenantsController {
 
   @Get(':tenantId/admin-invitation')
   @ApiOkResponse({ type: InvitationStatusResponseDto })
-  async getInvitationStatus(@Param('tenantId') tenantId: string): Promise<InvitationStatusResponseDto | null> {
+  async getInvitationStatus(@Param('tenantId', ParseUUIDPipe) tenantId: string): Promise<InvitationStatusResponseDto | null> {
     const invitation = await this.onboardingService.getInvitationStatus(tenantId);
     return invitation ? toInvitationStatusResponse(invitation) : null;
   }
@@ -109,7 +109,7 @@ export class PlatformTenantsController {
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: InvitationStatusResponseDto })
   async resendInvitation(
-    @Param('tenantId') tenantId: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @CurrentPlatformAdmin() principal: PlatformPrincipal,
     @Req() request: FastifyRequest,
   ): Promise<{ invitationUrl: string; expiresAt: string }> {
@@ -125,7 +125,7 @@ export class PlatformTenantsController {
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: InvitationStatusResponseDto })
   async revokeInvitation(
-    @Param('tenantId') tenantId: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @CurrentPlatformAdmin() principal: PlatformPrincipal,
     @Req() request: FastifyRequest,
   ): Promise<InvitationStatusResponseDto> {
@@ -141,7 +141,7 @@ export class PlatformTenantsController {
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: PlatformTenantResponseDto })
   async suspend(
-    @Param('tenantId') tenantId: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @CurrentPlatformAdmin() principal: PlatformPrincipal,
     @Req() request: FastifyRequest,
   ): Promise<PlatformTenantResponseDto> {
@@ -157,7 +157,7 @@ export class PlatformTenantsController {
   @HttpCode(HttpStatus.OK)
   @ApiOkResponse({ type: PlatformTenantResponseDto })
   async activate(
-    @Param('tenantId') tenantId: string,
+    @Param('tenantId', ParseUUIDPipe) tenantId: string,
     @CurrentPlatformAdmin() principal: PlatformPrincipal,
     @Req() request: FastifyRequest,
   ): Promise<PlatformTenantResponseDto> {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query, Req } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyRequest } from 'fastify';
@@ -55,7 +55,7 @@ export class ProductsController {
   @Get(':id')
   @RequirePermissions('products.view')
   @ApiOkResponse({ type: ProductResponseDto })
-  async getById(@CurrentTenant() tenantId: string, @Param('id') id: string): Promise<ProductResponseDto> {
+  async getById(@CurrentTenant() tenantId: string, @Param('id', ParseUUIDPipe) id: string): Promise<ProductResponseDto> {
     return this.productsService.getById(tenantId, id);
   }
 
@@ -80,7 +80,7 @@ export class ProductsController {
   async update(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateProductDto,
     @Req() request: FastifyRequest,
   ): Promise<ProductResponseDto> {
@@ -96,7 +96,7 @@ export class ProductsController {
   async listVariants(
     @CurrentTenant() tenantId: string,
     @CurrentPermissions() permissions: string[],
-    @Param('id') productId: string,
+    @Param('id', ParseUUIDPipe) productId: string,
   ): Promise<VariantResponseDto[]> {
     return this.productsService.listVariants(tenantId, productId, permissions);
   }
@@ -107,8 +107,8 @@ export class ProductsController {
   async getVariant(
     @CurrentTenant() tenantId: string,
     @CurrentPermissions() permissions: string[],
-    @Param('id') productId: string,
-    @Param('variantId') variantId: string,
+    @Param('id', ParseUUIDPipe) productId: string,
+    @Param('variantId', ParseUUIDPipe) variantId: string,
   ): Promise<VariantResponseDto> {
     return this.productsService.getVariant(tenantId, productId, variantId, permissions);
   }
@@ -120,7 +120,7 @@ export class ProductsController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: string[],
-    @Param('id') productId: string,
+    @Param('id', ParseUUIDPipe) productId: string,
     @Body() dto: VariantFieldsDto,
     @Req() request: FastifyRequest,
   ): Promise<VariantResponseDto> {
@@ -137,8 +137,8 @@ export class ProductsController {
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
     @CurrentPermissions() permissions: string[],
-    @Param('id') productId: string,
-    @Param('variantId') variantId: string,
+    @Param('id', ParseUUIDPipe) productId: string,
+    @Param('variantId', ParseUUIDPipe) variantId: string,
     @Body() dto: UpdateVariantDto,
     @Req() request: FastifyRequest,
   ): Promise<VariantResponseDto> {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyRequest } from 'fastify';
@@ -41,7 +41,7 @@ export class ReturnsController {
   async getById(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ReturnResponseDto> {
     return this.returnsService.getById(tenantId, principal.userId, id);
   }
@@ -72,7 +72,7 @@ export class ReturnsController {
   async inspect(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: InspectReturnDto,
     @Req() request: FastifyRequest,
   ): Promise<ReturnResponseDto> {
@@ -89,7 +89,7 @@ export class ReturnsController {
   async resolve(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: FastifyRequest,
     @Headers('idempotency-key') idempotencyKey?: string,
   ): Promise<ReturnResponseDto> {
@@ -109,7 +109,7 @@ export class ReturnsController {
   async cancel(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Req() request: FastifyRequest,
   ): Promise<ReturnResponseDto> {
     return this.returnsService.cancel(tenantId, principal.userId, id, {

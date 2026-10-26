@@ -29,10 +29,17 @@ describe('RegionalSettingsForm', () => {
     expect(screen.getByText(/valor predeterminado del sistema/i)).toBeInTheDocument();
   });
 
-  it('offers the full IANA set the backend accepts', () => {
+  it('offers the full set the backend accepts: every runtime IANA name plus UTC', () => {
     render(<RegionalSettingsForm timezone="America/Bogota" usingDefaults={false} canManage />);
     const options = Array.from((screen.getByLabelText(/zona horaria/i) as HTMLSelectElement).options).map((o) => o.value);
-    expect(options).toEqual(Intl.supportedValuesOf('timeZone'));
+    const runtime = Intl.supportedValuesOf('timeZone');
+    expect(options).toEqual(runtime.includes('UTC') ? runtime : ['UTC', ...runtime]);
+  });
+
+  it('lets a tenant that left UTC pick it again (DEFECT-TZ-DEFAULT-UNSETTABLE)', () => {
+    render(<RegionalSettingsForm timezone="America/Guayaquil" usingDefaults={false} canManage />);
+    const options = Array.from((screen.getByLabelText(/zona horaria/i) as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).toContain('UTC');
   });
 
   it('keeps the saved value visible even when the runtime does not list it', () => {
