@@ -1,6 +1,11 @@
 # UI-UX-SPEC-001 — Auditoría y Especificación Integral de UI/UX
 
-> **Estado del documento:** `EN CURSO — LOTE 1 de 3`.
+> **Estado del documento (2026-10-26):** `CERRADO PARCIALMENTE — LOTE 1 de 3 entregado; Lotes 2 y 3
+> no se escribieron; la implementación quedó parcial`. Ver **§0 — Cierre (2026-10-26)** más abajo
+> (decisión del owner: opción B — cerrar la spec con una tabla entregado/aplazado y programar el
+> bloque de tokens + azul antes de FASE 22). El texto de abajo describe la fase **tal como estaba
+> el 2026-09-10** y se conserva como historial.
+>
 > Esta fase **audita, inventaría, especifica y prioriza** los cambios de UI/UX antes de
 > implementarlos. **No** implementa UI. **No** modifica API, base de datos, migraciones, auth,
 > RLS, RBAC ni lógica de negocio. **No** hace commits de implementación.
@@ -25,6 +30,29 @@
 | **Lote 1** | §1 Objetivo · §2 Alcance · §3 Estado actual · §4 Principios UX · §5 Design system (definido vs implementado) · §6 Navegación · §7 Arquitectura visual · §8 Auditoría F17 (primera pasada) · §9 Auditoría F18 (primera pasada) · §11 OWNER UI CHANGE REQUESTS (contenedor vacío) · §12 Responsive (primera pasada) · §21 Priority matrix (parcial) · §22 Dependencies · §23 Out of scope · **decisiones DECISION-LANG / DECISION-NAV-RAIL / DECISION-PRIMARY resueltas** | **ESTE DOCUMENTO** |
 | Lote 2 | §13 Components · §14 Forms · §15 Tables · §16 Dashboard/report (+ `DECISION-CHARTS` por reporte) · §17 Loading/empty/error · §18 Accessibility · §10 Hallazgos 5A–5S (detalle) + incorporación de las OWNER UI CHANGE REQUESTS que el owner entregue | pendiente |
 | Lote 3 | §19 Page-by-page · §20 Critical flows · §24 Acceptance criteria · §25 Implementation roadmap · §19-matriz maestra completa · Reporte final (Parte 24) · Auditoría final (Parte 23) | pendiente |
+
+### §0 — Cierre (2026-10-26) · decisión del owner: opción B
+
+El owner declaró terminado el rediseño de UI. Verificado contra el código el 2026-10-26 (HEAD
+`2215f5d`), **no** todo lo aprobado en esta spec se entregó. Esta tabla cierra la spec sin
+declarar completo lo que no lo está:
+
+| Decisión / entregable de la spec | Estado verificado | Resolución |
+| --- | --- | --- |
+| `DECISION-LANG` — UI en español | **Entregado** (login, shell y pantallas en español) | Cerrado |
+| `DECISION-NAV-RAIL` — rail compacto (68 px, hover/`:focus-within` → 232 px, panel tablet + pin, drawer móvil) | **Parcial**: rail de 64 px que se expande con hover a 256 px; sin tratamiento tablet/pin; `:focus-within` no verificado; no usa `--nav-bg = primary` | Entregado parcial; resto **aplazado** al bloque de tokens |
+| `DECISION-PRIMARY` — azul `#2F6FED` y estados | **No entregado** (cero coincidencias en `apps/web`) | **Aplazado** al bloque de tokens |
+| `DS-01/02` — tokens `:root` + mapeo Tailwind | **No entregado** (`globals.css` sin variables; `tailwind.config.ts` con `extend` vacío) | **Aplazado** al bloque de tokens |
+| Componentes DS sin construir (Tabs, SegmentedControl, Stepper, Wizard, Badge con icono…) | No auditado en esta pasada | **Aplazado** (reevaluar en el bloque de tokens) |
+| Lote 2 (§13–§18, §10) y Lote 3 (§19, §20, §24, §25, matriz maestra) | **Nunca escritos** | **Descartados como documento**: no se escribirán; los hallazgos pendientes viven en `roadmap/pending-register.md` |
+| Layouts de teléfono, barra inferior móvil (≈35 commits, 2026-10-22…26) | **Entregado**, **no** estaba en la spec (surgió de las solicitudes del owner) | Registrado como entregado |
+| `5S-UI-05` — interacciones reales / regresión visual | **Nunca ejecutada** | Pasa a FASE 23 (`QA-VISUAL-REGRESSION`) |
+| `PROP-01…PROP-04` (propuestas del auditor) | Sin decisión del owner registrada | **Abiertas** |
+
+**Bloque programado (no iniciado):** *UI tokens + azul primario* — variables `:root`, mapeo Tailwind,
+`#2F6FED`, navegación sobre `--nav-bg`, retirar los colores hard-codeados. Riesgo bajo (no toca
+lógica). Se ejecuta **antes de FASE 22** (la demo es visual) y **después de FASE 19**. Hasta
+entonces esta spec NO debe leerse como "UI terminada".
 
 ---
 
@@ -879,11 +907,11 @@ Accessibility · Technical debt · Product decision.
 - `DECISION-CHARTS` = **decidir por reporte en Lote 2 (§16)** — único pendiente.
 - `UI-UX-IMPLEMENTATION-02..13` dependen de `UI-UX-IMPLEMENTATION-01` (tokens + componentes base).
 
-### 22.3 Propuesta de reestructuración del roadmap (registrada, NO aplicada)
+### 22.3 Propuesta de reestructuración del roadmap (**APROBADA 2026-10-26 y aplicada en `roadmap.md`**)
 
 > El owner propuso separar dos conceptos hoy fusionados en la fila "FASE 22" del `roadmap.md`.
-> **No se edita `roadmap.md` en esta fase** (Parte 17 — cambios doc mínimos). Se registra aquí y
-> se aplicará en su propia fase/commit si se aprueba.
+> Se registró aquí sin aplicarse durante esta fase; el 2026-10-26 el owner la **aprobó** y las filas
+> F22/F23 de `roadmap.md` se reescribieron. La columna "Hoy" muestra el texto **anterior**.
 
 | Fase | Hoy (`roadmap.md`) | Propuesta del owner |
 | --- | --- | --- |
@@ -895,8 +923,9 @@ Security → F20 Observability → F21 Deployment → F22 Demo (escenarios) → 
 MVP**. Coherente con esta fase: no construir el Demo Environment hasta que las correcciones de UI
 cambien cómo se crean productos, transferencias, ventas, etc.
 
-**Acción:** cuando se apruebe, un commit `docs:` sobre `roadmap.md` reescribe las filas F22/F23 y
-añade un ADR corto si los escenarios `DEMO-*` merecen especificación propia.
+**Acción:** ~~cuando se apruebe, un commit `docs:` sobre `roadmap.md` reescribe las filas F22/F23~~
+→ **hecho** (aprobado 2026-10-26). Sigue abierto: un ADR corto si los escenarios `DEMO-*` merecen
+especificación propia (se decide al iniciar FASE 22).
 
 ---
 

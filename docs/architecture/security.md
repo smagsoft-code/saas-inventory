@@ -153,6 +153,9 @@ by document type / invoice status, never by required buyer data (PROMPT 012-A). 
 one order produce exactly-once inventory and audit effects — PostgreSQL, not an in-memory lock, is
 the serialization point (works across API instances).
 
+
+> **Update (2026-10-26):** two FASE 13 rules changed. (1) The exceptional-discount trigger is now `base_price`, not `min_price` (ADR-0022 amendment of 2026-10-05; `min_price` remains the hard floor). (2) The requester-cannot-resolve-own-request rule is withdrawn — any holder of `pricing.discount.approve` may resolve, their own included (ADR-0022 amendment of 2026-10-26). The text here is FASE 13 history.
+
 **SALES (FASE 13)** adds `sales.returns.view`/`.create` (migration 0027) and reuses
 `inventory.returns.manage` (return inspection/disposition) and
 `pricing.discount.request`/`.approve` (all migration 0001). **Exceptional pricing:** a

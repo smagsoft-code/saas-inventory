@@ -99,6 +99,11 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   never has inventory applied, a resolved return can never be cancelled, and a `SALE` never commits
   against a pending/rejected approval — **no functional bug found, no code change**, only new
   concurrency tests. *(done)*
+  *Update (2026-10-26):* two rules above changed after FASE 13 — the exceptional-discount trigger is
+  now `base_price`, not `min_price` (ADR-0022 amendment of 2026-10-05; `min_price` stays the hard
+  floor), and the requester-cannot-resolve-own-request rule is withdrawn (ADR-0022 amendment of
+  2026-10-26: any holder of `pricing.discount.approve` may resolve, their own included). The text
+  above is FASE 13 history.
 
 - **FASE 14 — Events & Outbox** — transactional domain-event publishing and the Event Processor.
   `DomainEventPublisher` + `OutboxRepository` (`apps/api/src/common/events/`) are the single shared
@@ -226,15 +231,15 @@ re-runnable proof exists, which for most blocks it does not yet** — see
 | Block | Delivered (per commits / migrations / ADRs) | Validation state |
 | --- | --- | --- |
 | **QA campaign 5A–5S** (2026-09) | Functional QA over the finished system; not a development phase. 5R/5R-A: outbox → Event Processor → n8n → Telegram, 2-layer idempotency, 5 `dead_letter` rows replayed to `delivered` after the operator fixed the n8n workflow. 5S: second tenant, cross-tenant/IDOR + RLS probes (all 404/denied), public QR resolver, HTTP-level page loads. | Results recorded in prose and session notes only; raw evidence files are **not** in the repo (`QA-EVIDENCE-PERSISTENCE`). Visual/interaction regression **never run**. |
-| **Roles & permissions + warehouse scope** (`c8d3305`) | Role CRUD, `core.roles.manage` (migration `0032`), ADR-0034 (role-permission self-escalation), ADR-0035 (zero location assignments now denies, except the founding Administrador); `TransfersService.create` now checks the source location. | Integration tests exist; a passing run on an isolated instance was reported, not re-run. |
-| **Tenant onboarding + support** (`4c1e31a`, `abdbba3`) | `POST /platform/tenants` with invitation acceptance, audited time-boxed support sessions, migration `0033`, ADR-0036. | 2 integration files; passing run reported (50/50), not re-run. |
+| **Roles & permissions + warehouse scope** (`c8d3305`) | Role CRUD, `core.roles.manage` (migration `0032`), ADR-0034 (role-permission self-escalation), ADR-0035 (zero location assignments now denies, except the founding Administrador); `TransfersService.create` now checks the source location. | `roles-crud` and `users-rbac` passed in the full real-PostgreSQL run of 2026-10-26 (that run as a whole was **not** green — see `PG-VERIFY-FULL-RUN`). |
+| **Tenant onboarding + support** (`4c1e31a`, `abdbba3`) | `POST /platform/tenants` with invitation acceptance, audited time-boxed support sessions, migration `0033`, ADR-0036. | `platform-support` and `platform-tenant-onboarding` passed in the full real-PostgreSQL run of 2026-10-26 (run not green overall). |
 | **Login & Users UI** | "Crear cuenta" removed from `/login`; login/user identifier relaxed from email to a 10+ character string; `GET /users?q=`. | Reported in `CLAUDE.md`; the 557-test run it cites had 5–7 failures attributed to contention without proof. |
-| **Inventory / Kardex** (`1283de8`, `07d6fc3`, `2e5eded`) | Costed Kardex, `GET /reports/kardex`, weighted-average cost (ADR-0037, migration `0034`), rebuilt movements history. | Code present; no recorded real-PostgreSQL run for later fixes. |
-| **Transfers overhaul** | Transfer codes (`0035`), tenant-configurable approval/preparation workflow (`0036`), modal actions, date filter, product search. | As above. |
-| **Sales rework** (`24cc91b`, `b198a7d`, `3bae5aa`, `bdbd28e`, …) | Split payments (`0039` `order_payments`), PDF export by browser print (ADR-0038), approver price editing with an `order_items` price-edit grant (`0040`), return numbers (`0041`), `sales.orders.view_all` seller scope (`0044`), confirmed-order date backfill (`0047`), approval numbers (`0050`), exports and payments report, customers redesign (`0037`). **The exceptional-discount trigger moved from `min_price` to `base_price`** (ADR-0022 amendment of 2026-10-05, `base_price_at_request` in `0038`; `min_price` stays the hard floor) — FASE 12/13 text elsewhere still says "below `min_price`" (`DOC-ADR0022-TRIGGER-DRIFT`). **Also includes a change to separation of duties — see `DECISION-SELF-APPROVAL`.** | As above. |
-| **Catalog & stock loading** | Category codes and SKU prefix (`0042`), uppercase names (`0043`), `draft` product status removed (`0045`–`0046`), bulk stock load from Excel, import pipeline fixes, bulk/printable QR. | As above. |
-| **Home & tenant branding** (`88acde0`, `0048`) | Home KPIs with per-warehouse filter and yearly trend chart; tenant logos. | As above. |
-| **UI/UX redesign** | Spanish UI, 64 px hover-expand navigation rail, mobile tab bar, and phone layouts for transfers, new sale, order detail, payments, approvals, returns and movements (≈35 web commits, 2026-10-22…26). The design tokens, blue primary and Lotes 2–3 of `UI-UX-SPEC-001` were **not** delivered — see `UIUX-SPEC-VS-IMPLEMENTATION`. | Unit tests only; no browser regression. |
+| **Inventory / Kardex** (`1283de8`, `07d6fc3`, `2e5eded`) | Costed Kardex, `GET /reports/kardex`, weighted-average cost (ADR-0037, migration `0034`), rebuilt movements history. | Code present. In the 2026-10-26 full run the inventory/report suites that cover it **fail** (`inventory-stock` 11, `movements-summary` 7, …) — read as outdated tests, not proven (`DEFECT-INTEGRATION-STALE-TESTS`). |
+| **Transfers overhaul** | Transfer codes (`0035`), tenant-configurable approval/preparation workflow (`0036`), modal actions, date filter, product search. | Same run: `inventory-transfers` 1 failure, `transfers-summary` 2 failures. |
+| **Sales rework** (`24cc91b`, `b198a7d`, `3bae5aa`, `bdbd28e`, …) | Split payments (`0039` `order_payments`), PDF export by browser print (ADR-0038), approver price editing with an `order_items` price-edit grant (`0040`), return numbers (`0041`), `sales.orders.view_all` seller scope (`0044`), confirmed-order date backfill (`0047`), approval numbers (`0050`), exports and payments report, customers redesign (`0037`). **The exceptional-discount trigger moved from `min_price` to `base_price`** (ADR-0022 amendment of 2026-10-05, `base_price_at_request` in `0038`; `min_price` stays the hard floor) — FASE 12/13 text elsewhere still says "below `min_price`" (`DOC-ADR0022-TRIGGER-DRIFT`). **Also: the requester-cannot-resolve-own-request rule was first bypassed for `pricing.policy.manage` (`b198a7d`, no ADR) and then, by owner decision of 2026-10-26, replaced by "any holder of `pricing.discount.approve` may resolve their own request" (ADR-0022 amendment; see `DECISION-SELF-APPROVAL`).** | Same run: `sales-customers` 4, `sales-cart-orders` 3, `sales-exceptional-pricing` 3, `sales-returns-approvals-history` 3, `sales-returns` 1 failures (outdated tests, not proven). |
+| **Catalog & stock loading** | Category codes and SKU prefix (`0042`), uppercase names (`0043`), `draft` product status removed (`0045`–`0046`), bulk stock load from Excel, import pipeline fixes, bulk/printable QR. | Import and bulk-receipt suites passed in the 2026-10-26 run; QR and catalog not individually reviewed. |
+| **Home & tenant branding** (`88acde0`, `0048`) | Home KPIs with per-warehouse filter and yearly trend chart; tenant logos. | `tenant-logo` passed in the 2026-10-26 run; home KPIs covered by web unit tests only. |
+| **UI/UX redesign** | Spanish UI, 64 px hover-expand navigation rail, mobile tab bar, and phone layouts for transfers, new sale, order detail, payments, approvals, returns and movements (≈35 web commits, 2026-10-22…26). The design tokens, blue primary and Lotes 2–3 of `UI-UX-SPEC-001` were **not** delivered; the owner chose to close the spec with a delivered/deferred table and to schedule a tokens + blue block before FASE 22 (`UIUX-SPEC-VS-IMPLEMENTATION`). | Unit tests only; no browser regression. |
 
 ## Future phases
 
@@ -249,7 +254,9 @@ phases and do not count as phase work (see the phase execution rule below).
   findings. Existing per-phase unit and integration testing remains mandatory and is not replaced
   by this phase. It should start by closing the open security items in
   [pending-register.md](pending-register.md) (`GAP-F19-PARSE-UUID`, `GAP-F19-EMPTY-BODY`,
-  `GAP-F19-RLS-IDOR-DEPTH`, `PG-VERIFY-FULL-RUN`) and the owner decision `DECISION-SELF-APPROVAL`.
+  `GAP-F19-RLS-IDOR-DEPTH`, `PG-VERIFY-FULL-RUN`). Because self-approval of price requests is now
+  allowed (ADR-0022 amendment, 2026-10-26), the RBAC review should treat `pricing.discount.approve`
+  as a privileged permission.
 
 - **FASE 20 — Observability** — production-grade structured logging, correlation/request IDs,
   health/readiness/liveness checks, metrics, error visibility, worker monitoring and operational
@@ -259,19 +266,25 @@ phases and do not count as phase work (see the phase execution rule below).
   environment configuration, secrets handling, database migration procedure, backups/restore
   strategy, deployment validation and production rollout.
 
-- **FASE 22 — Seed / Demo Environment** — isolated demo tenant, synthetic catalog/inventory/sales
-  data, reproducible seed process and demo reset/reinitialization strategy according to
-  ADR-0014. Demo data must never compromise tenant isolation or production data.
+- **UI tokens + primary blue block** *(scheduled, not started; between FASE 21 and FASE 22 — owner
+  decision, option B, 2026-10-26)* — `:root` design tokens, Tailwind mapping, the approved blue
+  `#2F6FED`, navigation on `--nav-bg`, removal of hard-coded colours; closes the deferred items of
+  [UI-UX-SPEC-001](../ui-ux/UI-UX-SPEC-001.md) §0. Low risk: no business logic, API or schema.
 
-- **FASE 23 — QA Integral** — complete end-to-end validation of the finished system across backend,
-  frontend, database, security, concurrency, integrations, workers, reports, demo environment and
-  production-like deployment. Includes regression of all previously completed phases and validation
-  of critical business workflows.
+- **FASE 22 — Demo Environment ("prepare the scenario")** *(redefined and approved by the owner on
+  2026-10-26; replaces "Seed / Demo Environment")* — a reproducible, isolated demo tenant
+  (ADR-0014; never compromising tenant isolation or production data) built from **named scenarios**
+  `DEMO-01…DEMO-12`: newly created company · initial catalog · initial inventory · transfer between
+  warehouses · normal sale · sale with approval · return · Excel import · QR · dashboard with data ·
+  multi-user/roles · multi-tenant — plus a **"Reset Demo"** procedure/button so tests can be repeated.
+  Whether the `DEMO-*` scenarios need their own short ADR is decided when the phase starts.
 
-  > **Pending owner decision:** a proposal to redefine FASE 22 (scenario-based demo preparation,
-  > `DEMO-01…DEMO-12` + "Reset Demo") and FASE 23 ("use and destroy/repeat" QA over it) is recorded
-  > in `UI-UX-SPEC-001.md` §22.3 and **has not been applied** to the rows above
-  > (`ROADMAP-F22-F23-SPLIT`).
+- **FASE 23 — QA Integral ("use and destroy/repeat")** *(redefined and approved by the owner on
+  2026-10-26; replaces "QA Integral")* — the owner walks the system as a real user over the FASE 22
+  Demo Environment, manipulating everything, through ten journeys: Administration · Catalog ·
+  Inventory · Transfer · Sale · Return · Exceptional price · Import · QR · Reports. Still includes
+  regression of all previously completed phases, validation of critical business workflows and the
+  visual/interaction regression that was never run (`QA-VISUAL-REGRESSION`).
 
 - **FASE 24 — MVP Release** — final release readiness review, versioning, release artifacts,
   production acceptance criteria and public MVP release.
@@ -290,6 +303,14 @@ If a future business requirement introduces purchase orders, supplier receiving,
 purchase returns or procurement workflows, that capability must first receive an explicit
 architectural design/ADR and then be inserted into the roadmap according to its dependencies.
 It must not be inferred from the existence of the `suppliers` table.
+
+### Serialized and lot-tracked variants
+
+Selling serialized or lot-tracked variants is **outside the MVP scope** — an owner decision of
+2026-10-26, recorded in [ADR-0039](../decisions/0039-mvp-scope-serialized-lot-sales.md), not a pending
+defect. Such variants are rejected with HTTP 422 at the cart and at checkout, with no side effect on
+orders, reservations, inventory movements, idempotency records, audit or notifications. No phase is
+assigned; the capability is evaluated only when the owner explicitly widens the scope.
 
 ### Audit, Domain Events and Outbox
 
@@ -353,24 +374,30 @@ explicit review/commit.
 ### Verified status — 2026-10-26
 
 - **Repository:** branch `develop`, HEAD `2215f5d`, clean working tree, 119 commits,
-  **no upstream configured — nothing has been pushed**. Migrations `0000`–`0050` (51 files); ADRs `0001`–`0038`.
+  **no upstream configured — nothing has been pushed**. Migrations `0000`–`0050` (51 files); ADRs `0001`–`0039`.
 - **Numbered phases:** FASE 0–18 implemented and committed. FASE 19–24 **not started**.
 - **Work after FASE 18** (roles, onboarding/support, Kardex, sales rework, UI/UX redesign, …) is
   implemented and committed but **not formally validated** — see "Work after FASE 18" above.
-- **Tests (run 2026-10-26):** `apps/api` unit 778 passed (70 files); `apps/web` unit 1009 passed
+- **Tests (run 2026-10-26):** `apps/api` unit 778 passed (70 files); `apps/web` unit 1008 passed
   (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
-  (`DEFECT-WEB-TEST-UNHANDLED`). **No full real-PostgreSQL run exists for the current tree**
-  (52 integration files; last full totals 503/40 and 557/43 are outdated and the latter had failures)
-  — `PG-VERIFY-FULL-RUN`.
+  (`DEFECT-WEB-TEST-UNHANDLED`). **First full real-PostgreSQL run of the current tree: not green** —
+  635 tests, 582 passed, 45 failed, 8 skipped, plus 2 aborted suites; the failures read as outdated
+  tests after the October rework, not proven product regressions (`PG-VERIFY-FULL-RUN`,
+  `DEFECT-INTEGRATION-STALE-TESTS`).
 - **Notifications:** backend flag `N8N_EVENTS_ENABLED=false` by default; the n8n → Telegram path was
   validated end to end in 015-A and 5R/5R-A against a test destination; which event types produce a
   Telegram message is defined in the operator's n8n workflow, not in this repository — 5S notes
   report 3 of 8, unconfirmed and pending an owner definition (`GAP-NOTIF-COVERAGE`). Operational notifications are not enabled by
   this documentation pass. Retry from the UI does not exist (`GAP-NOTIF-RETRY-BACKEND`).
 - **Open items:** every pending security item, defect, limitation, verification gap and owner
-  decision is in [pending-register.md](pending-register.md). Headline items: `GAP-F19-PARSE-UUID`,
-  `GAP-F19-RLS-IDOR-DEPTH`, `DECISION-SELF-APPROVAL`, `DEFECT-TZ-DEFAULT-UNSETTABLE`,
-  `LIMIT-SERIALIZED-LOT-SALES`, `UIUX-SPEC-VS-IMPLEMENTATION`, `ROADMAP-F22-F23-SPLIT`.
+  decision is in [pending-register.md](pending-register.md). Headline open items:
+  `GAP-F19-PARSE-UUID`, `GAP-F19-EMPTY-BODY`, `GAP-F19-RLS-IDOR-DEPTH`, `PG-VERIFY-FULL-RUN` /
+  `DEFECT-INTEGRATION-STALE-TESTS`, `DEFECT-TZ-DEFAULT-UNSETTABLE`, `DEFECT-WEB-TEST-UNHANDLED`.
+- **Owner decisions of 2026-10-26:** self-approval of price requests allowed for any
+  `pricing.discount.approve` holder (ADR-0022 amendment); `base_price` confirmed as the exceptional
+  trigger; UI spec closed with a delivered/deferred table and a tokens + blue block scheduled before
+  FASE 22; FASE 22/23 redefinition approved and applied; notification coverage kept as is; serialized /
+  lot-tracked sales out of MVP scope with HTTP 422 and no side effects (ADR-0039).
 - **Next phase:** FASE 19, starting with the register's verification items.
 
 ### Narrative history (as of 2026-09-10, kept unchanged)

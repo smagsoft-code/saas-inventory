@@ -2651,6 +2651,9 @@ FASE 13 adds the two SALES-dependent workflows this schema has carried since Pro
 FK-references `order_id` + `order_item_id` (both `NOT NULL`), so an approval cannot exist before the
 order — the workflow is:
 
+
+> **Update (2026-10-26):** two FASE 13 rules changed. (1) The exceptional-discount trigger is now `base_price`, not `min_price` (ADR-0022 amendment of 2026-10-05; `min_price` remains the hard floor). (2) The requester-cannot-resolve-own-request rule is withdrawn — any holder of `pricing.discount.approve` may resolve, their own included (ADR-0022 amendment of 2026-10-26). The text here is FASE 13 history.
+
 | Command | Transition / effect |
 | --- | --- |
 | `POST /orders` with a line where `unit_price < min_price` | The line is **no longer rejected**. `resolveUnitPrice` classifies it `below_min`; `assertWithinHardFloor` rejects it outright (`422`, no order) only if it is more than `tenant_price_policies.max_discount_below_min_percent` under the floor (a `NULL` policy value = no extra floor). Otherwise the order is created `pending` with `order_items.is_exceptional_discount = true` and the normal `RESERVATION` per line. |
@@ -2780,6 +2783,8 @@ cross-table arithmetic check is application-layer, not a `CHECK` constraint (a `
 another table without a trigger, and this isn't a tenant-isolation-critical invariant that would
 justify one — a data-quality/business-rule guard, not a security boundary, matching the same judgment
 call already made for `product_images`' variant-product consistency).
+
+> **Update (2026-10-26):** two FASE 13 rules changed. (1) The exceptional-discount trigger is now `base_price`, not `min_price` (ADR-0022 amendment of 2026-10-05; `min_price` remains the hard floor). (2) The requester-cannot-resolve-own-request rule is withdrawn — any holder of `pricing.discount.approve` may resolve, their own included (ADR-0022 amendment of 2026-10-26). The text here is FASE 13 history.
 
 **The partial unique index is the idempotency mechanism here** — a second exceptional-discount request
 for the same line while one is still `pending` is rejected by the constraint itself, not by an

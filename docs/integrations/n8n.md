@@ -100,6 +100,9 @@ The workflow (suggested name: **"SaaS Inventory — Event Notifications"**) shou
 | `sales.order.cancelled` | optional (workflow rule) | admin channel |
 | `sales.return.requested` / `.resolved` / `.cancelled` | optional (not required by the business yet) | warehouse / admin channel |
 
+
+> **MVP notification scope (owner decision, 2026-10-26): keep as is.** Only the events marked **yes** above produce a Telegram message; the "optional" rows stay optional and are not being added for the MVP. Which events the operator's workflow actually routes is defined in n8n, outside this repository, and was last inspected during QA 5R/5S (see `roadmap/pending-register.md`, `GAP-NOTIF-COVERAGE`).
+
 The backend never decides a `chatId`, Telegram username, or group — that mapping lives entirely in
 n8n (or a future explicitly-approved tenant-notification-settings model). FASE 15 deliberately does
 **not** add `notification_preferences` / recipient tables (see events.md).

@@ -162,9 +162,13 @@ and get it agreed before implementing.
 > then [docs/roadmap/pending-register.md](docs/roadmap/pending-register.md) (open items with
 > evidence), then the ADR index. In short: FASE 0–18 are implemented; FASE 19–24 are not started;
 > much of the work after FASE 18 is implemented but **not validated** (no full real-PostgreSQL run
-> for the current tree; `apps/web` unit tests exit non-zero because of one unhandled error). One
-> rule documented below was changed in code without an ADR — the exceptional-discount requester
-> may resolve their own request when holding `pricing.policy.manage` (`DECISION-SELF-APPROVAL`).
+> for the current tree is green — the first full run, 2026-10-26, had 45 failing tests, read as
+> outdated tests; `apps/web` unit tests exit non-zero because of one unhandled error). Several rules
+> described below were **changed by owner decision on 2026-10-26 / earlier** and are recorded in
+> ADRs: the exceptional-discount trigger is `base_price`, not `min_price` (ADR-0022 amendment,
+> 2026-10-05); any holder of `pricing.discount.approve` may resolve a price request, their own
+> included (ADR-0022 amendment, 2026-10-26); serialized/lot-tracked variants are out of the MVP
+> scope and rejected with 422 and no side effects (ADR-0039).
 
 The PostgreSQL persistence layer (schema, migrations, RLS, constraints — Prompt 03) is
 implemented. Authentication (Prompt 04) is implemented — registration (self-service tenant
@@ -1359,11 +1363,14 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
   `min_price`" and are historical (`DOC-ADR0022-TRIGGER-DRIFT`); sequential return and approval
   numbers; the
   `sales.orders.view_all` permission scoping sales history to the seller; exports and payments
-  report. **Separation-of-duties change:** `PriceApprovalsService.resolve` lets a
-  `pricing.policy.manage` holder resolve their own request (`b198a7d`, migration `0049` backfills the
-  admin pricing permissions) — contradicting the "requester can never resolve their own request"
-  statements in this file's FASE 13 paragraph and in five other documents; no ADR records it
-  (`DECISION-SELF-APPROVAL`).
+  report. **Separation-of-duties change:** the FASE 13 rule "the requester can never resolve their
+  own request" is withdrawn — first bypassed for `pricing.policy.manage` holders in code only
+  (`b198a7d`, migration `0049` backfills the admin pricing permissions), then settled by the owner on
+  2026-10-26: any holder of `pricing.discount.approve` may resolve a request, their own included
+  (ADR-0022 amendment; `PriceApprovalsService` and the approval UI no longer special-case the
+  requester). By default only the Administrador holds both `.request` and `.approve`
+  (`DECISION-SELF-APPROVAL`). **Serialized / lot-tracked variants** are out of the MVP scope (ADR-0039,
+  422 at the cart and at checkout, no side effects).
 - **Catalog / import / QR** (`0042`, `0043`, `0045`, `0046`): category codes and SKU prefix, uppercase
   names, the `draft` product status removed, bulk stock load from Excel, import-pipeline fixes, bulk
   and printable QR generation.
@@ -1374,5 +1381,10 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
   approvals, returns and movements. The design-token layer, blue primary and Lotes 2–3 specified in
   `docs/ui-ux/UI-UX-SPEC-001.md` were **not** delivered (`UIUX-SPEC-VS-IMPLEMENTATION`).
 - **Verification baseline (2026-10-26):** `apps/api` unit 778/778 (70 files); `apps/web` unit
-  1009 passed (138 files) plus 1 unhandled error → non-zero exit (`DEFECT-WEB-TEST-UNHANDLED`);
-  `pg-verify` not run (a development PostgreSQL holds port 55432).
+  1008 passed (138 files) plus 1 unhandled error → non-zero exit (`DEFECT-WEB-TEST-UNHANDLED`);
+  `pg-verify`, first full run on the current tree, on an isolated instance (:55433, the development
+  database on :55432 untouched): 635 tests — 582 passed, 45 failed, 8 skipped, plus 2 aborted suites in
+  `multi-tenancy-rls`. The failures read as outdated tests, not proven regressions
+  (`PG-VERIFY-FULL-RUN`, `DEFECT-INTEGRATION-STALE-TESTS`).
+- **UI/UX spec closure (owner, option B):** `UI-UX-SPEC-001` is closed with a delivered/deferred table
+  (its §0); a tokens + blue primary block is scheduled after FASE 19 and before FASE 22.

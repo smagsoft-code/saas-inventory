@@ -180,6 +180,8 @@ can be confirmed" notice (no link to a queue that does not exist yet). The Appro
 `POST /price-approvals` request flow and the order confirm/cancel lifecycle are **F17-09**; the
 backend gate still needs correcting first.
 
+> **Update (2026-10-26):** the exceptional-discount trigger is now `base_price`, not `min_price` ([ADR-0022](../../decisions/0022-pricing-tiers-and-discount-approval.md), amendment of 2026-10-05); `min_price` remains the hard floor. The text above/below is the FASE 13 description, kept as history.
+
 **RESOLVED — F17-09 (2026-09).** The AND-only `@RequirePermissions` genuinely could not express the
 OR, so F17-09 adds a minimal, behaviour-preserving mechanism: `@RequireAnyPermission(...codes)`
 (`common/decorators/require-any-permission.decorator.ts`) + OR support in `PermissionsGuard` (a

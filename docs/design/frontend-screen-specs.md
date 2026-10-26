@@ -274,6 +274,9 @@ permission-gated CTA).
   approval status `pending · approved · rejected · cancelled`; it is **order-first** (the below-min
   line already exists, frozen); the requester **cannot resolve their own request**;
   `minPriceAtRequest` is returned only with `pricing.floor.view`. Prototype labels map 1:1.
+
+> **Update (2026-10-26):** the rule "the requester can never resolve their own request" is **withdrawn** — any holder of `pricing.discount.approve` may resolve a request, their own included ([ADR-0022](../decisions/0022-pricing-tiers-and-discount-approval.md), amendment of 2026-10-26). The statement above is kept as FASE 13 history.
+
 - **Purpose** — process a return traced to a confirmed order; set per-line disposition; apply to
   stock.
 - **Primary info** — request list (DEV-nnnn, order, customer, line count, status) + selected
@@ -292,6 +295,9 @@ permission-gated CTA).
   model). **Price Approvals** (`sales.price_approval.*`) uses the identical master-detail +
   line-review layout: request list → detail with the frozen order-item snapshot, *Aprobar* /
   *Rechazar*, requester-cannot-self-approve enforced in the UI affordance and the API.
+
+> **Update (2026-10-26):** the rule "the requester can never resolve their own request" is **withdrawn** — any holder of `pricing.discount.approve` may resolve a request, their own included ([ADR-0022](../decisions/0022-pricing-tiers-and-discount-approval.md), amendment of 2026-10-26). The statement above is kept as FASE 13 history.
+
 - **States** — list empty: "Sin devoluciones pendientes". Detail loading: skeleton. Resolve error:
   Alert in the detail footer, nothing applied to stock.
 

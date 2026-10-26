@@ -1,7 +1,9 @@
 # Pending-items register
 
-**Baseline:** repository state verified on **2026-10-26** — branch `develop`, HEAD `2215f5d`, clean
-working tree, 119 commits, **no upstream configured (nothing has ever been pushed)**.
+**Baseline:** repository state verified on **2026-10-26** — branch `develop`, HEAD `2215f5d` at the
+time of the first version (the documentation commit `7ca9b94` followed), clean working tree, 119
+commits, **no upstream configured (nothing has ever been pushed)**. Updated the same day after the
+owner's decisions on six items; each affected entry carries a *decided* banner.
 
 This register separates *implemented* work from *validated* work. An item is never closed here
 without evidence a reader can re-run. It is the starting point for the FASE 19 audit; it does not
@@ -68,11 +70,22 @@ improvement or limitation.
   `PG-VERIFY-FULL-RUN`).
 - **Acceptance:** per new endpoint, a cross-tenant read and mutate by real UUID returns 404; RLS
   denies the `app_tenant` role across tenants for every new table; results kept in the repo.
+- **Added 2026-10-26:** the existing per-table isolation suite (`multi-tenancy-rls`) aborted for
+  `categories` and `customers` because its fixtures are out of date, so even those two tables have no
+  current isolation proof (`DEFECT-INTEGRATION-STALE-TESTS`).
 - **Status:** `to-verify`.
 
-### DECISION-SELF-APPROVAL *(new — contradiction between code and docs)*
+### DECISION-SELF-APPROVAL — **decided 2026-10-26 (owner)**
 
-- **Description:** `PriceApprovalsService.resolve` now lets a holder of `pricing.policy.manage`
+> **Decision:** anyone holding `pricing.discount.approve` may resolve a price request, their own
+> included. Recorded as an amendment to ADR-0022. Code, UI and tests changed to match in a separate
+> commit (the service no longer special-cases `pricing.policy.manage`; the ApprovalActions UI no longer
+> hides the buttons for the requester). **Status: `fixed-pending-validation`** — API unit 778/778 and
+> web unit pass; the real-PostgreSQL proof is in `PG-VERIFY-FULL-RUN`. Note for FASE 19: by default
+> only the Administrador holds both `.request` and `.approve`; treat `.approve` as privileged.
+> The entry below is the original finding, kept for history.
+
+- **Description (original finding):** `PriceApprovalsService.resolve` now lets a holder of `pricing.policy.manage`
   resolve **their own** exceptional-discount request (`price-approvals.service.ts:304-310`, comment:
   "owner decision"). At least six documents still state the requester can **never** resolve their own
   request (`CLAUDE.md`, `roadmap.md` FASE 13, `security.md:164`, `modules.md:216`,
@@ -89,7 +102,7 @@ improvement or limitation.
 - **Dependencies:** owner decision.
 - **Acceptance:** an ADR (or ADR-0022 amendment) states the exception, its audit requirement and
   scope; the six documents are aligned.
-- **Status:** `open` — needs an owner decision, not a code change.
+- **Status:** `fixed-pending-validation` (was `open — needs an owner decision`).
 
 ## B. Notifications / n8n
 
@@ -120,9 +133,13 @@ improvement or limitation.
   `dead_letter` immediately; `docs/integrations/n8n.md` records the workflow version checked.
 - **Status:** `to-verify`.
 
-### GAP-NOTIF-COVERAGE
+### GAP-NOTIF-COVERAGE — **decided 2026-10-26 (owner): keep as is**
 
-- **Description:** only 3 of the 8 event types produce a Telegram message (`order.confirmed`,
+> **Decision:** the MVP keeps the current notification coverage; no new Telegram messages are added.
+> `docs/integrations/n8n.md` records it. What remains `to-verify` is only whether the operator's n8n
+> workflow really matches the documented table (it lives outside this repository).
+
+- **Description (original finding):** only 3 of the 8 event types produce a Telegram message (`order.confirmed`,
   `price_approval.requested`, `order.cancelled`); the rest are delivered to n8n and ignored. This
   matches `n8n.md`'s "optional" rows but has never been confirmed as the intended MVP scope.
 - **Evidence:** *notes* (5S) + *static* (`n8n.md:95-101`).
@@ -152,9 +169,18 @@ improvement or limitation.
 - **Acceptance:** `PATCH {timezone:"UTC"}` returns 200 and the same value on `GET`; test added.
 - **Status:** `open` (confirmed by validator contents).
 
-### LIMIT-SERIALIZED-LOT-SALES
+### LIMIT-SERIALIZED-LOT-SALES — **decided 2026-10-26 (owner): MVP scope decision, not a defect**
 
-- **Description:** variants flagged serialized or lot-tracked cannot be sold: cart and order creation
+> **Decision:** recorded in [ADR-0039](../decisions/0039-mvp-scope-serialized-lot-sales.md). Variants
+> without serial/lot sell as today; serialized/lot-tracked variants keep being rejected with **422**
+> and the rejection must have no side effects. No phase is assigned. **Code change:** the cart used to
+> answer `409` for these variants; it now answers `422` like checkout. New integration suite
+> `sales-serialized-lot-rejection.integration.test.ts` proves, against the database, that a rejection
+> leaves no cart item, order, reservation, idempotency record, audit row or `event_outbox` row, and that
+> the `Idempotency-Key` stays reusable. **Status: `closed-with-evidence`** for the 4 new tests (passed
+> in the real-PostgreSQL run of 2026-10-26). Reopens only on an explicit scope change.
+
+- **Description (original finding):** variants flagged serialized or lot-tracked cannot be sold: cart and order creation
   reject them (`carts.service.ts:322`, `orders.service.ts:714`). No approved model links
   `order_items` to `product_serials`/`product_lots`, and `inventory_movements` has no serial/lot
   column.
@@ -181,7 +207,23 @@ improvement or limitation.
 
 ### PG-VERIFY-FULL-RUN
 
-- **Description:** no complete, green real-PostgreSQL integration run exists for the current tree.
+> **First full run on the current tree — 2026-10-26** (isolated instance on port 55433 by temporarily
+> editing the tool's `PORT`, reverted afterwards; the development database on :55432 was not touched).
+> Result: **635 tests — 582 passed, 45 failed, 8 skipped; 53 files, 14 failed** (+2 failed suites in
+> `multi-tenancy-rls`), and 5 structural checks failed (`52 tables exist — found 54`,
+> `43 tenant-owned tables — found 45`, …). **Not green.** The `EBUSY` teardown error did not occur this
+> time. Diagnosis (see `DEFECT-INTEGRATION-STALE-TESTS`): the failures look like **tests and fixtures
+> that were not updated** after the October rework (migrations 0031–0050, customer/taxId validation,
+> default-role permissions, read-scope), not product regressions — but that is a reading of the error
+> messages, not a proof; no baseline run of the previous commit was made.
+> The 8 skipped tests are all in `multi-tenancy-rls` (they depend on its two aborted suites). Passed in
+> that run: `sales-serialized-lot-rejection` (4/4, new), `sales-transition-concurrency` (15/15),
+> `roles-crud` (12), `users-rbac` (21), `platform-support` (14), `platform-tenant-onboarding` (9),
+> `tenant-logo` (5), `bulk-receipts` (9), `import` (27) and `import-worker` (8). A second, targeted run of
+> the four sales suites touched by this work confirmed the fixed `P7` and the same 6 outdated tests.
+> Raw log: `scratchpad/pgverify-run.log` (git-ignored, not preserved by the repository).
+
+- **Description (original finding):** no complete, green real-PostgreSQL integration run exists for the current tree.
 - **Evidence:** *static* — 52 integration test files now. Last recorded totals: 503/40 files
   (F18-10) → 557/43 files (Login+Usuarios block, **5 and 7 failures on two runs**, attributed to
   contention under `fileParallelism` without proof). Roles and onboarding/support suites were
@@ -197,6 +239,41 @@ improvement or limitation.
 - **Known environmental noise:** the harness's `EBUSY` on `.verify-pgdata` teardown (documented
   since F18-04) and the web build's Windows `EPERM` symlink step (documented since FASE 12) were
   **not re-checked** here.
+
+### DEFECT-INTEGRATION-STALE-TESTS *(new)*
+
+- **Description:** in the 2026-10-26 run, 45 integration tests and 2 suites fail in 14 files; the
+  messages point at outdated expectations rather than behaviour regressions:
+  `inventory-stock` (11), `movements-summary` (7), `inventory-movements-date-filter` (4),
+  `sales-customers` (4), `sales-exceptional-pricing` (3 + my P7, since fixed), `sales-cart-orders` (3),
+  `sales-returns-approvals-history` (3), `inventory-summary` (3), `transfers-summary` (2),
+  `inventory-transfers` (1), `platform-summary` (1), `sales-returns` (1), `migrations` (1 — counts 52
+  tables, now 54), and `multi-tenancy-rls` (2 suites aborted: its fixtures insert into a `categories.slug`
+  column that no longer exists and a now-generated `customers.display_name`).
+  Representative causes seen: the `Vendedor` template now holds `inventory.view` (tests expect 403);
+  `taxId` must be 10 digits for `cedula`; customer names are standardised/upper-cased; GET-by-id of an
+  approval returns 404 to a Supervisor/Vendedor with no location assignment (ADR-0035 read scope).
+- **Severity / risk:** P2 for FASE 19 — **the per-table cross-tenant isolation test for `categories` and
+  `customers` did not run**, so that proof is currently missing (other tables in that suite passed).
+- **Phase:** first step of FASE 19. **Acceptance:** each failing test is either updated to the current
+  rules (with the rule it now encodes stated) or the product bug is fixed; a full run reports 0 failed.
+- **Status:** `open`.
+
+### DEFECT-API-TEST-TYPECHECK *(new)*
+
+- **Description:** `tsc --noEmit -p test/tsconfig.json` reports 2 errors in files this work did not
+  touch: `test/inventory/bulk-receipts.integration.test.ts(65)` (`body` is not a known option of the
+  inject helper) and `test/sales/sales-order-transitions.integration.test.ts(203)` (`import.meta`
+  needs a newer `module` setting). `pnpm --filter … typecheck` therefore cannot pass.
+- **Evidence:** *runtime*, 2026-10-26. **Severity:** P3 (CI hygiene). **Phase:** before FASE 19.
+- **Acceptance:** the API `typecheck` script exits 0. **Status:** `open`.
+
+### OBS-DEV-CREDENTIAL-IN-SPEC *(new, informational)*
+
+- `docs/ui-ux/UI-UX-SPEC-001.md` (committed) contains a local QA login and password for the
+  development tenant. It belongs to a throwaway local database, not production, but CLAUDE.md §7.4
+  forbids committing credentials. **Not changed here** (removing it is an owner call and the value may
+  still be needed locally); recommended to move it out of the repository. **Status:** `open`.
 
 ### Unit-test baseline (verified 2026-10-26)
 
@@ -226,9 +303,14 @@ Lint, typecheck and the web build were not run in this documentation-only pass.
 
 ## E. UI/UX redesign — declared finished, not matched to the written spec
 
-### UIUX-SPEC-VS-IMPLEMENTATION *(decision needed)*
+### UIUX-SPEC-VS-IMPLEMENTATION — **decided 2026-10-26 (owner): option B**
 
-- **Description:** `UI-UX-SPEC-001` is still marked "EN CURSO — LOTE 1 de 3"; Lotes 2 and 3 were
+> **Decision:** close `UI-UX-SPEC-001` with a delivered / deferred table (now its §0) and schedule a
+> small *UI tokens + primary blue* block **after FASE 19 and before FASE 22**. The spec is no longer
+> "in progress", and it is explicitly **not** "UI finished". **Status: `open`** until that block runs
+> (scheduled in `roadmap.md`, not started).
+
+- **Description (original finding):** `UI-UX-SPEC-001` is still marked "EN CURSO — LOTE 1 de 3"; Lotes 2 and 3 were
   never produced. Verified state of its approved decisions in `apps/web`:
 
   | Spec decision | Verified state |
@@ -253,8 +335,9 @@ Lint, typecheck and the web build were not run in this documentation-only pass.
 - **Description:** the owner proposed redefining FASE 22 as scenario-based demo preparation
   (`DEMO-01…DEMO-12` + "Reset Demo") and FASE 23 as owner-driven "use and destroy/repeat" QA over it.
   Recorded in `UI-UX-SPEC-001.md` §22.3 as "registered, **not applied**".
-- **Status:** `open` — awaiting owner approval. **Acceptance:** one `docs:` commit rewrites the two
-  `roadmap.md` rows (and adds a short ADR if `DEMO-*` needs its own spec).
+- **Status:** `closed-with-evidence` — **approved by the owner on 2026-10-26** and applied: the FASE 22
+  and FASE 23 rows of `roadmap.md` now carry the new definitions, and `UI-UX-SPEC-001` §22.3 says so.
+  Still open and small: decide whether `DEMO-01…DEMO-12` needs its own short ADR when FASE 22 starts.
 
 ### DOC-STALE
 
@@ -279,9 +362,15 @@ Lint, typecheck and the web build were not run in this documentation-only pass.
   is its own review.
 - **Severity / risk:** P3 (documentation integrity; pricing rules are security-relevant, so a reader
   following the older text would misjudge when approval is required).
-- **Proposed phase:** before FASE 19. **Acceptance:** each listed document either states the current
-  trigger or carries a pointer to the ADR-0022 amendment.
-- **Status:** `open`. Flagged, not resolved, in `roadmap.md` and `CLAUDE.md`.
+- **Owner confirmation (2026-10-26):** `base_price` is the current rule.
+- **Resolution:** a dated "Update (2026-10-26)" pointer to the ADR-0022 amendments was added — not a
+  rewrite, the phase text is kept as history — to `modules.md`, `security.md`, `database.md` (2
+  places), `f17-screen-catalog.md` (2), `f17-gaps.md`, `frontend-screen-specs.md` (2), `roadmap.md`
+  (FASE 13) and `CLAUDE.md` (status banner + catch-up). Reviewed, **no edit needed**: `threat-model.md`
+  and `information-inventory.md` only mention the hard floor `max_discount_below_min_percent`, which
+  is still keyed to `min_price`. Not annotated: `database.md` ~l.1052 (a general rationale sentence).
+- **Acceptance:** each listed document either states the current trigger or carries a pointer.
+- **Status:** `fixed-pending-validation` (docs only; no tooling checks prose).
 
 ## G. Items already tracked elsewhere (not duplicated)
 

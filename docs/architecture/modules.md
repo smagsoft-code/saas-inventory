@@ -221,6 +221,9 @@ locking convoy; `LocationAuthorizationService` — ADR-0024; `LocationsRepositor
   approve/reject serializes against confirmation (lock order: `orders` → `price_approvals` →
   `inventory_balances`). `min_price` in an approval response is gated on `pricing.floor.view`
   (ADR-0028); `discount_amount` is computed against `max_price` so it never leaks the floor.
+
+> **Update (2026-10-26):** two FASE 13 rules changed. (1) The exceptional-discount trigger is now `base_price`, not `min_price` (ADR-0022 amendment of 2026-10-05; `min_price` remains the hard floor). (2) The requester-cannot-resolve-own-request rule is withdrawn — any holder of `pricing.discount.approve` may resolve, their own included (ADR-0022 amendment of 2026-10-26). The text here is FASE 13 history.
+
 - **Sales returns / disposition** — a reversal traced to a **confirmed** order, never a second
   negative order, never a cancellation. `POST /sales-returns` (`sales.returns.create`,
   `Idempotency-Key`) locks the `orders` row and validates every line against

@@ -532,6 +532,9 @@ Legend for support: **A** fully supported · **B** additive backend change recom
   the server sets `order_items.is_exceptional_discount` and keeps the order `pending`. The UI
   **never** computes `price < minPrice` and **never** holds a hidden `minPrice` (ADR-0028). It may
   surface the flag from the order response and offer `S-APPROVAL-NEW`.
+
+> **Update (2026-10-26):** the exceptional-discount trigger is now `base_price`, not `min_price` ([ADR-0022](../../decisions/0022-pricing-tiers-and-discount-approval.md), amendment of 2026-10-05); `min_price` remains the hard floor. The text above/below is the FASE 13 description, kept as history.
+
 - **Not shown:** "Guardar como borrador" (cart auto-persists); **impuestos line — PROTOTYPE ONLY**
   (`tax_total` always 0).
 - **Validation:** qty > 0; `negotiatedUnitPrice ≥ 0` and `≤ max_price` (early); customer with full
@@ -621,6 +624,9 @@ Legend for support: **A** fully supported · **B** additive backend change recom
 - **Actions:** `POST /api/v1/price-approvals/:id/approve` / `/reject` (`pricing.discount.approve`) —
   conditional `WHERE status = 'pending'`; **the requester can never resolve their own request**
   (`403`, server-enforced — UI hides the action for own requests as courtesy).
+
+> **Update (2026-10-26):** the rule "the requester can never resolve their own request" is **withdrawn** — any holder of `pricing.discount.approve` may resolve a request, their own included ([ADR-0022](../../decisions/0022-pricing-tiers-and-discount-approval.md), amendment of 2026-10-26). The statement above is kept as FASE 13 history.
+
 - **Drill:** → `S-ORDER-DETAIL`.
 - **Design note:** the `ReturnsDesktop` master-detail layout is reused for approvals.
 - **F17.**

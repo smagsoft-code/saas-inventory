@@ -98,3 +98,32 @@ No schema change to `product_variants`/`tenant_price_policies` — `base_price` 
 live value read on every hot path; only its *role* changed. Existing `pending` orders created before
 this change keep whatever `is_exceptional_discount` value they were frozen with (no backfill on
 `order_items` — frozen history is never rewritten, per this ADR's own §1).
+
+## Amendment (2026-10-26): no separation-of-duties block on resolving a request
+
+Owner decision. The original FASE 13 rule — *the requester can never resolve their own request*
+(`403`, enforced in `PriceApprovalsService`) — is **withdrawn**. Anyone who holds
+`pricing.discount.approve` may approve or reject an exceptional-discount request, **including one
+they filed themselves**. By default role templates: the Administrador holds both
+`pricing.discount.request` and `pricing.discount.approve` (so it can raise and resolve its own
+request); the Supervisor holds only `.approve` (it resolves others' requests and cannot file one); a
+Vendedor holds only `.request` and cannot resolve anything (the route gate `pricing.discount.approve`
+returns `403`). Self-approval therefore applies by default to the Administrador, and to any custom
+role granted both permissions.
+
+History: the exception first appeared in code on 2026-10-23 (commit `b198a7d`) for holders of
+`pricing.policy.manage` only, recorded solely as a code comment; this amendment replaces it with the
+rule above and removes the `pricing.policy.manage` special case, so the permission that gates the
+route is also the only permission that matters here.
+
+What does **not** change: the tenant hard floor (`max_discount_below_min_percent`) still rejects a
+price too far below `min_price` outright; `confirm` is still blocked until every exceptional line has
+an `approved` request (no permission-based bypass of the record itself); resolution stays a
+conditional `UPDATE … WHERE status = 'pending'` (exactly-once) and is still audited with the actor,
+so a self-approved request is distinguishable in `audit_log` (`requested_by == approved_by`).
+
+Consequences: the control is now *who may approve*, not *who may not approve their own*. A tenant that
+wants dual control must grant `pricing.discount.approve` only to people who do not also raise
+requests. Tests `P7`/`P7b`/`P25` and the service spec encode the new rule; the older statements in
+`modules.md`, `security.md`, the F17 screen catalog and `CLAUDE.md` FASE 13 text are historical and
+carry a pointer to this amendment.
