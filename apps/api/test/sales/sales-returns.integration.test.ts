@@ -313,7 +313,10 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: returns + dispositi
     const seller = await c.createAndLoginAs(f.admin, `rs-${uniq()}@ex.com`, 'Vendedor');
     await c.setUserLocations(f.admin, seller.user.id, [f.sellLocationId]); // ADR-0035: no assignment = denied
     const { orderId, orderItemId } = await confirmedOrder(f, 3);
-    const created = await createReturn(seller, { orderId, locationId: f.sellLocationId, reason: 'returned', items: [{ orderItemId, quantity: 1 }] });
+    // The order is the admin's, so the RETURN is registered by the admin (a seller without view_all can no longer register
+    // a return for an order they did not place — FINDING-SELLER-SCOPE-APPROVALS-RETURNS). What this test proves is unchanged:
+    // a plain Vendedor still cannot INSPECT it.
+    const created = await createReturn(f.admin, { orderId, locationId: f.sellLocationId, reason: 'returned', items: [{ orderItemId, quantity: 1 }] });
     expect(created.statusCode, created.body).toBe(201);
     const ret = JSON.parse(created.body) as { id: string; items: { id: string }[] };
     const ins = await inspect(seller, ret.id, { items: [{ returnItemId: ret.items[0]!.id, disposition: 'restock', dispositionLocationId: f.sellLocationId }] });

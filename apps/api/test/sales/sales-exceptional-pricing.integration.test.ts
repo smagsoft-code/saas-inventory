@@ -393,13 +393,15 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
   // ---- GAP-APPROVALS-PERMISSION (F17-09) -------------------------------------
   it('GET /price-approvals is gated by @RequireAnyPermission — requester OR approver reads it, neither is 403', async () => {
     const f = await seed('AP Co', `ap-${uniq()}@ex.com`);
-    const { orderItemId } = await pendingOrder(f, f.admin, { unitPrice: 70 });
-    const req = await requestApproval(f.admin, { orderItemId, reason: 'permission gate' });
-    const approvalId = (JSON.parse(req.body) as { id: string }).id;
-
-    // Vendedor holds pricing.discount.request (not .approve) — can read the queue and the row.
+    // The Vendedor places the order and files the request: since the 2026-10-26 read decision a seller without view_all reads
+    // only the requests on THEIR OWN orders (this test is about the permission gate, not about whose request it is).
     const seller = await c.createAndLoginAs(f.admin, `ap-seller-${uniq()}@ex.com`, 'Vendedor');
     await grantLocation(f, seller); // read scope: ADR-0035 denies a non-founding user with zero location assignments
+    const { orderItemId } = await pendingOrder(f, seller, { unitPrice: 70 });
+    const req = await requestApproval(seller, { orderItemId, reason: 'permission gate' });
+    const approvalId = (JSON.parse(req.body) as { id: string }).id;
+
+    // Vendedor holds pricing.discount.request (not .approve) — can read the queue and the row (its own request).
     expect((await c.inject({ method: 'GET', url: '/api/v1/price-approvals', headers: c.readHeaders(seller) })).statusCode).toBe(200);
     expect(
       (await c.inject({ method: 'GET', url: `/api/v1/price-approvals/${approvalId}`, headers: c.readHeaders(seller) })).statusCode,
