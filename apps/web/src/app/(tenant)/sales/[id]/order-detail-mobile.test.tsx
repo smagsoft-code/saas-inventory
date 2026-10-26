@@ -37,10 +37,19 @@ describe('OrderDetailMobile', () => {
   it('shows the customer data the desktop shows, with the name linking to the customer', () => {
     render(<OrderDetailMobile detail={detail} />);
     expect(screen.getByRole('link', { name: 'Hector Yepez' }).getAttribute('href')).toBe('/customers/c1');
-    for (const text of ['1003798541', 'hola@gmail.com', '0999874512', 'Quito', 'General · Sucursal Norte QA', '26/10/2026, 11:12:10']) {
+    for (const text of ['ID: 1003798541', 'hola@gmail.com', '0999874512', 'Quito', 'General · Sucursal Norte QA', '26/10/2026, 11:12:10']) {
       expect(screen.getByText(text)).toBeTruthy();
     }
-    expect(screen.queryByText('Estado de la factura')).toBeNull();
+    expect(screen.getByText('ORD-000050')).toBeTruthy();
+    expect(screen.getByText('Pendiente')).toBeTruthy();
+    expect(screen.getByText('Nota de venta · General')).toBeTruthy();
+  });
+
+  it('shows the reservation notice only when the page provides one', () => {
+    const { rerender } = render(<OrderDetailMobile detail={detail} />);
+    expect(screen.queryByRole('status')).toBeNull();
+    rerender(<OrderDetailMobile detail={{ ...detail, notice: 'Este pedido tiene una reserva de stock.' }} />);
+    expect(screen.getByRole('status')).toHaveTextContent('Este pedido tiene una reserva de stock.');
   });
 
   it('lists each line with sku, below-minimum flag, quantity, prices and the movements link, then the totals', () => {
@@ -52,6 +61,6 @@ describe('OrderDetailMobile', () => {
     expect(screen.getByText('1 artículo')).toBeTruthy();
     expect(screen.getByText('Descuento (informativo)')).toBeTruthy();
     expect(screen.getByText('Impuesto')).toBeTruthy();
-    expect(screen.getByText('USD')).toBeTruthy();
+    expect(screen.getAllByText('USD').length).toBeGreaterThan(0);
   });
 });

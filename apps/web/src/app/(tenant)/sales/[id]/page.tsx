@@ -25,7 +25,7 @@ import {
   type ReturnStatus,
 } from '../../../../lib/types/sales';
 import { OrderActions, type ExceptionalLine } from './order-actions';
-import { OrderDetailMobile, OrderStatusBadge, type MobileOrderDetail } from './order-detail-mobile';
+import { OrderDetailMobile, type MobileOrderDetail } from './order-detail-mobile';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { ButtonLink } from '../../../../components/ui/button';
@@ -128,7 +128,18 @@ export default async function OrderDetailPage({
 
   const statusLabel = ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status;
   const subtitle = `${DOCUMENT_TYPE_LABELS[order.documentType as DocumentType] ?? order.documentType} · ${index.locationName(order.locationId)}`;
+  const reservationNotice =
+    order.status === 'pending'
+      ? `Este pedido tiene una reserva de stock. Confirmarlo cierra la venta; cancelarlo libera la reserva.${
+          hasExceptional
+            ? pendingApprovalCount > 0
+              ? ' Una línea bajo el precio mínimo tiene una solicitud de aprobación de precio aún pendiente — el pedido no puede confirmarse hasta que se apruebe.'
+              : ' Tiene una línea bajo el precio mínimo que necesita una aprobación de precio antes de poder confirmarse.'
+            : ''
+        }`
+      : undefined;
   const mobileDetail: MobileOrderDetail = {
+    notice: reservationNotice,
     orderNumber: order.orderNumber,
     statusLabel,
     statusTone: orderStatusTone(order.status),
@@ -169,22 +180,6 @@ export default async function OrderDetailPage({
 
   return (
     <PageContainer>
-      {/* Phone header: number + estado on one row, document · almacén under it, then the actions. */}
-      <div className="flex flex-col gap-2 md:hidden">
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="text-xl font-bold text-slate-900">{`Pedido ${order.orderNumber}`}</h1>
-          <OrderStatusBadge label={statusLabel} tone={orderStatusTone(order.status)} />
-        </div>
-        <p className="text-sm text-slate-500">{subtitle}</p>
-        <div className="flex flex-wrap items-center gap-2 print:hidden">
-          {order.status === 'confirmed' && canCreateReturn && (
-            <ButtonLink href={`/returns/new?orderId=${order.id}`} size="sm" variant="secondary">
-              Iniciar devolución
-            </ButtonLink>
-          )}
-          <PrintButton />
-        </div>
-      </div>
       <div className="hidden md:block">
         <PageHeader
           title={`Pedido ${order.orderNumber}`}
@@ -210,18 +205,27 @@ export default async function OrderDetailPage({
         />
       </div>
 
-      {order.status === 'pending' && (
-        <Alert tone={hasExceptional && pendingApprovalCount > 0 ? 'warning' : 'info'}>
-          Este pedido tiene una reserva de stock. Confirmarlo cierra la venta; cancelarlo libera la
-          reserva.
-          {hasExceptional &&
-            (pendingApprovalCount > 0
-              ? ' Una línea bajo el precio mínimo tiene una solicitud de aprobación de precio aún pendiente — el pedido no puede confirmarse hasta que se apruebe.'
-              : ' Tiene una línea bajo el precio mínimo que necesita una aprobación de precio antes de poder confirmarse.')}
-        </Alert>
+      {reservationNotice && (
+        <div className="hidden md:block">
+          <Alert tone={hasExceptional && pendingApprovalCount > 0 ? 'warning' : 'info'}>
+            {reservationNotice}
+          </Alert>
+        </div>
       )}
 
-      <OrderDetailMobile detail={mobileDetail} />
+      <OrderDetailMobile
+        detail={mobileDetail}
+        actions={
+          <div className="flex flex-wrap items-center gap-2 print:hidden">
+            {order.status === 'confirmed' && canCreateReturn && (
+              <ButtonLink href={`/returns/new?orderId=${order.id}`} size="sm" variant="secondary">
+                Iniciar devolución
+              </ButtonLink>
+            )}
+            <PrintButton />
+          </div>
+        }
+      />
 
       <Card className="hidden md:block">
         <CardBody className="flex flex-col gap-4">
