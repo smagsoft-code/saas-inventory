@@ -197,7 +197,9 @@ export function ApprovalsMobileList({
                       <span className={rejected ? T.codeOut : T.code}>{a.orderNumber}</span>
                       <span className={T.stockLine}>{a.requestedAtLabel}</span>
                     </span>
-                    <span className={cn('shrink-0', rejected ? T.priceOut : T.price)}>{a.requestedPriceLabel}</span>
+                    <span className={cn('shrink-0', rejected ? T.priceOut : T.price)}>
+                      {a.requestedPriceLabel}
+                    </span>
                   </span>
                   <span className={T.title}>{a.productName ?? '—'}</span>
                   <span className="text-xs leading-snug text-slate-500">{a.reason}</span>
