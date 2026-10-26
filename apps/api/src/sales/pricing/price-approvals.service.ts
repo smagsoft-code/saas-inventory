@@ -28,6 +28,7 @@ import { TenantPricePoliciesRepository } from '../repositories/tenant-price-poli
 import type { AuditMeta } from '../sales-audit-meta';
 import { moneyString, roundMoney } from '../sales-money';
 import { SalesPricingService } from './sales-pricing.service';
+import { canReadAllApprovals, canSeeOrderOfSeller } from '../orders/order-seller-scope';
 import type { CreatePriceApprovalDto } from './dto/create-price-approval.dto';
 import type { ListPriceApprovalsQueryDto } from './dto/list-price-approvals-query.dto';
 import type { PriceApprovalResponseDto } from './dto/price-approval-response.dto';
@@ -119,6 +120,8 @@ export class PriceApprovalsService {
         orderId: query.orderId,
         locationId: readScope.locationId,
         locationIds: readScope.locationIds,
+        // Seller scope of the read: a requester without view_all / approver rights sees only the requests on their own orders.
+        ...(canReadAllApprovals(permissions) ? {} : { placedByUserId: actorId }),
         dayRange,
       });
       // One batched lookup for the product labels of the whole page.
@@ -143,6 +146,10 @@ export class PriceApprovalsService {
       if (order && !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, order.locationId))) {
         throw new NotFoundException('Price approval not found.');
       }
+      // Same seller scope as the list (same 404, so a hidden request is indistinguishable from a missing one).
+      if (!canReadAllApprovals(permissions) && (!order || order.placedByUserId !== actorId)) {
+        throw new NotFoundException('Price approval not found.');
+      }
       return this.toResponse(tx, tenantId, row, permissions);
     });
   }
@@ -162,7 +169,10 @@ export class PriceApprovalsService {
       // Lock the parent order — a concurrent confirm (which also locks it first, §102) or a second
       // request for the same order serializes here.
       const order = await this.ordersRepository.lockById(tx, tenantId, orderItem.orderId);
-      if (!order) {
+      // Same seller scope as every read of the order (FINDING-SELLER-SCOPE-APPROVALS-RETURNS): a seller without
+      // `sales.orders.view_all` cannot request an approval — nor rewrite the price with `newPrice` — for a line of
+      // an order they did not place. 404 first, before any status-dependent answer.
+      if (!order || !canSeeOrderOfSeller(order, actorId, permissions)) {
         throw new NotFoundException('Order line not found.');
       }
       if (order.status !== 'pending') {

@@ -1,6 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
-import type { AuthPrincipal } from '../../common/context/request-context';
+import type { AuthPrincipal, TenantRequestContext } from '../../common/context/request-context';
+import { CurrentPermissions } from '../../common/decorators/current-permissions.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
@@ -31,8 +32,9 @@ export class ReturnsReportController {
   async returnsSummary(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
+    @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Query() query: ReturnsSummaryQueryDto,
   ): Promise<ReturnsSummaryResponseDto> {
-    return this.returnsReportService.getReturnsSummary(tenantId, principal.userId, query);
+    return this.returnsReportService.getReturnsSummary(tenantId, principal.userId, permissions, query);
   }
 }

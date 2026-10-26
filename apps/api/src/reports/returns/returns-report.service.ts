@@ -17,6 +17,7 @@ import type {
 import type { ReturnsSummaryGroupBy, ReturnsSummaryQueryDto } from './dto/returns-summary-query.dto';
 import type { DateTruncUnit } from './returns-report.repository';
 import { ReturnsReportRepository } from './returns-report.repository';
+import { canReadAllReturns } from '../../sales/orders/order-seller-scope';
 
 /** The return's inventory effect is only committed once `resolve` runs
  * (`database.md#sales-returns-and-disposition`) — the direct analogue of `SalesReportService`'s
@@ -53,7 +54,7 @@ export class ReturnsReportService {
     return row?.timezone ?? DEFAULT_TIMEZONE;
   }
 
-  async getReturnsSummary(tenantId: string, actorId: string, query: ReturnsSummaryQueryDto): Promise<ReturnsSummaryResponseDto> {
+  async getReturnsSummary(tenantId: string, actorId: string, permissions: string[], query: ReturnsSummaryQueryDto): Promise<ReturnsSummaryResponseDto> {
     // Business-day mode (`dateFrom`/`dateTo`, tenant timezone) replaces from/to when present.
     if (query.dateTo && !query.dateFrom) {
       throw new BadRequestException('`dateTo` requires `dateFrom`.');
@@ -74,10 +75,12 @@ export class ReturnsReportService {
       // beyond their assigned locations, and asking for another one is a 403.
       const readScope = await this.locationAuthorizationService.resolveReadScope(tx, tenantId, actorId, query.locationId);
       const range = query.dateFrom ? localDayRangeToUtc(query.dateFrom, query.dateTo, timezone) : toHalfOpenRange(from, to);
+      // Seller scope of the read, identical to `GET /sales-returns` — an aggregate must not reveal what the list hides.
+      const sellerScope = canReadAllReturns(permissions) ? {} : { placedByUserId: actorId };
 
       if (query.groupBy === 'customer') {
         const rows = await this.returnsReportRepository.summaryByCustomer(tx, tenantId, { gte: range.gte, lt: range.lt, status, locationId: readScope.locationId,
-          locationIds: readScope.locationIds });
+          locationIds: readScope.locationIds, ...sellerScope });
         const buckets: ReturnsCustomerBucketDto[] = rows.map((row) => {
           const returnCount = Number(row.returnCount);
           const returnedValue = Number(row.returnedValue);
@@ -97,7 +100,7 @@ export class ReturnsReportService {
 
       if (query.groupBy === 'product') {
         const rows = await this.returnsReportRepository.summaryByProduct(tx, tenantId, { gte: range.gte, lt: range.lt, status, locationId: readScope.locationId,
-          locationIds: readScope.locationIds });
+          locationIds: readScope.locationIds, ...sellerScope });
         const buckets: ReturnsProductBucketDto[] = rows.map((row) => ({
           key: row.key,
           sku: row.sku,
@@ -113,7 +116,7 @@ export class ReturnsReportService {
 
       if (query.groupBy === 'disposition') {
         const rows = await this.returnsReportRepository.summaryByDisposition(tx, tenantId, { gte: range.gte, lt: range.lt, status, locationId: readScope.locationId,
-          locationIds: readScope.locationIds });
+          locationIds: readScope.locationIds, ...sellerScope });
         const buckets: ReturnsDispositionBucketDto[] = rows.map((row) => ({
           key: row.key,
           lineCount: Number(row.lineCount),
@@ -131,7 +134,7 @@ export class ReturnsReportService {
         throw new BadRequestException(`Unsupported groupBy: ${String(query.groupBy)}`);
       }
       const rows = await this.returnsReportRepository.summaryByPeriod(tx, tenantId, { gte: range.gte, lt: range.lt, status, unit, timezone, locationId: readScope.locationId,
-          locationIds: readScope.locationIds });
+          locationIds: readScope.locationIds, ...sellerScope });
       const buckets: ReturnsPeriodBucketDto[] = rows.map((row) => {
         const returnCount = Number(row.returnCount);
         const returnedValue = Number(row.returnedValue);

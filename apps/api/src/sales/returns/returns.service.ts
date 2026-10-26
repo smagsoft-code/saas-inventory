@@ -34,6 +34,7 @@ import type { SalesReturnRow } from '../repositories/sales-returns.repository';
 import { SalesReturnsRepository } from '../repositories/sales-returns.repository';
 import { SalesIdempotencyRepository } from '../repositories/sales-idempotency.repository';
 import type { AuditMeta } from '../sales-audit-meta';
+import { canReadAllReturns, canSeeOrderOfSeller } from '../orders/order-seller-scope';
 import type { CreateReturnDto } from './dto/create-return.dto';
 import type { InspectReturnDto } from './dto/inspect-return.dto';
 import type { ListReturnsQueryDto } from './dto/list-returns-query.dto';
@@ -104,7 +105,7 @@ export class ReturnsService {
     private readonly movingAverageCostService: MovingAverageCostService,
   ) {}
 
-  async list(tenantId: string, actorId: string, query: ListReturnsQueryDto): Promise<PaginatedResult<ReturnResponseDto>> {
+  async list(tenantId: string, actorId: string, permissions: string[], query: ListReturnsQueryDto): Promise<PaginatedResult<ReturnResponseDto>> {
     return withTenantTransaction(tenantId, async (tx) => {
       if (query.dateTo && !query.dateFrom) {
         throw new BadRequestException('`dateTo` requires `dateFrom`.');
@@ -125,6 +126,8 @@ export class ReturnsService {
         orderId: query.orderId,
         locationId: readScope.locationId,
         locationIds: readScope.locationIds,
+        // Seller scope of the read: without view_all / warehouse rights, only returns of the caller's own orders.
+        ...(canReadAllReturns(permissions) ? {} : { placedByUserId: actorId }),
         dayRange,
       });
       const data = await this.toResponses(tx, tenantId, rows);
@@ -135,12 +138,19 @@ export class ReturnsService {
     });
   }
 
-  async getById(tenantId: string, actorId: string, id: string): Promise<ReturnResponseDto> {
+  async getById(tenantId: string, actorId: string, permissions: string[], id: string): Promise<ReturnResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const row = await this.returnsRepository.findById(tx, tenantId, id);
       // 404, not 403, for a return outside the caller's locations - its existence is not revealed.
       if (!row || !(await this.locationAuthorizationService.canAccess(tx, tenantId, actorId, row.locationId))) {
         throw new NotFoundException('Sales return not found.');
+      }
+      // Same seller scope as the list (same 404): a hidden return is indistinguishable from a missing one.
+      if (!canReadAllReturns(permissions)) {
+        const order = await this.ordersRepository.findById(tx, tenantId, row.orderId);
+        if (!order || order.placedByUserId !== actorId) {
+          throw new NotFoundException('Sales return not found.');
+        }
       }
       return this.toResponse(tx, tenantId, row);
     });
@@ -149,6 +159,7 @@ export class ReturnsService {
   async create(
     tenantId: string,
     actorId: string,
+    permissions: string[],
     dto: CreateReturnDto,
     meta: AuditMeta,
     idempotencyKey: string | undefined,
@@ -156,7 +167,10 @@ export class ReturnsService {
     if (!idempotencyKey) {
       throw new BadRequestException('Idempotency-Key header is required to create a sales return.');
     }
+    // The ACTOR is part of the request identity: an idempotency record belongs to whoever created it, so another
+    // user replaying the same key gets a conflict instead of the stored return (FINDING-RET-IDEMPOTENCY-REPLAY).
     const requestHash = hashRequest({
+      actorId,
       orderId: dto.orderId,
       locationId: dto.locationId,
       items: dto.items.map((line) => ({ orderItemId: line.orderItemId, quantity: line.quantity })),
@@ -175,7 +189,8 @@ export class ReturnsService {
       // Lock the order — serializes concurrent return creation for the same order, so the
       // returnable-quantity check below cannot be raced (§13 / test R4).
       const order = await this.ordersRepository.lockById(tx, tenantId, dto.orderId);
-      if (!order) {
+      // Seller scope of the order (FINDING-SELLER-SCOPE-APPROVALS-RETURNS): 404 first, before any status answer.
+      if (!order || !canSeeOrderOfSeller(order, actorId, permissions)) {
         throw new NotFoundException('Order not found.');
       }
       if (!RETURNABLE_ORDER_STATUSES.has(order.status)) {
@@ -526,10 +541,16 @@ export class ReturnsService {
     });
   }
 
-  async cancel(tenantId: string, actorId: string, id: string, meta: AuditMeta): Promise<ReturnResponseDto> {
+  async cancel(tenantId: string, actorId: string, permissions: string[], id: string, meta: AuditMeta): Promise<ReturnResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const ret = await this.returnsRepository.lockById(tx, tenantId, id);
       if (!ret) {
+        throw new NotFoundException('Sales return not found.');
+      }
+      // A return is traced to its order: whoever cannot see that order's seller cannot cancel the return either
+      // (FINDING-RET-CANCEL-SCOPE). Checked before any status-dependent answer.
+      const order = await this.ordersRepository.findById(tx, tenantId, ret.orderId);
+      if (!order || !canSeeOrderOfSeller(order, actorId, permissions)) {
         throw new NotFoundException('Sales return not found.');
       }
       if (ret.status === 'cancelled') {

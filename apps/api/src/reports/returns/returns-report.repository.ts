@@ -73,7 +73,7 @@ export type DateTruncUnit = 'day' | 'week' | 'month';
  */
 @Injectable()
 export class ReturnsReportRepository {
-  private baseConditions(tenantId: string, range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined }): SQL[] {
+  private baseConditions(tenantId: string, range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined; placedByUserId?: string | undefined }): SQL[] {
     const conditions = [
       eq(salesReturns.tenantId, tenantId),
       eq(salesReturns.status, range.status),
@@ -88,13 +88,19 @@ export class ReturnsReportRepository {
     if (range.locationIds) {
       conditions.push(range.locationIds.length > 0 ? inArray(salesReturns.locationId, range.locationIds) : sql`false`);
     }
+    // Seller scope of the read (same rule as `GET /sales-returns`): only returns of orders placed by this user.
+    if (range.placedByUserId) {
+      conditions.push(
+        sql`exists (select 1 from ${orders} where ${orders.tenantId} = ${salesReturns.tenantId} and ${orders.id} = ${salesReturns.orderId} and ${orders.placedByUserId} = ${range.placedByUserId})`,
+      );
+    }
     return conditions;
   }
 
   async summaryByPeriod(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined; unit: DateTruncUnit; timezone: string },
+    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined; placedByUserId?: string | undefined; unit: DateTruncUnit; timezone: string },
   ): Promise<PeriodBucketRow[]> {
     // Same alias-then-reference trick as SalesReportRepository.summaryByPeriod — Drizzle renders an
     // identical `sql` fragment differently in SELECT vs GROUP BY/ORDER BY, which Postgres then
@@ -125,7 +131,7 @@ export class ReturnsReportRepository {
   async summaryByCustomer(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined },
+    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined; placedByUserId?: string | undefined },
   ): Promise<CustomerBucketRow[]> {
     const rows = await tx
       .select({
@@ -158,7 +164,7 @@ export class ReturnsReportRepository {
   async summaryByProduct(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined },
+    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined; placedByUserId?: string | undefined },
   ): Promise<ProductBucketRow[]> {
     const rows = await tx
       .select({
@@ -187,7 +193,7 @@ export class ReturnsReportRepository {
   async summaryByDisposition(
     tx: TenantTransaction,
     tenantId: string,
-    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined },
+    range: { gte: Date; lt: Date; status: string; locationId?: string | undefined; locationIds?: string[] | undefined; placedByUserId?: string | undefined },
   ): Promise<DispositionBucketRow[]> {
     const rows = await tx
       .select({

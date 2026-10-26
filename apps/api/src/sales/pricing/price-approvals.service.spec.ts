@@ -65,7 +65,7 @@ function build() {
     resolveIfPending: vi.fn(),
   };
   const ordersRepository = {
-    lockById: vi.fn().mockResolvedValue({ id: 'order-1', status: 'pending', tenantId: TENANT }),
+    lockById: vi.fn().mockResolvedValue({ id: 'order-1', status: 'pending', tenantId: TENANT, placedByUserId: REQUESTER }),
     findById: vi.fn().mockResolvedValue({ id: 'order-1', orderNumber: 'ORD-000001', tenantId: TENANT, locationId: 'loc-1' }),
     updateTotals: vi.fn().mockResolvedValue(undefined),
   };
@@ -133,7 +133,7 @@ describe('PriceApprovalsService.request', () => {
 
   it('rejects when the parent order is not pending', async () => {
     const { service, ordersRepository } = build();
-    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'confirmed', tenantId: TENANT });
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'confirmed', tenantId: TENANT, placedByUserId: REQUESTER });
     await expect(
       service.request(TENANT, REQUESTER, REQUEST_PERMS, { orderItemId: 'oi-1', reason: 'x reason' }, META),
     ).rejects.toThrow(ConflictException);
@@ -356,5 +356,82 @@ describe('PriceApprovalsService.list — Almacén, product and business-day filt
   it('rejects dateTo without dateFrom', async () => {
     const { service } = build();
     await expect(service.list(TENANT, REQUESTER, REQUEST_PERMS, { ...query, dateTo: '2026-10-13' } as never)).rejects.toThrow('dateTo');
+  });
+});
+
+describe('PriceApprovalsService.request — seller scope (FINDING-SELLER-SCOPE-APPROVALS-RETURNS)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const OTHERS = { id: 'order-1', status: 'pending', tenantId: TENANT, placedByUserId: 'someone-else' };
+
+  it('a seller without view_all cannot request an approval for a line of another seller\'s order: 404, no row, no price edit, no event', async () => {
+    const { service, ordersRepository, priceApprovalsRepository, orderItemsRepository } = build();
+    ordersRepository.lockById.mockResolvedValue(OTHERS);
+    for (const extra of [{}, { newPrice: 95 }]) {
+      await expect(service.request(TENANT, REQUESTER, REQUEST_PERMS, { orderItemId: 'oi-1', reason: 'not mine', ...extra }, META)).rejects.toThrow(NotFoundException);
+    }
+    expect(priceApprovalsRepository.create).not.toHaveBeenCalled();
+    expect(orderItemsRepository.updatePriceWhilePending).not.toHaveBeenCalled();
+    expect(ordersRepository.updateTotals).not.toHaveBeenCalled();
+  });
+
+  it('the scope answer precedes the status answer (a confirmed order of another seller is a 404, not a 409)', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.lockById.mockResolvedValue({ ...OTHERS, status: 'confirmed' });
+    await expect(service.request(TENANT, REQUESTER, REQUEST_PERMS, { orderItemId: 'oi-1', reason: 'not mine' }, META)).rejects.toThrow(NotFoundException);
+  });
+
+  it('with sales.orders.view_all (plus pricing.discount.request) the same actor can', async () => {
+    const { service, ordersRepository, priceApprovalsRepository } = build();
+    ordersRepository.lockById.mockResolvedValue(OTHERS);
+    await service.request(TENANT, REQUESTER, [...REQUEST_PERMS, 'sales.orders.view_all'], { orderItemId: 'oi-1', reason: 'supervising' }, META);
+    expect(priceApprovalsRepository.create).toHaveBeenCalled();
+  });
+});
+
+describe('PriceApprovalsService — read scope (owner decision: seller own / approver queue / view_all)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const QUERY = { page: 1, pageSize: 20 } as never;
+  const OWN_ORDER = { id: 'order-1', orderNumber: 'ORD-000001', tenantId: TENANT, locationId: 'loc-1', placedByUserId: REQUESTER };
+  const OTHERS_ORDER = { ...OWN_ORDER, placedByUserId: 'someone-else' };
+
+  const EMPTY_PAGE = { rows: [], total: 0 };
+
+  it('list: a requester without approver rights / view_all is filtered to requests on THEIR orders (in SQL, totals scoped too)', async () => {
+    const { service, priceApprovalsRepository } = build();
+    priceApprovalsRepository.listByTenant.mockResolvedValue(EMPTY_PAGE);
+    await service.list(TENANT, REQUESTER, REQUEST_PERMS, QUERY);
+    expect(priceApprovalsRepository.listByTenant.mock.calls[0]![2]).toMatchObject({ placedByUserId: REQUESTER });
+  });
+
+  it('list: approvers (pricing.discount.approve) keep the whole operational queue, and view_all widens it — no seller filter', async () => {
+    const { service, priceApprovalsRepository } = build();
+    priceApprovalsRepository.listByTenant.mockResolvedValue(EMPTY_PAGE);
+    await service.list(TENANT, 'approver-1', APPROVE_PERMS, QUERY);
+    await service.list(TENANT, REQUESTER, [...REQUEST_PERMS, 'sales.orders.view_all'], QUERY);
+    for (const call of priceApprovalsRepository.listByTenant.mock.calls) {
+      expect((call[2] as { placedByUserId?: string }).placedByUserId).toBeUndefined();
+    }
+  });
+
+  it('getById: the requester reads the request on their own order; another seller\'s is a 404 identical to a missing one', async () => {
+    const { service, ordersRepository, priceApprovalsRepository } = build();
+    priceApprovalsRepository.findById.mockResolvedValue(PENDING_ROW);
+    ordersRepository.findById.mockResolvedValue(OWN_ORDER);
+    await expect(service.getById(TENANT, REQUESTER, REQUEST_PERMS, 'pa-1')).resolves.toBeDefined();
+
+    ordersRepository.findById.mockResolvedValue(OTHERS_ORDER);
+    const hidden = await service.getById(TENANT, REQUESTER, REQUEST_PERMS, 'pa-1').catch((e: Error) => e);
+    priceApprovalsRepository.findById.mockResolvedValue(undefined);
+    const missing = await service.getById(TENANT, REQUESTER, REQUEST_PERMS, 'pa-x').catch((e: Error) => e);
+    expect(hidden).toBeInstanceOf(NotFoundException);
+    expect((hidden as Error).message).toBe((missing as Error).message);
+  });
+
+  it('getById: an approver and a view_all holder read a request on another seller\'s order', async () => {
+    const { service, ordersRepository, priceApprovalsRepository } = build();
+    priceApprovalsRepository.findById.mockResolvedValue(PENDING_ROW);
+    ordersRepository.findById.mockResolvedValue(OTHERS_ORDER);
+    await expect(service.getById(TENANT, 'approver-1', APPROVE_PERMS, 'pa-1')).resolves.toBeDefined();
+    await expect(service.getById(TENANT, REQUESTER, [...REQUEST_PERMS, 'sales.orders.view_all'], 'pa-1')).resolves.toBeDefined();
   });
 });

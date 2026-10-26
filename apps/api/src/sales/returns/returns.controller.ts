@@ -2,7 +2,8 @@ import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Q
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyRequest } from 'fastify';
-import type { AuthPrincipal } from '../../common/context/request-context';
+import type { AuthPrincipal, TenantRequestContext } from '../../common/context/request-context';
+import { CurrentPermissions } from '../../common/decorators/current-permissions.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
@@ -30,9 +31,10 @@ export class ReturnsController {
   async list(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
+    @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Query() query: ListReturnsQueryDto,
   ): Promise<PaginatedResult<ReturnResponseDto>> {
-    return this.returnsService.list(tenantId, principal.userId, query);
+    return this.returnsService.list(tenantId, principal.userId, permissions, query);
   }
 
   @Get(':id')
@@ -41,9 +43,10 @@ export class ReturnsController {
   async getById(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
+    @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ReturnResponseDto> {
-    return this.returnsService.getById(tenantId, principal.userId, id);
+    return this.returnsService.getById(tenantId, principal.userId, permissions, id);
   }
 
   @Post()
@@ -52,6 +55,7 @@ export class ReturnsController {
   async create(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
+    @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Body() dto: CreateReturnDto,
     @Req() request: FastifyRequest,
     @Headers('idempotency-key') idempotencyKey?: string,
@@ -59,6 +63,7 @@ export class ReturnsController {
     return this.returnsService.create(
       tenantId,
       principal.userId,
+      permissions,
       dto,
       { correlationId: request.correlationId, ipAddress: request.ip },
       idempotencyKey,
@@ -109,10 +114,11 @@ export class ReturnsController {
   async cancel(
     @CurrentTenant() tenantId: string,
     @CurrentUser() principal: AuthPrincipal,
+    @CurrentPermissions() permissions: TenantRequestContext['permissions'],
     @Param('id', ParseUUIDPipe) id: string,
     @Req() request: FastifyRequest,
   ): Promise<ReturnResponseDto> {
-    return this.returnsService.cancel(tenantId, principal.userId, id, {
+    return this.returnsService.cancel(tenantId, principal.userId, permissions, id, {
       correlationId: request.correlationId,
       ipAddress: request.ip,
     });

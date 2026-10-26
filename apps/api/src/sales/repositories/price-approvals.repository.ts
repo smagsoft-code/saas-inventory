@@ -141,6 +141,8 @@ export class PriceApprovalsRepository {
       /** The parent order's location (Almacén) — `price_approvals` has no location of its own. */
       locationId?: string | undefined;
       locationIds?: string[] | undefined;
+      /** Only requests on orders PLACED BY this user (seller scope of the read) — a semi-join, no fan-out. */
+      placedByUserId?: string | undefined;
       /** Half-open business-day range on `requested_at`, already resolved to UTC instants. */
       dayRange?: { gte: Date; lt: Date } | undefined;
     },
@@ -164,6 +166,11 @@ export class PriceApprovalsRepository {
         params.locationIds.length > 0
           ? sql`exists (select 1 from ${orders} where ${orders.tenantId} = ${priceApprovals.tenantId} and ${orders.id} = ${priceApprovals.orderId} and ${inArray(orders.locationId, params.locationIds)})`
           : sql`false`,
+      );
+    }
+    if (params.placedByUserId) {
+      conditions.push(
+        sql`exists (select 1 from ${orders} where ${orders.tenantId} = ${priceApprovals.tenantId} and ${orders.id} = ${priceApprovals.orderId} and ${orders.placedByUserId} = ${params.placedByUserId})`,
       );
     }
     if (params.dayRange) {

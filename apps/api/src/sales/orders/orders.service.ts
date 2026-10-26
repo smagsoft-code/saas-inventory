@@ -12,6 +12,7 @@ import type { OrderCancelledData, OrderConfirmedData } from '../../common/events
 import { EVENT_TYPES } from '../../common/events/event-types';
 import { localDayRangeToUtc } from '../../common/reporting/local-day-range';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
+import { VIEW_ALL_ORDERS_PERMISSION, canSeeOrderOfSeller } from './order-seller-scope';
 import { LocationAuthorizationService } from '../../inventory/location-authorization.service';
 import { LocationsRepository } from '../../inventory/repositories/locations.repository';
 import { InsufficientStockError, StockLedgerService } from '../../inventory/stock-ledger.service';
@@ -48,7 +49,8 @@ const IDEMPOTENCY_TTL_MS = 48 * 60 * 60 * 1000;
  * `SalesReportService` (F18-02) echoes the same constant on `GET /reports/sales-summary` rather
  * than a second, potentially-drifting 'USD' literal. */
 /** Extra permission over `sales.orders.view`: see the orders of every seller, not just your own. */
-export const VIEW_ALL_ORDERS_PERMISSION = 'sales.orders.view_all';
+// Re-exported for existing importers; the rule itself lives in order-seller-scope.ts.
+export { VIEW_ALL_ORDERS_PERMISSION };
 
 export const DEFAULT_CURRENCY = 'USD';
 
@@ -193,7 +195,7 @@ export class OrdersService {
   /** Whether the caller may see this order given WHO placed it: everything with
    * `sales.orders.view_all`, otherwise only their own. A hidden order answers 404 like any other. */
   private canSeeSellerOf(order: { placedByUserId: string | null }, actorId: string, permissions: string[]): boolean {
-    return permissions.includes(VIEW_ALL_ORDERS_PERMISSION) || order.placedByUserId === actorId;
+    return canSeeOrderOfSeller(order, actorId, permissions);
   }
 
   async getById(tenantId: string, actorId: string, permissions: string[], id: string): Promise<OrderResponseDto> {

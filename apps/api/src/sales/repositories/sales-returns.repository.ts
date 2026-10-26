@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { and, count, desc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
-import { salesReturns } from '../../database/schema';
+import { orders, salesReturns } from '../../database/schema';
 import type { TenantTransaction } from '../../database/tenant-context';
 
 export interface SalesReturnRow {
@@ -84,6 +84,8 @@ export class SalesReturnsRepository {
       orderId?: string | undefined;
       locationId?: string | undefined;
       locationIds?: string[] | undefined;
+      /** Only returns of orders PLACED BY this user (seller scope of the read) — a semi-join, no fan-out. */
+      placedByUserId?: string | undefined;
       /** Half-open business-day range already resolved to UTC instants (`localDayRangeToUtc`). */
       dayRange?: { gte: Date; lt: Date } | undefined;
     },
@@ -101,6 +103,11 @@ export class SalesReturnsRepository {
     // Read scope of a restricted caller (ADR-0024/0035): only their assigned locations; none = nothing.
     if (params.locationIds) {
       conditions.push(params.locationIds.length > 0 ? inArray(salesReturns.locationId, params.locationIds) : sql`false`);
+    }
+    if (params.placedByUserId) {
+      conditions.push(
+        sql`exists (select 1 from ${orders} where ${orders.tenantId} = ${salesReturns.tenantId} and ${orders.id} = ${salesReturns.orderId} and ${orders.placedByUserId} = ${params.placedByUserId})`,
+      );
     }
     if (params.dayRange) {
       conditions.push(gte(salesReturns.createdAt, params.dayRange.gte));

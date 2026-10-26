@@ -8,10 +8,14 @@ vi.mock('../../database/tenant-context', () => ({
 
 const TENANT = 'tenant-1';
 const ACTOR = 'user-1';
+const PERMS = ['sales.returns.create'];
+const OTHER_SELLER = 'user-9';
+const READ_ALL = ['sales.returns.view', 'inventory.returns.manage'];
+const SELLER_READ = ['sales.returns.view'];
 const META = { correlationId: undefined, ipAddress: undefined };
 const KEY = 'idem-1';
 
-const CONFIRMED_ORDER = { id: 'order-1', tenantId: TENANT, status: 'confirmed', locationId: 'loc-1' };
+const CONFIRMED_ORDER = { id: 'order-1', tenantId: TENANT, status: 'confirmed', locationId: 'loc-1', placedByUserId: ACTOR };
 const ORDER_ITEM = { id: 'oi-1', tenantId: TENANT, orderId: 'order-1', productVariantId: 'v-1', quantity: '5', skuSnapshot: 'SKU-1', unitCostSnapshot: '4' };
 const RECEIVING_LOCATION = { id: 'loc-recv', tenantId: TENANT, status: 'active', isSellable: true };
 const SELLABLE_LOCATION = { id: 'loc-sell', tenantId: TENANT, status: 'active', isSellable: true };
@@ -120,7 +124,7 @@ describe('ReturnsService.create', () => {
   it('requires an Idempotency-Key header', async () => {
     const { service } = build();
     await expect(
-      service.create(TENANT, ACTOR, { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] }, META, undefined),
+      service.create(TENANT, ACTOR, PERMS, { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] }, META, undefined),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -129,6 +133,7 @@ describe('ReturnsService.create', () => {
     await service.create(
       TENANT,
       ACTOR,
+      PERMS,
       { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] },
       META,
       KEY,
@@ -147,6 +152,7 @@ describe('ReturnsService.create', () => {
       service.create(
         TENANT,
         ACTOR,
+        PERMS,
         { orderId: 'order-1', locationId: 'loc-other', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] },
         META,
         KEY,
@@ -160,7 +166,7 @@ describe('ReturnsService.create', () => {
     const { service, ordersRepository } = build();
     ordersRepository.lockById.mockResolvedValue({ ...CONFIRMED_ORDER, status: 'pending' });
     await expect(
-      service.create(TENANT, ACTOR, { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] }, META, KEY),
+      service.create(TENANT, ACTOR, PERMS, { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] }, META, KEY),
     ).rejects.toThrow(ConflictException);
   });
 
@@ -168,7 +174,7 @@ describe('ReturnsService.create', () => {
     const { service, ordersRepository } = build();
     ordersRepository.lockById.mockResolvedValue(undefined);
     await expect(
-      service.create(TENANT, ACTOR, { orderId: 'order-x', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] }, META, KEY),
+      service.create(TENANT, ACTOR, PERMS, { orderId: 'order-x', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] }, META, KEY),
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -176,7 +182,7 @@ describe('ReturnsService.create', () => {
     const { service, returnItemsRepository } = build();
     returnItemsRepository.sumReturnedByOrder.mockResolvedValue(new Map([['oi-1', 4]]));
     await expect(
-      service.create(TENANT, ACTOR, { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] }, META, KEY),
+      service.create(TENANT, ACTOR, PERMS, { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] }, META, KEY),
     ).rejects.toThrow(ConflictException);
   });
 
@@ -187,6 +193,7 @@ describe('ReturnsService.create', () => {
       service.create(
         TENANT,
         ACTOR,
+        PERMS,
         { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 1 }, { orderItemId: 'oi-1', quantity: 1 }] },
         META,
         KEY,
@@ -334,13 +341,13 @@ describe('ReturnsService.cancel', () => {
   it('rejects cancelling a resolved return', async () => {
     const { service, returnsRepository } = build();
     returnsRepository.lockById.mockResolvedValue({ ...RETURN_ROW, status: 'resolved' });
-    await expect(service.cancel(TENANT, ACTOR, 'ret-1', META)).rejects.toThrow(ConflictException);
+    await expect(service.cancel(TENANT, ACTOR, PERMS, 'ret-1', META)).rejects.toThrow(ConflictException);
   });
 
   it('cancels a requested return', async () => {
     const { service, returnsRepository } = build();
     returnsRepository.lockById.mockResolvedValue(RETURN_ROW);
-    await service.cancel(TENANT, ACTOR, 'ret-1', META);
+    await service.cancel(TENANT, ACTOR, PERMS, 'ret-1', META);
     expect(returnsRepository.updateStatus).toHaveBeenCalledWith(expect.anything(), TENANT, 'ret-1', { status: 'cancelled' });
   });
 });
@@ -358,7 +365,7 @@ describe('ReturnsService.list — number, names, products and filters', () => {
     orderItemsRepository.findLabelsByIds.mockResolvedValue(new Map([['oi-1', { sku: 'SKU-1', productName: 'Refrigerator' }]]));
     usersRepository.findNamesByIds.mockResolvedValue(new Map([[RETURN_ROW.requestedBy, 'Ana'], ['user-9', 'Luis']]));
 
-    const result = await service.list(TENANT, 'user-1', query);
+    const result = await service.list(TENANT, 'user-1', READ_ALL, query);
 
     expect(returnItemsRepository.listByReturns).toHaveBeenCalledTimes(1);
     expect(ordersRepository.findNumbersByIds).toHaveBeenCalledTimes(1);
@@ -373,7 +380,7 @@ describe('ReturnsService.list — number, names, products and filters', () => {
   it('resolves dateFrom to one tenant-local day and passes locationId through', async () => {
     const { service, returnsRepository } = build();
     returnsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
-    await service.list(TENANT, 'user-1', { ...query, dateFrom: '2026-10-13', locationId: 'loc-1' });
+    await service.list(TENANT, 'user-1', READ_ALL, { ...query, dateFrom: '2026-10-13', locationId: 'loc-1' });
     const params = returnsRepository.listByTenant.mock.calls[0]![2] as { dayRange: { gte: Date; lt: Date }; locationId: string };
     expect(params.dayRange.gte.toISOString()).toBe('2026-10-13T05:00:00.000Z');
     expect(params.dayRange.lt.toISOString()).toBe('2026-10-14T05:00:00.000Z');
@@ -382,7 +389,7 @@ describe('ReturnsService.list — number, names, products and filters', () => {
 
   it('rejects dateTo without dateFrom', async () => {
     const { service } = build();
-    await expect(service.list(TENANT, 'user-1', { ...query, dateTo: '2026-10-13' })).rejects.toThrow('dateTo');
+    await expect(service.list(TENANT, 'user-1', READ_ALL, { ...query, dateTo: '2026-10-13' })).rejects.toThrow('dateTo');
   });
 
   it('create asks the repository for the next DEV number and stores it', async () => {
@@ -391,11 +398,118 @@ describe('ReturnsService.list — number, names, products and filters', () => {
     await service.create(
       TENANT,
       ACTOR,
+      PERMS,
       { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] },
       META,
       KEY,
     );
     expect(returnsRepository.nextReturnNumber).toHaveBeenCalledTimes(1);
     expect(returnsRepository.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ returnNumber: 'DEV-1000' }));
+  });
+});
+
+describe('ReturnsService — seller scope (FINDING-SELLER-SCOPE-APPROVALS-RETURNS)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const PAYLOAD = { orderId: 'order-1', locationId: 'loc-recv', reason: 'defective', items: [{ orderItemId: 'oi-1', quantity: 2 }] };
+  const OTHERS_ORDER = { ...CONFIRMED_ORDER, placedByUserId: OTHER_SELLER };
+
+  it('create: a seller without view_all cannot register a return for another seller\'s order — 404, nothing written', async () => {
+    const { service, ordersRepository, returnsRepository, returnItemsRepository, idempotencyRepository } = build();
+    ordersRepository.lockById.mockResolvedValue(OTHERS_ORDER);
+    await expect(service.create(TENANT, ACTOR, PERMS, PAYLOAD, META, KEY)).rejects.toThrow(NotFoundException);
+    expect(returnsRepository.create).not.toHaveBeenCalled();
+    expect(returnItemsRepository.createMany).not.toHaveBeenCalled();
+    expect(idempotencyRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('create: the scope answer comes before any status answer (a pending order of another seller is a 404, not a 409)', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.lockById.mockResolvedValue({ ...OTHERS_ORDER, status: 'pending' });
+    await expect(service.create(TENANT, ACTOR, PERMS, PAYLOAD, META, KEY)).rejects.toThrow(NotFoundException);
+  });
+
+  it('create: with sales.orders.view_all (plus the functional permission) the same actor can', async () => {
+    const { service, ordersRepository, returnsRepository } = build();
+    ordersRepository.lockById.mockResolvedValue(OTHERS_ORDER);
+    await service.create(TENANT, ACTOR, [...PERMS, 'sales.orders.view_all'], PAYLOAD, META, KEY);
+    expect(returnsRepository.create).toHaveBeenCalled();
+  });
+
+  it('create: the idempotency record belongs to its actor — another user replaying the same key gets a conflict, not the stored return', async () => {
+    const { service, idempotencyRepository, returnsRepository } = build();
+    await service.create(TENANT, ACTOR, PERMS, PAYLOAD, META, KEY);
+    const stored = idempotencyRepository.create.mock.calls[0]?.[1] as { requestHash: string };
+    expect(stored.requestHash).toBeTruthy();
+    idempotencyRepository.find.mockResolvedValue({ requestHash: stored.requestHash, responseBody: { id: 'ret-owner' } });
+    returnsRepository.create.mockClear();
+    // the owner's own replay still returns the stored response
+    await expect(service.create(TENANT, ACTOR, PERMS, PAYLOAD, META, KEY)).resolves.toEqual({ id: 'ret-owner' });
+    // another user with the same key and payload does not
+    await expect(service.create(TENANT, OTHER_SELLER, [...PERMS, 'sales.orders.view_all'], PAYLOAD, META, KEY)).rejects.toThrow(ConflictException);
+    expect(returnsRepository.create).not.toHaveBeenCalled();
+  });
+
+  it('cancel: a seller without view_all cannot cancel a return of another seller\'s order — 404, status untouched', async () => {
+    const { service, returnsRepository, ordersRepository } = build();
+    returnsRepository.lockById.mockResolvedValue(RETURN_ROW);
+    ordersRepository.findById.mockResolvedValue(OTHERS_ORDER);
+    await expect(service.cancel(TENANT, ACTOR, PERMS, 'ret-1', META)).rejects.toThrow(NotFoundException);
+    expect(returnsRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('cancel: the owner of the order, and a view_all holder, can', async () => {
+    const { service, returnsRepository, ordersRepository } = build();
+    returnsRepository.lockById.mockResolvedValue(RETURN_ROW);
+    ordersRepository.findById.mockResolvedValue(CONFIRMED_ORDER);
+    await service.cancel(TENANT, ACTOR, PERMS, 'ret-1', META);
+    ordersRepository.findById.mockResolvedValue(OTHERS_ORDER);
+    await service.cancel(TENANT, ACTOR, [...PERMS, 'sales.orders.view_all'], 'ret-1', META);
+    expect(returnsRepository.updateStatus).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('ReturnsService — read scope (owner decision: seller own / view_all / warehouse)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const QUERY = { page: 1, pageSize: 20 } as never;
+
+  const EMPTY_PAGE = { rows: [], total: 0 };
+
+  it('list: a seller without view_all / warehouse rights is filtered to the returns of THEIR orders (in SQL, so totals are scoped too)', async () => {
+    const { service, returnsRepository } = build();
+    returnsRepository.listByTenant.mockResolvedValue(EMPTY_PAGE);
+    await service.list(TENANT, ACTOR, SELLER_READ, QUERY);
+    expect(returnsRepository.listByTenant.mock.calls[0]![2]).toMatchObject({ placedByUserId: ACTOR });
+  });
+
+  it('list: view_all and the warehouse workflow (inventory.returns.manage) read every return — no seller filter', async () => {
+    const { service, returnsRepository } = build();
+    returnsRepository.listByTenant.mockResolvedValue(EMPTY_PAGE);
+    await service.list(TENANT, ACTOR, [...SELLER_READ, 'sales.orders.view_all'], QUERY);
+    await service.list(TENANT, ACTOR, [...SELLER_READ, 'inventory.returns.manage'], QUERY);
+    for (const call of returnsRepository.listByTenant.mock.calls) {
+      expect((call[2] as { placedByUserId?: string }).placedByUserId).toBeUndefined();
+    }
+  });
+
+  it('getById: a seller sees the return of their own order, but another seller\'s is a 404 identical to a missing one', async () => {
+    const { service, returnsRepository, ordersRepository } = build();
+    returnsRepository.findById.mockResolvedValue(RETURN_ROW);
+    ordersRepository.findById.mockResolvedValue({ ...CONFIRMED_ORDER, placedByUserId: ACTOR });
+    await expect(service.getById(TENANT, ACTOR, SELLER_READ, 'ret-1')).resolves.toBeDefined();
+
+    ordersRepository.findById.mockResolvedValue({ ...CONFIRMED_ORDER, placedByUserId: OTHER_SELLER });
+    const hidden = await service.getById(TENANT, ACTOR, SELLER_READ, 'ret-1').catch((e: Error) => e);
+    returnsRepository.findById.mockResolvedValue(undefined);
+    const missing = await service.getById(TENANT, ACTOR, SELLER_READ, 'ret-x').catch((e: Error) => e);
+    expect(hidden).toBeInstanceOf(NotFoundException);
+    expect((hidden as Error).message).toBe((missing as Error).message);
+  });
+
+  it('getById: view_all and the warehouse read another seller\'s return', async () => {
+    const { service, returnsRepository, ordersRepository } = build();
+    returnsRepository.findById.mockResolvedValue(RETURN_ROW);
+    ordersRepository.findById.mockResolvedValue({ ...CONFIRMED_ORDER, placedByUserId: OTHER_SELLER });
+    await expect(service.getById(TENANT, ACTOR, [...SELLER_READ, 'sales.orders.view_all'], 'ret-1')).resolves.toBeDefined();
+    await expect(service.getById(TENANT, ACTOR, [...SELLER_READ, 'inventory.returns.manage'], 'ret-1')).resolves.toBeDefined();
   });
 });
