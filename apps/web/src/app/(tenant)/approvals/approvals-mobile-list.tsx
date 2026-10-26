@@ -180,29 +180,24 @@ export function ApprovalsMobileList({
       {approvals.length === 0 ? (
         <p className={cn(T.card, 'p-6 text-center text-sm text-slate-500')}>{empty}</p>
       ) : (
-        <ul className="flex flex-col gap-3">
+        <ul className="grid grid-cols-2 items-start gap-3">
           {approvals.map((a) => {
             const open = expanded === a.id;
             const rejected = a.statusTone === 'danger';
             return (
-              <li key={a.id} className={rejected ? T.cardOut : T.card}>
+              <li key={a.id} className={cn(rejected ? T.cardOut : T.card, open && 'col-span-2')}>
                 <button
                   type="button"
                   aria-expanded={open}
                   onClick={() => setExpanded(open ? null : a.id)}
-                  className="flex w-full flex-col gap-2 p-4 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-900"
+                  className="flex w-full flex-col gap-2 p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-slate-900"
                 >
-                  <span className="flex items-start justify-between gap-3">
-                    <span className="flex min-w-0 items-center gap-2">
+                  <span className="flex items-start justify-between gap-2">
+                    <span className="flex min-w-0 flex-col gap-0.5">
                       <span className={rejected ? T.codeOut : T.code}>{a.orderNumber}</span>
-                      <span className={T.dot} aria-hidden="true">
-                        •
-                      </span>
                       <span className={T.stockLine}>{a.requestedAtLabel}</span>
                     </span>
-                    <span className={cn('shrink-0', rejected ? T.priceOut : T.price)}>
-                      {a.requestedPriceLabel}
-                    </span>
+                    <span className={cn('shrink-0', rejected ? T.priceOut : T.price)}>{a.requestedPriceLabel}</span>
                   </span>
                   <span className={T.title}>{a.productName ?? '—'}</span>
                   <span className="text-xs leading-snug text-slate-500">{a.reason}</span>
