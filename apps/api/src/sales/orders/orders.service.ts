@@ -713,7 +713,7 @@ export class OrdersService {
       }
       if (variant.isSerialized || variant.isLotTracked) {
         throw new UnprocessableEntityException(
-          `Product variant ${variant.sku} is serialized or lot-tracked; selling those is not supported yet (deferred to a later phase).`,
+          `Product variant ${variant.sku} is serialized or lot-tracked; selling those is outside the MVP scope.`,
         );
       }
       const maxPrice = Number(variant.maxPrice);

@@ -587,8 +587,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: state-transition co
       }
     });
 
-    // ---- P25 — self-approval still blocked under the CAS -------------
-    it('P25: the tenant administrator can approve their own request (pricing.policy.manage); the CAS still resolves it once', async () => {
+    // ---- P25 — self-approval allowed (ADR-0022 amendment, 2026-10-26); the CAS still resolves once ----
+    it('P25: a holder of pricing.discount.approve can approve their own request; the CAS still resolves it once', async () => {
       const f = await seed();
       // Give the seller pricing.discount.approve too by using an Admin who is also the requester.
       const created = await c.inject({ method: 'POST', url: '/api/v1/cart', headers: c.writeHeaders(f.admin), payload: { locationId: f.locationId, customerId: f.customerId } });

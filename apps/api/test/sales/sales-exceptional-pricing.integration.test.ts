@@ -103,6 +103,17 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
   const reject = (session: Session, id: string) =>
     c.inject({ method: 'POST', url: `/api/v1/price-approvals/${id}/reject`, headers: c.writeHeaders(session) });
 
+  /** ADR-0035: a non-founding user with zero location assignments is denied — grant the fixture's location. */
+  async function grantLocation(f: Fixture, session: Session): Promise<void> {
+    const assign = await c.inject({
+      method: 'PUT',
+      url: `/api/v1/users/${session.user.id}/locations`,
+      headers: c.writeHeaders(f.admin),
+      payload: { locationIds: [f.locationId] },
+    });
+    expect(assign.statusCode, assign.body).toBe(200);
+  }
+
   async function movementTypes(tenantId: string, orderId: string): Promise<string[]> {
     const { client, db } = getMigratorDb();
     try {
@@ -216,13 +227,28 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: exceptional pricing
   });
 
   // ---- P7 --------------------------------------------------------------------
-  it('P7: the requester cannot approve their own request (403)', async () => {
+  it('P7: a holder of pricing.discount.approve can resolve their own request (ADR-0022 amendment, 2026-10-26); it is audited', async () => {
     const f = await seed('P7 Co', `p7-${uniq()}@ex.com`);
     const { orderItemId } = await pendingOrder(f, f.admin, { unitPrice: 70 });
     const req = await requestApproval(f.admin, { orderItemId, reason: 'self' });
+    expect(req.statusCode, req.body).toBe(201);
     const approvalId = (JSON.parse(req.body) as { id: string }).id;
-    // Admin holds both pricing.discount.request and pricing.discount.approve.
-    expect((await approve(f.admin, approvalId)).statusCode).toBe(403);
+    // The Administrador holds both pricing.discount.request and pricing.discount.approve (a
+    // Supervisor holds only .approve, so it cannot file a request at all).
+    expect((await approve(f.admin, approvalId)).statusCode).toBe(200);
+    expect(await auditActions(f.tenantId, approvalId)).toContain('price_approval.approved');
+  });
+
+  it('P7b: a requester WITHOUT pricing.discount.approve still cannot resolve a request (403 at the route)', async () => {
+    const f = await seed('P7b Co', `p7b-${uniq()}@ex.com`);
+    const seller = await c.createAndLoginAs(f.admin, `sel7b-${uniq()}@ex.com`, 'Vendedor');
+    await grantLocation(f, seller);
+    const { orderItemId } = await pendingOrder(f, seller, { unitPrice: 70 });
+    const req = await requestApproval(seller, { orderItemId, reason: 'seller asks' });
+    expect(req.statusCode, req.body).toBe(201);
+    const approvalId = (JSON.parse(req.body) as { id: string }).id;
+    expect((await approve(seller, approvalId)).statusCode).toBe(403);
+    expect((await reject(seller, approvalId)).statusCode).toBe(403);
   });
 
   // ---- P8 --------------------------------------------------------------------

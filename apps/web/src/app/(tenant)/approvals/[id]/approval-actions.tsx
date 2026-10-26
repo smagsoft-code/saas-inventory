@@ -14,9 +14,9 @@ type Decision = 'approve' | 'reject';
  *  - Approve → `POST /api/v1/price-approvals/:id/approve` (`pricing.discount.approve`)
  *  - Reject  → `POST /api/v1/price-approvals/:id/reject`  (`pricing.discount.approve`)
  *
- * Both are conditional on the request still being `pending`; the **requester can never resolve
- * their own request** (`403`, server-enforced — the UI also hides the buttons as a courtesy). The
- * UI never changes the order status directly — the backend does, when the order is later confirmed.
+ * Both are conditional on the request still being `pending`; any holder of
+ * `pricing.discount.approve` may resolve a request, their own included (ADR-0022 amendment,
+ * 2026-10-26). The UI never changes the order status directly — the backend does, when the order is later confirmed.
  *
  * Owner redesign: approving may also edit the requested price — editing IS approving with that new
  * price, a single action (`{ price }` in the `/approve` body). Omitted, it behaves exactly as
@@ -29,7 +29,6 @@ export function ApprovalActions({
   approvalId,
   status,
   canResolve,
-  isOwnRequest,
   requestedPrice,
   maxPriceAtRequest,
   minPriceAtRequest,
@@ -37,7 +36,6 @@ export function ApprovalActions({
   approvalId: string;
   status: string;
   canResolve: boolean;
-  isOwnRequest: boolean;
   requestedPrice?: number | undefined;
   maxPriceAtRequest?: number | undefined;
   minPriceAtRequest?: number | undefined;
@@ -54,11 +52,6 @@ export function ApprovalActions({
   }
   if (!canResolve) {
     return null;
-  }
-  if (isOwnRequest) {
-    return (
-      <Alert tone="info">Tú presentaste esta solicitud — otro usuario con el permiso de aprobación debe resolverla.</Alert>
-    );
   }
 
   function closeConfirm(): void {

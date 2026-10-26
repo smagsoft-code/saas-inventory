@@ -301,13 +301,10 @@ export class PriceApprovalsService {
       if (!existing) {
         throw new NotFoundException('Price approval not found.');
       }
-      // Separation of duties (§49, §74 / test P7) — the requester cannot resolve their own request
-      // just by holding pricing.discount.approve (a Supervisor). The tenant administrator (the
-      // pricing-policy owner, `pricing.policy.manage`) is the one exception: owner decision, they
-      // may both raise and approve a below-minimum price. Still audited like any resolution.
-      if (existing.requestedBy === actorId && !permissions.includes('pricing.policy.manage')) {
-        throw new ForbiddenException('You cannot resolve your own exceptional-discount request.');
-      }
+      // Owner decision (ADR-0022, amendment of 2026-10-26): there is no separation-of-duties block —
+      // anyone holding `pricing.discount.approve` (enforced on the route) may resolve a request,
+      // their own included. Resolution is still audited with the actor and the CAS below still
+      // makes it exactly-once; a user without that permission never reaches this method.
       if (existing.status === status) {
         return this.toResponse(tx, tenantId, existing, permissions);
       }

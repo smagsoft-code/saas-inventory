@@ -15,27 +15,21 @@ describe('ApprovalActions', () => {
 
   it('renders nothing once the request is resolved', () => {
     const { container } = render(
-      <ApprovalActions approvalId="a-1" status="approved" canResolve isOwnRequest={false} />,
+      <ApprovalActions approvalId="a-1" status="approved" canResolve />,
     );
     expect(container).toBeEmptyDOMElement();
   });
 
   it('renders nothing for a caller without pricing.discount.approve', () => {
     const { container } = render(
-      <ApprovalActions approvalId="a-1" status="pending" canResolve={false} isOwnRequest={false} />,
+      <ApprovalActions approvalId="a-1" status="pending" canResolve={false} />,
     );
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('hides approve/reject for the requester’s own request', () => {
-    render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest />);
-    expect(screen.queryByRole('button', { name: /aprobar/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/otro usuario con el permiso de aprobación/i)).toBeInTheDocument();
-  });
-
   it('approve confirms then POSTs /approve with no body', async () => {
     mockedFetch.mockResolvedValueOnce({});
-    render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest={false} />);
+    render(<ApprovalActions approvalId="a-1" status="pending" canResolve />);
     fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
     expect(mockedFetch).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: /confirmar aprobación/i }));
@@ -45,7 +39,7 @@ describe('ApprovalActions', () => {
 
   it('reject POSTs /reject', async () => {
     mockedFetch.mockResolvedValueOnce({});
-    render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest={false} />);
+    render(<ApprovalActions approvalId="a-1" status="pending" canResolve />);
     fireEvent.click(screen.getByRole('button', { name: /^rechazar$/i }));
     fireEvent.click(screen.getByRole('button', { name: /confirmar rechazo/i }));
     await waitFor(() => expect(refreshMock).toHaveBeenCalled());
@@ -54,7 +48,7 @@ describe('ApprovalActions', () => {
 
   it('surfaces a 403 in place and does not refresh', async () => {
     mockedFetch.mockRejectedValueOnce(new ApiError(403, 'FORBIDDEN', 'nope', undefined));
-    render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest={false} />);
+    render(<ApprovalActions approvalId="a-1" status="pending" canResolve />);
     fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
     fireEvent.click(screen.getByRole('button', { name: /confirmar aprobación/i }));
     expect(await screen.findByText(/no tienes autorización para resolver/i)).toBeInTheDocument();
@@ -62,7 +56,7 @@ describe('ApprovalActions', () => {
   });
 
   it('does not offer "Editar precio" without requestedPrice/maxPriceAtRequest', () => {
-    render(<ApprovalActions approvalId="a-1" status="pending" canResolve isOwnRequest={false} />);
+    render(<ApprovalActions approvalId="a-1" status="pending" canResolve />);
     fireEvent.click(screen.getByRole('button', { name: /^aprobar$/i }));
     expect(screen.queryByRole('button', { name: /editar precio/i })).not.toBeInTheDocument();
   });
@@ -74,7 +68,6 @@ describe('ApprovalActions', () => {
         approvalId="a-1"
         status="pending"
         canResolve
-        isOwnRequest={false}
         requestedPrice={70}
         maxPriceAtRequest={120}
         minPriceAtRequest={80}
@@ -99,7 +92,6 @@ describe('ApprovalActions', () => {
         approvalId="a-1"
         status="pending"
         canResolve
-        isOwnRequest={false}
         requestedPrice={70}
         maxPriceAtRequest={120}
       />,

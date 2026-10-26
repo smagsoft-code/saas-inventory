@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { generateId } from '@saas-inventory/shared';
 import { AuditLogService } from '../../common/audit/audit-log.service';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
@@ -320,8 +320,10 @@ export class CartsService {
       throw new ConflictException(`Product variant ${variant.sku} is not currently sellable.`);
     }
     if (variant.isSerialized || variant.isLotTracked) {
-      throw new ConflictException(
-        `Product variant ${variant.sku} is serialized or lot-tracked; selling those is not supported yet (deferred to a later phase).`,
+      // MVP scope decision (owner, 2026-10-26): serialized / lot-tracked variants are not sellable.
+      // 422 — same status the checkout path (`OrdersService.resolveLines`) already uses.
+      throw new UnprocessableEntityException(
+        `Product variant ${variant.sku} is serialized or lot-tracked; selling those is outside the MVP scope.`,
       );
     }
     return variant;

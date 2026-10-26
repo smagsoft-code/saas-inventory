@@ -137,7 +137,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('sales: cart + orders (inte
 
       const serial = await c.createProductVariant(f.admin, { sku: `SER-${Date.now()}`, isSerialized: true });
       const serialAdd = await cart(f.admin, 'POST', '/items', { productVariantId: serial.variantId, quantity: 1 });
-      expect(serialAdd.statusCode).toBe(409);
+      // MVP scope decision (2026-10-26): serialized / lot-tracked variants are rejected with 422.
+      expect(serialAdd.statusCode).toBe(422);
     });
 
     it('one open cart per vendor — a second POST /cart returns the same cart', async () => {

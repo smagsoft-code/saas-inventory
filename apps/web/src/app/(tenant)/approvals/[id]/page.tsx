@@ -23,7 +23,7 @@ export const metadata = { title: 'Aprobación · SaaS Inventory' };
 /**
  * Price-approval detail (`S-APPROVAL-DETAIL`) — `GET /api/v1/price-approvals/:id`
  * (`pricing.discount.request` **or** `pricing.discount.approve`). Resolving needs
- * `pricing.discount.approve` and is refused for the requester's own request (server-enforced).
+ * `pricing.discount.approve`; a holder may resolve their own request (ADR-0022 amendment, 2026-10-26).
  * `minPriceAtRequest` is only present for a caller with `pricing.floor.view`.
  */
 export default async function ApprovalDetailPage({
@@ -58,9 +58,7 @@ export default async function ApprovalDetailPage({
   // `sales.orders.view` gets a 403 here, which is fine (the ids still link).
   const order = await getOrder(approval.orderId).catch(() => null);
   const line = order?.items.find((item) => item.id === approval.orderItemId) ?? null;
-  // The tenant administrator (pricing.policy.manage) may resolve their own request; everyone else cannot.
   const requestedByMe = approval.requestedBy === session?.id;
-  const isOwnRequest = requestedByMe && !checker.can('pricing.policy.manage');
 
   return (
     <PageContainer>
@@ -134,7 +132,6 @@ export default async function ApprovalDetailPage({
             approvalId={approval.id}
             status={approval.status}
             canResolve={canResolve}
-            isOwnRequest={isOwnRequest}
             requestedPrice={approval.requestedPrice}
             maxPriceAtRequest={approval.maxPriceAtRequest}
             minPriceAtRequest={approval.minPriceAtRequest}

@@ -199,18 +199,20 @@ describe('PriceApprovalsService.request', () => {
 describe('PriceApprovalsService.approve / reject', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('blocks the requester from approving their own request (§49 / P7)', async () => {
-    const { service, priceApprovalsRepository } = build();
-    priceApprovalsRepository.lockById.mockResolvedValue(PENDING_ROW);
-    await expect(service.approve(TENANT, REQUESTER, APPROVE_PERMS, 'pa-1', META)).rejects.toThrow(ForbiddenException);
-  });
-
-  it('lets the tenant administrator (pricing.policy.manage) approve their own request', async () => {
+  it('lets a requester holding pricing.discount.approve resolve their own request (ADR-0022 amendment, 2026-10-26)', async () => {
     const { service, priceApprovalsRepository } = build();
     priceApprovalsRepository.lockById.mockResolvedValue(PENDING_ROW);
     priceApprovalsRepository.resolveIfPending.mockResolvedValue({ ...PENDING_ROW, status: 'approved', approvedBy: REQUESTER });
-    const result = await service.approve(TENANT, REQUESTER, [...APPROVE_PERMS, 'pricing.policy.manage'], 'pa-1', META);
+    const result = await service.approve(TENANT, REQUESTER, APPROVE_PERMS, 'pa-1', META);
     expect(result.status).toBe('approved');
+  });
+
+  it('lets a requester holding pricing.discount.approve reject their own request', async () => {
+    const { service, priceApprovalsRepository } = build();
+    priceApprovalsRepository.lockById.mockResolvedValue(PENDING_ROW);
+    priceApprovalsRepository.resolveIfPending.mockResolvedValue({ ...PENDING_ROW, status: 'rejected', approvedBy: REQUESTER });
+    const result = await service.reject(TENANT, REQUESTER, APPROVE_PERMS, 'pa-1', META);
+    expect(result.status).toBe('rejected');
   });
 
   it('approves a pending request via the conditional update', async () => {
