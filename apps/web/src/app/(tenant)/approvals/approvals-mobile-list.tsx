@@ -68,6 +68,7 @@ export function ApprovalsMobileList({
   allowAllLocations,
   defaultLocationId,
   empty,
+  notice,
 }: {
   approvals: MobileApproval[];
   /** Total rows matching the filters (all pages). */
@@ -80,6 +81,8 @@ export function ApprovalsMobileList({
   allowAllLocations: boolean;
   defaultLocationId: string | undefined;
   empty: string;
+  /** The "Filtrado a un pedido" line the page shows under the heading, when filtered to one order. */
+  notice?: React.ReactNode;
 }): React.JSX.Element {
   const router = useRouter();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -125,8 +128,9 @@ export function ApprovalsMobileList({
   ];
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-end gap-2">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-slate-900">Cola de aprobaciones</h2>
         <Button
           type="button"
           variant="secondary"
@@ -144,6 +148,8 @@ export function ApprovalsMobileList({
           )}
         </Button>
       </div>
+
+      {notice}
 
       {chips.length > 0 && (
         <div className="flex flex-wrap items-center gap-2" aria-label="Filtros activos">

@@ -238,24 +238,26 @@ export default async function ApprovalsPage({
         </section>
       )}
 
-      <h2 className="text-sm font-semibold text-slate-900">Cola de aprobaciones</h2>
+      <h2 className="hidden text-sm font-semibold text-slate-900 md:block">Cola de aprobaciones</h2>
 
       {orderId && (
-        <p className="flex items-center gap-2 text-sm text-slate-600">
-          Filtrado a un pedido
-          <Link
-            href={`/sales/${orderId}`}
-            className="font-medium text-slate-700 underline underline-offset-2"
-          >
-            {shortId(orderId)}
-          </Link>
-          <Link
-            href={withoutOrderHref}
-            className="text-xs font-medium text-slate-500 hover:underline"
-          >
-            Quitar
-          </Link>
-        </p>
+        <div className="hidden md:block">
+          <p className="flex items-center gap-2 text-sm text-slate-600">
+            Filtrado a un pedido
+            <Link
+              href={`/sales/${orderId}`}
+              className="font-medium text-slate-700 underline underline-offset-2"
+            >
+              {shortId(orderId)}
+            </Link>
+            <Link
+              href={withoutOrderHref}
+              className="text-xs font-medium text-slate-500 hover:underline"
+            >
+              Quitar
+            </Link>
+          </p>
+        </div>
       )}
 
       <div className="md:hidden">
@@ -274,6 +276,25 @@ export default async function ApprovalsPage({
           allowAllLocations={location.allowAll}
           defaultLocationId={location.defaultId}
           empty={emptyText}
+          notice={
+            orderId ? (
+              <p className="flex items-center gap-2 text-sm text-slate-600">
+                Filtrado a un pedido
+                <Link
+                  href={`/sales/${orderId}`}
+                  className="font-medium text-slate-700 underline underline-offset-2"
+                >
+                  {shortId(orderId)}
+                </Link>
+                <Link
+                  href={withoutOrderHref}
+                  className="text-xs font-medium text-slate-500 hover:underline"
+                >
+                  Quitar
+                </Link>
+              </p>
+            ) : null
+          }
         />
         {result.data.length > 0 && (
           <div className="mt-3">
