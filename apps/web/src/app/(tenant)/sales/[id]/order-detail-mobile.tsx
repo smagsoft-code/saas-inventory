@@ -1,14 +1,15 @@
 import Link from 'next/link';
 import type { ReactNode } from 'react';
-import { cn } from '../../../../lib/cn';
-import { mobileBadgeClass, PRODUCTS_MOBILE_THEMES } from '../../products/products-mobile-theme';
+import { Badge } from '../../../../components/ui/badge';
 
 /**
- * The phone layout of one order (`md:hidden` on the page; the desktop cards keep `md` and up),
- * following the approved phone mock-up: header (number · estado · document and almacén), the amber
- * reservation notice, a customer card, the lines card with its totals. The payment card and the
- * confirm / cancel buttons are `OrderActions`, restyled for phones in the same component. Only the
- * data the web already shows — pure presentation, the page resolves names, links and dates.
+ * The phone layout of one order (`md:hidden` on the page; the desktop cards keep `md` and up).
+ * Structure and positions follow the approved phone mock-up — header (number · estado · document
+ * and almacén), the reservation notice, a customer card, the lines card with its totals — while the
+ * type, surfaces and colours are the web's own: sans-serif, white bordered cards, slate-500 labels
+ * and slate-900 values. The payment card and the confirm / cancel buttons are `OrderActions`,
+ * restyled for phones in that component. Only data the web already shows; the page resolves
+ * names, links and dates.
  */
 export interface MobileOrderDetail {
   orderNumber: string;
@@ -43,12 +44,12 @@ export interface MobileOrderDetail {
   totals: { subtotal: string; discount: string; tax: string; total: string; currency: string };
 }
 
-const T = PRODUCTS_MOBILE_THEMES.light;
-const CARD = cn(T.card, 'flex flex-col gap-3 p-4');
+const CARD = 'flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4';
+const BLOCK = 'flex flex-col gap-3 rounded-md border border-slate-200 p-3';
 const HEAD = 'flex items-center gap-3';
 const HEAD_ICON =
-  'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700';
-const HEAD_TITLE = 'min-w-0 flex-1 text-xs font-bold uppercase tracking-wider text-slate-700';
+  'flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-slate-100 text-slate-600';
+const HEAD_TITLE = 'min-w-0 flex-1 text-sm font-semibold text-slate-900';
 
 function Icon({ children }: { children: ReactNode }): React.JSX.Element {
   return (
@@ -69,7 +70,7 @@ function Icon({ children }: { children: ReactNode }): React.JSX.Element {
 
 function Contact({ icon, children }: { icon: ReactNode; children: ReactNode }): React.JSX.Element {
   return (
-    <div className="flex min-w-0 items-center gap-2 text-sm text-slate-700">
+    <div className="flex min-w-0 items-center gap-2 text-sm text-slate-900">
       <span className="text-slate-400">{icon}</span>
       <span className="min-w-0 truncate">{children}</span>
     </div>
@@ -80,7 +81,7 @@ function Line({ label, value }: { label: string; value: string }): React.JSX.Ele
   return (
     <div className="flex items-baseline justify-between gap-3 text-sm">
       <dt className="text-slate-500">{label}</dt>
-      <dd className="font-mono tabular-nums text-slate-700">{value}</dd>
+      <dd className="tabular-nums text-slate-900">{value}</dd>
     </div>
   );
 }
@@ -97,19 +98,19 @@ export function OrderDetailMobile({
     <div className="flex flex-col gap-3 md:hidden">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="text-xl font-bold text-slate-900">{detail.orderNumber}</h1>
-          <span className={mobileBadgeClass(T, detail.statusTone)}>{detail.statusLabel}</span>
-          <span className="font-mono text-xs text-slate-500">{detail.subtitle}</span>
+          <h1 className="text-xl font-semibold text-slate-900">{detail.orderNumber}</h1>
+          <Badge tone={detail.statusTone}>{detail.statusLabel}</Badge>
+          <span className="text-sm text-slate-500">{detail.subtitle}</span>
         </div>
         {actions}
       </header>
 
       {detail.notice && (
         <section
-          className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4"
+          className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4"
           role="status"
         >
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-amber-100 text-amber-700">
             <Icon>
               <path d="M12 3 2.5 20h19L12 3Z" />
               <path d="M12 10v4M12 17.2v.1" />
@@ -129,26 +130,24 @@ export function OrderDetailMobile({
             </Icon>
           </span>
           <h2 className={HEAD_TITLE}>Cliente</h2>
-          <span className="shrink-0 text-right font-mono text-xs leading-snug text-slate-500">
+          <span className="shrink-0 text-right text-xs leading-snug text-slate-500">
             {customer.createdLabel}
           </span>
         </div>
-        <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3">
+        <div className={BLOCK}>
           <div className="flex items-start justify-between gap-3">
             {customer.href ? (
               <Link
                 href={customer.href}
-                className="text-lg font-bold text-slate-900 underline underline-offset-2"
+                className="text-base font-semibold text-slate-900 underline underline-offset-2"
               >
                 {customer.name}
               </Link>
             ) : (
-              <p className="text-lg font-bold text-slate-900">{customer.name}</p>
+              <p className="text-base font-semibold text-slate-900">{customer.name}</p>
             )}
             {customer.taxId && (
-              <span className="shrink-0 font-mono text-xs font-bold text-blue-700">
-                ID: {customer.taxId}
-              </span>
+              <span className="shrink-0 text-xs font-medium text-slate-600">ID: {customer.taxId}</span>
             )}
           </div>
           <div className="grid grid-cols-2 gap-x-3 gap-y-2">
@@ -200,9 +199,9 @@ export function OrderDetailMobile({
               </Contact>
             )}
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-sm text-slate-500">
             Almacén:{' '}
-            <span className="font-semibold text-slate-700">
+            <span className="text-slate-900">
               {customer.location} · {customer.warehouse}
             </span>
           </p>
@@ -218,51 +217,41 @@ export function OrderDetailMobile({
             </Icon>
           </span>
           <h2 className={HEAD_TITLE}>Líneas</h2>
-          <span className="shrink-0 rounded-md bg-blue-50 px-2 py-0.5 font-mono text-xs font-semibold text-blue-700">
+          <span className="shrink-0 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
             {detail.items.length} {detail.items.length === 1 ? 'artículo' : 'artículos'}
           </span>
         </div>
         <ul className="flex flex-col gap-3">
           {detail.items.map((item) => (
-            <li key={item.id} className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3">
+            <li key={item.id} className={BLOCK}>
               <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-col gap-2">
+                <div className="flex min-w-0 flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded bg-blue-100 px-1.5 py-0.5 font-mono text-xs font-bold text-blue-800">
-                      {item.sku}
-                    </span>
-                    {item.belowMinimum && <span className={T.badgeWarn}>bajo el mínimo</span>}
+                    <span className="text-sm font-medium text-slate-900">{item.sku}</span>
+                    {item.belowMinimum && <Badge tone="warning">bajo el mínimo</Badge>}
                   </div>
-                  <p className="text-lg font-bold uppercase leading-tight text-slate-900">
-                    {item.productName}
-                  </p>
+                  <p className="text-sm text-slate-500">{item.productName}</p>
                 </div>
                 <div className="shrink-0 text-right">
-                  <p className="font-mono text-lg font-bold tabular-nums text-slate-900">
-                    {item.lineTotal}
-                  </p>
-                  <p className="font-mono text-xs text-slate-500">{totals.currency}</p>
+                  <p className="text-base font-semibold tabular-nums text-slate-900">{item.lineTotal}</p>
+                  <p className="text-xs text-slate-500">{totals.currency}</p>
                 </div>
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2">
+              <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
                 <dl className="flex gap-6">
                   <div>
                     <dt className="text-xs text-slate-500">Cant.</dt>
-                    <dd className="font-mono text-base font-semibold text-slate-900">
-                      {item.quantity}
-                    </dd>
+                    <dd className="text-sm tabular-nums text-slate-900">{item.quantity}</dd>
                   </div>
                   <div>
                     <dt className="text-xs text-slate-500">Precio unitario</dt>
-                    <dd className="font-mono text-base font-semibold text-slate-900">
-                      {item.unitPrice}
-                    </dd>
+                    <dd className="text-sm tabular-nums text-slate-900">{item.unitPrice}</dd>
                   </div>
                 </dl>
                 {item.movementsHref && (
                   <Link
                     href={item.movementsHref}
-                    className="flex items-center gap-1.5 text-sm font-semibold text-blue-700"
+                    className="flex items-center gap-1.5 text-sm font-medium text-slate-700 underline-offset-2 hover:underline"
                   >
                     <Icon>
                       <path d="M4 12a8 8 0 1 0 2.5-5.8M4 4v4h4M12 8v4l3 2" />
@@ -279,14 +268,14 @@ export function OrderDetailMobile({
           <Line label="Descuento (informativo)" value={totals.discount} />
           <Line label="Impuesto" value={totals.tax} />
         </dl>
-        <div className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 p-3">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Total</span>
-          <span className="font-mono text-2xl font-bold tabular-nums text-slate-900">
-            {totals.total}{' '}
-            <span className="text-sm font-semibold text-slate-500">{totals.currency}</span>
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-3">
+          <span className="text-sm font-medium text-slate-900">Total</span>
+          <span className="text-xl font-semibold tabular-nums text-slate-900">
+            {totals.total} <span className="text-sm font-normal text-slate-500">{totals.currency}</span>
           </span>
         </div>
       </section>
     </div>
   );
 }
+
