@@ -343,7 +343,7 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
 
   it('confirm on a pending order releases the reservation and writes a SALE (commit boundary)', async () => {
     const { service, ordersRepository, orderItemsRepository, stockLedgerService } = build();
-    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00', createdAt: new Date('2026-01-01T00:00:00Z') });
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', placedByUserId: ACTOR_ID, status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00', createdAt: new Date('2026-01-01T00:00:00Z') });
     orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2', skuSnapshot: 'SKU-1' }]);
     ordersRepository.updateStatus.mockResolvedValue({
       id: 'order-1',
@@ -370,14 +370,14 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
 
   it('rejects confirm when the sum of payments does not match the order total', async () => {
     const { service, ordersRepository, orderPaymentsRepository } = build();
-    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00' });
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', placedByUserId: ACTOR_ID, status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00' });
     await expect(service.confirm(TENANT_ID, ACTOR_ID, PERMS, 'order-1', cashPayment(100), META)).rejects.toThrow(BadRequestException);
     expect(orderPaymentsRepository.createMany).not.toHaveBeenCalled();
   });
 
   it('accepts a split payment across multiple methods summing to the total, and persists every row', async () => {
     const { service, ordersRepository, orderItemsRepository, orderPaymentsRepository } = build();
-    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00', createdAt: new Date('2026-01-01T00:00:00Z') });
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', placedByUserId: ACTOR_ID, status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00', createdAt: new Date('2026-01-01T00:00:00Z') });
     orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2', skuSnapshot: 'SKU-1' }]);
     ordersRepository.updateStatus.mockResolvedValue({
       id: 'order-1',
@@ -412,6 +412,7 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
     const { service, ordersRepository, stockLedgerService, orderPaymentsRepository } = build();
     ordersRepository.lockById.mockResolvedValue({
       id: 'order-1',
+      placedByUserId: ACTOR_ID,
       status: 'confirmed',
       locationId: 'loc-1',
       documentType: 'invoice',
@@ -433,13 +434,13 @@ describe('OrdersService.confirm / cancel — state machine (§37, §54)', () => 
 
   it('cancel of a confirmed order is rejected — that needs a sales return (FASE 13, §54)', async () => {
     const { service, ordersRepository } = build();
-    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'confirmed', locationId: 'loc-1' });
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', placedByUserId: ACTOR_ID, status: 'confirmed', locationId: 'loc-1' });
     await expect(service.cancel(TENANT_ID, ACTOR_ID, PERMS, 'order-1', META)).rejects.toThrow(ConflictException);
   });
 
   it('cancel of a pending order releases every line reservation', async () => {
     const { service, ordersRepository, orderItemsRepository, stockLedgerService } = build();
-    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', status: 'pending', locationId: 'loc-1' });
+    ordersRepository.lockById.mockResolvedValue({ id: 'order-1', placedByUserId: ACTOR_ID, status: 'pending', locationId: 'loc-1' });
     orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2' }]);
     ordersRepository.updateStatus.mockResolvedValue({
       id: 'order-1',
@@ -577,5 +578,47 @@ describe('OrdersService — a seller only sees their own orders unless they hold
     const { service, ordersRepository, createdOrder } = build();
     ordersRepository.findById.mockResolvedValue({ ...createdOrder, placedByUserId: 'someone-else' });
     await expect(service.getNotifications(TENANT_ID, ACTOR_ID, ['sales.orders.view'], 'order-1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('OrdersService.confirm / cancel — seller scope (FINDING-VA-WRITE-SCOPE)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const OTHERS_ORDER = { id: 'order-9', placedByUserId: 'seller-9', status: 'pending', locationId: 'loc-1', tenantId: TENANT_ID, total: '190.00' };
+  const NO_VIEW_ALL = ['sales.orders.create', 'sales.orders.cancel'];
+
+  it('a seller without view_all cannot confirm another seller order: 404, and nothing is read further or written', async () => {
+    const { service, ordersRepository, orderItemsRepository, orderPaymentsRepository, stockLedgerService } = build();
+    ordersRepository.lockById.mockResolvedValue(OTHERS_ORDER);
+    await expect(service.confirm(TENANT_ID, ACTOR_ID, NO_VIEW_ALL, 'order-9', cashPayment(190), META)).rejects.toThrow(NotFoundException);
+    expect(orderItemsRepository.listByOrder).not.toHaveBeenCalled();
+    expect(orderPaymentsRepository.createMany).not.toHaveBeenCalled();
+    expect(stockLedgerService.applyMovement).not.toHaveBeenCalled();
+    expect(ordersRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('...nor read it through the idempotent already-confirmed return', async () => {
+    const { service, ordersRepository } = build();
+    ordersRepository.lockById.mockResolvedValue({ ...OTHERS_ORDER, status: 'confirmed' });
+    await expect(service.confirm(TENANT_ID, ACTOR_ID, NO_VIEW_ALL, 'order-9', cashPayment(190), META)).rejects.toThrow(NotFoundException);
+  });
+
+  it('a seller without view_all cannot cancel another seller order (nor an already-cancelled one): 404, nothing released', async () => {
+    const { service, ordersRepository, stockLedgerService } = build();
+    for (const status of ['pending', 'cancelled']) {
+      ordersRepository.lockById.mockResolvedValue({ ...OTHERS_ORDER, status });
+      await expect(service.cancel(TENANT_ID, ACTOR_ID, NO_VIEW_ALL, 'order-9', META)).rejects.toThrow(NotFoundException);
+    }
+    expect(stockLedgerService.applyMovement).not.toHaveBeenCalled();
+    expect(ordersRepository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it('with sales.orders.view_all the same actor CAN cancel another seller pending order (positive control)', async () => {
+    const { service, ordersRepository, orderItemsRepository, stockLedgerService } = build();
+    ordersRepository.lockById.mockResolvedValue(OTHERS_ORDER);
+    orderItemsRepository.listByOrder.mockResolvedValue([{ productVariantId: 'variant-1', quantity: '2', skuSnapshot: 'SKU-1' }]);
+    ordersRepository.updateStatus.mockResolvedValue({ ...OTHERS_ORDER, status: 'cancelled', documentType: 'invoice', orderNumber: 'ORD-000009', customerNameSnapshot: 'X', subtotal: '0', discountTotal: '0', taxTotal: '0', total: '0', currency: 'USD', createdAt: new Date(), updatedAt: new Date() });
+    await service.cancel(TENANT_ID, ACTOR_ID, [...NO_VIEW_ALL, 'sales.orders.view_all'], 'order-9', META);
+    expect(stockLedgerService.applyMovement).toHaveBeenCalled();
   });
 });

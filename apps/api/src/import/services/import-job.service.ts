@@ -1,5 +1,6 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { generateId } from '@saas-inventory/shared';
+import { isUUID } from 'class-validator';
 import { getOptionalEnvVar } from '@saas-inventory/config';
 import type { PaginatedResult } from '@saas-inventory/types';
 import { withTenantTransaction } from '../../database/tenant-context';
@@ -7,6 +8,7 @@ import type { ImportJobResponseDto } from '../dto/import-job-response.dto';
 import { assertTransition } from '../import-job-state-machine';
 import { assertValidColumnMapping, autoMapAttributeHeaders } from '../import-fields';
 import { AttributesRepository } from '../../catalog/repositories/attributes.repository';
+import { LocationsRepository } from '../../inventory/repositories/locations.repository';
 import type { ImportJobRow, ImportJobStatus } from '../repositories/import-jobs.repository';
 import { ImportJobsRepository } from '../repositories/import-jobs.repository';
 import { ImportJobRowsRepository } from '../repositories/import-job-rows.repository';
@@ -69,7 +71,37 @@ export class ImportJobService {
     private readonly auditService: ImportAuditService,
     private readonly mappingTemplatesRepository: ImportMappingTemplatesRepository,
     private readonly attributesRepository: AttributesRepository,
+    private readonly locationsRepository: LocationsRepository,
   ) {}
+
+  /**
+   * FINDING-IMP-FOREIGN-REF-500. `defaultLocationId` / `mappingTemplateId` arrive as free multipart text
+   * fields (no DTO pipe), so before anything is stored they must be (a) well-formed UUIDs → 400, and
+   * (b) owned by THIS tenant → 404. The composite foreign keys would reject a foreign id as well, but as
+   * an unhandled 500 and after the uploaded file had already been written to object storage.
+   */
+  private async assertReferencedIdsBelongToTenant(
+    tenantId: string,
+    input: Pick<CreateImportJobInput, 'defaultLocationId' | 'mappingTemplateId'>,
+  ): Promise<void> {
+    for (const [field, value] of [
+      ['defaultLocationId', input.defaultLocationId],
+      ['mappingTemplateId', input.mappingTemplateId],
+    ] as const) {
+      if (value !== undefined && !isUUID(value)) {
+        throw new BadRequestException(`${field} must be a UUID.`);
+      }
+    }
+    if (input.defaultLocationId === undefined && input.mappingTemplateId === undefined) return;
+    await withTenantTransaction(tenantId, async (tx) => {
+      if (input.defaultLocationId !== undefined && !(await this.locationsRepository.findById(tx, tenantId, input.defaultLocationId))) {
+        throw new NotFoundException('Location not found.');
+      }
+      if (input.mappingTemplateId !== undefined && !(await this.mappingTemplatesRepository.findById(tx, tenantId, input.mappingTemplateId))) {
+        throw new NotFoundException('Mapping template not found.');
+      }
+    });
+  }
 
   async list(tenantId: string, params: { page: number; pageSize: number; status?: string | undefined }): Promise<PaginatedResult<ImportJobResponseDto>> {
     return withTenantTransaction(tenantId, async (tx) => {
@@ -92,6 +124,7 @@ export class ImportJobService {
   async create(tenantId: string, actorId: string, input: CreateImportJobInput): Promise<ImportJobResponseDto> {
     this.fileService.assertUploadIsAcceptable(input.originalFilename, input.mimeType, input.fileBuffer.length);
     const parsed = await this.fileService.parse(input.fileBuffer);
+    await this.assertReferencedIdsBelongToTenant(tenantId, input);
 
     const jobId = generateId();
     const storageKey = await this.fileStorage.storeUpload(tenantId, jobId, input.fileBuffer);

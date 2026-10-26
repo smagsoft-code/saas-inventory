@@ -428,7 +428,10 @@ export class OrdersService {
   ): Promise<OrderResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const order = await this.ordersRepository.lockById(tx, tenantId, id);
-      if (!order) {
+      // Same visibility rule as the reads (FINDING-VA-WRITE-SCOPE): a seller without
+      // `sales.orders.view_all` cannot confirm — nor, via the idempotent return below, even read — an
+      // order they did not place. Checked first, before any status-dependent answer.
+      if (!order || !this.canSeeSellerOf(order, actorId, permissions)) {
         throw new NotFoundException('Order not found.');
       }
       if (order.status === 'confirmed') {
@@ -535,7 +538,8 @@ export class OrdersService {
   async cancel(tenantId: string, actorId: string, permissions: string[], id: string, meta: AuditMeta): Promise<OrderResponseDto> {
     return withTenantTransaction(tenantId, async (tx) => {
       const order = await this.ordersRepository.lockById(tx, tenantId, id);
-      if (!order) {
+      // Same visibility rule as the reads (FINDING-VA-WRITE-SCOPE) — see `confirm`.
+      if (!order || !this.canSeeSellerOf(order, actorId, permissions)) {
         throw new NotFoundException('Order not found.');
       }
       if (order.status === 'cancelled') {
