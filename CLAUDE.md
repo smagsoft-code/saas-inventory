@@ -153,6 +153,19 @@ and get it agreed before implementing.
 
 ## Current project status
 
+> **Verified status — 2026-10-26** (branch `develop`, HEAD `2215f5d`, clean tree, **not pushed**).
+> The narrative below is **chronological and historical**: sentences such as "no role/permission
+> CRUD exists yet", "no other business functionality exists yet" or "no frontend UI exists yet"
+> described the repository at the time of that prompt and are **no longer true** — they are kept
+> unchanged to preserve the decision history. For the current picture read, in this order:
+> [docs/roadmap/roadmap.md](docs/roadmap/roadmap.md) ("Verified status" + "Work after FASE 18"),
+> then [docs/roadmap/pending-register.md](docs/roadmap/pending-register.md) (open items with
+> evidence), then the ADR index. In short: FASE 0–18 are implemented; FASE 19–24 are not started;
+> much of the work after FASE 18 is implemented but **not validated** (no full real-PostgreSQL run
+> for the current tree; `apps/web` unit tests exit non-zero because of one unhandled error). One
+> rule documented below was changed in code without an ADR — the exceptional-discount requester
+> may resolve their own request when holding `pricing.policy.manage` (`DECISION-SELF-APPROVAL`).
+
 The PostgreSQL persistence layer (schema, migrations, RLS, constraints — Prompt 03) is
 implemented. Authentication (Prompt 04) is implemented — registration (self-service tenant
 provisioning), login, logout, session refresh/rotation, `GET /auth/me`, the guard chain
@@ -1327,3 +1340,39 @@ cases plus pre-existing uncommitted specs elsewhere in the tree); web unit 633/6
 2 new `login-form.test.tsx` cases, 2 new + 1 rewritten `create-user-form.test.tsx` cases, 5 new
 `users-filters.test.tsx`); lint/typecheck clean on both apps. Not pushed — pending the user's
 visual/functional review.
+
+**Blocks after the Login + Usuarios entry (not narrated above — documentation catch-up, 2026-10-26).**
+Everything below is read from commits, migrations and ADRs; none of it has a recorded real-PostgreSQL
+run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Migrations `0034`–`0050`:
+
+- **Kardex / costing** (`1283de8`, ADR-0037, `0034`): costed Kardex view, `GET /reports/kardex`,
+  weighted-average cost; movements history rebuilt. Inventory total value uses physical stock, not
+  availability (`2e5eded`).
+- **Transfers** (`0035` code, `0036` tenant workflow flags): configurable approval/preparation steps
+  via tenant settings (`transfersRequireApproval`/`transfersRequirePreparation`), modal actions,
+  created-date filter, product search.
+- **Sales** (`0037`–`0041`, `0044`, `0047`, `0050`; ADR-0038): customers redesign; split payments
+  (`order_payments`); order PDF export via the browser print dialog (server-side generation
+  deferred); approver price editing; **the exceptional-discount trigger is now `base_price`, not
+  `min_price`** (ADR-0022 amendment of 2026-10-05; `min_price` remains the hard floor; migration
+  `0038` adds `base_price_at_request`) — the FASE 12/13 paragraphs above still say "below
+  `min_price`" and are historical (`DOC-ADR0022-TRIGGER-DRIFT`); sequential return and approval
+  numbers; the
+  `sales.orders.view_all` permission scoping sales history to the seller; exports and payments
+  report. **Separation-of-duties change:** `PriceApprovalsService.resolve` lets a
+  `pricing.policy.manage` holder resolve their own request (`b198a7d`, migration `0049` backfills the
+  admin pricing permissions) — contradicting the "requester can never resolve their own request"
+  statements in this file's FASE 13 paragraph and in five other documents; no ADR records it
+  (`DECISION-SELF-APPROVAL`).
+- **Catalog / import / QR** (`0042`, `0043`, `0045`, `0046`): category codes and SKU prefix, uppercase
+  names, the `draft` product status removed, bulk stock load from Excel, import-pipeline fixes, bulk
+  and printable QR generation.
+- **Tenant branding / home** (`0048`, `88acde0`): tenant logos; home KPIs with per-warehouse filter
+  and yearly trend chart.
+- **UI/UX redesign** (≈35 `apps/web` commits, 2026-10-22…26): Spanish UI, 64 px hover-expand
+  navigation rail, mobile tab bar and phone layouts for transfers, new sale, order detail, payments,
+  approvals, returns and movements. The design-token layer, blue primary and Lotes 2–3 specified in
+  `docs/ui-ux/UI-UX-SPEC-001.md` were **not** delivered (`UIUX-SPEC-VS-IMPLEMENTATION`).
+- **Verification baseline (2026-10-26):** `apps/api` unit 778/778 (70 files); `apps/web` unit
+  1009 passed (138 files) plus 1 unhandled error → non-zero exit (`DEFECT-WEB-TEST-UNHANDLED`);
+  `pg-verify` not run (a development PostgreSQL holds port 55432).

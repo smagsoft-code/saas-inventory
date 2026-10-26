@@ -215,13 +215,41 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   standalone `/reports` route. Commits `c79d93a`…`1a50133`; migration `0030` (movements
   `occurred_at` index) is the only schema change. *(done)*
 
+## Work after FASE 18 (outside the numbered phases)
+
+Between 2026-09-10 (QA 5S, `develop` at `1a50133`) and 2026-10-26 (HEAD `2215f5d`) the repository
+gained 61 commits after the last roadmap commit (`6fcfb79`) and migrations `0031`–`0050`. None of it
+was a numbered phase. Each block lists what the code/commit history shows; **"validated" means a
+re-runnable proof exists, which for most blocks it does not yet** — see
+[pending-register.md](pending-register.md) (`PG-VERIFY-FULL-RUN`). Commit hashes are the evidence.
+
+| Block | Delivered (per commits / migrations / ADRs) | Validation state |
+| --- | --- | --- |
+| **QA campaign 5A–5S** (2026-09) | Functional QA over the finished system; not a development phase. 5R/5R-A: outbox → Event Processor → n8n → Telegram, 2-layer idempotency, 5 `dead_letter` rows replayed to `delivered` after the operator fixed the n8n workflow. 5S: second tenant, cross-tenant/IDOR + RLS probes (all 404/denied), public QR resolver, HTTP-level page loads. | Results recorded in prose and session notes only; raw evidence files are **not** in the repo (`QA-EVIDENCE-PERSISTENCE`). Visual/interaction regression **never run**. |
+| **Roles & permissions + warehouse scope** (`c8d3305`) | Role CRUD, `core.roles.manage` (migration `0032`), ADR-0034 (role-permission self-escalation), ADR-0035 (zero location assignments now denies, except the founding Administrador); `TransfersService.create` now checks the source location. | Integration tests exist; a passing run on an isolated instance was reported, not re-run. |
+| **Tenant onboarding + support** (`4c1e31a`, `abdbba3`) | `POST /platform/tenants` with invitation acceptance, audited time-boxed support sessions, migration `0033`, ADR-0036. | 2 integration files; passing run reported (50/50), not re-run. |
+| **Login & Users UI** | "Crear cuenta" removed from `/login`; login/user identifier relaxed from email to a 10+ character string; `GET /users?q=`. | Reported in `CLAUDE.md`; the 557-test run it cites had 5–7 failures attributed to contention without proof. |
+| **Inventory / Kardex** (`1283de8`, `07d6fc3`, `2e5eded`) | Costed Kardex, `GET /reports/kardex`, weighted-average cost (ADR-0037, migration `0034`), rebuilt movements history. | Code present; no recorded real-PostgreSQL run for later fixes. |
+| **Transfers overhaul** | Transfer codes (`0035`), tenant-configurable approval/preparation workflow (`0036`), modal actions, date filter, product search. | As above. |
+| **Sales rework** (`24cc91b`, `b198a7d`, `3bae5aa`, `bdbd28e`, …) | Split payments (`0039` `order_payments`), PDF export by browser print (ADR-0038), approver price editing with an `order_items` price-edit grant (`0040`), return numbers (`0041`), `sales.orders.view_all` seller scope (`0044`), confirmed-order date backfill (`0047`), approval numbers (`0050`), exports and payments report, customers redesign (`0037`). **The exceptional-discount trigger moved from `min_price` to `base_price`** (ADR-0022 amendment of 2026-10-05, `base_price_at_request` in `0038`; `min_price` stays the hard floor) — FASE 12/13 text elsewhere still says "below `min_price`" (`DOC-ADR0022-TRIGGER-DRIFT`). **Also includes a change to separation of duties — see `DECISION-SELF-APPROVAL`.** | As above. |
+| **Catalog & stock loading** | Category codes and SKU prefix (`0042`), uppercase names (`0043`), `draft` product status removed (`0045`–`0046`), bulk stock load from Excel, import pipeline fixes, bulk/printable QR. | As above. |
+| **Home & tenant branding** (`88acde0`, `0048`) | Home KPIs with per-warehouse filter and yearly trend chart; tenant logos. | As above. |
+| **UI/UX redesign** | Spanish UI, 64 px hover-expand navigation rail, mobile tab bar, and phone layouts for transfers, new sale, order detail, payments, approvals, returns and movements (≈35 web commits, 2026-10-22…26). The design tokens, blue primary and Lotes 2–3 of `UI-UX-SPEC-001` were **not** delivered — see `UIUX-SPEC-VS-IMPLEMENTATION`. | Unit tests only; no browser regression. |
+
 ## Future phases
+
+None of FASE 19–24 has been started: no commit, ADR or document of this repository delivers any of
+their scope (verified in `git log` on 2026-10-26). Pre-existing building blocks (the `/health`
+route, `docker-compose.prod.yml`, `docs/security/threat-model.md`, a demo seed script) predate the
+phases and do not count as phase work (see the phase execution rule below).
 
 - **FASE 19 — Security Hardening & Testing** — application-wide security review, threat-model
   validation, RLS verification, tenant-isolation testing, RBAC/authorization review, IDOR and
   mass-assignment testing, concurrency/security regression, dependency review and remediation of
   findings. Existing per-phase unit and integration testing remains mandatory and is not replaced
-  by this phase.
+  by this phase. It should start by closing the open security items in
+  [pending-register.md](pending-register.md) (`GAP-F19-PARSE-UUID`, `GAP-F19-EMPTY-BODY`,
+  `GAP-F19-RLS-IDOR-DEPTH`, `PG-VERIFY-FULL-RUN`) and the owner decision `DECISION-SELF-APPROVAL`.
 
 - **FASE 20 — Observability** — production-grade structured logging, correlation/request IDs,
   health/readiness/liveness checks, metrics, error visibility, worker monitoring and operational
@@ -239,6 +267,11 @@ delivery concerns already defined by `modules.md`, `database.md`, and the ADRs.
   frontend, database, security, concurrency, integrations, workers, reports, demo environment and
   production-like deployment. Includes regression of all previously completed phases and validation
   of critical business workflows.
+
+  > **Pending owner decision:** a proposal to redefine FASE 22 (scenario-based demo preparation,
+  > `DEMO-01…DEMO-12` + "Reset Demo") and FASE 23 ("use and destroy/repeat" QA over it) is recorded
+  > in `UI-UX-SPEC-001.md` §22.3 and **has not been applied** to the rows above
+  > (`ROADMAP-F22-F23-SPLIT`).
 
 - **FASE 24 — MVP Release** — final release readiness review, versioning, release artifacts,
   production acceptance criteria and public MVP release.
@@ -317,6 +350,31 @@ explicit review/commit.
 
 ## Current status
 
+### Verified status — 2026-10-26
+
+- **Repository:** branch `develop`, HEAD `2215f5d`, clean working tree, 119 commits,
+  **no upstream configured — nothing has been pushed**. Migrations `0000`–`0050` (51 files); ADRs `0001`–`0038`.
+- **Numbered phases:** FASE 0–18 implemented and committed. FASE 19–24 **not started**.
+- **Work after FASE 18** (roles, onboarding/support, Kardex, sales rework, UI/UX redesign, …) is
+  implemented and committed but **not formally validated** — see "Work after FASE 18" above.
+- **Tests (run 2026-10-26):** `apps/api` unit 778 passed (70 files); `apps/web` unit 1009 passed
+  (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
+  (`DEFECT-WEB-TEST-UNHANDLED`). **No full real-PostgreSQL run exists for the current tree**
+  (52 integration files; last full totals 503/40 and 557/43 are outdated and the latter had failures)
+  — `PG-VERIFY-FULL-RUN`.
+- **Notifications:** backend flag `N8N_EVENTS_ENABLED=false` by default; the n8n → Telegram path was
+  validated end to end in 015-A and 5R/5R-A against a test destination; which event types produce a
+  Telegram message is defined in the operator's n8n workflow, not in this repository — 5S notes
+  report 3 of 8, unconfirmed and pending an owner definition (`GAP-NOTIF-COVERAGE`). Operational notifications are not enabled by
+  this documentation pass. Retry from the UI does not exist (`GAP-NOTIF-RETRY-BACKEND`).
+- **Open items:** every pending security item, defect, limitation, verification gap and owner
+  decision is in [pending-register.md](pending-register.md). Headline items: `GAP-F19-PARSE-UUID`,
+  `GAP-F19-RLS-IDOR-DEPTH`, `DECISION-SELF-APPROVAL`, `DEFECT-TZ-DEFAULT-UNSETTABLE`,
+  `LIMIT-SERIALIZED-LOT-SALES`, `UIUX-SPEC-VS-IMPLEMENTATION`, `ROADMAP-F22-F23-SPLIT`.
+- **Next phase:** FASE 19, starting with the register's verification items.
+
+### Narrative history (as of 2026-09-10, kept unchanged)
+
 FASE 0–16 are completed and committed. FASE 15 is closed: the implementation is verified locally
 (pg-verify 339/27/0) **and** the full path was validated end to end against the operator's real
 n8n instance and a test Telegram destination in PROMPT 015-A (synthetic data, throwaway local
@@ -351,6 +409,8 @@ each phase's final report.
 
 **FASE 19 (Security Hardening & Testing) is the next phase to be started** (optionally preceded by
 a UI/UX specification pass — `UI-UX-SPEC-001` — for the non-blocking frontend findings 5S deferred).
+*(As of 2026-10-26: the UI/UX pass happened only partially — see "Work after FASE 18"; FASE 19 has
+still not started.)*
 
 No future phase has been started merely by defining its database schema or architecture. FASE 14
 gave `event_outbox` (migrated since Prompt 03) its first application code — transactional publishing
