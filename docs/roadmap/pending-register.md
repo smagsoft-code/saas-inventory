@@ -88,13 +88,69 @@ improvement or limitation.
 - **Added 2026-10-26:** the existing per-table isolation suite (`multi-tenancy-rls`) aborted for
   `categories` and `customers` because its fixtures are out of date, so even those two tables have no
   current isolation proof (`DEFECT-INTEGRATION-STALE-TESTS`).
-- **Status:** `to-verify` — **partially evidenced.** Proven against real PostgreSQL on 2026-10-26 (run of 685 tests, 0 failed,
-  0 skipped): for 7 representative tables incl. `categories` and `customers` — own read, cross-tenant read by primary key, cross-
-  tenant UPDATE (0 rows) and DELETE, empty tenant context (0 rows / fails closed), cross-tenant INSERT rejected; plus
-  `auth_refresh_tokens`; every one of the 45 tenant-owned tables has RLS + FORCE + a policy (pg-verify catalog check); HTTP
-  cross-tenant 404s for categories/customers/products exist in `catalog.integration`/`sales-customers`. **Still NOT
-  probed:** HTTP-level cross-tenant read/mutate for the surface added after 5S (support sessions, tenant onboarding,
-  `view_all`, order payments, bulk stock load, exports, bulk QR, Kardex). Do not read this item as "isolation validated".
+- **Update 2026-10-26 (HTTP sweep):** the mandatory post-5S surfaces were probed over real HTTP against real PostgreSQL with
+  two isolated tenants — **47 cases in 2 files** (`apps/api/test/security/`), matrix and method in
+  [`docs/security/tenant-isolation-http-matrix.md`](../security/tenant-isolation-http-matrix.md). Surfaces: support sessions
+  (ADR-0036), onboarding / invitations / revocation, `sales.orders.view_all`, order payments, bulk stock load, import jobs
+  (state, results, downloads), exports (orders, customers, transfers, payments, product catalogue, Kardex), Kardex and
+  inventory movements. **No cross-tenant read or write succeeded in any case**; every refused write was checked for side
+  effects in the database. The sweep did find two defects (below), both reproduced, documented, fixed and covered by regression
+  tests.
+- **Status:** `closed-with-evidence` **for the listed surfaces and the stated probes only.** Not covered, and therefore still
+  open under FASE 19: `POST /price-approvals` and `POST /sales-returns` against another seller's order (same seller-scope
+  question as `FINDING-VA-WRITE-SCOPE`), PDF exports, product images / QR management / roles-users admin / other reports,
+  repeated-run stability. **This is not "tenant isolation validated" for the whole system, and FASE 19 is not complete.**
+
+### SUP-READ-NOT-AUDITED *(new, characterised — owner decision needed)*
+
+- **Severity: P3 (accountability), not an access-control failure.** ADR-0036's documented "read-through" lets a platform admin with
+  an active support session `GET` the ordinary tenant API (read-only, bound to the session's tenant, every non-`GET` refused —
+  all verified by `ISO-SUP-10/12/13`). Those reads leave **no per-request audit row**: only `support_session.started/ended` and
+  the one curated write are audited (`ISO-SUP-14` characterises it).
+- **Why it matters:** the read-through exposes customer PII, prices and financial data of the tenant, and the tenant cannot later see
+  *what* was read. **Not fixed** here: choosing between per-request audit, sampled/route-class audit or accepting the gap is a
+  product/compliance decision (volume, retention, tenant visibility). **Proposed phase:** FASE 19/20. **Status:** `open`.
+
+### FINDING-VA-WRITE-SCOPE *(new, found by the 2026-10-26 HTTP isolation sweep)*
+
+- **Severity: P2 (medium) — intra-tenant authorization gap, not a cross-tenant leak.** Tenant isolation itself held: tenant B
+  could not read or act on A's orders (404, no side effect).
+- **Description:** the seller-scope rule of `sales.orders.view_all` is enforced on READS only. `OrdersService.getById` and the
+  notifications read call `canSeeSellerOf(...)`; `confirm` and `cancel` do not — they apply only the location check. A seller
+  without `view_all` cannot even see another seller's order (404) yet can **cancel** it (needs `sales.orders.cancel`) or
+  **confirm** it (needs `sales.orders.create`, which every default Vendedor holds), recording payments and committing stock.
+- **Reproduction (real PostgreSQL, before the fix, `iso-run3`):** s1 (no `view_all`) `GET /orders/{s2 order}` → 404, but
+  `POST /orders/{s2 pending order}/cancel` → **200 `status: cancelled`** (`ISO-VA-03a`) and `POST /orders/{s2 pending
+  order}/confirm` with a cash payment → **200 `status: confirmed`** (`ISO-VA-03b`). Source: `orders.service.ts` `confirm`
+  (l.421) / `cancel` (l.535) — no `canSeeSellerOf` call.
+- **Impact:** a seller can cancel a colleague's pending sale or close it under their own session (the order keeps the original
+  `placedByUserId`; the audit row records the actor). Integrity and attribution risk (commission/fraud), not data disclosure.
+- **Fix (commit in this block):** both methods hide an order the caller may not see, exactly as the read does (404, before any other
+  work, including before the idempotent "already confirmed/cancelled" return that used to expose the order body).
+- **Evidence after the fix:** `ISO-VA-03a/b` pass (404, order still pending, no payment row, no movement), `ISO-VA-03c` keeps the
+  legitimate paths (owner confirms; `view_all` holder cancels); 4 new unit tests in `orders.service.spec.ts`. Two existing
+  integration tests relied on a non-owner reaching the *location* check (`outbox-transactional` rollback, `T3/T4`); their actor now
+  also holds `view_all` so the failure under test is still the location authorization — intent kept, nothing weakened.
+- **Status:** `closed-with-evidence`. **Behaviour change to note:** a seller without `view_all` can no longer confirm/cancel an
+  order another seller placed (default Vendedor included); the Administrador (holds `view_all`) is unaffected.
+- **Not covered / still to verify:** other order-id write routes that may need the same scope — `POST /price-approvals`
+  (request for a line of another seller's order) and `POST /sales-returns` (return of another seller's order) — were not
+  exercised in this sweep.
+
+### FINDING-IMP-FOREIGN-REF-500 *(new)*
+
+- **Severity: P3 (low) — robustness; the database blocked the cross-tenant reference.**
+- **Description:** `POST /imports` accepts `defaultLocationId` / `mappingTemplateId` as multipart text fields and passes them to
+  the job update without checking that they belong to the caller's tenant (or are UUIDs). The composite foreign keys
+  `(tenant_id, default_location_id)` reject a foreign id, but as an **unhandled `500`** — after the uploaded file was already
+  written to object storage (orphan object).
+- **Reproduction (before the fix, `iso-run3`, `ISO-IMP-05`):** tenant B uploads with `defaultLocationId` = A's location id →
+  `500 INTERNAL_ERROR`; server log: `Failed query: update "import_jobs" set "default_location_id" = … ` (FK violation). No A
+  data was written or returned, and the same 500 occurs for any non-owned id, so it is not an existence oracle.
+- **Fix (commit in this block):** `ImportJobService.assertReferencedIdsBelongToTenant` — UUID format → 400, must exist in the tenant
+  → 404 — runs before the file is stored.
+- **Evidence after the fix:** `ISO-IMP-05` — foreign / unknown / malformed ids are refused (404 / 400), no job is created in A or B,
+  own ids still work. **Status:** `closed-with-evidence`.
 
 ### DECISION-SELF-APPROVAL — **decided 2026-10-26 (owner)**
 

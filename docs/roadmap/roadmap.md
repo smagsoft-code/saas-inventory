@@ -378,14 +378,14 @@ explicit review/commit.
 - **Numbered phases:** FASE 0–18 implemented and committed. FASE 19–24 **not started**.
 - **Work after FASE 18** (roles, onboarding/support, Kardex, sales rework, UI/UX redesign, …) is
   implemented and committed but **not formally validated** — see "Work after FASE 18" above.
-- **Tests (2026-10-26, after the pre-FASE 19 fixes):** `apps/api` unit 790 passed (72 files);
+- **Tests (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 794 passed (72 files);
   `apps/web` unit 1010 passed (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
   (`DEFECT-WEB-TEST-UNHANDLED`, open). **Full real-PostgreSQL run of the current tree: green** — isolated
-  instance, port 55433, development database untouched: 685 tests (662 parallel + 23 serial), 0 failed,
-  0 skipped, all structural/RLS catalog checks passed. It was **not green** the first time (45 failing tests,
-  outdated after the October rework) and two intermediate runs each had one deadlock failure, root-caused to
-  test files that replay migration SQL over the shared database (now a serial phase). One clean final run is
-  not a stability proof. See `PG-VERIFY-FULL-RUN`, `DEFECT-INTEGRATION-STALE-TESTS`, `TEST-FLAKY-DEADLOCKS`.
+  instance, port 55433, development database untouched: **732 tests (709 parallel + 23 serial), 0 failed**,
+  all structural/RLS catalog checks passed; 47 of those are the new HTTP isolation cases
+  (`apps/api/test/security/`). Earlier in the day the same suite was not green (45 outdated tests; deadlocks from
+  files replaying migration SQL, now a serial phase). One clean final run is not a stability proof. See
+  `PG-VERIFY-FULL-RUN`, `TEST-FLAKY-DEADLOCKS`, and [the sweep matrix](../security/tenant-isolation-http-matrix.md).
 - **Notifications:** backend flag `N8N_EVENTS_ENABLED=false` by default; the n8n → Telegram path was
   validated end to end in 015-A and 5R/5R-A against a test destination; which event types produce a
   Telegram message is defined in the operator's n8n workflow, not in this repository — 5S notes
@@ -393,12 +393,17 @@ explicit review/commit.
   this documentation pass. Retry from the UI does not exist (`GAP-NOTIF-RETRY-BACKEND`).
 - **Open items:** every pending security item, defect, limitation, verification gap and owner
   decision is in [pending-register.md](pending-register.md). Headline open items:
-  `GAP-F19-RLS-IDOR-DEPTH` (database-level isolation proven for the representative tables incl. `categories` /
-  `customers`; HTTP-level probing of the post-5S surface **not done** — tenant isolation is not declared fully
-  validated), `DEFECT-WEB-TEST-UNHANDLED`, `GAP-NOTIF-RETRY-BACKEND`, `QA-EVIDENCE-PERSISTENCE`.
+  `SUP-READ-NOT-AUDITED` (support read-through reads are not audited — owner decision), `DEFECT-WEB-TEST-UNHANDLED`,
+  `GAP-NOTIF-RETRY-BACKEND`, `QA-EVIDENCE-PERSISTENCE`, and the unverified remainder of the isolation sweep
+  (`POST /price-approvals` and `POST /sales-returns` against another seller's order, PDF exports, surfaces outside the
+  mandatory list). **HTTP tenant isolation:** the mandatory post-5S surfaces (support sessions, onboarding / invitations /
+  revocation, `view_all`, order payments, bulk load, import jobs, exports, Kardex / movements) were probed with 47 real-HTTP
+  cases — no cross-tenant access succeeded; two defects found and fixed (`FINDING-VA-WRITE-SCOPE` P2,
+  `FINDING-IMP-FOREIGN-REF-500` P3). **This is not "FASE 19 complete" nor "tenant isolation validated" system-wide.**
   Closed with evidence on 2026-10-26: `GAP-F19-PARSE-UUID`, `GAP-F19-EMPTY-BODY`,
   `DEFECT-TZ-DEFAULT-UNSETTABLE`, `PG-VERIFY-FULL-RUN`, `DEFECT-INTEGRATION-STALE-TESTS`,
-  `DEFECT-API-TEST-TYPECHECK`, `TEST-FLAKY-DEADLOCKS`, `OBS-DEV-CREDENTIAL-IN-SPEC` (rotation still advised).
+  `DEFECT-API-TEST-TYPECHECK`, `TEST-FLAKY-DEADLOCKS`, `GAP-F19-RLS-IDOR-DEPTH` (for the listed surfaces only),
+  `OBS-DEV-CREDENTIAL-IN-SPEC` (rotation still advised).
 - **Owner decisions of 2026-10-26:** self-approval of price requests allowed for any
   `pricing.discount.approve` holder (ADR-0022 amendment); `base_price` confirmed as the exceptional
   trigger; UI spec closed with a delivered/deferred table and a tokens + blue block scheduled before

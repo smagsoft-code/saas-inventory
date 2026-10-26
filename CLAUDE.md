@@ -1380,19 +1380,24 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
   navigation rail, mobile tab bar and phone layouts for transfers, new sale, order detail, payments,
   approvals, returns and movements. The design-token layer, blue primary and Lotes 2–3 specified in
   `docs/ui-ux/UI-UX-SPEC-001.md` were **not** delivered (`UIUX-SPEC-VS-IMPLEMENTATION`).
-- **Verification baseline (2026-10-26, after the pre-FASE 19 fixes):** `apps/api` unit 790/790 (72 files);
+- **Verification baseline (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 794/794 (72 files);
   `apps/web` unit 1010 passed (138 files) plus 1 unhandled error → non-zero exit
   (`DEFECT-WEB-TEST-UNHANDLED`, open); typecheck (incl. `test/tsconfig.json`) and eslint pass on both apps.
   Real PostgreSQL, `tools/pg-verify` on an isolated instance (`PG_VERIFY_PORT=55433`; the development
-  database on :55432 untouched): the first full run had 45 failing tests (outdated after the October
-  rework); after the fixes — **685 tests, 0 failed, 0 skipped** (662 in the parallel phase + 23 in the serial
-  phase) and all catalog checks passed. **Test-suite rule:** a test file that replays migration SQL or does DDL
-  on shared tables must be named `*.serial.integration.test.ts` (run alone, afterwards — `pnpm
-  test:integration:all`); the "flaky under contention" runs noted in earlier blocks were deadlocks caused by such
-  files (`TEST-FLAKY-DEADLOCKS`). Also fixed: malformed UUID path params → 400 (`ParseUUIDPipe` on all UUID params;
-  guard `src/common/uuid-path-params.spec.ts`), empty `application/json` bodies are read as "no body", Fastify
-  `FST_*` 4xx errors are mapped instead of 500, and `UTC` is an accepted timezone (API and web). Tenant isolation is
-  proven at database level for the representative tables only — HTTP-level probing of the post-5S surface is
-  still open (`GAP-F19-RLS-IDOR-DEPTH`).
+  database on :55432 untouched): **732 tests, 0 failed** (709 in the parallel phase + 23 in the serial phase) and all
+  catalog checks passed. **Test-suite rules:** a file that replays migration SQL or does DDL on shared tables must be
+  named `*.serial.integration.test.ts` (`pnpm test:integration:all`; the earlier "flaky under contention" runs were
+  deadlocks caused by such files, `TEST-FLAKY-DEADLOCKS`); `pg-verify` accepts `PG_VERIFY_PORT` and
+  `PG_VERIFY_TEST_FILTER`. **HTTP hardening done:** malformed UUID path params → 400 (`ParseUUIDPipe` on all UUID
+  params; guard `src/common/uuid-path-params.spec.ts`), empty `application/json` bodies are read as "no body",
+  Fastify `FST_*` 4xx errors are mapped instead of 500, `UTC` is an accepted timezone. **Tenant isolation over HTTP**
+  (GAP-F19-RLS-IDOR-DEPTH): 47 cases in `apps/api/test/security/` — support sessions, onboarding / invitations /
+  revocation, `view_all`, order payments, bulk load, import jobs, exports, Kardex / movements; matrix in
+  `docs/security/tenant-isolation-http-matrix.md`. No cross-tenant access succeeded. Two defects were found and fixed:
+  `confirm`/`cancel` of an order now honour the same seller scope as the reads (a seller without
+  `sales.orders.view_all` gets 404 for another seller's order — **behaviour change**), and `POST /imports` validates
+  `defaultLocationId` / `mappingTemplateId` (400/404 instead of a 500). Known gap, not fixed: support read-through
+  `GET`s are not audited (`SUP-READ-NOT-AUDITED`). FASE 19 is **not** complete and isolation is not validated for
+  surfaces outside that sweep.
 - **UI/UX spec closure (owner, option B):** `UI-UX-SPEC-001` is closed with a delivered/deferred table
   (its §0); a tokens + blue primary block is scheduled after FASE 19 and before FASE 22.
