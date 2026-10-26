@@ -270,10 +270,21 @@ improvement or limitation.
 
 ### OBS-DEV-CREDENTIAL-IN-SPEC *(new, informational)*
 
-- `docs/ui-ux/UI-UX-SPEC-001.md` (committed) contains a local QA login and password for the
-  development tenant. It belongs to a throwaway local database, not production, but CLAUDE.md §7.4
-  forbids committing credentials. **Not changed here** (removing it is an owner call and the value may
-  still be needed locally); recommended to move it out of the repository. **Status:** `open`.
+- `docs/ui-ux/UI-UX-SPEC-001.md` contained a QA login and password for the local development tenant
+  (introduced by commit `1283de8`, one occurrence in tracked files). CLAUDE.md §7.4 forbids committing
+  credentials.
+- **Action 2026-10-26:** the literals were replaced by the placeholders `<QA_ADMIN_EMAIL>` /
+  `<QA_ADMIN_PASSWORD>`; `git grep` finds no remaining occurrence in the working tree.
+- **Exposure assessment:** the account belongs to the ephemeral local database `saas_inventory_dev`
+  (`qa-tenant`, a non-routable `@dev.local` address); the repository has **no remote and was never
+  pushed**, so the value has not left this machine through Git. It was **not** tested by logging in.
+  Residual risk: the value still exists in Git history (`1283de8` and later) and, if that password
+  was reused for anything real, it must be treated as exposed and **rotated**. If the local QA account
+  is kept, rotate its password anyway.
+- Not rewritten: Git history (needs explicit authorization). Informational: `tools/pg-verify` seeds
+  use fixed, documented dev-only passwords for throwaway instances (`DevPassword123!` in
+  `seed-qa-data.ts` / `dev-server.ts`) — not changed.
+- **Status:** `fixed-pending-validation` (working tree clean of the literal; history untouched).
 
 ### Unit-test baseline (verified 2026-10-26)
 
