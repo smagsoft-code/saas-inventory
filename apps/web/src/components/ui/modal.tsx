@@ -37,6 +37,7 @@ export function Modal({
   children,
   footer,
   size = 'md',
+  emphasizeTitle = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -46,6 +47,8 @@ export function Modal({
   children: ReactNode;
   footer?: ReactNode;
   size?: Size;
+  /** Phones and tablets: a large title with the subtitle underneath (the sale modal). From `lg` up it is the regular small header. */
+  emphasizeTitle?: boolean;
 }): React.JSX.Element | null {
   useEffect(() => {
     if (!open) {
@@ -92,9 +95,32 @@ export function Modal({
         )}
       >
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
-            <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
-            {subtitle && <p className="truncate text-xs text-slate-500">{subtitle}</p>}
+          <div
+            className={cn(
+              'flex min-w-0 gap-y-0.5',
+              emphasizeTitle
+                ? 'flex-col lg:flex-row lg:flex-wrap lg:items-baseline lg:gap-x-3'
+                : 'flex-wrap items-baseline gap-x-3',
+            )}
+          >
+            <h2
+              className={cn(
+                'font-semibold text-slate-900',
+                emphasizeTitle ? 'text-xl font-bold lg:text-sm lg:font-semibold' : 'text-sm',
+              )}
+            >
+              {title}
+            </h2>
+            {subtitle && (
+              <p
+                className={cn(
+                  'truncate text-slate-500',
+                  emphasizeTitle ? 'text-sm lg:text-xs' : 'text-xs',
+                )}
+              >
+                {subtitle}
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -102,7 +128,14 @@ export function Modal({
             onClick={onClose}
             className="rounded-md p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
           >
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+            <svg
+              className="h-5 w-5"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              aria-hidden="true"
+            >
               <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
             </svg>
           </button>

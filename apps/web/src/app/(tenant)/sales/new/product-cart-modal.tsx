@@ -56,6 +56,14 @@ interface ExpandedVariants {
  * component drives *when* it fires and displays its own busy/error state. The payment method is
  * deliberately NOT asked here — it's picked at confirm, on the order's own detail page, once any
  * exceptional-discount line has cleared approval (owner redesign). */
+/** Phones and tablets: the tinted blocks of the mockup; from `lg` up the original bordered boxes. */
+const BLOCK =
+  'rounded-xl bg-slate-50 p-3 shadow-sm lg:rounded-md lg:border lg:border-slate-200 lg:bg-transparent lg:shadow-none';
+const BLOCK_TITLE =
+  'text-[11px] font-semibold uppercase tracking-wider text-slate-500 lg:text-sm lg:normal-case lg:tracking-normal lg:text-slate-900';
+const TAB = 'h-10 px-4 text-sm lg:h-8 lg:px-3 lg:text-xs';
+const TAB_IDLE = 'bg-blue-50 text-slate-700 lg:bg-transparent';
+
 export function ProductCartModal({
   open,
   onClose,
@@ -106,7 +114,9 @@ export function ProductCartModal({
   const [createPrefillTaxId, setCreatePrefillTaxId] = useState('');
   const skipNextCustomerDebounce = useRef(true);
 
-  const missingCustomerData = selectedCustomer ? customerMissingCommercialData(selectedCustomer) : [];
+  const missingCustomerData = selectedCustomer
+    ? customerMissingCommercialData(selectedCustomer)
+    : [];
 
   useEffect(() => {
     if (skipNextCustomerDebounce.current) {
@@ -181,7 +191,9 @@ export function ProductCartModal({
   // One thumbnail lookup per distinct product already in the cart — `undefined` key = not fetched
   // yet, `null` value = fetched but the product has no image. Keyed by productId (not line id) so
   // two lines of the same product never double-fetch.
-  const [thumbnailByProductId, setThumbnailByProductId] = useState<Record<string, string | null>>({});
+  const [thumbnailByProductId, setThumbnailByProductId] = useState<Record<string, string | null>>(
+    {},
+  );
   useEffect(() => {
     const missing = [...new Set(cart.items.map((i) => i.productId))].filter(
       (id) => id && !(id in thumbnailByProductId),
@@ -283,7 +295,10 @@ export function ProductCartModal({
       const variants = await listVariants(product.id);
       const sellable = variants.filter((v) => v.status === 'active');
       const stockEntries = await Promise.all(
-        sellable.map(async (v): Promise<[string, number]> => [v.id, await getStockAvailable(v.id, cart.locationId)]),
+        sellable.map(async (v): Promise<[string, number]> => [
+          v.id,
+          await getStockAvailable(v.id, cart.locationId),
+        ]),
       );
       const stockByVariantId = Object.fromEntries(stockEntries);
       if (sellable.length === 1 && stockByVariantId[sellable[0]!.id]! > 0) {
@@ -312,7 +327,11 @@ export function ProductCartModal({
     setQrBusy(true);
     try {
       const identity = await resolveQrCode(code.trim());
-      if (identity.targetType !== 'product_variant' || !identity.productId || !identity.productVariantId) {
+      if (
+        identity.targetType !== 'product_variant' ||
+        !identity.productId ||
+        !identity.productVariantId
+      ) {
         setQrMessage('Este código corresponde a un almacén, no a un producto.');
         return;
       }
@@ -385,7 +404,12 @@ export function ProductCartModal({
   // --- checkout ------------------------------------------------------------------------------
 
   const unsellableLines = cart.items.filter((i) => !i.sellable);
-  const canCheckout = cart.items.length > 0 && unsellableLines.length === 0 && Boolean(cart.customerId) && busy === null && !checkoutBusy;
+  const canCheckout =
+    cart.items.length > 0 &&
+    unsellableLines.length === 0 &&
+    Boolean(cart.customerId) &&
+    busy === null &&
+    !checkoutBusy;
 
   async function handleCheckout(): Promise<void> {
     if (!canCheckout || checkoutBusy) {
@@ -409,12 +433,33 @@ export function ProductCartModal({
       title="Nueva venta"
       {...(locationLabel ? { subtitle: locationLabel } : {})}
       size="xl"
+      emphasizeTitle
       footer={
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-col gap-2 lg:flex-row lg:flex-wrap lg:items-center lg:justify-between">
           <div className="text-xs text-slate-500">
             {!cart.customerId && <p className="text-amber-700">Elige un cliente para continuar.</p>}
           </div>
-          <Button type="button" loading={checkoutBusy} disabled={!canCheckout} onClick={() => void handleCheckout()}>
+          <Button
+            type="button"
+            loading={checkoutBusy}
+            disabled={!canCheckout}
+            onClick={() => void handleCheckout()}
+            className="h-12 w-full gap-2 rounded-xl text-base lg:h-10 lg:w-auto lg:rounded-md lg:text-sm"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5 lg:hidden"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6 8h12l1 12H5L6 8Zm3 0a3 3 0 0 1 6 0"
+              />
+            </svg>
             Crear pedido
           </Button>
         </div>
@@ -424,11 +469,28 @@ export function ProductCartModal({
         {error && <Alert tone="error">{error}</Alert>}
 
         {/* --- Cliente -------------------------------------------------------------------- */}
-        <div className="flex flex-col gap-2 rounded-md border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-900">Cliente</h3>
+        <div className={cn(BLOCK, 'flex flex-col gap-2')}>
+          <h3 className={BLOCK_TITLE}>Cliente</h3>
           {cart.customerId && !customerPanelOpen ? (
             <div className="flex items-center justify-between gap-2">
-              <p className="text-sm text-slate-700">{customerLabel ?? 'Seleccionado'}</p>
+              <span
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700 lg:hidden"
+                aria-hidden="true"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-5 w-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.6}
+                >
+                  <circle cx="12" cy="9" r="3.2" />
+                  <path strokeLinecap="round" d="M5.5 19c1.2-3 3.7-4.5 6.5-4.5s5.3 1.5 6.5 4.5" />
+                </svg>
+              </span>
+              <p className="min-w-0 flex-1 truncate text-lg font-bold text-slate-900 lg:flex-none lg:text-sm lg:font-normal lg:text-slate-700">
+                {customerLabel ?? 'Seleccionado'}
+              </p>
               {canManageCustomers && (
                 <Button
                   type="button"
@@ -436,15 +498,32 @@ export function ProductCartModal({
                   size="sm"
                   aria-label="Editar cliente"
                   onClick={() => setEditOpen(true)}
-                  className="ml-auto px-2"
+                  className="ml-auto bg-white px-2 shadow-sm lg:bg-transparent lg:shadow-none"
                 >
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden="true">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487a2.06 2.06 0 0 1 2.915 2.914L8.5 18.678l-4 1 1-4Z" />
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.5}
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M16.862 4.487a2.06 2.06 0 0 1 2.915 2.914L8.5 18.678l-4 1 1-4Z"
+                    />
                   </svg>
                 </Button>
               )}
               {canSearchCustomers && (
-                <Button type="button" variant="ghost" size="sm" onClick={() => setCustomerPanelOpen(true)}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCustomerPanelOpen(true)}
+                  className="bg-white shadow-sm lg:bg-transparent lg:shadow-none"
+                >
                   Cambiar
                 </Button>
               )}
@@ -481,7 +560,8 @@ export function ProductCartModal({
                 {customerSearching && <p className="text-xs text-slate-500">Buscando…</p>}
                 {!customerSearching && customerQuery.trim() && customerResults.length === 0 && (
                   <p className="text-sm text-slate-500">
-                    Ningún cliente coincide con esa búsqueda — presiona Enter o el botón "+" para crearlo.
+                    Ningún cliente coincide con esa búsqueda — presiona Enter o el botón "+" para
+                    crearlo.
                   </p>
                 )}
                 {customerResults.length > 0 && (
@@ -512,26 +592,29 @@ export function ProductCartModal({
           )}
           {missingCustomerData.length > 0 && (
             <Alert tone="warning">
-              A este cliente le falta {missingCustomerData.join(', ')}. El cierre de venta fallará hasta que se
-              complete.
+              A este cliente le falta {missingCustomerData.join(', ')}. El cierre de venta fallará
+              hasta que se complete.
             </Alert>
           )}
         </div>
 
         {/* --- Tipo de comprobante --------------------------------------------------------- */}
-        <div className="flex flex-col gap-2 rounded-md border border-slate-200 p-3">
-          <h3 className="text-sm font-semibold text-slate-900">Tipo de comprobante</h3>
-          <fieldset className="flex gap-4">
+        <div className={cn(BLOCK, 'flex flex-col gap-2')}>
+          <h3 className={BLOCK_TITLE}>Tipo de comprobante</h3>
+          <fieldset className="flex gap-5 lg:gap-4">
             <legend className="sr-only">Tipo de documento</legend>
             {DOCUMENT_TYPES.map((t) => (
-              <label key={t} className="flex items-center gap-2 text-sm text-slate-700">
+              <label
+                key={t}
+                className="flex items-center gap-2 text-base text-slate-700 lg:text-sm"
+              >
                 <input
                   type="radio"
                   name="documentType"
                   value={t}
                   checked={documentType === t}
                   onChange={() => onDocumentTypeChange(t)}
-                  className="h-4 w-4"
+                  className="h-5 w-5 accent-slate-900 lg:h-4 lg:w-4"
                 />
                 {DOCUMENT_TYPE_LABELS[t]}
               </label>
@@ -539,36 +622,61 @@ export function ProductCartModal({
           </fieldset>
         </div>
 
-        {!canViewProducts && <Alert tone="warning">No puedes listar productos — pide a un administrador ese permiso.</Alert>}
+        {!canViewProducts && (
+          <Alert tone="warning">
+            No puedes listar productos — pide a un administrador ese permiso.
+          </Alert>
+        )}
 
         {canViewProducts && (
-          <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-            <div className="flex gap-1">
+          <div className="flex flex-col gap-3 lg:rounded-md lg:border lg:border-slate-200 lg:p-3">
+            <div className="flex gap-2 lg:gap-1">
               <Button
                 type="button"
-                size="sm"
                 variant={tab === 'search' ? 'primary' : 'ghost'}
                 onClick={() => setTab('search')}
+                className={cn(TAB, tab !== 'search' && TAB_IDLE)}
               >
                 Buscar producto
               </Button>
-              <Button type="button" size="sm" variant={tab === 'qr' ? 'primary' : 'ghost'} onClick={() => setTab('qr')}>
+              <Button
+                type="button"
+                variant={tab === 'qr' ? 'primary' : 'ghost'}
+                onClick={() => setTab('qr')}
+                className={cn(TAB, tab !== 'qr' && TAB_IDLE)}
+              >
                 Escanear QR
               </Button>
             </div>
 
             {tab === 'search' ? (
               <div className="flex flex-col gap-2">
-                <Input
-                  type="search"
-                  aria-label="Buscar producto"
-                  placeholder="Nombre, SKU o código de barras"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
+                <div className="relative">
+                  <svg
+                    viewBox="0 0 24 24"
+                    className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 lg:hidden"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.8}
+                    aria-hidden="true"
+                  >
+                    <circle cx="11" cy="11" r="6.5" />
+                    <path strokeLinecap="round" d="m16 16 4 4" />
+                  </svg>
+                  <Input
+                    type="search"
+                    aria-label="Buscar producto"
+                    placeholder="Nombre, SKU o código de barras"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="pl-10 lg:pl-3"
+                  />
+                </div>
                 {searching && <p className="text-xs text-slate-500">Buscando…</p>}
                 {!searching && query.trim() && results.length === 0 && (
-                  <p className="text-sm text-slate-500">Ningún producto coincide con esa búsqueda.</p>
+                  <p className="text-sm text-slate-500">
+                    Ningún producto coincide con esa búsqueda.
+                  </p>
                 )}
                 {results.length > 0 && (
                   <ul className="flex flex-col divide-y divide-slate-100">
@@ -584,7 +692,9 @@ export function ProductCartModal({
                           className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           <span className="flex min-w-0 flex-col">
-                            <span className="truncate text-xs font-medium text-slate-900">{product.name}</span>
+                            <span className="truncate text-xs font-medium text-slate-900">
+                              {product.name}
+                            </span>
                             <span className="text-[11px] text-slate-500">
                               {product.sku} · Precio máx: ${product.maxPrice.toFixed(2)}
                             </span>
@@ -599,44 +709,55 @@ export function ProductCartModal({
                         </button>
                         {/* A product with several matching variants appears once per variant; its variant
                          * list opens under the first of those rows only. */}
-                        {expanded?.productId === product.id && results.findIndex((r) => r.id === product.id) === index && (
-                          <ul className="mt-2 flex flex-col gap-1 pl-3">
-                            {expanded.variants.length === 0 && (
-                              <li className="text-xs text-slate-500">Sin variantes vendibles.</li>
-                            )}
-                            {expanded.variants.map((variant) => {
-                              const stock = expanded.stockByVariantId[variant.id] ?? 0;
-                              const outOfStock = stock <= 0;
-                              return (
-                                <li
-                                  key={variant.id}
-                                  className={cn('flex items-center justify-between gap-2', outOfStock && 'opacity-50')}
-                                >
-                                  <span>
-                                    <span className={cn('text-sm', outOfStock ? 'text-slate-400' : 'text-slate-700')}>
-                                      {variant.sku}
-                                    </span>
-                                    <span className="block text-xs text-slate-400">
-                                      {outOfStock ? 'Sin stock disponible' : `Stock disponible: ${stock}`}
-                                    </span>
-                                    <span className="block text-xs text-slate-400">
-                                      Precio máx: ${variant.maxPrice.toFixed(2)}
-                                    </span>
-                                  </span>
-                                  <Button
-                                    type="button"
-                                    size="sm"
-                                    loading={busy === `add-${variant.id}`}
-                                    disabled={busy !== null || outOfStock}
-                                    onClick={() => void addVariant(variant)}
+                        {expanded?.productId === product.id &&
+                          results.findIndex((r) => r.id === product.id) === index && (
+                            <ul className="mt-2 flex flex-col gap-1 pl-3">
+                              {expanded.variants.length === 0 && (
+                                <li className="text-xs text-slate-500">Sin variantes vendibles.</li>
+                              )}
+                              {expanded.variants.map((variant) => {
+                                const stock = expanded.stockByVariantId[variant.id] ?? 0;
+                                const outOfStock = stock <= 0;
+                                return (
+                                  <li
+                                    key={variant.id}
+                                    className={cn(
+                                      'flex items-center justify-between gap-2',
+                                      outOfStock && 'opacity-50',
+                                    )}
                                   >
-                                    Agregar
-                                  </Button>
-                                </li>
-                              );
-                            })}
-                          </ul>
-                        )}
+                                    <span>
+                                      <span
+                                        className={cn(
+                                          'text-sm',
+                                          outOfStock ? 'text-slate-400' : 'text-slate-700',
+                                        )}
+                                      >
+                                        {variant.sku}
+                                      </span>
+                                      <span className="block text-xs text-slate-400">
+                                        {outOfStock
+                                          ? 'Sin stock disponible'
+                                          : `Stock disponible: ${stock}`}
+                                      </span>
+                                      <span className="block text-xs text-slate-400">
+                                        Precio máx: ${variant.maxPrice.toFixed(2)}
+                                      </span>
+                                    </span>
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      loading={busy === `add-${variant.id}`}
+                                      disabled={busy !== null || outOfStock}
+                                      onClick={() => void addVariant(variant)}
+                                    >
+                                      Agregar
+                                    </Button>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          )}
                       </li>
                     ))}
                   </ul>
@@ -651,14 +772,20 @@ export function ProductCartModal({
                     value={qrCode}
                     onChange={(e) => setQrCode(e.target.value)}
                   />
-                  <Button type="submit" size="sm" loading={qrBusy} disabled={busy !== null || !qrCode.trim()}>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    loading={qrBusy}
+                    disabled={busy !== null || !qrCode.trim()}
+                  >
                     Resolver
                   </Button>
                 </div>
                 <p className="flex items-center gap-1.5 text-xs text-slate-500">
                   Entrada manual
                   <HelpTip>
-                    Entrada manual por ahora — la misma resolución quedará lista para un lector de cámara más adelante.
+                    Entrada manual por ahora — la misma resolución quedará lista para un lector de
+                    cámara más adelante.
                   </HelpTip>
                 </p>
                 {qrMessage && <p className="text-sm text-slate-700">{qrMessage}</p>}
@@ -668,11 +795,18 @@ export function ProductCartModal({
         )}
 
         <div className="flex flex-col gap-3">
-          <h3 className="text-sm font-semibold text-slate-900">Productos</h3>
+          <h3 className="flex items-center gap-2 text-lg font-bold text-slate-900 lg:text-sm lg:font-semibold">
+            Productos
+            <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 lg:hidden">
+              {cart.items.length}
+            </span>
+          </h3>
           {cart.items.length === 0 ? (
-            <p className="text-sm text-slate-500">Aún no hay productos — busca o escanea uno arriba.</p>
+            <p className="text-sm text-slate-500">
+              Aún no hay productos — busca o escanea uno arriba.
+            </p>
           ) : (
-            <ul className="flex flex-col divide-y divide-slate-100">
+            <ul className="flex flex-col gap-3 lg:gap-0 lg:divide-y lg:divide-slate-100">
               {cart.items.map((item) => (
                 <CartLineRow
                   key={item.id}
@@ -692,10 +826,15 @@ export function ProductCartModal({
             </ul>
           )}
           {unsellableLines.length > 0 && (
-            <Alert tone="error">Quita los productos marcados «no vendible» antes de continuar.</Alert>
+            <Alert tone="error">
+              Quita los productos marcados «no vendible» antes de continuar.
+            </Alert>
           )}
-          <p className="ml-auto flex items-center gap-2 rounded-md bg-green-600 px-3 py-1.5 text-sm text-white">
-            Subtotal <span className="font-semibold">${cart.subtotal.toFixed(2)}</span>
+          <p className="ml-auto flex items-center gap-2 rounded-md bg-green-600 px-4 py-2.5 text-sm text-white lg:px-3 lg:py-1.5">
+            Subtotal{' '}
+            <span className="text-xl font-bold lg:text-sm lg:font-semibold">
+              ${cart.subtotal.toFixed(2)}
+            </span>
           </p>
         </div>
       </div>
@@ -746,10 +885,21 @@ function CartLineRow({
   // `pricing.floor.view`.
   const belowBase = item.unitPrice < item.basePrice;
   const thumb = thumbnailUrl ? (
-    <img src={thumbnailUrl} alt="" className="h-9 w-9 shrink-0 rounded-md border border-slate-200 bg-white object-contain" />
+    <img
+      src={thumbnailUrl}
+      alt=""
+      className="h-16 w-16 shrink-0 rounded-lg border border-slate-200 bg-white object-contain lg:h-9 lg:w-9 lg:rounded-md"
+    />
   ) : (
-    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-300">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-5 w-5" aria-hidden="true">
+    <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-300 lg:h-9 lg:w-9 lg:rounded-md">
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        className="h-5 w-5"
+        aria-hidden="true"
+      >
         <rect x="3" y="3" width="18" height="18" rx="2" />
         <circle cx="8.5" cy="8.5" r="1.5" />
         <path d="M21 15l-5-5L5 21" />
@@ -760,8 +910,10 @@ function CartLineRow({
   return (
     <li
       className={cn(
-        'relative rounded-lg px-2 py-2',
-        belowBase && 'border border-red-200 bg-red-50/60 pt-3',
+        'relative rounded-xl p-3 lg:rounded-lg lg:px-2 lg:py-2',
+        belowBase
+          ? 'border border-red-200 bg-red-50/60 pt-4 lg:pt-3'
+          : 'bg-slate-50 shadow-sm lg:bg-transparent lg:shadow-none',
       )}
     >
       {belowBase && (
@@ -777,91 +929,104 @@ function CartLineRow({
       )}
       {/* Always a single row, even on mobile (owner requirement) — compact sizing throughout
        * (smaller thumbnail/stepper/price/remove, truncated text) is what makes that fit at ~390px. */}
-      <div className="flex items-center gap-2">
-        {previewable ? (
-          <ProductPreviewModal
-            productId={item.productId}
-            variantId={item.productVariantId}
-            productName={item.productName}
-            sku={item.sku}
-            thumbnailUrl={thumbnailUrl ?? undefined}
-            detailHref={`/products/${item.productId}/variants/${item.productVariantId}`}
-            canManage={canManageProducts}
-          >
-            {thumb}
-          </ProductPreviewModal>
-        ) : (
-          thumb
-        )}
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-2">
+        <div className="flex min-w-0 items-center gap-3 lg:contents">
+          {previewable ? (
+            <ProductPreviewModal
+              productId={item.productId}
+              variantId={item.productVariantId}
+              productName={item.productName}
+              sku={item.sku}
+              thumbnailUrl={thumbnailUrl ?? undefined}
+              detailHref={`/products/${item.productId}/variants/${item.productVariantId}`}
+              canManage={canManageProducts}
+            >
+              {thumb}
+            </ProductPreviewModal>
+          ) : (
+            thumb
+          )}
 
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-slate-900">
-            {item.productName}
-            {!item.sellable && (
-              <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">no vendible</span>
-            )}
-          </p>
-          <p className={cn('truncate text-xs', item.availableAtLocation < item.quantity ? 'text-red-600' : 'text-slate-500')}>
-            Stock: {item.availableAtLocation}
-          </p>
-          <p className="truncate text-xs text-slate-500">Base: ${item.basePrice.toFixed(2)}</p>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-base font-bold uppercase text-slate-900 lg:text-sm lg:font-medium lg:normal-case">
+              {item.productName}
+              {!item.sellable && (
+                <span className="ml-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700">
+                  no vendible
+                </span>
+              )}
+            </p>
+            <p
+              className={cn(
+                'truncate text-xs',
+                item.availableAtLocation < item.quantity ? 'text-red-600' : 'text-slate-500',
+              )}
+            >
+              Stock: {item.availableAtLocation}
+            </p>
+            <p className="truncate text-xs text-slate-500">Base: ${item.basePrice.toFixed(2)}</p>
+          </div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-0.5">
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            aria-label={`Disminuir cantidad de ${item.sku}`}
-            disabled={busy !== null || item.quantity <= 1}
-            onClick={onDecrement}
-            className="h-[22px] w-[22px] px-0"
-          >
-            −
-          </Button>
-          <span className="w-5 text-center text-sm text-slate-900">{item.quantity}</span>
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            aria-label={`Aumentar cantidad de ${item.sku}`}
-            disabled={busy !== null || atMax}
-            onClick={onIncrement}
-            className="h-[22px] w-[22px] px-0"
-          >
-            +
-          </Button>
-        </div>
+        <div className="flex items-center gap-2 lg:contents">
+          <div className="flex shrink-0 items-center gap-1 rounded-lg bg-white p-1 shadow-sm lg:gap-0.5 lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              aria-label={`Disminuir cantidad de ${item.sku}`}
+              disabled={busy !== null || item.quantity <= 1}
+              onClick={onDecrement}
+              className="h-9 w-9 px-0 lg:h-[22px] lg:w-[22px]"
+            >
+              −
+            </Button>
+            <span className="w-8 text-center text-base text-slate-900 lg:w-5 lg:text-sm">
+              {item.quantity}
+            </span>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              aria-label={`Aumentar cantidad de ${item.sku}`}
+              disabled={busy !== null || atMax}
+              onClick={onIncrement}
+              className="h-9 w-9 px-0 lg:h-[22px] lg:w-[22px]"
+            >
+              +
+            </Button>
+          </div>
 
-        <span className="flex shrink-0 items-center rounded-md border border-slate-300 bg-white pl-1.5">
-          <span className="text-xs text-slate-500">$</span>
-          <Input
-            type="number"
-            min={0}
-            step="0.01"
-            defaultValue={item.unitPrice.toFixed(2)}
-            aria-label={`Precio para ${item.sku}`}
+          <span className="flex min-w-0 flex-1 items-center rounded-lg border border-slate-300 bg-white pl-2 lg:flex-none lg:shrink-0 lg:rounded-md lg:pl-1.5">
+            <span className="text-xs text-slate-500">$</span>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              defaultValue={item.unitPrice.toFixed(2)}
+              aria-label={`Precio para ${item.sku}`}
+              disabled={busy !== null}
+              onBlur={(e) => {
+                if (Number(e.target.value) !== item.unitPrice) {
+                  onPriceCommit(e.target.value);
+                }
+              }}
+              className="w-full border-0 pl-0.5 pr-2 text-right text-base font-semibold lg:w-14 lg:pr-1 lg:text-left lg:text-sm lg:font-normal"
+            />
+          </span>
+
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            aria-label={`Quitar ${item.sku}`}
             disabled={busy !== null}
-            onBlur={(e) => {
-              if (Number(e.target.value) !== item.unitPrice) {
-                onPriceCommit(e.target.value);
-              }
-            }}
-            className="w-14 border-0 pl-0.5 pr-1 text-sm"
-          />
-        </span>
-
-        <Button
-          type="button"
-          variant="danger"
-          size="sm"
-          aria-label={`Quitar ${item.sku}`}
-          disabled={busy !== null}
-          onClick={onRemove}
-          className="h-7 w-7 shrink-0 px-0 text-base"
-        >
-          ×
-        </Button>
+            onClick={onRemove}
+            className="h-10 w-10 shrink-0 px-0 text-lg lg:h-7 lg:w-7 lg:text-base"
+          >
+            ×
+          </Button>
+        </div>
       </div>
     </li>
   );
