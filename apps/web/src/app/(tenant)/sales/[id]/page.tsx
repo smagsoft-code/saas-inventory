@@ -25,6 +25,7 @@ import {
   type ReturnStatus,
 } from '../../../../lib/types/sales';
 import { OrderActions, type ExceptionalLine } from './order-actions';
+import { OrderDetailMobile, OrderStatusBadge, type MobileOrderDetail } from './order-detail-mobile';
 import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { ButtonLink } from '../../../../components/ui/button';
@@ -116,37 +117,103 @@ export default async function OrderDetailPage({
         maxPrice: item.maxPrice,
       };
       const latest = latestApprovalByItem.get(item.id);
-      return latest ? { ...base, latestStatus: latest.status as NonNullable<ExceptionalLine['latestStatus']> } : base;
+      return latest
+        ? { ...base, latestStatus: latest.status as NonNullable<ExceptionalLine['latestStatus']> }
+        : base;
     });
   const pendingApprovalCount = approvals.filter((a) => a.status === 'pending').length;
-  const addressEntries = Object.entries((order.customer.address ?? {}) as Record<string, unknown>).filter(
-    ([, v]) => typeof v === 'string' && v !== '',
-  );
+  const addressEntries = Object.entries(
+    (order.customer.address ?? {}) as Record<string, unknown>,
+  ).filter(([, v]) => typeof v === 'string' && v !== '');
+
+  const statusLabel = ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status;
+  const subtitle = `${DOCUMENT_TYPE_LABELS[order.documentType as DocumentType] ?? order.documentType} · ${index.locationName(order.locationId)}`;
+  const mobileDetail: MobileOrderDetail = {
+    orderNumber: order.orderNumber,
+    statusLabel,
+    statusTone: orderStatusTone(order.status),
+    subtitle,
+    customer: {
+      name: order.customer.name,
+      href: order.customerId && canViewCustomer ? `/customers/${order.customerId}` : undefined,
+      taxId: order.customer.taxId ?? undefined,
+      email: order.customer.email ?? undefined,
+      phone: order.customer.phone ?? undefined,
+      address:
+        addressEntries.length > 0 ? addressEntries.map(([, v]) => String(v)).join(', ') : undefined,
+      location: index.locationName(order.locationId),
+      warehouse: index.warehouseName(order.locationId),
+      invoiceStatus: order.invoiceStatus ?? undefined,
+      createdLabel: new Date(order.createdAt).toLocaleString('es'),
+    },
+    items: order.items.map((item) => ({
+      id: item.id,
+      sku: item.sku,
+      productName: item.productName,
+      belowMinimum: item.isExceptionalDiscount,
+      movementsHref: canViewInventory
+        ? `/inventory/movements?productVariantId=${item.productVariantId}`
+        : undefined,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice.toFixed(2),
+      lineTotal: item.lineTotal.toFixed(2),
+    })),
+    totals: {
+      subtotal: order.subtotal.toFixed(2),
+      discount: order.discountTotal.toFixed(2),
+      tax: order.taxTotal.toFixed(2),
+      total: order.total.toFixed(2),
+      currency: order.currency,
+    },
+  };
 
   return (
     <PageContainer>
-      <PageHeader
-        title={`Pedido ${order.orderNumber}`}
-        description={`${DOCUMENT_TYPE_LABELS[order.documentType as DocumentType] ?? order.documentType} · ${index.locationName(order.locationId)}`}
-        actions={
-          <div className="flex items-center gap-2">
-            {order.status === 'confirmed' && canCreateReturn && (
-              <ButtonLink href={`/returns/new?orderId=${order.id}`} size="sm" variant="secondary" className="print:hidden">
-                Iniciar devolución
-              </ButtonLink>
-            )}
-            <PrintButton className="print:hidden" />
-            <Badge tone={orderStatusTone(order.status)}>
-              {ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status}
-            </Badge>
-          </div>
-        }
-      />
+      {/* Phone header: number + estado on one row, document · almacén under it, then the actions. */}
+      <div className="flex flex-col gap-2 md:hidden">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-xl font-bold text-slate-900">{`Pedido ${order.orderNumber}`}</h1>
+          <OrderStatusBadge label={statusLabel} tone={orderStatusTone(order.status)} />
+        </div>
+        <p className="text-sm text-slate-500">{subtitle}</p>
+        <div className="flex flex-wrap items-center gap-2 print:hidden">
+          {order.status === 'confirmed' && canCreateReturn && (
+            <ButtonLink href={`/returns/new?orderId=${order.id}`} size="sm" variant="secondary">
+              Iniciar devolución
+            </ButtonLink>
+          )}
+          <PrintButton />
+        </div>
+      </div>
+      <div className="hidden md:block">
+        <PageHeader
+          title={`Pedido ${order.orderNumber}`}
+          description={`${DOCUMENT_TYPE_LABELS[order.documentType as DocumentType] ?? order.documentType} · ${index.locationName(order.locationId)}`}
+          actions={
+            <div className="flex items-center gap-2">
+              {order.status === 'confirmed' && canCreateReturn && (
+                <ButtonLink
+                  href={`/returns/new?orderId=${order.id}`}
+                  size="sm"
+                  variant="secondary"
+                  className="print:hidden"
+                >
+                  Iniciar devolución
+                </ButtonLink>
+              )}
+              <PrintButton className="print:hidden" />
+              <Badge tone={orderStatusTone(order.status)}>
+                {ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status}
+              </Badge>
+            </div>
+          }
+        />
+      </div>
 
       {order.status === 'pending' && (
         <Alert tone={hasExceptional && pendingApprovalCount > 0 ? 'warning' : 'info'}>
-          Este pedido tiene una reserva de stock. Confirmarlo cierra la venta; cancelarlo libera
-          la reserva.
+          Este pedido tiene una reserva de stock. Confirmarlo cierra la venta; cancelarlo libera la
+          reserva.
           {hasExceptional &&
             (pendingApprovalCount > 0
               ? ' Una línea bajo el precio mínimo tiene una solicitud de aprobación de precio aún pendiente — el pedido no puede confirmarse hasta que se apruebe.'
@@ -154,13 +221,18 @@ export default async function OrderDetailPage({
         </Alert>
       )}
 
-      <Card>
+      <OrderDetailMobile detail={mobileDetail} />
+
+      <Card className="hidden md:block">
         <CardBody className="flex flex-col gap-4">
           <dl className="grid max-w-lg grid-cols-[9rem_1fr] gap-y-2 text-sm">
             <dt className="text-slate-500">Cliente</dt>
             <dd className="text-slate-900">
               {order.customerId && canViewCustomer ? (
-                <Link href={`/customers/${order.customerId}`} className="font-medium underline underline-offset-2">
+                <Link
+                  href={`/customers/${order.customerId}`}
+                  className="font-medium underline underline-offset-2"
+                >
                   {order.customer.name}
                 </Link>
               ) : (
@@ -188,7 +260,9 @@ export default async function OrderDetailPage({
             {addressEntries.length > 0 && (
               <>
                 <dt className="text-slate-500">Dirección</dt>
-                <dd className="text-slate-900">{addressEntries.map(([, v]) => String(v)).join(', ')}</dd>
+                <dd className="text-slate-900">
+                  {addressEntries.map(([, v]) => String(v)).join(', ')}
+                </dd>
               </>
             )}
             <dt className="text-slate-500">Almacén</dt>
@@ -208,7 +282,7 @@ export default async function OrderDetailPage({
         </CardBody>
       </Card>
 
-      <Card>
+      <Card className="hidden md:block">
         <CardBody className="flex flex-col gap-4">
           <h2 className="text-sm font-semibold text-slate-900">Líneas</h2>
           <Table>
@@ -305,13 +379,18 @@ export default async function OrderDetailPage({
                             <span className="text-slate-500"> · {line.productName}</span>
                           </>
                         ) : (
-                          <code className="text-xs text-slate-500">{shortId(approval.orderItemId)}</code>
+                          <code className="text-xs text-slate-500">
+                            {shortId(approval.orderItemId)}
+                          </code>
                         )}
                       </TD>
-                      <TD className="text-right text-slate-500">{approval.requestedPrice.toFixed(2)}</TD>
+                      <TD className="text-right text-slate-500">
+                        {approval.requestedPrice.toFixed(2)}
+                      </TD>
                       <TD>
                         <Badge tone={priceApprovalStatusTone(approval.status)}>
-                          {PRICE_APPROVAL_STATUS_LABELS[approval.status as PriceApprovalStatus] ?? approval.status}
+                          {PRICE_APPROVAL_STATUS_LABELS[approval.status as PriceApprovalStatus] ??
+                            approval.status}
                         </Badge>
                       </TD>
                       <TD>
@@ -337,13 +416,15 @@ export default async function OrderDetailPage({
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold text-slate-900">Notificación</h2>
               <Badge tone={notificationOverallTone(notifications.overallStatus)}>
-                {NOTIFICATION_OVERALL_LABELS[notifications.overallStatus as NotificationOverallStatus] ??
-                  notifications.overallStatus}
+                {NOTIFICATION_OVERALL_LABELS[
+                  notifications.overallStatus as NotificationOverallStatus
+                ] ?? notifications.overallStatus}
               </Badge>
             </div>
             {notifications.events.length === 0 ? (
               <p className="text-sm text-slate-500">
-                Aún no se ha generado ninguna notificación para este pedido. Confirmarlo o cancelarlo pondrá una en cola.
+                Aún no se ha generado ninguna notificación para este pedido. Confirmarlo o
+                cancelarlo pondrá una en cola.
               </p>
             ) : (
               <ul className="flex flex-col gap-1 text-sm">
@@ -354,16 +435,20 @@ export default async function OrderDetailPage({
                     </span>
                     <span className="text-slate-400">·</span>
                     <span className="text-slate-500">{event.status}</span>
-                    {event.attempts > 0 && <span className="text-slate-400">· {event.attempts} intentos</span>}
-                    <span className="text-slate-400">· {new Date(event.occurredAt).toLocaleString('es')}</span>
+                    {event.attempts > 0 && (
+                      <span className="text-slate-400">· {event.attempts} intentos</span>
+                    )}
+                    <span className="text-slate-400">
+                      · {new Date(event.occurredAt).toLocaleString('es')}
+                    </span>
                   </li>
                 ))}
               </ul>
             )}
             {notifications.overallStatus === 'failed' && (
               <p className="text-xs text-slate-500">
-                Reenviar una notificación fallida aún no está disponible — necesita un contrato de backend
-                (`GAP-NOTIF-RETRY-BACKEND`).
+                Reenviar una notificación fallida aún no está disponible — necesita un contrato de
+                backend (`GAP-NOTIF-RETRY-BACKEND`).
               </p>
             )}
           </CardBody>
@@ -396,7 +481,9 @@ export default async function OrderDetailPage({
                       {ret.items.map((item) => (
                         <p key={item.id}>
                           {item.productName ?? item.sku ?? shortId(item.productVariantId)}
-                          {item.quantityReturned > 1 && <span className="text-slate-500"> × {item.quantityReturned}</span>}
+                          {item.quantityReturned > 1 && (
+                            <span className="text-slate-500"> × {item.quantityReturned}</span>
+                          )}
                         </p>
                       ))}
                     </TD>
@@ -427,7 +514,10 @@ export default async function OrderDetailPage({
           Historial de ventas
         </Link>
         {canViewReturns && (
-          <Link href={`/returns?orderId=${order.id}`} className="font-medium text-slate-500 hover:underline">
+          <Link
+            href={`/returns?orderId=${order.id}`}
+            className="font-medium text-slate-500 hover:underline"
+          >
             Devoluciones
           </Link>
         )}
@@ -435,7 +525,10 @@ export default async function OrderDetailPage({
           Nueva venta
         </Link>
         {order.customerId && canViewCustomer && (
-          <Link href={`/customers/${order.customerId}`} className="font-medium text-slate-500 hover:underline">
+          <Link
+            href={`/customers/${order.customerId}`}
+            className="font-medium text-slate-500 hover:underline"
+          >
             Ver cliente
           </Link>
         )}

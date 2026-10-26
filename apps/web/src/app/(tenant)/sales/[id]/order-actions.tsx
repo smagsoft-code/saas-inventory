@@ -4,7 +4,11 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { apiFetch } from '../../../../lib/api/client';
 import { httpErrorMessage, isApiError } from '../../../../lib/api/errors';
-import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, type PaymentMethod } from '../../../../lib/types/sales';
+import {
+  PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
+  type PaymentMethod,
+} from '../../../../lib/types/sales';
 import { Alert } from '../../../../components/ui/alert';
 import { Button } from '../../../../components/ui/button';
 import { Card, CardBody } from '../../../../components/ui/card';
@@ -77,12 +81,16 @@ export function OrderActions({
   const approvalReason = `Descuento solicitado por ${requesterName || 'el vendedor'}.`;
 
   const isPending = status === 'pending';
-  const needsApproval = exceptionalLines.length > 0 && !exceptionalLines.every((line) => line.latestStatus === 'approved');
+  const needsApproval =
+    exceptionalLines.length > 0 &&
+    !exceptionalLines.every((line) => line.latestStatus === 'approved');
   const showConfirm = isPending && canConfirm && !needsApproval;
   const showCancel = isPending && canCancel && !needsApproval;
   const showRequest = isPending && needsApproval && canRequestApproval;
   const showPermissionNotice = isPending && needsApproval && !canRequestApproval;
-  const requestable = exceptionalLines.filter((line) => line.latestStatus !== 'pending' && line.latestStatus !== 'approved');
+  const requestable = exceptionalLines.filter(
+    (line) => line.latestStatus !== 'pending' && line.latestStatus !== 'approved',
+  );
   const pendingLines = exceptionalLines.filter((line) => line.latestStatus === 'pending');
 
   const [busy, setBusy] = useState<Action | null>(null);
@@ -94,8 +102,12 @@ export function OrderActions({
   const [editPriceInput, setEditPriceInput] = useState('');
 
   // --- payment method (owner redesign — asked here, right before confirming) -----------------
-  const [selectedMethods, setSelectedMethods] = useState<Set<PaymentMethod>>(() => new Set<PaymentMethod>(['cash']));
-  const [amounts, setAmounts] = useState<Partial<Record<PaymentMethod, string>>>(() => ({ cash: total.toFixed(2) }));
+  const [selectedMethods, setSelectedMethods] = useState<Set<PaymentMethod>>(
+    () => new Set<PaymentMethod>(['cash']),
+  );
+  const [amounts, setAmounts] = useState<Partial<Record<PaymentMethod, string>>>(() => ({
+    cash: total.toFixed(2),
+  }));
 
   function toggleMethod(method: PaymentMethod): void {
     const wasSingle = selectedMethods.size === 1;
@@ -116,7 +128,7 @@ export function OrderActions({
       setAmounts((prev) => {
         const copy: Partial<Record<PaymentMethod, string>> = {};
         for (const m of next) {
-          copy[m] = wasSingle ? '' : prev[m] ?? '';
+          copy[m] = wasSingle ? '' : (prev[m] ?? '');
         }
         return copy;
       });
@@ -134,7 +146,11 @@ export function OrderActions({
     return null;
   }
 
-  async function run(action: Action, request: () => Promise<unknown>, onDone?: () => void): Promise<void> {
+  async function run(
+    action: Action,
+    request: () => Promise<unknown>,
+    onDone?: () => void,
+  ): Promise<void> {
     if (busy) return;
     setBusy(action);
     setError(null);
@@ -159,7 +175,11 @@ export function OrderActions({
       () =>
         apiFetch('/api/v1/price-approvals', {
           method: 'POST',
-          body: { orderItemId, reason: approvalReason, ...(newPrice !== undefined ? { newPrice } : {}) },
+          body: {
+            orderItemId,
+            reason: approvalReason,
+            ...(newPrice !== undefined ? { newPrice } : {}),
+          },
         }),
       () => {
         setJustRequested((prev) => new Set(prev).add(orderItemId));
@@ -172,7 +192,10 @@ export function OrderActions({
     if (!paymentsMatch) {
       return;
     }
-    const payments = [...selectedMethods].map((method) => ({ paymentMethod: method, amount: Number(amounts[method]) }));
+    const payments = [...selectedMethods].map((method) => ({
+      paymentMethod: method,
+      amount: Number(amounts[method]),
+    }));
     await run(
       'confirm',
       () => apiFetch(`${base}/confirm`, { method: 'POST', body: { payments } }),
@@ -181,26 +204,31 @@ export function OrderActions({
   }
 
   return (
-    <Card>
+    <Card className="rounded-2xl shadow-sm md:rounded-lg md:shadow-none">
       <CardBody className="flex flex-col gap-4">
-        <h2 className="text-sm font-semibold text-slate-900">Acciones</h2>
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 md:text-sm md:normal-case md:tracking-normal md:text-slate-900">
+          Acciones
+        </h2>
 
         {error && <Alert tone="error">{error}</Alert>}
         {success && <Toast message={success} onDismiss={() => setSuccess(null)} />}
 
         {(showRequest || showPermissionNotice) && (
           <div className="flex flex-col gap-3 rounded-md border border-amber-200 bg-amber-50 p-3">
-            <p className="text-sm font-medium text-amber-800">Uno o más productos necesitan Aprobación</p>
+            <p className="text-sm font-medium text-amber-800">
+              Uno o más productos necesitan Aprobación
+            </p>
             {showPermissionNotice && (
               <p className="text-xs text-amber-700">
-                No tienes permiso para solicitar o ver el estado de esa aprobación — pide a un supervisor o
-                administrador que la gestione.
+                No tienes permiso para solicitar o ver el estado de esa aprobación — pide a un
+                supervisor o administrador que la gestione.
               </p>
             )}
             {pendingLines.length > 0 && (
               <p className="text-xs text-amber-700">
-                {pendingLines.length === 1 ? 'Una solicitud' : `${pendingLines.length} solicitudes`} ya{' '}
-                {pendingLines.length === 1 ? 'está' : 'están'} esperando que un supervisor o administrador la resuelva.
+                {pendingLines.length === 1 ? 'Una solicitud' : `${pendingLines.length} solicitudes`}{' '}
+                ya {pendingLines.length === 1 ? 'está' : 'están'} esperando que un supervisor o
+                administrador la resuelva.
               </p>
             )}
             {showRequest && requestable.length > 0 && (
@@ -215,10 +243,14 @@ export function OrderActions({
                       <div className="text-sm">
                         <span className="font-medium">{line.sku}</span>
                         <span className="text-slate-600"> · {line.productName}</span>
-                        {line.latestStatus === 'rejected' && !sent && <span className="ml-1 text-red-700">(rechazada — solicita de nuevo)</span>}
+                        {line.latestStatus === 'rejected' && !sent && (
+                          <span className="ml-1 text-red-700">(rechazada — solicita de nuevo)</span>
+                        )}
                       </div>
                       {sent ? (
-                        <span className="text-sm font-medium text-amber-700">Solicitud enviada</span>
+                        <span className="text-sm font-medium text-amber-700">
+                          Solicitud enviada
+                        </span>
                       ) : editingLineId === line.orderItemId ? (
                         <div className="flex items-center gap-2">
                           <span className="flex items-center rounded-md border border-slate-300 bg-white pl-1.5">
@@ -237,11 +269,18 @@ export function OrderActions({
                             size="sm"
                             loading={busy === 'request'}
                             disabled={busy !== null || !editPriceInput}
-                            onClick={() => void submitRequest(line.orderItemId, Number(editPriceInput))}
+                            onClick={() =>
+                              void submitRequest(line.orderItemId, Number(editPriceInput))
+                            }
                           >
                             Enviar con nuevo precio
                           </Button>
-                          <Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => setEditingLineId(null)}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy !== null}
+                            onClick={() => setEditingLineId(null)}
+                          >
                             Cancelar
                           </Button>
                         </div>
@@ -262,7 +301,9 @@ export function OrderActions({
                               disabled={busy !== null}
                               onClick={() => {
                                 setEditingLineId(line.orderItemId);
-                                setEditPriceInput(line.unitPrice !== undefined ? String(line.unitPrice) : '');
+                                setEditPriceInput(
+                                  line.unitPrice !== undefined ? String(line.unitPrice) : '',
+                                );
                               }}
                             >
                               Editar precio
@@ -279,12 +320,22 @@ export function OrderActions({
         )}
 
         {showConfirm && (
-          <div className="flex flex-col gap-3 rounded-md border border-slate-200 p-3">
-            <h3 className="text-sm font-semibold text-slate-900">Forma de pago</h3>
-            <div className="flex flex-wrap gap-4">
+          <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3 md:rounded-md md:border md:border-slate-200 md:bg-transparent">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 md:text-sm md:normal-case md:tracking-normal md:text-slate-900">
+              Forma de pago
+            </h3>
+            <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-4">
               {PAYMENT_METHODS.map((method) => (
-                <label key={method} className="flex items-center gap-2 text-sm text-slate-700">
-                  <input type="checkbox" checked={selectedMethods.has(method)} onChange={() => toggleMethod(method)} className="h-4 w-4" />
+                <label
+                  key={method}
+                  className="flex items-center gap-2 rounded-xl bg-white px-3 py-3 text-base text-slate-700 shadow-sm has-[:checked]:bg-blue-50 has-[:checked]:font-semibold has-[:checked]:text-blue-800 md:rounded-none md:bg-transparent md:p-0 md:text-sm md:shadow-none md:has-[:checked]:bg-transparent md:has-[:checked]:font-normal md:has-[:checked]:text-slate-700"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedMethods.has(method)}
+                    onChange={() => toggleMethod(method)}
+                    className="h-5 w-5 accent-slate-900 md:h-4 md:w-4"
+                  />
                   {PAYMENT_METHOD_LABELS[method]}
                 </label>
               ))}
@@ -292,8 +343,10 @@ export function OrderActions({
             <div className="flex flex-col gap-2">
               {PAYMENT_METHODS.filter((m) => selectedMethods.has(m)).map((method) => (
                 <div key={method} className="flex items-center gap-2">
-                  <span className="w-28 shrink-0 text-sm text-slate-600">{PAYMENT_METHOD_LABELS[method]}</span>
-                  <span className="flex items-center rounded-md border border-slate-300 bg-white pl-1.5">
+                  <span className="w-28 shrink-0 text-sm text-slate-600">
+                    {PAYMENT_METHOD_LABELS[method]}
+                  </span>
+                  <span className="flex min-w-0 flex-1 items-center rounded-lg border border-slate-300 bg-white pl-2 md:flex-none md:rounded-md md:pl-1.5">
                     <span className="text-xs text-slate-500">$</span>
                     <Input
                       type="number"
@@ -302,8 +355,10 @@ export function OrderActions({
                       aria-label={`Monto en ${PAYMENT_METHOD_LABELS[method]}`}
                       value={amounts[method] ?? ''}
                       disabled={selectedMethods.size === 1}
-                      onChange={(e) => setAmounts((prev) => ({ ...prev, [method]: e.target.value }))}
-                      className="w-28 border-0 pl-0.5 pr-1 text-sm"
+                      onChange={(e) =>
+                        setAmounts((prev) => ({ ...prev, [method]: e.target.value }))
+                      }
+                      className="w-full border-0 pl-0.5 pr-2 text-right text-base font-semibold md:w-28 md:pr-1 md:text-left md:text-sm md:font-normal"
                     />
                   </span>
                 </div>
@@ -311,20 +366,31 @@ export function OrderActions({
             </div>
             {!paymentsMatch && (
               <p className="text-xs text-red-600">
-                La suma de los pagos (${paymentsTotal.toFixed(2)}) debe ser igual al total (${total.toFixed(2)}).
+                La suma de los pagos (${paymentsTotal.toFixed(2)}) debe ser igual al total ($
+                {total.toFixed(2)}).
               </p>
             )}
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
           {showConfirm && (
-            <Button loading={busy === 'confirm'} disabled={busy !== null || !paymentsMatch} onClick={() => void confirmOrder()}>
+            <Button
+              loading={busy === 'confirm'}
+              disabled={busy !== null || !paymentsMatch}
+              onClick={() => void confirmOrder()}
+              className="h-12 w-full rounded-xl text-base md:h-10 md:w-auto md:rounded-md md:text-sm"
+            >
               Confirmar pedido
             </Button>
           )}
           {showCancel && !confirmCancel && (
-            <Button variant="danger" disabled={busy !== null} onClick={() => setConfirmCancel(true)}>
+            <Button
+              variant="danger"
+              disabled={busy !== null}
+              onClick={() => setConfirmCancel(true)}
+              className="h-12 w-full rounded-xl text-base md:h-10 md:w-auto md:rounded-md md:text-sm"
+            >
               Cancelar pedido
             </Button>
           )}
@@ -332,17 +398,30 @@ export function OrderActions({
 
         {confirmCancel && showCancel && (
           <div className="flex flex-wrap items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            <span>¿Cancelar este pedido? Se libera la reserva de stock. Esto no se puede deshacer.</span>
+            <span>
+              ¿Cancelar este pedido? Se libera la reserva de stock. Esto no se puede deshacer.
+            </span>
             <Button
               variant="danger"
               size="sm"
               loading={busy === 'cancel'}
               disabled={busy !== null}
-              onClick={() => void run('cancel', () => apiFetch(`${base}/cancel`, { method: 'POST' }), () => setConfirmCancel(false))}
+              onClick={() =>
+                void run(
+                  'cancel',
+                  () => apiFetch(`${base}/cancel`, { method: 'POST' }),
+                  () => setConfirmCancel(false),
+                )
+              }
             >
               Confirmar cancelación
             </Button>
-            <Button variant="ghost" size="sm" disabled={busy !== null} onClick={() => setConfirmCancel(false)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() => setConfirmCancel(false)}
+            >
               Mantener pedido
             </Button>
           </div>
