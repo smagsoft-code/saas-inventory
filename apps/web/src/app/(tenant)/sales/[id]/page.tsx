@@ -30,7 +30,6 @@ import { PageContainer } from '../../../../components/ui/page-container';
 import { PageHeader } from '../../../../components/ui/page-header';
 import { ButtonLink } from '../../../../components/ui/button';
 import { Card, CardBody } from '../../../../components/ui/card';
-import { Alert } from '../../../../components/ui/alert';
 import { Badge } from '../../../../components/ui/badge';
 import { NoAccess } from '../../../../components/ui/no-access';
 import { PrintButton } from '../../../../components/ui/print-button';
@@ -179,40 +178,7 @@ export default async function OrderDetailPage({
   };
 
   return (
-    <PageContainer>
-      <div className="hidden md:block">
-        <PageHeader
-          title={`Pedido ${order.orderNumber}`}
-          description={`${DOCUMENT_TYPE_LABELS[order.documentType as DocumentType] ?? order.documentType} · ${index.locationName(order.locationId)}`}
-          actions={
-            <div className="flex items-center gap-2">
-              {order.status === 'confirmed' && canCreateReturn && (
-                <ButtonLink
-                  href={`/returns/new?orderId=${order.id}`}
-                  size="sm"
-                  variant="secondary"
-                  className="print:hidden"
-                >
-                  Iniciar devolución
-                </ButtonLink>
-              )}
-              <PrintButton className="print:hidden" />
-              <Badge tone={orderStatusTone(order.status)}>
-                {ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status}
-              </Badge>
-            </div>
-          }
-        />
-      </div>
-
-      {reservationNotice && (
-        <div className="hidden md:block">
-          <Alert tone={hasExceptional && pendingApprovalCount > 0 ? 'warning' : 'info'}>
-            {reservationNotice}
-          </Alert>
-        </div>
-      )}
-
+    <PageContainer className="max-w-3xl">
       <OrderDetailMobile
         detail={mobileDetail}
         actions={
@@ -226,122 +192,6 @@ export default async function OrderDetailPage({
           </div>
         }
       />
-
-      <Card className="hidden md:block">
-        <CardBody className="flex flex-col gap-4">
-          <dl className="grid max-w-lg grid-cols-[9rem_1fr] gap-y-2 text-sm">
-            <dt className="text-slate-500">Cliente</dt>
-            <dd className="text-slate-900">
-              {order.customerId && canViewCustomer ? (
-                <Link
-                  href={`/customers/${order.customerId}`}
-                  className="font-medium underline underline-offset-2"
-                >
-                  {order.customer.name}
-                </Link>
-              ) : (
-                order.customer.name
-              )}
-            </dd>
-            {order.customer.taxId && (
-              <>
-                <dt className="text-slate-500">Identificación</dt>
-                <dd className="text-slate-900">{order.customer.taxId}</dd>
-              </>
-            )}
-            {order.customer.email && (
-              <>
-                <dt className="text-slate-500">Correo</dt>
-                <dd className="text-slate-900">{order.customer.email}</dd>
-              </>
-            )}
-            {order.customer.phone && (
-              <>
-                <dt className="text-slate-500">Teléfono</dt>
-                <dd className="text-slate-900">{order.customer.phone}</dd>
-              </>
-            )}
-            {addressEntries.length > 0 && (
-              <>
-                <dt className="text-slate-500">Dirección</dt>
-                <dd className="text-slate-900">
-                  {addressEntries.map(([, v]) => String(v)).join(', ')}
-                </dd>
-              </>
-            )}
-            <dt className="text-slate-500">Almacén</dt>
-            <dd className="text-slate-900">
-              {index.locationName(order.locationId)}
-              <span className="text-slate-500"> · {index.warehouseName(order.locationId)}</span>
-            </dd>
-            {order.invoiceStatus && (
-              <>
-                <dt className="text-slate-500">Estado de la factura</dt>
-                <dd className="text-slate-900">{order.invoiceStatus}</dd>
-              </>
-            )}
-            <dt className="text-slate-500">Realizado</dt>
-            <dd className="text-slate-900">{new Date(order.createdAt).toLocaleString('es')}</dd>
-          </dl>
-        </CardBody>
-      </Card>
-
-      <Card className="hidden md:block">
-        <CardBody className="flex flex-col gap-4">
-          <h2 className="text-sm font-semibold text-slate-900">Líneas</h2>
-          <Table>
-            <THead>
-              <TR>
-                <TH>Artículo</TH>
-                <TH className="text-right">Cant.</TH>
-                <TH className="text-right">Precio unitario</TH>
-                <TH className="text-right">Total de línea</TH>
-              </TR>
-            </THead>
-            <TBody>
-              {order.items.map((item) => (
-                <TR key={item.id}>
-                  <TD>
-                    <span className="font-medium">{item.sku}</span>
-                    <span className="text-slate-500"> · {item.productName}</span>
-                    {item.isExceptionalDiscount && (
-                      <Badge tone="warning" className="ml-2">
-                        bajo el mínimo
-                      </Badge>
-                    )}
-                    {canViewInventory && (
-                      <div>
-                        <Link
-                          href={`/inventory/movements?productVariantId=${item.productVariantId}`}
-                          className="text-xs text-slate-500 underline-offset-2 hover:underline"
-                        >
-                          movimientos
-                        </Link>
-                      </div>
-                    )}
-                  </TD>
-                  <TD className="text-right text-slate-500">{item.quantity}</TD>
-                  <TD className="text-right text-slate-500">{item.unitPrice.toFixed(2)}</TD>
-                  <TD className="text-right text-slate-900">{item.lineTotal.toFixed(2)}</TD>
-                </TR>
-              ))}
-            </TBody>
-          </Table>
-
-          <dl className="ml-auto grid w-64 grid-cols-2 gap-y-1 text-sm">
-            <dt className="text-slate-500">Subtotal</dt>
-            <dd className="text-right text-slate-900">{order.subtotal.toFixed(2)}</dd>
-            <dt className="text-slate-500">Descuento (informativo)</dt>
-            <dd className="text-right text-slate-500">{order.discountTotal.toFixed(2)}</dd>
-            <dt className="text-slate-500">Impuesto</dt>
-            <dd className="text-right text-slate-500">{order.taxTotal.toFixed(2)}</dd>
-            <dt className="font-medium text-slate-900">Total</dt>
-            <dd className="text-right font-semibold text-slate-900">
-              {order.total.toFixed(2)} {order.currency}
-            </dd>
-          </dl>
-        </CardBody>
-      </Card>
 
       <div className="print:hidden">
         <OrderActions

@@ -4,11 +4,11 @@ import { cn } from '../../../../lib/cn';
 import { mobileBadgeClass, PRODUCTS_MOBILE_THEMES } from '../../products/products-mobile-theme';
 
 /**
- * The phone layout of one order (`md:hidden` on the page; the desktop cards keep `md` and up),
- * following the approved phone mock-up: header (number · estado · document and almacén), the amber
- * reservation notice, a customer card, the lines card with its totals. The payment card and the
- * confirm / cancel buttons are `OrderActions`, restyled for phones in the same component. Only the
- * data the web already shows — pure presentation, the page resolves names, links and dates.
+ * The order detail layout — the approved phone mock-up, used at every width: header (number ·
+ * estado · document and almacén), the amber reservation notice, a customer card and the lines card
+ * with its totals. The payment card and the confirm / cancel buttons are `OrderActions`, styled to
+ * match. Only data the web already shows — pure presentation, the page resolves names, links and
+ * dates.
  */
 export interface MobileOrderDetail {
   orderNumber: string;
@@ -94,7 +94,7 @@ export function OrderDetailMobile({
 }): React.JSX.Element {
   const { customer, totals } = detail;
   return (
-    <div className="flex flex-col gap-3 md:hidden">
+    <div className="flex flex-col gap-3">
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="text-xl font-bold text-slate-900">{detail.orderNumber}</h1>

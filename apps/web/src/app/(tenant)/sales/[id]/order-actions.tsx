@@ -245,9 +245,8 @@ export function OrderActions({
   }
 
   return (
-    <Card className="rounded-2xl shadow-sm md:rounded-lg md:shadow-none">
+    <Card className="rounded-2xl shadow-sm">
       <CardBody className="flex flex-col gap-4">
-        <h2 className="hidden text-sm font-semibold text-slate-900 md:block">Acciones</h2>
 
         {error && <Alert tone="error">{error}</Alert>}
         {success && <Toast message={success} onDismiss={() => setSuccess(null)} />}
@@ -359,9 +358,9 @@ export function OrderActions({
         )}
 
         {showConfirm && (
-          <div className="flex flex-col gap-3 md:rounded-md md:border md:border-slate-200 md:p-3">
+          <div className="flex flex-col gap-3">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700 md:hidden">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
                 <svg
                   viewBox="0 0 24 24"
                   className="h-5 w-5"
@@ -377,24 +376,24 @@ export function OrderActions({
                   <path d="M6 7V5h12v2" />
                 </svg>
               </span>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 md:text-sm md:font-semibold md:normal-case md:tracking-normal md:text-slate-900">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700">
                 Forma de pago
               </h3>
             </div>
-            <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-4">
+            <div className="grid grid-cols-2 gap-2">
               {PAYMENT_METHODS.map((method) => (
                 <label
                   key={method}
-                  className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-3 text-base text-slate-600 has-[:checked]:bg-blue-100 has-[:checked]:font-semibold has-[:checked]:text-slate-900 md:rounded-none md:bg-transparent md:p-0 md:text-sm md:text-slate-700 md:has-[:checked]:bg-transparent md:has-[:checked]:font-normal"
+                  className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-3 text-base text-slate-600 has-[:checked]:bg-blue-100 has-[:checked]:font-semibold has-[:checked]:text-slate-900"
                 >
                   <input
                     type="checkbox"
                     checked={selectedMethods.has(method)}
                     onChange={() => toggleMethod(method)}
-                    className="peer sr-only md:not-sr-only md:h-4 md:w-4"
+                    className="peer sr-only"
                   />
                   <span
-                    className="text-slate-400 peer-checked:text-blue-700 md:hidden"
+                    className="text-slate-400 peer-checked:text-blue-700"
                     aria-hidden="true"
                   >
                     <PaymentIcon method={method} />
@@ -402,7 +401,7 @@ export function OrderActions({
                   <span className="min-w-0 flex-1 truncate">{PAYMENT_METHOD_LABELS[method]}</span>
                   <svg
                     viewBox="0 0 24 24"
-                    className="hidden h-5 w-5 shrink-0 text-blue-700 peer-checked:block md:peer-checked:hidden"
+                    className="hidden h-5 w-5 shrink-0 text-blue-700 peer-checked:block"
                     fill="none"
                     stroke="currentColor"
                     strokeWidth={1.8}
@@ -414,17 +413,17 @@ export function OrderActions({
                 </label>
               ))}
             </div>
-            <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3 md:gap-2 md:rounded-none md:bg-transparent md:p-0">
+            <div className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3">
               {PAYMENT_METHODS.filter((m) => selectedMethods.has(m)).map((method) => (
                 <div
                   key={method}
-                  className="flex flex-col gap-1 md:flex-row md:items-center md:gap-2"
+                  className="flex flex-col gap-1"
                 >
-                  <span className="text-xs font-semibold text-slate-500 md:w-28 md:shrink-0 md:text-sm md:font-normal md:text-slate-600">
+                  <span className="text-xs font-semibold text-slate-500">
                     {PAYMENT_METHOD_LABELS[method]}
                   </span>
-                  <span className="flex min-w-0 items-center rounded-xl border border-slate-200 bg-white pl-3 md:rounded-md md:border-slate-300 md:pl-1.5">
-                    <span className="text-lg text-slate-500 md:text-xs">$</span>
+                  <span className="flex min-w-0 items-center rounded-xl border border-slate-200 bg-white pl-3">
+                    <span className="text-lg text-slate-500">$</span>
                     <Input
                       type="number"
                       min={0}
@@ -435,7 +434,7 @@ export function OrderActions({
                       onChange={(e) =>
                         setAmounts((prev) => ({ ...prev, [method]: e.target.value }))
                       }
-                      className="w-full border-0 pl-1 pr-3 font-mono text-2xl font-semibold md:w-28 md:pl-0.5 md:pr-1 md:font-sans md:text-sm md:font-normal"
+                      className="w-full border-0 pl-1 pr-3 font-mono text-2xl font-semibold"
                     />
                   </span>
                 </div>
@@ -450,17 +449,17 @@ export function OrderActions({
           </div>
         )}
 
-        <div className="flex flex-col gap-2 md:flex-row md:flex-wrap">
+        <div className="flex flex-col gap-2">
           {showConfirm && (
             <Button
               loading={busy === 'confirm'}
               disabled={busy !== null || !paymentsMatch}
               onClick={() => void confirmOrder()}
-              className="h-14 w-full rounded-xl text-lg md:h-10 md:w-auto md:rounded-md md:text-sm"
+              className="h-14 w-full rounded-xl text-lg"
             >
               <svg
                 viewBox="0 0 24 24"
-                className="h-6 w-6 md:hidden"
+                className="h-6 w-6"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={1.8}
@@ -477,11 +476,11 @@ export function OrderActions({
               variant="danger"
               disabled={busy !== null}
               onClick={() => setConfirmCancel(true)}
-              className="h-12 w-full rounded-xl border border-red-100 !bg-red-50 text-base !text-red-700 md:h-10 md:w-auto md:rounded-md md:border-0 md:!bg-red-600 md:text-sm md:!text-white"
+              className="h-12 w-full rounded-xl border border-red-100 !bg-red-50 text-base !text-red-700"
             >
               <svg
                 viewBox="0 0 24 24"
-                className="h-5 w-5 md:hidden"
+                className="h-5 w-5"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth={1.8}
