@@ -104,6 +104,40 @@ improvement or limitation.
   open under FASE 19: PDF exports, product images / QR management / roles-users admin / other reports,
   repeated-run stability. **This is not "tenant isolation validated" for the whole system, and FASE 19 is not complete.**
 
+### PLATFORM-READS-NOT-AUDITED *(characterised 2026-10-27; option B approved and implemented 2026-10-27)*
+
+- **Scope, verified by HTTP and by reading `audit_log` (`ISO-SUP-23…26`):** `GET /platform/tenants`, `/:id`, `/:id/admin-invitation` and `GET /platform/summary` are pure `@PlatformOnly()` control-plane routes
+  (ADR-0032). They never consult a support session (`TenantGuard` returns for `@PlatformOnly()` before its support branch, so `request.supportSession` is never set and the
+  `SupportReadAuditInterceptor` — keyed on it — is inert for them). Observed: identical answers (200, same shape) with no session, a read session, a write session, an expired session and a
+  suspended target tenant; the only `audit_log` rows of the admin are the session start/end and, for the suspension, `tenant.suspended`. **No read row exists for any of the four, in any state.**
+  Refusals (anonymous 401; tenant Administrador 401/403) carry no tenant data and write no row.
+- **What they expose:** list / by id → `id, name, slug, status, isDemo, createdAt` (company metadata; the list covers **every** tenant — a support session on tenant A does not narrow it); invitation →
+  `id, status, sentAt, expiresAt, acceptedAt, revokedAt` (no email, no token); summary → aggregates only (no tenant id or name). No RLS-protected tenant data, no PII. This is the reason the support-read
+  audit did not cover them: the gap it closed was *what support read inside a tenant*.
+- **Classification:** *comportamiento esperado por diseño* for the support question (they are not support reads), and a **risk that requires a decision** for the accountability question (should a
+  SuperAdmin's control-plane reads be audited at all?). Severity low (P4): company metadata and aggregates, admin-only, no tenant-scoped data.
+- **Options (not implemented):** (A) accept and document — no audit of control-plane reads; (B) audit only the two tenant-specific reads (`:id`, `admin-invitation`), tenant-attributable (`tenant_id` = the path
+  tenant), same fields and fail-closed rule as `support.tenant_read`; (C) audit all four. Minimal change for B/C: an **opt-in** interceptor/decorator on those handlers (action `platform.read`, actor = the admin,
+  route template, outcome, query key names) — **not** a blanket interceptor on `@PlatformOnly()`: `GET /platform/support-sessions/current` is read on every SuperAdmin page render (the support banner) and would flood
+  `audit_log`. It must stay GET-only so the writes' own audit rows (`tenant.suspended`, `tenant_admin.invitation_*`, `support_session.*`) are not duplicated, and must not touch `support.tenant_read`.
+- **Decision and implementation (option B, `ISO-SUP-23…28`):** only `GET /platform/tenants/:id` and `GET /platform/tenants/:id/admin-invitation` are audited, through an **opt-in** per-handler decorator
+  `@AuditPlatformRead(resource)` → `PlatformReadAuditInterceptor` (not a blanket interceptor on `@PlatformOnly()`). `GET /platform/tenants`, `GET /platform/summary` and
+  `GET /platform/support-sessions/current` (read on every SuperAdmin page for the support banner) are deliberately **not** audited — pinned by the tests (five banner reads, the list and the summary: no row).
+  Row: `action_code = platform.read` (distinct from `support.tenant_read`), `actor_type = platform_admin`, `actor_id` = the verified admin, `tenant_id` = the path tenant **if it exists**,
+  `entity_type = tenant`, `entity_id` = the path uuid, `correlation_id`, `ip_address`; `after_state` = `method, route` (template), `resource` (`tenant` | `tenant_admin_invitation`), `outcome`,
+  `statusCode`, `queryKeys` (names only). No tokens, cookies, headers, bodies, response data or parameter values (asserted with a secret query value and the admin's own tokens).
+- **Behaviour:** fail-closed like `support.tenant_read` — a successful read writes its row before the response leaves; if it cannot be written the read answers 500 with no tenant data and no cause,
+  after one attempt (`ISO-SUP-28`, forced over HTTP; reads resume afterwards and the unaudited routes are unaffected). Authorisation is untouched: `@PlatformOnly()` and the guards run first, so
+  anonymous 401 / tenant Administrador 401-403 are exactly as before and write no row; the routes still do not read a support session. HTTP answers are unchanged for unknown and malformed ids
+  (`:id` 404, invitation 200, malformed 400). An unknown uuid is recorded with `tenant_id = NULL` (the foreign key is never asked to hold it; the invitation route answers 200 for it); a malformed id is
+  not audited (nothing was read). Write events (`tenant.suspended` / `activated`, `support_session.*`) stay one row each, no `platform.read` for a POST (`ISO-SUP-27b`).
+- **Evidence:** suite `isolation-platform-reads-audit` 7/7 alone; unit `platform-read-audit.interceptor.spec.ts` (6 cases); API unit 833/833; full integration 781 parallel + 31 serial = 812, 0 failed (two full
+  runs; the first failed once on a flaw of the characterisation test itself — it compared the *length* of the tenant list across phases, which moves when parallel files register tenants — fixed to compare the
+  element shape, no assertion weakened).
+- **Residual risk / open:** the audit rows' retention and their visibility to the tenant remain undecided; the list is still an unaudited read of every tenant's company metadata (by decision); `tenant_id`
+  is attribution, not proof of authorisation; the interceptor duplicates the small fail-closed pipeline of `SupportReadAuditInterceptor` instead of refactoring that file (left untouched on purpose).
+- **Status:** `closed-with-evidence` for option B.
+
 ### FINDING-SUPPORT-LEDGER-401 *(new — found and fixed 2026-10-27, FASE 19 regression pass)*
 
 - **Severity: P3, functional (not a leak).** A regression I introduced with `81d4277` (`FINDING-LEDGER-REFERENCE-LEAK`): the movements list and the Kardex (JSON and export) began to take
@@ -135,7 +169,8 @@ improvement or limitation.
   (2) the rows live in the tenant's `audit_log` but **no tenant-facing view** of them was added or verified; (3) the audit-write-failure path is now ALSO forced over HTTP (`ISO-SUP-21`: JSON and download refused with 500, one attempt each, no data, nothing recorded, reads
   resume when the audit works); (4) the downloads under a support session were exercised (`ISO-SUP-20`: customers, transfers, product catalog, Kardex: 200 and one audited read each; **orders and
   payments exports are 401 for a support principal** because they are keyed off the acting user — pre-existing, ADR-0036 — and are audited as `denied`); (5) platform-only reads that are not
-  support reads (`GET /platform/tenants`, `/:id`, `/:id/admin-invitation`, `/platform/summary`) are not audited by this mechanism and were left unchanged;
+  support reads (`GET /platform/tenants`, `/:id`, `/:id/admin-invitation`, `/platform/summary`) are not audited by this mechanism and were left unchanged — **characterised**, see
+  `PLATFORM-READS-NOT-AUDITED` below (decision needed);
   (6) requests refused by the guards (no session, expired, suspended tenant, non-GET) are, by design, not read rows; (7) `correlation_id` is the client's
   `Correlation-Id` header when it is a UUID (project-wide convention, `main.ts`), so it is traceability, not identity; (8) `ip_address` is `request.ip`,
   and the app sets no `trustProxy`: it is the socket peer (not spoofable through `X-Forwarded-For`) but behind a reverse proxy it would be the proxy's

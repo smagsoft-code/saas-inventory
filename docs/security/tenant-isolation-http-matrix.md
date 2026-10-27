@@ -22,6 +22,7 @@ allowed set and records it.
 | Surface | Cases | Result |
 | --- | --- | --- |
 | SuperAdmin support sessions (ADR-0036) | `ISO-SUP-01…14` | **Approved.** The reads-not-audited gap characterised by `SUP-14` was then fixed (`SUP-READ-NOT-AUDITED`, below). |
+| Platform read routes (`/platform/tenants`, `/:id`, `/:id/admin-invitation`, `/platform/summary`) — option B: `platform.read` for `:id` and `admin-invitation` only | `ISO-SUP-23…28` | **Approved.** Characterised first (no row for any of the four), then audited by decision; fail-closed proven over HTTP. |
 | Support downloads, fail-closed over HTTP, and the ledger under support (FASE 19) | `ISO-SUP-20…22` | **Failed on first run → fixed.** `FINDING-SUPPORT-LEDGER-401` (P3 functional): `ISO-SUP-22` and the Kardex part of `ISO-SUP-20` failed with 401 before the fix. Approved after. |
 | `inventory-summary`, `product-catalog`, transfer cancel (FASE 19, fourth pass) | `ISO-LED-19…21` | **Approved, no defect found.** |
 | Support read-through audit — one `support.tenant_read` row per GET (FASE 19) | `ISO-SUP-15…19` | **Failed on first run → fixed.** 4 of 5 failed before the interceptor (reads returned 200, zero audit rows). Approved after the fix. |
@@ -266,7 +267,7 @@ Support routes found in the code: `GET` of the ordinary tenant API resolved by `
 session); `GET /platform/tenants/:tenantId/support/users` and `/warehouses` (`@PlatformOnly()` + `SupportSessionGuard`, `:tenantId` must have an
 active session); `PATCH …/support/warehouses/:id/status` (the one write, already audited); `POST /platform/tenants/:id/support-sessions`,
 `POST …/current/end`, `GET …/current` (session lifecycle, audited as `support_session.*`). Platform-only reads that are not support reads
-(`GET /platform/tenants`, `/:id`, `/:id/admin-invitation`, `/platform/summary`) are outside a support session and were not changed.
+(`GET /platform/tenants`, `/:id`, `/:id/admin-invitation`, `/platform/summary`) are outside a support session and were not changed — see "Platform read routes" below.
 
 | Case | Probe | Expected | Observed |
 | --- | --- | --- | --- |
@@ -294,6 +295,29 @@ Fourth-pass cases (`ISO-LED-19…21`), same two-tenant fixture with exactly know
 | LED-21 | `POST /inventory/transfers/:id/cancel` with `notes`, `status`, `sourceLocationId`, `cancelledAt` in the body; seller, no permission, anonymous, tenant B, malformed id, double cancel | the route has no body: extra fields ignored (200), `notes` stored nowhere (transfer, receipt and audit tables read back); `cancelledAt` is the server clock; 403 / 403 / 401 / 404 / 400 / 409 with no change | ✔ |
 
 Not proven: the rows are stored under the target `tenant_id` (tenant-attributable) but no endpoint or screen to read them was added or verified; retention is undecided.
+
+### Platform read routes (FASE 19 — `ISO-SUP-23…28`)
+
+All four are `@PlatformOnly()`: a verified platform-admin token is the only requirement and they never read a support session. The first pass pinned that none left any audit row; the owner then approved **option B** (below).
+
+| Route | Admits a support session? | Audit today (observed in `audit_log`) | Returns | Result |
+| --- | --- | --- | --- | --- |
+| `GET /platform/tenants` | not needed, not read | none, in every state | id, name, slug, status, isDemo, createdAt of **all** tenants (not narrowed by a session) | 200 identical: no session / read / write / expired / suspended target (SUP-23/24/25) |
+| `GET /platform/tenants/:id` | not needed, not read | **`platform.read`**, one per read (since option B) | the same six fields for one tenant (`suspended` is reported, not hidden) | 200 identical (SUP-23/25) |
+| `GET /platform/tenants/:id/admin-invitation` | not needed, not read | **`platform.read`**, one per read (since option B) | id, status, sentAt, expiresAt, acceptedAt, revokedAt — no email, no token | 200 identical (SUP-24/25) |
+| `GET /platform/summary` | not needed, not read | none | aggregates only — no tenant id or name | 200 identical (SUP-23/24) |
+
+Option B cases (`ISO-SUP-23/25/27/27b/28`; the "none" in the table above was the first-pass observation for these two rows):
+
+| Case | Probe | Expected | Observed |
+| --- | --- | --- | --- |
+| SUP-23 / 25 | the four routes with no session, a read session, a write session, an expired session, a suspended target | identical answers; `:id` and `admin-invitation` add exactly one `platform.read` row per read (6 in SUP-23, 5 in SUP-25); list and summary add none; never a `support.tenant_read` | ✔ |
+| SUP-27 | detail with a secret query value, invitation; then five reads of `GET /platform/support-sessions/current`, the list and the summary under a session; a read of tenant B under a session on A | rows: actor = platform admin, `tenant_id` = path tenant, template route, `resource`, `success`/200, query key names, correlation id; no secret value, token, cookie, header or tenant name; the excluded routes add nothing; B's read is attributed to B | ✔ |
+| SUP-27b | unknown uuid, malformed id on both routes; suspend / activate / session start / end | `:id` 404 → row `not_found` with `tenant_id` NULL; invitation 200 → row with NULL tenant; malformed → 400, no row; each write keeps its single row, no `platform.read` for a POST | ✔ |
+| SUP-28 | `PlatformAuditLogService.record` forced to reject for `platform.read` | both reads 500, no tenant data, cause not echoed, one attempt each, nothing recorded; list / summary / banner route still 200; reads resume | ✔ |
+
+Refusals (SUP-26): anonymous 401 and a tenant Administrador 401/403 on all four, no tenant data in the body, no audit row. The ordinary tenant API *is* closed for an expired session and for a suspended tenant
+(SUP-25), which shows the session is honoured where it matters and ignored by these routes. The list and the summary stay unaudited by decision (`PLATFORM-READS-NOT-AUDITED` in the register).
 
 ## What this does NOT prove (not verified in this sweep)
 
