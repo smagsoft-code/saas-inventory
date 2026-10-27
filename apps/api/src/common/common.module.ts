@@ -1,15 +1,17 @@
 import { Global, Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { JwtModule } from '@nestjs/jwt';
 import { PlatformSupportSessionsRepository } from '../auth/repositories/platform-support-sessions.repository';
 import { TenantMembershipsRepository } from '../auth/repositories/tenant-memberships.repository';
 import { TenantsPlatformRepository } from '../auth/repositories/tenants-platform.repository';
+import { PlatformAuditLogService } from './audit/platform-audit-log.service';
 import { AUTH_CONFIG, getAuthConfig } from './config/auth-config';
 import { HttpExceptionFilter } from './filters/http-exception.filter';
 import { CsrfGuard } from './guards/csrf.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { PermissionsGuard } from './guards/permissions.guard';
 import { TenantGuard } from './guards/tenant.guard';
+import { SupportReadAuditInterceptor } from './interceptors/support-read-audit.interceptor';
 import { ObjectStorageService } from './storage/object-storage.service';
 
 /**
@@ -39,6 +41,9 @@ import { ObjectStorageService } from './storage/object-storage.service';
     { provide: APP_GUARD, useClass: CsrfGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_FILTER, useClass: HttpExceptionFilter },
+    // SUP-READ-NOT-AUDITED (FASE 19): one audit row per GET served under a support session (ADR-0036). Inert for every other request.
+    PlatformAuditLogService,
+    { provide: APP_INTERCEPTOR, useClass: SupportReadAuditInterceptor },
     ObjectStorageService,
   ],
   exports: [AUTH_CONFIG, JwtModule, ObjectStorageService],
