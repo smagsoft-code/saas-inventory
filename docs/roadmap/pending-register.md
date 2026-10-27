@@ -104,15 +104,29 @@ improvement or limitation.
   open under FASE 19: PDF exports, product images / QR management / roles-users admin / other reports,
   repeated-run stability. **This is not "tenant isolation validated" for the whole system, and FASE 19 is not complete.**
 
-### SUP-READ-NOT-AUDITED *(new, characterised — owner decision needed)*
+### SUP-READ-NOT-AUDITED *(characterised earlier — fixed 2026-10-26, FASE 19)*
 
-- **Severity: P3 (accountability), not an access-control failure.** ADR-0036's documented "read-through" lets a platform admin with
-  an active support session `GET` the ordinary tenant API (read-only, bound to the session's tenant, every non-`GET` refused —
-  all verified by `ISO-SUP-10/12/13`). Those reads leave **no per-request audit row**: only `support_session.started/ended` and
-  the one curated write are audited (`ISO-SUP-14` characterises it).
-- **Why it matters:** the read-through exposes customer PII, prices and financial data of the tenant, and the tenant cannot later see
-  *what* was read. **Not fixed** here: choosing between per-request audit, sampled/route-class audit or accepting the gap is a
-  product/compliance decision (volume, retention, tenant visibility). **Proposed phase:** FASE 19/20. **Status:** `open`.
+- **Severity: P3 (accountability), not an access-control failure.** ADR-0036's "read-through" lets a platform admin with an active support session
+  `GET` the ordinary tenant API (read-only, bound to the session's tenant, every non-`GET` refused — `ISO-SUP-10/12/13`), and the curated
+  `support/users` / `support/warehouses` reads. None of those reads left a per-request audit row; only `support_session.started/ended` and the one
+  curated write were audited (`ISO-SUP-14` characterised it). The tenant could not later see *what* support read (customer PII, prices, financial data).
+- **Reproduced before fixing:** `ISO-SUP-15/16/17/18` failed with zero `support.tenant_read` rows while every read returned 200 (including the curated reads).
+  The scope is therefore **all** support GETs, not only the general read-through.
+- **Fix (no table, migration or permission):** a global `SupportReadAuditInterceptor` writes one `support.tenant_read` row per GET under a support session,
+  through the existing `PlatformAuditLogService` (actor = platform admin, tenant = session tenant, entity = support session; method, route template,
+  outcome / status, mode, query **key names**, resource uuid — no values, tokens, bodies or response data). **Fail-closed on success** (the row is written
+  before the response; if it cannot be written the data is withheld); on an error outcome a failed audit write is only logged. ADR-0036 amendment.
+- **Evidence:** `ISO-SUP-15…19` 5/5 after the fix (4 failed before); `ISO-SUP-14` rewritten to assert the rows; `support-read-audit.interceptor.spec.ts`
+  (8 cases, incl. the fail-closed behaviour and a single write attempt on a failed success-audit); API unit 827/827; the whole `test/security` folder 114/114 after the final code change; the full integration run (776 parallel + 23 serial, 0 failed) predates a small reorder of the interceptor's error handling and was **not repeated** afterwards.
+- **Residual risk / still open:** (1) **volume** — one row per request, a busy session writes many; no retention or sampling decision was made;
+  (2) the rows live in the tenant's `audit_log` but **no tenant-facing view** of them was added or verified; (3) the audit-write-failure path is covered by
+  the unit spec only, not forced over HTTP; (4) xlsx / pdf exports read under a support session were not exercised; (5) platform-only reads that are not
+  support reads (`GET /platform/tenants`, `/:id`, `/:id/admin-invitation`, `/platform/summary`) are not audited by this mechanism and were left unchanged;
+  (6) requests refused by the guards (no session, expired, suspended tenant, non-GET) are, by design, not read rows; (7) `correlation_id` is the client's
+  `Correlation-Id` header when it is a UUID (project-wide convention, `main.ts`), so it is traceability, not identity; (8) `ip_address` is `request.ip`,
+  and the app sets no `trustProxy`: it is the socket peer (not spoofable through `X-Forwarded-For`) but behind a reverse proxy it would be the proxy's
+  address — a deployment setting to decide; (9) **retention** of these rows and **tenant access** to them are undecided (no endpoint or policy added).
+- **Status:** `closed-with-evidence` for the per-read audit of support GETs; the residual points above stay open.
 
 ### FINDING-VA-WRITE-SCOPE *(new, found by the 2026-10-26 HTTP isolation sweep)*
 

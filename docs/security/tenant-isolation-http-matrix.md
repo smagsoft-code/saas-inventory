@@ -21,7 +21,8 @@ allowed set and records it.
 
 | Surface | Cases | Result |
 | --- | --- | --- |
-| SuperAdmin support sessions (ADR-0036) | `ISO-SUP-01…14` | **Approved.** One known gap characterised (`SUP-14`, reads not audited). |
+| SuperAdmin support sessions (ADR-0036) | `ISO-SUP-01…14` | **Approved.** The reads-not-audited gap characterised by `SUP-14` was then fixed (`SUP-READ-NOT-AUDITED`, below). |
+| Support read-through audit — one `support.tenant_read` row per GET (FASE 19) | `ISO-SUP-15…19` | **Failed on first run → fixed.** 4 of 5 failed before the interceptor (reads returned 200, zero audit rows). Approved after the fix. |
 | Onboarding, invitations, revocation | `ISO-ONB-01…07` | **Approved.** |
 | `sales.orders.view_all` scope | `ISO-VA-01…05` | **Failed on first run → fixed.** `FINDING-VA-WRITE-SCOPE` (P2). Approved after the fix. |
 | Order payments | `ISO-PAY-01…04` | **Approved.** |
@@ -50,7 +51,7 @@ robustness defect; both were reproduced, documented in `roadmap/pending-register
 | `FINDING-APR-RET-READ-SCOPE` | P3 | another seller could **read** the owner's approval request and return, by id and in the list (`ISO-APR-11`, `ISO-RET-12`) — scoped by location only. | **Owner decision applied** ([ADR-0040](../decisions/0040-seller-scope-for-order-derived-operations.md)): a seller reads only their own orders' requests/returns; approvers keep the queue, the warehouse keeps every return, `view_all` widens both; the `returns-summary` aggregate carries the same scope. | `ISO-APR-11…14`, `ISO-RET-12…16`; unit specs |
 | `FINDING-LEDGER-REFERENCE-LEAK` | P3 | any `inventory.view` holder — a Vendedor included — read **another seller's order number** (`Venta #ORD-…`), the **order uuid** (`referenceId`), the free-text reason and the **actor** in `GET /inventory/movements`, and the order number in the Kardex JSON and its xlsx / pdf export (`ISO-LED-01/02/03/06` failed on the first run: "owner sees the other seller's order number"). Return numbers leaked the same way. | The reference is resolved under the caller's seller scope (ADR-0040 point 5): own orders unless `view_all`; returns also for the warehouse. Out-of-scope rows stay, with a generic label and no number / uuid / reason / actor. | `ISO-LED-01…07`; unit specs |
 | `FINDING-LEDGER-IMPORT-JOB-ID` | P4 | `GET /inventory/movements` returned `referenceId` = the **import job uuid** on every Excel-import movement to any `inventory.view` holder (a Vendedor included), although the label ("Importación #N") and the hidden `reason` were meant to keep that uuid out of the ledger. The uuid names an `import.execute` object the reader cannot open (`GET /imports*` is 403 for them), so the exposure is an opaque id, not data. `ISO-LED-10` failed on the first run: "import job uuid in movements". | `referenceId` is no longer returned for `import_job` rows (the web client only types the field, it never reads it). | `ISO-LED-10`; unit spec `movements.service.spec.ts` |
-| *(characterised, not fixed)* `SUP-READ-NOT-AUDITED` | P3 / accountability | Under an active support session, tenant `GET`s (the documented ADR-0036 "read-through") leave **no per-request audit row**; only session start/end and the one write action are audited. | none — owner decision needed (see register). | `ISO-SUP-14` |
+| `SUP-READ-NOT-AUDITED` | P3 / accountability | Under an active support session, tenant `GET`s (the ADR-0036 "read-through") **and** the curated `support/users` / `support/warehouses` reads left **no per-request audit row**; only session start/end and the one curated write were audited. Reproduced before the fix: `ISO-SUP-15/16/17/18` failed with zero rows while the reads returned 200. | One global `SupportReadAuditInterceptor` writes a `support.tenant_read` row per support GET through the existing `PlatformAuditLogService` (ADR-0036 amendment). Fail-closed on success. No table, migration or permission. | `ISO-SUP-15…19`, `ISO-SUP-14` (rewritten); `support-read-audit.interceptor.spec.ts` |
 
 ## Matrix — support sessions (`/platform/…`)
 
@@ -256,6 +257,27 @@ Two reading notes. (1) The transfers PDF is drawn by the shared tabular exporter
 string; its positive control is the readable table headers, while the xlsx control is the code itself. (2) `sales-summary` / `payments` apply the scope by
 overriding the filter in the service (`placedByUserId` is ignored for a seller without `view_all`, not rejected), so a widening attempt is a 200 with the
 seller's own data — that is the observed, intended contract.
+
+## Matrix — support read audit (FASE 19, `SUP-READ-NOT-AUDITED`)
+
+Support routes found in the code: `GET` of the ordinary tenant API resolved by `TenantGuard`'s support branch (any `GET`, tenant fixed by the
+session); `GET /platform/tenants/:tenantId/support/users` and `/warehouses` (`@PlatformOnly()` + `SupportSessionGuard`, `:tenantId` must have an
+active session); `PATCH …/support/warehouses/:id/status` (the one write, already audited); `POST /platform/tenants/:id/support-sessions`,
+`POST …/current/end`, `GET …/current` (session lifecycle, audited as `support_session.*`). Platform-only reads that are not support reads
+(`GET /platform/tenants`, `/:id`, `/:id/admin-invitation`, `/platform/summary`) are outside a support session and were not changed.
+
+| Case | Probe | Expected | Observed |
+| --- | --- | --- | --- |
+| SUP-15 | read-session GETs: list ×2, by id, paginated ×2 | one row per request: actor = platform admin, tenant = session tenant, entity = session, route template, `success`/200, mode, correlation id; query key names; resource id; nothing under tenant B | ✔ (✗ before the fix: 0 rows) |
+| SUP-16 | foreign id (404), malformed id (400), write verb under read-through (403), no session, after the session ended | 404 → `not_found`, 400 → `rejected`; the refused write, the session-less and post-session requests write no read row | ✔ (✗ before) |
+| SUP-17 | curated `support/users` and `/warehouses`; `support/users` of a tenant without a session; the curated write twice | both curated reads audited; the foreign tenant refused (403) with no row; session start rows and the curated write keep their own single row each; no read row for a PATCH | ✔ (✗ before) |
+| SUP-18 | a search with a secret query value, an extra header, the admin's own tokens | the row has only `method, route, outcome, statusCode, mode, queryKeys` — no query value, header, token, cookie or tenant user id | ✔ (✗ before) |
+| SUP-19 | tenant admin GET; platform `GET /platform/tenants` and `/platform/summary` outside a session | no read row for either | ✔ |
+| unit | `support-read-audit.interceptor.spec.ts` (8 cases) | inert without a support session / for non-GET / non-http; `:tenantId` is not a resource id; failure outcomes re-throw the **original** error; **an audit write failure on success fails the request (data withheld) after one single attempt**; on an error outcome it never masks the real error; status → outcome map | ✔ |
+
+Not proven: the audit-write-failure behaviour is covered by the unit spec only (not forced over HTTP); xlsx / pdf exports under a support session were
+not exercised (the interceptor sees the handler's returned buffer, but no HTTP test confirms it); the rows are stored under the target `tenant_id`
+(tenant-attributable) but no endpoint or screen to read them was added or verified.
 
 ## What this does NOT prove (not verified in this sweep)
 

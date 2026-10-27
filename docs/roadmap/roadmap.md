@@ -381,9 +381,9 @@ explicit review/commit.
 - **Tests (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 819 passed (72 files);
   `apps/web` unit 1010 passed (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
   (`DEFECT-WEB-TEST-UNHANDLED`, open). **Full real-PostgreSQL run of the current tree: green** — isolated
-  instance, port 55433, development database untouched: **794 tests (771 parallel + 23 serial), 0 failed**,
-  all structural/RLS catalog checks passed; 108 of those are the new HTTP isolation cases
-  (`apps/api/test/security/`: 47 platform/tenant surfaces + 43 seller-scope on approvals/returns: writes, reads, approver and warehouse workflows; 7 on the inventory ledger's document references, which leaked another seller's order numbers and were fixed — ADR-0040 point 5; 5 more on its transfer / import references and typed reasons, which leaked the import job uuid — P4, fixed; 6 more on the aggregate reports and transfer notes, no defect). Earlier in the day the same suite was not green (45 outdated tests; deadlocks from
+  instance, port 55433, development database untouched: **799 tests (776 parallel + 23 serial; run before the last interceptor refinement, `test/security` re-run 114/114 after it), 0 failed**,
+  all structural/RLS catalog checks passed; 113 of those are the new HTTP isolation cases
+  (`apps/api/test/security/`: 47 platform/tenant surfaces + 43 seller-scope on approvals/returns: writes, reads, approver and warehouse workflows; 7 on the inventory ledger's document references, which leaked another seller's order numbers and were fixed — ADR-0040 point 5; 5 more on its transfer / import references and typed reasons, which leaked the import job uuid — P4, fixed; 6 more on the aggregate reports and transfer notes, no defect; 5 more on the support read audit — `SUP-READ-NOT-AUDITED`, fixed). Earlier in the day the same suite was not green (45 outdated tests; deadlocks from
   files replaying migration SQL, now a serial phase). One clean final run is not a stability proof. See
   `PG-VERIFY-FULL-RUN`, `TEST-FLAKY-DEADLOCKS`, and [the sweep matrix](../security/tenant-isolation-http-matrix.md).
 - **Notifications:** backend flag `N8N_EVENTS_ENABLED=false` by default; the n8n → Telegram path was
@@ -393,7 +393,7 @@ explicit review/commit.
   this documentation pass. Retry from the UI does not exist (`GAP-NOTIF-RETRY-BACKEND`).
 - **Open items:** every pending security item, defect, limitation, verification gap and owner
   decision is in [pending-register.md](pending-register.md). Headline open items:
-  `SUP-READ-NOT-AUDITED` (support read-through reads are not audited — owner decision), `DEFECT-WEB-TEST-UNHANDLED`,
+  `DEFECT-WEB-TEST-UNHANDLED`,
   `GAP-NOTIF-RETRY-BACKEND`, `QA-EVIDENCE-PERSISTENCE`, and the unverified remainder of the isolation sweep
   (`POST /price-approvals` and `POST /sales-returns` against another seller's order, PDF exports, surfaces outside the
   mandatory list). **HTTP tenant isolation:** the mandatory post-5S surfaces (support sessions, onboarding / invitations /

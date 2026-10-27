@@ -252,6 +252,21 @@ every request regardless of what the banner displays.
   list. The session-gated curated read is the narrower alternative that was chosen instead; the gap
   is marked **partially** resolved, not closed, for this reason.
 
+### Amendment — per-read audit of the support read-through (FASE 19, `SUP-READ-NOT-AUDITED`)
+
+The read-through above audited only the session (`support_session.started/ended`) and the one curated write; **what** support read left no
+trace, and the tenant cannot later learn it. Every `GET` served under an active support session — the general tenant-API read-through
+(`TenantGuard`) and the curated `support/*` reads (`SupportSessionGuard`) — now writes one `audit_log` row `support.tenant_read`
+through the existing `PlatformAuditLogService` (no new table, migration or permission), from one global interceptor
+(`SupportReadAuditInterceptor`). Actor = the platform admin (`actor_type = 'platform_admin'`), tenant = the session's tenant, entity = the
+support session. The row holds only the method, the route **template**, the outcome and HTTP status, the session mode, the **names** of the
+query parameters (never values), and the uuid of the addressed resource when the route has one — no tokens, cookies, headers, bodies or
+response data. On success the row is written **before** the response leaves and a failure to write it fails the request (the data is
+withheld: a read that cannot be accounted for is not served); on an error outcome a failed audit write is only logged, so the caller still gets
+the real error. Requests the guards refuse (no session, expired session, suspended tenant, a non-GET verb) never reach a handler, touch no
+tenant data and are not read rows. Cost: one row per request, so a busy support session writes many rows; retention and a tenant-facing view
+of these rows are not decided here.
+
 ## Consequences
 
 - **Two new tables, both platform-scoped (no RLS), migration 0033:** `tenant_admin_invitations`,
