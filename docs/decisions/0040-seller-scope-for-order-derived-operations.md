@@ -39,7 +39,16 @@ inferred.
 4. **Not seller-scoped, by design** — `approve` / `reject` (approvers) and `inspect` / `resolve` (warehouse) act across sellers; they
    are gated by their functional permission (and, for the warehouse, the location scope), and a seller, `view_all` alone or
    another tenant cannot call them.
-5. **No new permission** is introduced: the rule reuses `sales.orders.view_all`, `pricing.discount.approve` and
+5. **Inventory ledger references** (amendment, FASE 19, 2026-10-26) — the movement list (`GET /inventory/movements`) and the Kardex
+   (`GET /reports/kardex` and its xlsx / pdf export) label order and return movements with their document number, the order uuid
+   (`referenceId`) and the actor. They are `inventory.view` reads, a permission sellers hold, so they follow the same scope:
+   the reference of an order movement (`SALE`, reservation, commitment) is shown to the seller who placed the order and to
+   `sales.orders.view_all`; the reference of a return movement additionally to the warehouse (`inventory.returns.manage`). Anyone
+   else still sees the **row and the stock arithmetic** (type, quantity, balance, cost rules unchanged) — stock is tenant-wide
+   inventory truth — but with a generic label (`Venta` / `Pedido` / `Devolución`) and without number, uuid, free-text reason or actor.
+   Transfers and imports are not seller documents and are unchanged. The scope is applied where the reference is resolved, so the
+   export inherits it.
+6. **No new permission** is introduced: the rule reuses `sales.orders.view_all`, `pricing.discount.approve` and
    `inventory.returns.manage`.
 
 ## Consequences
@@ -52,9 +61,9 @@ inferred.
   the permission to the role.
 - Tests that created documents with one user and read or acted on them with another had to state who owns the order; the intent of
   each was kept.
-- **Known remaining exposure (not addressed here):** inventory movement and Kardex responses, available to `inventory.view` holders,
-  label order/return movements with their document numbers. That is an inventory-ledger read, outside this decision, and is listed
-  as unverified in the HTTP matrix.
+- The default **Supervisor** and **Bodega** (no `view_all`) no longer see order numbers in the ledger (`Venta #…`); they still see
+  every return number. A tenant that wants them to see order numbers grants `sales.orders.view_all`.
+- Reference types other than `order` / `sales_return_item` (transfers, imports, manual adjustments and receipts) are untouched.
 
 ## Alternatives considered
 

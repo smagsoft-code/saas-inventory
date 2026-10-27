@@ -28,7 +28,8 @@ allowed set and records it.
 | Bulk stock load | `ISO-BULK-01…03` | **Approved.** |
 | Import jobs, tracking, results, downloads | `ISO-IMP-01…06` | **Failed on first run → fixed.** `FINDING-IMP-FOREIGN-REF-500` (P3). Approved after the fix. |
 | Exports (orders, customers, transfers, payments, product catalogue, Kardex) | `ISO-EXP-xx`, `ISO-EXP-07` | **Approved.** |
-| Kardex and inventory movements | `ISO-KRD-01…04` | **Approved.** |
+| Kardex and inventory movements (tenant isolation) | `ISO-KRD-01…04` | **Approved.** |
+| Inventory ledger — seller scope of the document references (movements, Kardex, xlsx / pdf export) | `ISO-LED-01…07` | **Failed on first run → fixed.** `FINDING-LEDGER-REFERENCE-LEAK` (P3). Approved after the fix. |
 | Seller scope on approvals and returns — follow-up: writes, **reads** and the approver / warehouse workflows | `ISO-APR-01…14`, `ISO-RET-01…16`, `ISO-APV-01…07`, `ISO-RTW-01…07` | **Writes:** failed on first run → fixed (4 findings). **Reads:** owner decision applied (approvals option B, returns option C) and verified. **`approve` / `reject` / `inspect` / `resolve`:** approved — no defect found. |
 
 No **cross-tenant** read or write succeeded in any case. The findings are intra-tenant authorization gaps and a
@@ -45,6 +46,7 @@ robustness defect; both were reproduced, documented in `roadmap/pending-register
 | `FINDING-RET-CANCEL-SCOPE` | P2 | `POST /sales-returns/:id/cancel` by another seller → **200** (`ISO-RET-11`). | `ReturnsService.cancel` checks the return's order seller → 404. | `ISO-RET-11`; unit specs |
 | `FINDING-RET-IDEMPOTENCY-REPLAY` | P3 | the same `Idempotency-Key` + payload by another seller → **201** (`ISO-RET-07`). | the request hash now includes the actor → another user gets a conflict, never the stored return. | `ISO-RET-07`; unit spec |
 | `FINDING-APR-RET-READ-SCOPE` | P3 | another seller could **read** the owner's approval request and return, by id and in the list (`ISO-APR-11`, `ISO-RET-12`) — scoped by location only. | **Owner decision applied** ([ADR-0040](../decisions/0040-seller-scope-for-order-derived-operations.md)): a seller reads only their own orders' requests/returns; approvers keep the queue, the warehouse keeps every return, `view_all` widens both; the `returns-summary` aggregate carries the same scope. | `ISO-APR-11…14`, `ISO-RET-12…16`; unit specs |
+| `FINDING-LEDGER-REFERENCE-LEAK` | P3 | any `inventory.view` holder — a Vendedor included — read **another seller's order number** (`Venta #ORD-…`), the **order uuid** (`referenceId`), the free-text reason and the **actor** in `GET /inventory/movements`, and the order number in the Kardex JSON and its xlsx / pdf export (`ISO-LED-01/02/03/06` failed on the first run: "owner sees the other seller's order number"). Return numbers leaked the same way. | The reference is resolved under the caller's seller scope (ADR-0040 point 5): own orders unless `view_all`; returns also for the warehouse. Out-of-scope rows stay, with a generic label and no number / uuid / reason / actor. | `ISO-LED-01…07`; unit specs |
 | *(characterised, not fixed)* `SUP-READ-NOT-AUDITED` | P3 / accountability | Under an active support session, tenant `GET`s (the documented ADR-0036 "read-through") leave **no per-request audit row**; only session start/end and the one write action are audited. | none — owner decision needed (see register). | `ISO-SUP-14` |
 
 ## Matrix — support sessions (`/platform/…`)
@@ -176,12 +178,37 @@ cancel an order, for another seller's order — it keeps the whole approvals que
 grants `sales.orders.view_all`. Policy and rationale: [ADR-0040](../decisions/0040-seller-scope-for-order-derived-operations.md). Sellers'
 approvals and returns screens now show their own documents only.
 
+## Matrix — inventory ledger (FASE 19, seller scope of the document references)
+
+Surfaces found by reading controllers → services → repositories → DTOs (not by grepping for a field name): `GET /inventory/movements`
+(`inventory.view`; resolves order, return, transfer and import labels), `GET /reports/kardex` and `GET /reports/kardex/export`
+(`inventory.view`; the export is built from the same service response), `GET /reports/movements-summary` (aggregate over
+`inventory_movements` alone — type / count / signed quantity, **no reference or document column**, nothing to leak). Reviewed in
+code and found already scoped: the payments report, the sales-summary report and `GET /orders` (`placedByUserId` /
+`sales.orders.view_all`). A fixture of two sellers with identifiable orders (confirmed sale, pending order, resolved return) and a
+second tenant was used; the evidence is the returned body (number, uuid, reason, actor) of every response, including the parsed xlsx.
+
+| Case | Endpoint | Probe | Expected | Observed |
+| --- | --- | --- | --- | --- |
+| LED-01 | `GET /inventory/movements` | owner, other seller, Vendedor + `view_all`, Administrador, Supervisor, Bodega — order number / uuid, pending order, return number | owner and `view_all`/Administrador: own references; other seller, Supervisor, Bodega: **no order number or uuid**; return number for owner, `view_all` and the warehouse (Supervisor, Bodega), not for another seller | ✔ (after fix) |
+| LED-02 | same | a masked row vs the same row for Administrador | same rows, same type / quantity / balance; generic label; no `referenceId`, `reason`, `actorId`; manual receipts untouched | ✔ |
+| LED-03 | `GET /reports/kardex` | same viewers | same scope on the label; rows, running stock, closing and `stockByLocation` identical for everyone | ✔ |
+| LED-04 | `GET /reports/kardex/export?format=xlsx` | same viewers, cells parsed | same scope as the JSON | ✔ |
+| LED-05 | `…/export?format=pdf` | a seller | 200, a PDF, produced from the scoped data | ✔ |
+| LED-06 | movements with `movementType` / `locationId` filters | another seller | the filters cannot unmask a reference | ✔ |
+| LED-07 | all three | no permission; anonymous; another tenant; malformed ids | 403; 401; nothing of this tenant's ledger; 400 | ✔ |
+
+**Cost fields** (`unitCost`, average cost, stock value) keep their own gate (`pricing.cost.view`, ADR-0028) and are covered by `ISO-KRD-04`.
+**Read-only surface:** no state is modified by these routes, so there is nothing to read back from the database beyond the fixture.
+Not changed on purpose: the quantities and balances (inventory truth, tenant-wide by design) and transfer / import labels.
+
 ## What this does NOT prove (not verified in this sweep)
 
 - **FASE 19 as a whole.** Threat-model re-validation, RBAC review beyond these surfaces, mass-assignment and concurrency
   regression across the whole API, dependency review, and the remaining pending-register items are not covered here.
-- **Inventory ledger labels:** movement and Kardex responses (`inventory.view`) label order/return movements with their document
-  numbers (`movement-reference-names`); whether that discloses another seller's document numbers to a seller was not probed.
+- **Ledger — beyond order and return references:** transfer codes and import numbers in the ledger are not seller documents and were
+  not scoped; any other free-text `reason` typed by hand (receipts, adjustments) is shown as written. The `movements-summary` and
+  the payments / sales reports were reviewed in code, not re-attacked over HTTP in this pass.
 - Price-approval **editing** beyond the approver price edit exercised in `APV-06`, and the remaining order-derived routes (e.g. order
   PDF/print views) were not attacked cross-seller.
 - Surfaces outside the mandatory list: product images, QR management, customers CRUD beyond their export, roles/users

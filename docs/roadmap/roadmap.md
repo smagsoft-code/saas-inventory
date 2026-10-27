@@ -378,12 +378,12 @@ explicit review/commit.
 - **Numbered phases:** FASE 0–18 implemented and committed. FASE 19–24 **not started**.
 - **Work after FASE 18** (roles, onboarding/support, Kardex, sales rework, UI/UX redesign, …) is
   implemented and committed but **not formally validated** — see "Work after FASE 18" above.
-- **Tests (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 813 passed (72 files);
+- **Tests (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 819 passed (72 files);
   `apps/web` unit 1010 passed (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
   (`DEFECT-WEB-TEST-UNHANDLED`, open). **Full real-PostgreSQL run of the current tree: green** — isolated
-  instance, port 55433, development database untouched: **776 tests (753 parallel + 23 serial), 0 failed**,
-  all structural/RLS catalog checks passed; 90 of those are the new HTTP isolation cases
-  (`apps/api/test/security/`: 47 platform/tenant surfaces + 43 seller-scope on approvals/returns: writes, reads, approver and warehouse workflows). Earlier in the day the same suite was not green (45 outdated tests; deadlocks from
+  instance, port 55433, development database untouched: **783 tests (760 parallel + 23 serial), 0 failed**,
+  all structural/RLS catalog checks passed; 97 of those are the new HTTP isolation cases
+  (`apps/api/test/security/`: 47 platform/tenant surfaces + 43 seller-scope on approvals/returns: writes, reads, approver and warehouse workflows; 7 on the inventory ledger's document references, which leaked another seller's order numbers and were fixed — ADR-0040 point 5). Earlier in the day the same suite was not green (45 outdated tests; deadlocks from
   files replaying migration SQL, now a serial phase). One clean final run is not a stability proof. See
   `PG-VERIFY-FULL-RUN`, `TEST-FLAKY-DEADLOCKS`, and [the sweep matrix](../security/tenant-isolation-http-matrix.md).
 - **Notifications:** backend flag `N8N_EVENTS_ENABLED=false` by default; the n8n → Telegram path was

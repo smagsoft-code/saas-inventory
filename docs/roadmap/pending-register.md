@@ -205,8 +205,27 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   `RETURN` movements, outbox events, audit). **No defect found:** sellers and `view_all` get 403 with nothing changed; approvers and
   the warehouse (Supervisor, Administrador, Bodega with its location) act across sellers by design; races end with exactly one decision
   event / one `RETURN` movement. **Limits:** the unassigned-location Bodega is refused by the location scope; price edits beyond the
-  approver edit and the inventory-ledger document labels (movement / Kardex responses) were not attacked.
+  approver edit were not attacked. (The ledger document labels were audited afterwards: `FINDING-LEDGER-REFERENCE-LEAK`.)
 - **Status:** `closed-with-evidence` (no finding).
+
+### FINDING-LEDGER-REFERENCE-LEAK *(new — found and fixed 2026-10-26, FASE 19 ledger audit)*
+
+- **Severity: P3 (intra-tenant disclosure of commercial metadata).** Any `inventory.view` holder — the default Vendedor included — read, in
+  `GET /inventory/movements`, another seller's **order number** (`Venta #ORD-…`, `Pedido #…`), the **order uuid**, the free-text
+  reason and the **actor**; the Kardex JSON and its xlsx / pdf export carried the order number (also on return rows) and the return
+  number appeared in the movement list. Found by reading the services/repositories, then **reproduced before fixing**: `ISO-LED-01/02/03/06`
+  failed on the first run ("owner sees the other seller's order number"). No stock figure or cost was involved and no other tenant's data.
+- **Fix (no new permission, no migration):** ADR-0040 point 5 — the reference is resolved under the seller scope of the order
+  (`ledgerOrderReferenceScope` / `ledgerReturnReferenceScope` in `sales/orders/order-seller-scope.ts`): own orders unless
+  `sales.orders.view_all`; returns also for the warehouse (`inventory.returns.manage`). Rows and stock arithmetic stay for everyone;
+  an out-of-scope reference shows a generic label and no number / uuid / reason / actor. The export inherits it (built from the same response).
+- **Behaviour change:** the default Supervisor and Bodega no longer see order numbers in the ledger (they keep return numbers).
+- **Evidence:** `ISO-LED-01…07` pass after the fix (matrix section "inventory ledger"); unit specs in `movements.service.spec.ts` and
+  `kardex-report.service.spec.ts`. The xlsx case (`LED-04`) failed on the first run only because of a case-sensitivity slip in the
+  test itself (the helper lower-cases the sheet text); the leak it covers goes through the same `getKardex` response as the JSON case.
+- **Still open / not verified:** transfer codes and import numbers in the ledger (not seller documents, unscoped); hand-typed `reason`
+  text on receipts / adjustments is shown as written; `movements-summary`, payments and sales reports were reviewed in code only.
+- **Status:** `closed-with-evidence` for order / return references; the points above stay pending.
 
 ### FINDING-IMP-FOREIGN-REF-500 *(new)*
 
