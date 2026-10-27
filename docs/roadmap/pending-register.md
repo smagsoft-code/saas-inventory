@@ -104,6 +104,19 @@ improvement or limitation.
   open under FASE 19: PDF exports, product images / QR management / roles-users admin / other reports,
   repeated-run stability. **This is not "tenant isolation validated" for the whole system, and FASE 19 is not complete.**
 
+### FINDING-SUPPORT-LEDGER-401 *(new — found and fixed 2026-10-27, FASE 19 regression pass)*
+
+- **Severity: P3, functional (not a leak).** A regression I introduced with `81d4277` (`FINDING-LEDGER-REFERENCE-LEAK`): the movements list and the Kardex (JSON and export) began to take
+  `@CurrentUser()` to scope the document references by seller. A platform admin in a support session has no tenant principal, so the ADR-0036 read-through lost those screens: `GET
+  /inventory/movements` and `GET /reports/kardex[/export]` answered **401**. Found while verifying the downloads under support (`ISO-SUP-20`).
+- **Reproduced before fixing:** `ISO-SUP-22` failed with `401` on the movements list; `ISO-SUP-20` saw the Kardex export 401 (`exp-before.log`).
+- **Fix (no permission, migration or ADR change):** a new `@CurrentReaderId()` decorator returns the tenant user's id, or — only when a support session is active — the platform admin's id; the three **read**
+  routes use it (writes keep `@CurrentUser()`, so support stays closed to them). A platform admin id is never a `users.id`, so the seller-scope filter matches nothing: support receives the
+  rows and the stock arithmetic with the commercial references **masked** (generic label, no number / uuid / reason / actor). **Policy choice for review:** support is treated as a reader
+  *without* `sales.orders.view_all` (least privilege); showing support the references would be a one-line change in the decorator's consumer and needs an owner decision.
+- **Evidence:** `ISO-SUP-22` (movements, Kardex JSON, xlsx: 200, SALE row served, `Venta` label, order number / uuid absent, three `success` audit rows); `ISO-SUP-20` (Kardex export 200).
+- **Status:** `closed-with-evidence`. Note: other seller-scoped reads keyed off `@CurrentUser()` (orders, approvals, returns, payments) were never open to support and are unchanged.
+
 ### SUP-READ-NOT-AUDITED *(characterised earlier — fixed 2026-10-26, FASE 19)*
 
 - **Severity: P3 (accountability), not an access-control failure.** ADR-0036's "read-through" lets a platform admin with an active support session
@@ -119,8 +132,9 @@ improvement or limitation.
 - **Evidence:** `ISO-SUP-15…19` 5/5 after the fix (4 failed before); `ISO-SUP-14` rewritten to assert the rows; `support-read-audit.interceptor.spec.ts`
   (8 cases, incl. the fail-closed behaviour and a single write attempt on a failed success-audit); API unit 827/827; the whole `test/security` folder 114/114 after the final code change; the full integration run (776 parallel + 23 serial, 0 failed) predates a small reorder of the interceptor's error handling and was **not repeated** afterwards.
 - **Residual risk / still open:** (1) **volume** — one row per request, a busy session writes many; no retention or sampling decision was made;
-  (2) the rows live in the tenant's `audit_log` but **no tenant-facing view** of them was added or verified; (3) the audit-write-failure path is covered by
-  the unit spec only, not forced over HTTP; (4) xlsx / pdf exports read under a support session were not exercised; (5) platform-only reads that are not
+  (2) the rows live in the tenant's `audit_log` but **no tenant-facing view** of them was added or verified; (3) the audit-write-failure path is now ALSO forced over HTTP (`ISO-SUP-21`: JSON and download refused with 500, one attempt each, no data, nothing recorded, reads
+  resume when the audit works); (4) the downloads under a support session were exercised (`ISO-SUP-20`: customers, transfers, product catalog, Kardex: 200 and one audited read each; **orders and
+  payments exports are 401 for a support principal** because they are keyed off the acting user — pre-existing, ADR-0036 — and are audited as `denied`); (5) platform-only reads that are not
   support reads (`GET /platform/tenants`, `/:id`, `/:id/admin-invitation`, `/platform/summary`) are not audited by this mechanism and were left unchanged;
   (6) requests refused by the guards (no session, expired, suspended tenant, non-GET) are, by design, not read rows; (7) `correlation_id` is the client's
   `Correlation-Id` header when it is a UUID (project-wide convention, `main.ts`), so it is traceability, not identity; (8) `ip_address` is `request.ip`,
@@ -254,17 +268,22 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   tenant-wide by design and carry no order reference or free text; `imports-summary` is `import.execute` only and tenant-isolated; create-time transfer
   `notes` are served to `inventory.view` holders by the transfers list / detail (warehouse text, **accepted risk**, like the typed ledger reasons) and are in
   no download or ledger row; receive-time `notes` are persisted and returned by no route.
-- **Still open / not verified:** `notes` on transfer **cancel** (the route takes no such field — code review only); `inventory-summary` and `product-catalog` beyond
-  the earlier cross-tenant cases; a tenant owner may want a switch to hide typed reasons / transfer notes from sellers (not built, no evidence it is needed).
-- **Flaky test, independent pending item:** `platform-summary.integration.test.ts` › "suspending a tenant moves it from the active bucket to the
-  suspended bucket (delta assertion)" failed once in a full parallel run (`expected +0 to be -1`) and passed 8/8 alone and in the next full run (788
-  tests, 0 failed). It asserts a delta over global tenant counts while other files register tenants concurrently. Not touched in this change; to be
-  made concurrency-proof (e.g. assert on a tenant created by the test, or move it to the serial phase).
-- **Flaky test, independent pending item (found in the third pass):** `bulk-receipts.integration.test.ts` › "DOUBLE SUBMIT: the same Idempotency-Key loads the stock
-  once" failed once in a full parallel run (409 "clave … ya se usó con un archivo … distintos") and passed 9/9 alone and in the next full run (794 tests, 0 failed).
-  Cause (confirmed by code reading, not by reproducing it): the request hash covers the xlsx bytes and the test builds the workbook twice; ExcelJS stamps the
-  creation time (second precision) in the file, so the two uploads differ when the clock ticks between them. A test defect, not a product one (a real retry resends
-  the same bytes). Fix later: build the buffer once and send it twice. Not touched here.
+- **Fourth pass (`ISO-LED-19…21`) — `closed-with-evidence`, no defect:** `inventory-summary` (exact per-tenant totals 40 / 70; tenant-wide for `inventory.view` holders by design;
+  cost totals field-gated on `pricing.cost.view`; a foreign warehouse / location / category id answers exactly like a non-existent one), `product-catalog` (own tenant only;
+  a foreign id or search is indistinguishable from "nobody has it"; no cost / floor price in any row; unknown steering parameters are 400; the total of a page past the end
+  is 0 by documented design) and **transfer cancel** (the route has no body: `notes` and any other field are ignored — 200, never stored; read back from the transfer, receipt
+  and audit tables; seller 403, other tenant 404, double cancel 409).
+- **Still open / not verified:** a tenant owner may want a switch to hide typed reasons / transfer notes from sellers (not built, no evidence it is needed).
+- **Test fragility CONFIRMED, not fixed — `platform-summary`:** › "suspending a tenant moves it from the active bucket to the suspended bucket (delta assertion)" failed once in a
+  full parallel run (`expected +0 to be -1`) and passed alone and in later full runs. **Reproduced deterministically** (a temporary copy of the test, since deleted, that registers ONE tenant
+  between its two snapshots, as another file does in parallel) with the identical signature `expected +0 to be -1`. Cause: the test compares deltas of GLOBAL tenant counts
+  (`byStatus.active`, `totalCount`) over a table every parallel file inserts into; the product (`count(*) filter …`) is correct. Not a product defect. The exact assertions must stay exact —
+  the semantic ("this suspension moves one tenant from active to suspended") needs a quiet table, so the faithful fix is to run this file in the **serial** phase, not to loosen the comparison.
+- **Test fragility CONFIRMED, not fixed — `bulk-receipts`:** › "DOUBLE SUBMIT: the same Idempotency-Key loads the stock once" failed once in a full parallel run (409 "clave … ya se usó con un
+  archivo … distintos") and passed alone and in later full runs. **Reproduced at the cause:** two ExcelJS builds of the same rows are byte-identical within a second
+  (`0190902686f10b27` = `0190902686f10b27`) and differ across a second boundary (`bca4ef83b9a17147`), because the workbook's `created` / `modified` properties are stamped at
+  second precision (read back: `…:17.000Z` vs `…:18.000Z`). The request hash is `sha256(file bytes | location | date)`, so the contract is "same FILE" — which the real retry satisfies —
+  and the test builds the file twice. Not a product defect; the idempotency semantics are right. The test should build the buffer once and send it twice (or fix the workbook's `created`).
 - **Status:** `closed-with-evidence` for order / return references; the points above stay pending.
 
 ### FINDING-IMP-FOREIGN-REF-500 *(new)*

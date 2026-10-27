@@ -22,6 +22,8 @@ allowed set and records it.
 | Surface | Cases | Result |
 | --- | --- | --- |
 | SuperAdmin support sessions (ADR-0036) | `ISO-SUP-01…14` | **Approved.** The reads-not-audited gap characterised by `SUP-14` was then fixed (`SUP-READ-NOT-AUDITED`, below). |
+| Support downloads, fail-closed over HTTP, and the ledger under support (FASE 19) | `ISO-SUP-20…22` | **Failed on first run → fixed.** `FINDING-SUPPORT-LEDGER-401` (P3 functional): `ISO-SUP-22` and the Kardex part of `ISO-SUP-20` failed with 401 before the fix. Approved after. |
+| `inventory-summary`, `product-catalog`, transfer cancel (FASE 19, fourth pass) | `ISO-LED-19…21` | **Approved, no defect found.** |
 | Support read-through audit — one `support.tenant_read` row per GET (FASE 19) | `ISO-SUP-15…19` | **Failed on first run → fixed.** 4 of 5 failed before the interceptor (reads returned 200, zero audit rows). Approved after the fix. |
 | Onboarding, invitations, revocation | `ISO-ONB-01…07` | **Approved.** |
 | `sales.orders.view_all` scope | `ISO-VA-01…05` | **Failed on first run → fixed.** `FINDING-VA-WRITE-SCOPE` (P2). Approved after the fix. |
@@ -275,9 +277,23 @@ active session); `PATCH …/support/warehouses/:id/status` (the one write, alrea
 | SUP-19 | tenant admin GET; platform `GET /platform/tenants` and `/platform/summary` outside a session | no read row for either | ✔ |
 | unit | `support-read-audit.interceptor.spec.ts` (8 cases) | inert without a support session / for non-GET / non-http; `:tenantId` is not a resource id; failure outcomes re-throw the **original** error; **an audit write failure on success fails the request (data withheld) after one single attempt**; on an error outcome it never masks the real error; status → outcome map | ✔ |
 
-Not proven: the audit-write-failure behaviour is covered by the unit spec only (not forced over HTTP); xlsx / pdf exports under a support session were
-not exercised (the interceptor sees the handler's returned buffer, but no HTTP test confirms it); the rows are stored under the target `tenant_id`
-(tenant-attributable) but no endpoint or screen to read them was added or verified.
+Second pass (`ISO-SUP-20…22`): the downloads and the fail-closed rule over real HTTP.
+
+| Case | Probe | Expected | Observed |
+| --- | --- | --- | --- |
+| SUP-20 | six xlsx exports + one pdf under a read session | one audit row per download, outcome = HTTP status; the file is a real workbook with the tenant's data | customers, transfers, product catalog, Kardex: 200 / `success`; **orders and payments exports: 401 / `denied`** (keyed off the acting user, which a support principal lacks — pre-existing, ADR-0036); pdf: 200, readable text, 1 row (✗ before the fix for the Kardex export: 401) |
+| SUP-21 | `PlatformAuditLogService.record` forced to reject for `support.tenant_read` | a JSON read and two downloads answer 500 with no tenant data, no workbook, no internal cause; exactly one write attempt each; nothing recorded; a write verb still 403; reads resume afterwards | ✔ |
+| SUP-22 | movements list, Kardex JSON and xlsx under support | 200; the SALE row (−2) is served; label `Venta`; order number / uuid / actor absent; three `success` audit rows | ✔ (✗ before the fix: 401) |
+
+Fourth-pass cases (`ISO-LED-19…21`), same two-tenant fixture with exactly known stock (A = 40, B = 70):
+
+| Case | Probe | Expected | Observed |
+| --- | --- | --- | --- |
+| LED-19 | `inventory-summary` as admin, seller, Supervisor, Bodega, inventory-only, no permission, anonymous; B with A's warehouse / location / category ids; malformed ids | A = 40, B = 70 (no mixing); tenant-wide for `inventory.view` (pinned); `totalCostValue` / `missingCostCount` only with `pricing.cost.view` (0 / 1 here: the fixture variant has no cost); a foreign id answers exactly like a non-existent one; 403 / 401 / 400 with clean bodies | ✔ |
+| LED-20 | `product-catalog`: own and foreign `variantId`, `q` (SKU, prefix, `%`, `_`), `categoryId`, `locationId`+`stock`; past-the-end page; `placedByUserId` / `tenantId` / `sellerId`; roles | A and B each see only their variant and their own stock number; foreign search ≡ absent search; wildcards stay in the tenant; no `cost` / `minPrice` / `averageCost` key for anyone; unknown steering parameters 400; 403 / 401 | ✔ |
+| LED-21 | `POST /inventory/transfers/:id/cancel` with `notes`, `status`, `sourceLocationId`, `cancelledAt` in the body; seller, no permission, anonymous, tenant B, malformed id, double cancel | the route has no body: extra fields ignored (200), `notes` stored nowhere (transfer, receipt and audit tables read back); `cancelledAt` is the server clock; 403 / 403 / 401 / 404 / 400 / 409 with no change | ✔ |
+
+Not proven: the rows are stored under the target `tenant_id` (tenant-attributable) but no endpoint or screen to read them was added or verified; retention is undecided.
 
 ## What this does NOT prove (not verified in this sweep)
 
@@ -286,8 +302,8 @@ not exercised (the interceptor sees the handler's returned buffer, but no HTTP t
 - **Ledger — beyond order and return references:** transfer codes, import numbers and typed reasons were attacked over HTTP (`ISO-LED-08…12`);
   the typed reason of receipts / adjustments is shown as written **by decision** (accepted risk). Attacked over HTTP in the
   third pass (`ISO-LED-13…18`): `sales-summary`, `payments` (+ export), `movements-summary`, `transfers-summary`, `imports-summary`, the transfers
-  list / detail / xlsx / pdf export and the create- and receive-time `notes`. Still not attacked: `GET /reports/inventory-summary` beyond the
-  existing cross-tenant case in `isolation-tenant-surfaces`, `product-catalog`, and `notes` on transfer **cancel** (the cancel route accepts no body field, by code review only).
+  list / detail / xlsx / pdf export and the create- and receive-time `notes`. The fourth pass (`ISO-LED-19…21`) then attacked `inventory-summary`,
+  `product-catalog` and transfer **cancel** (no body, `notes` stored nowhere). Not attacked: the other reports' exports beyond `ISO-EXP-xx`, and any surface outside this sweep.
 - Price-approval **editing** beyond the approver price edit exercised in `APV-06`, and the remaining order-derived routes (e.g. order
   PDF/print views) were not attacked cross-seller.
 - Surfaces outside the mandatory list: product images, QR management, customers CRUD beyond their export, roles/users
