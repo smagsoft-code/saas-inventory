@@ -208,6 +208,12 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   approver edit were not attacked. (The ledger document labels were audited afterwards: `FINDING-LEDGER-REFERENCE-LEAK`.)
 - **Status:** `closed-with-evidence` (no finding).
 
+### FINDING-LEDGER-IMPORT-JOB-ID *(new — found and fixed 2026-10-26, FASE 19 ledger second pass)*
+
+- **Severity: P4.** `referenceId` of an Excel-import movement = the import job uuid, returned to every `inventory.view` holder; the job routes need
+  `import.execute`, so the reader cannot open it. Reproduced (`ISO-LED-10`, first run) and fixed in `MovementsService.toResponse`; the Kardex never carried it.
+- **Status:** `closed-with-evidence` (`ISO-LED-10`, unit spec).
+
 ### FINDING-LEDGER-REFERENCE-LEAK *(new — found and fixed 2026-10-26, FASE 19 ledger audit)*
 
 - **Severity: P3 (intra-tenant disclosure of commercial metadata).** Any `inventory.view` holder — the default Vendedor included — read, in
@@ -223,8 +229,18 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
 - **Evidence:** `ISO-LED-01…07` pass after the fix (matrix section "inventory ledger"); unit specs in `movements.service.spec.ts` and
   `kardex-report.service.spec.ts`. The xlsx case (`LED-04`) failed on the first run only because of a case-sensitivity slip in the
   test itself (the helper lower-cases the sheet text); the leak it covers goes through the same `getKardex` response as the JSON case.
-- **Still open / not verified:** transfer codes and import numbers in the ledger (not seller documents, unscoped); hand-typed `reason`
-  text on receipts / adjustments is shown as written; `movements-summary`, payments and sales reports were reviewed in code only.
+- **Second pass (transfers, imports, typed text):** attacked over HTTP (`ISO-LED-08…12`, incl. xlsx cells and real PDF text). Transfer
+  codes are not restricted information (the transfers list serves them to every `inventory.view` holder) and transfer movements carry no
+  free text: no leak. Import movements leaked the **import job uuid** through `referenceId` — `FINDING-LEDGER-IMPORT-JOB-ID` (P4, opaque id of
+  an `import.execute` object), reproduced then fixed by dropping `referenceId` on `import_job` rows. The typed `reason` of receipts / adjustments
+  is shown to every ledger reader **by decision** (operator audit trail; masking it would defeat the ledger) — accepted risk, pinned by `LED-11`.
+- **Still open / not verified:** `movements-summary`, `transfers-summary`, `imports-summary`, payments and sales reports (code review only, not attacked
+  over HTTP); the transfers list export files and `notes` on transfer receive / cancel were not parsed; a tenant owner may want a switch to hide typed
+  reasons from sellers (not built, no evidence it is needed).
+- **Flaky test, independent pending item:** `platform-summary.integration.test.ts` › "suspending a tenant moves it from the active bucket to the
+  suspended bucket (delta assertion)" failed once in a full parallel run (`expected +0 to be -1`) and passed 8/8 alone and in the next full run (788
+  tests, 0 failed). It asserts a delta over global tenant counts while other files register tenants concurrently. Not touched in this change; to be
+  made concurrency-proof (e.g. assert on a tenant created by the test, or move it to the serial phase).
 - **Status:** `closed-with-evidence` for order / return references; the points above stay pending.
 
 ### FINDING-IMP-FOREIGN-REF-500 *(new)*
