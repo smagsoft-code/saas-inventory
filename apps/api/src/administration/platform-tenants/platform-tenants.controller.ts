@@ -3,6 +3,7 @@ import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import { CurrentPlatformAdmin } from '../../common/decorators/current-platform-admin.decorator';
 import { PlatformOnly } from '../../common/decorators/platform-only.decorator';
+import { AuditPlatformRead } from '../../common/interceptors/platform-read-audit.interceptor';
 import type { PlatformPrincipal } from '../../common/context/request-context';
 import type { TenantRow } from '../../auth/repositories/tenants-platform.repository';
 import type { InvitationRow } from '../../auth/repositories/tenant-admin-invitations.repository';
@@ -75,6 +76,7 @@ export class PlatformTenantsController {
   }
 
   @Get(':tenantId')
+  @AuditPlatformRead('tenant')
   @ApiOkResponse({ type: PlatformTenantResponseDto })
   async getById(@Param('tenantId', ParseUUIDPipe) tenantId: string): Promise<PlatformTenantResponseDto> {
     return toResponse(await this.platformTenantsService.getById(tenantId));
@@ -99,6 +101,7 @@ export class PlatformTenantsController {
   }
 
   @Get(':tenantId/admin-invitation')
+  @AuditPlatformRead('tenant_admin_invitation')
   @ApiOkResponse({ type: InvitationStatusResponseDto })
   async getInvitationStatus(@Param('tenantId', ParseUUIDPipe) tenantId: string): Promise<InvitationStatusResponseDto | null> {
     const invitation = await this.onboardingService.getInvitationStatus(tenantId);
