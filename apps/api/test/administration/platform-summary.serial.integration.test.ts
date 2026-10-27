@@ -19,6 +19,11 @@ import { appPlatformIntegrationTestsEnabled, getAppPlatformDatabaseUrl, getAppPu
  * migrator connection (same convention as test/administration/platform-admin.integration.test.ts).
  * `tenants.created_at` is backdated via a direct UPDATE on the disposable pg-verify database only —
  * the HTTP contract has no way to set it (a tenant's `created_at` is `now()` at `POST /auth/register`).
+ *
+ * SERIAL on purpose (`*.serial.integration.test.ts`, run by `test:integration:serial`, after and apart from the parallel phase): the suite asserts EXACT
+ * deltas of platform-wide tenant counts (e.g. suspending one tenant moves `byStatus.active` by exactly -1 and `byStatus.suspended` by +1). In the parallel
+ * phase every other file registers tenants into the same table, so a tenant registered between two snapshots turned that exact delta into `+0` — a
+ * race of the test, not a defect of the product. Alone in its phase the comparison is exact and stays exact.
  */
 describe.skipIf(!appPlatformIntegrationTestsEnabled)('administration: platform summary (integration, F18-10)', () => {
   let app: NestFastifyApplication;
