@@ -1203,7 +1203,7 @@ gaps: `GAP-PLATFORM-AGGREGATE` **partially resolved** (company counts done; tena
 needs an ADR), `GAP-SA-BILLING` registered in `reporting/data-gaps.md` (was only in
 `frontend/f17-super-admin.md`). Real-PostgreSQL: `tools/pg-verify` — **`Test Files 40 passed (40)`,
 `Tests 503 passed (503)`, `0 failed`, `0 skipped`, `[PASS] "test:integration" exited 0`, `All
-checks PASSED`** (up from 39/495 at F18-09's close — `test/administration/platform-summary.integration.test.ts`
+checks PASSED`** (up from 39/495 at F18-09's close — `test/administration/platform-summary.serial.integration.test.ts`
 = +8 tests, +1 file: 401 anon / 403 tenant session — even a full-access Administrador — and a
 `?tenantId=` param that cannot widen scope / 200 platform admin with numeric-only response asserted
 to contain no `slug`/`name`/`users`/`currency`; both-or-neither `from`/`to` + `from>=to` + invalid
@@ -1384,7 +1384,7 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
   `apps/web` unit 1010 passed (138 files) plus 1 unhandled error → non-zero exit
   (`DEFECT-WEB-TEST-UNHANDLED`, open); typecheck (incl. `test/tsconfig.json`) and eslint pass on both apps.
   Real PostgreSQL, `tools/pg-verify` on an isolated instance (`PG_VERIFY_PORT=55433`; the development
-  database on :55432 untouched): **805 tests, 0 failed** (782 in the parallel phase + 23 in the serial phase) and all
+  database on :55432 untouched): **805 tests, 0 failed** (774 in the parallel phase + 31 in the serial phase; `platform-summary` moved to the serial phase) and all
   catalog checks passed. **Test-suite rules:** a file that replays migration SQL or does DDL on shared tables must be
   named `*.serial.integration.test.ts` (`pnpm test:integration:all`; the earlier "flaky under contention" runs were
   deadlocks caused by such files, `TEST-FLAKY-DEADLOCKS`); `pg-verify` accepts `PG_VERIFY_PORT` and

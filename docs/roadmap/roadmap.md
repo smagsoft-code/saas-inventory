@@ -381,7 +381,7 @@ explicit review/commit.
 - **Tests (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 819 passed (72 files);
   `apps/web` unit 1010 passed (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
   (`DEFECT-WEB-TEST-UNHANDLED`, open). **Full real-PostgreSQL run of the current tree: green** — isolated
-  instance, port 55433, development database untouched: **805 tests (782 parallel + 23 serial), 0 failed** (run after the support-read-audit fix and the ledger-under-support fix),
+  instance, port 55433, development database untouched: **805 tests (774 parallel + 31 serial), 0 failed** (run after the support-read-audit fix and the ledger-under-support fix),
   all structural/RLS catalog checks passed; 119 of those are the new HTTP isolation cases
   (`apps/api/test/security/`: 47 platform/tenant surfaces + 43 seller-scope on approvals/returns: writes, reads, approver and warehouse workflows; 7 on the inventory ledger's document references, which leaked another seller's order numbers and were fixed — ADR-0040 point 5; 5 more on its transfer / import references and typed reasons, which leaked the import job uuid — P4, fixed; 6 more on the aggregate reports and transfer notes, no defect; 5 more on the support read audit — `SUP-READ-NOT-AUDITED`, fixed; 3 on `inventory-summary` / `product-catalog` / transfer cancel, no defect; 3 on support downloads and fail-closed over HTTP, which found and fixed `FINDING-SUPPORT-LEDGER-401`). Earlier in the day the same suite was not green (45 outdated tests; deadlocks from
   files replaying migration SQL, now a serial phase). One clean final run is not a stability proof. See

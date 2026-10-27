@@ -274,16 +274,20 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   is 0 by documented design) and **transfer cancel** (the route has no body: `notes` and any other field are ignored — 200, never stored; read back from the transfer, receipt
   and audit tables; seller 403, other tenant 404, double cancel 409).
 - **Still open / not verified:** a tenant owner may want a switch to hide typed reasons / transfer notes from sellers (not built, no evidence it is needed).
-- **Test fragility CONFIRMED, not fixed — `platform-summary`:** › "suspending a tenant moves it from the active bucket to the suspended bucket (delta assertion)" failed once in a
+- **Test fragility CONFIRMED and FIXED (test only) — `platform-summary`:** › "suspending a tenant moves it from the active bucket to the suspended bucket (delta assertion)" failed once in a
   full parallel run (`expected +0 to be -1`) and passed alone and in later full runs. **Reproduced deterministically** (a temporary copy of the test, since deleted, that registers ONE tenant
   between its two snapshots, as another file does in parallel) with the identical signature `expected +0 to be -1`. Cause: the test compares deltas of GLOBAL tenant counts
   (`byStatus.active`, `totalCount`) over a table every parallel file inserts into; the product (`count(*) filter …`) is correct. Not a product defect. The exact assertions must stay exact —
-  the semantic ("this suspension moves one tenant from active to suspended") needs a quiet table, so the faithful fix is to run this file in the **serial** phase, not to loosen the comparison.
-- **Test fragility CONFIRMED, not fixed — `bulk-receipts`:** › "DOUBLE SUBMIT: the same Idempotency-Key loads the stock once" failed once in a full parallel run (409 "clave … ya se usó con un
+  the semantic ("this suspension moves one tenant from active to suspended") needs a quiet table, so the faithful fix is to run this file in the **serial** phase, not to loosen the comparison. **Done:** the file is now `platform-summary.serial.integration.test.ts`, which the existing
+  `vitest.integration.config.ts` excludes from the parallel phase (`exclude: **/*.serial.integration.test.ts`) and `vitest.integration.serial.config.ts` includes — no script change. Assertions unchanged
+  and exact. Verified: it ran in the serial phase only, alone 8/8, and in the full run (774 parallel + 31 serial = 805, 0 failed). Production untouched.
+- **Test fragility CONFIRMED and FIXED (test only) — `bulk-receipts`:** › "DOUBLE SUBMIT: the same Idempotency-Key loads the stock once" failed once in a full parallel run (409 "clave … ya se usó con un
   archivo … distintos") and passed alone and in later full runs. **Reproduced at the cause:** two ExcelJS builds of the same rows are byte-identical within a second
   (`0190902686f10b27` = `0190902686f10b27`) and differ across a second boundary (`bca4ef83b9a17147`), because the workbook's `created` / `modified` properties are stamped at
   second precision (read back: `…:17.000Z` vs `…:18.000Z`). The request hash is `sha256(file bytes | location | date)`, so the contract is "same FILE" — which the real retry satisfies —
-  and the test builds the file twice. Not a product defect; the idempotency semantics are right. The test should build the buffer once and send it twice (or fix the workbook's `created`).
+  and the test builds the file twice. Not a product defect; the idempotency semantics are right. **Done:** the `post` helper accepts a prebuilt `Buffer`; the DOUBLE SUBMIT test and the concurrent-submits test (three builds raced the same way) build the workbook once and send those exact bytes (the first also asserts the
+  hash is unchanged); the deliberately different file stays a separate build. Verified: 9/9 three times, and with a 1.2 s pause forced between the two submissions (a temporary copy, deleted) the test still passes — it no
+  longer depends on crossing a second boundary. The idempotency assertions are untouched; production untouched.
 - **Status:** `closed-with-evidence` for order / return references; the points above stay pending.
 
 ### FINDING-IMP-FOREIGN-REF-500 *(new)*
