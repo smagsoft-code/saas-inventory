@@ -171,6 +171,7 @@ describe('MovementsService', () => {
         expect(movementsRepository.resolveImportJobNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['job-1']);
         expect(result.data[0]!.referenceLabel).toBe('Importación #3');
         expect(result.data[0]!.reason).toBeUndefined();
+        expect(result.data[0]!.referenceId, 'the import job uuid is not an id a ledger reader can open').toBeUndefined();
       });
 
       it('omits referenceLabel for a SALE whose order number could not be resolved', async () => {

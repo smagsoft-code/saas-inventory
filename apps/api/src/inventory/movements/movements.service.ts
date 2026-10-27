@@ -102,7 +102,8 @@ function toResponse(movement: InventoryMovementRow, canViewCost: boolean, refere
     balanceAfter: Number(movement.balanceAfter),
     ...(canViewCost && movement.unitCost !== null ? { unitCost: Number(movement.unitCost) } : {}),
     ...(movement.referenceType ? { referenceType: movement.referenceType } : {}),
-    ...(movement.referenceId ? { referenceId: movement.referenceId } : {}),
+    // An import's referenceId is the import job's uuid — an `import.execute` object a ledger reader cannot open; the label carries "Importación #N".
+    ...(movement.referenceId && movement.referenceType !== 'import_job' ? { referenceId: movement.referenceId } : {}),
     ...(movement.reason && movement.referenceType !== 'import_job' ? { reason: movement.reason } : {}),
     ...(referenceLabel ? { referenceLabel } : {}),
     actorType: movement.actorType,
