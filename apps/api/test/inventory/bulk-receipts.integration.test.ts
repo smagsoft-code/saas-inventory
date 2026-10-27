@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import ExcelJS from 'exceljs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -60,13 +60,17 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: bulk stock load
     return { admin, warehouseId, locationId, skuA, skuB, variantA: a.variantId, variantB: b.variantId };
   }
 
-  async function post(session: Session, path: string, rows: Cell[][], fields: Record<string, string>, extraHeaders: Record<string, string> = {}) {
-    const { body, contentType } = buildMultipartUpload({ filename: 'carga.xlsx', contentType: XLSX_MIME, fileContent: await workbook(rows), fields });
+  /** `rows` builds a fresh workbook for this one request; a `Buffer` is sent AS IS. A test that submits "the same file" twice must pass the SAME buffer: ExcelJS stamps the
+   * workbook's created/modified time at second precision, so two builds of identical rows are different files (different bytes, different request hash) whenever the clock
+   * crosses a second between them — exactly what the idempotency key is designed to treat as a different submission. */
+  async function post(session: Session, path: string, rows: Cell[][] | Buffer, fields: Record<string, string>, extraHeaders: Record<string, string> = {}) {
+    const fileContent = Buffer.isBuffer(rows) ? rows : await workbook(rows);
+    const { body, contentType } = buildMultipartUpload({ filename: 'carga.xlsx', contentType: XLSX_MIME, fileContent, fields });
     return c.inject({ method: 'POST', url: path, headers: { ...c.writeHeaders(session, extraHeaders), 'content-type': contentType }, body });
   }
 
   const preview = (s: Session, rows: Cell[][], fields: Record<string, string>) => post(s, '/api/v1/inventory/receipts/bulk/preview', rows, fields);
-  const confirm = (s: Session, rows: Cell[][], fields: Record<string, string>, key: string = randomUUID()) =>
+  const confirm = (s: Session, rows: Cell[][] | Buffer, fields: Record<string, string>, key: string = randomUUID()) =>
     post(s, '/api/v1/inventory/receipts/bulk', rows, fields, { 'idempotency-key': key });
 
   async function physical(s: Session, variantId: string, locationId: string): Promise<number> {
@@ -124,8 +128,12 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: bulk stock load
     const f = await seed('Bulk Idem Co', 'admin@bulk-idem.example');
     const key = randomUUID();
     const rows: Cell[][] = [[f.skuA, 5, 10, 'Compra']];
-    const first = await confirm(f.admin, rows, { locationId: f.locationId }, key);
-    const second = await confirm(f.admin, rows, { locationId: f.locationId }, key);
+    // ONE workbook, sent twice: the same bytes, the same business parameters (same location, same key)
+    const file = await workbook(rows);
+    const fileHash = createHash('sha256').update(file).digest('hex');
+    const first = await confirm(f.admin, file, { locationId: f.locationId }, key);
+    const second = await confirm(f.admin, file, { locationId: f.locationId }, key);
+    expect(createHash('sha256').update(file).digest('hex'), 'both submissions sent exactly the same bytes').toBe(fileHash);
     expect(first.statusCode, first.body).toBe(201);
     expect(second.statusCode, second.body).toBe(201);
     expect(JSON.parse(second.body)).toEqual(JSON.parse(first.body));
@@ -143,7 +151,8 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('inventory: bulk stock load
     const f = await seed('Bulk Race Co', 'admin@bulk-race.example');
     const key = randomUUID();
     const rows: Cell[][] = [[f.skuA, 7, 2, 'Compra']];
-    const results = await Promise.all([1, 2, 3].map(() => confirm(f.admin, rows, { locationId: f.locationId }, key)));
+    const file = await workbook(rows); // one workbook for the three racing submissions — three builds would be three different files
+    const results = await Promise.all([1, 2, 3].map(() => confirm(f.admin, file, { locationId: f.locationId }, key)));
     expect(results.every((r) => r.statusCode === 201)).toBe(true);
     expect(await physical(f.admin, f.variantA, f.locationId)).toBe(7);
   });
