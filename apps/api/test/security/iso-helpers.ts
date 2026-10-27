@@ -1,3 +1,4 @@
+import { inflateSync } from 'node:zlib';
 import { generateId } from '@saas-inventory/shared';
 import * as argon2 from 'argon2';
 import ExcelJS from 'exceljs';
@@ -111,4 +112,37 @@ export async function xlsxRowCount(buffer: Buffer | Uint8Array): Promise<number>
     n += 1;
   });
   return n;
+}
+
+/**
+ * The text a pdfkit-generated PDF draws (lowercase): inflates every content stream and decodes the `[<hex> kern <hex> …] TJ` arrays,
+ * joining the pieces of one array (pdfkit splits a string at every kerning pair). pdfkit's built-in Helvetica writes the characters
+ * as single bytes, so no font mapping is needed. Good enough to assert that a marker is (not) in a download; not a general PDF parser.
+ */
+export function pdfText(buffer: Buffer | Uint8Array): string {
+  const raw = Buffer.from(buffer);
+  const source = raw.toString('latin1');
+  const out: string[] = [];
+  let pos = 0;
+  for (;;) {
+    const marker = source.indexOf('stream', pos);
+    if (marker < 0) break;
+    let start = marker + 'stream'.length;
+    if (source.startsWith('\r\n', start)) start += 2;
+    else if (source[start] === '\n') start += 1;
+    const end = source.indexOf('endstream', start);
+    if (end < 0) break;
+    pos = end + 'endstream'.length;
+    let content: string;
+    try {
+      content = inflateSync(raw.subarray(start, end)).toString('latin1');
+    } catch {
+      continue;
+    }
+    for (const array of content.matchAll(/\[([^\]]*)\]\s*TJ/g)) {
+      out.push([...array[1]!.matchAll(/<([0-9a-fA-F\s]*)>/g)].map((h) => Buffer.from(h[1]!.replace(/\s+/g, ''), 'hex').toString('latin1')).join(''));
+    }
+    for (const hex of content.matchAll(/<([0-9a-fA-F\s]+)>\s*Tj/g)) out.push(Buffer.from(hex[1]!.replace(/\s+/g, ''), 'hex').toString('latin1'));
+  }
+  return out.join('\n').toLowerCase();
 }
