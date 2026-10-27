@@ -104,6 +104,19 @@ improvement or limitation.
   open under FASE 19: PDF exports, product images / QR management / roles-users admin / other reports,
   repeated-run stability. **This is not "tenant isolation validated" for the whole system, and FASE 19 is not complete.**
 
+### AUDIT-RETENTION-AND-TENANT-VISIBILITY *(new, 2026-10-27 — PROPOSAL drafted, awaiting approval; nothing implemented)*
+
+- **What:** the two read-audit families added in FASE 19 (`support.tenant_read`, `platform.read`) have no retention policy, and the tenant cannot see the support activity on its own company.
+- **State of the system (verified in the schema and migrations):** `audit_log` is append-only by grants — `app_tenant` and `app_platform` have `SELECT, INSERT` only, no role can `UPDATE` / `DELETE` — with FORCE RLS on
+  `tenant_id`; no retention, archive or purge exists; `app_tenant` already has `SELECT` (a tenant-visible endpoint would need **no new grant**, but a deletion job would need a new role / migration).
+- **Proposal:** [audit-log-retention-and-tenant-visibility-proposal.md](../security/audit-log-retention-and-tenant-visibility-proposal.md) — keep write / session audits indefinitely (ADR-0015); for the two read
+  families, **24 months online → verified archive → delete** by a dedicated least-privilege role, dry-run by default, each run audited, legal hold; and a read-only tenant endpoint behind a **new explicit permission**
+  (default: founding Administrador), tenant taken only from the validated context + RLS, a whitelist of event kinds and fields (no platform-admin identity, no IP, no parameter names), bounded pagination and ranges, self-audit.
+  Every period is an engineering judgement, not a legal requirement; legal / data-protection validation is requested.
+- **Decisions requested:** retention option and archive step; minimisation of PII inside write audits; the retention-role migration; the new permission and endpoint path; whether the support-session reason may be shown
+  verbatim and how platform staff appear to the tenant; whether `platform.read` becomes visible.
+- **Status:** `open` — proposal only. No row deleted, no job, no endpoint.
+
 ### PLATFORM-READS-NOT-AUDITED *(characterised 2026-10-27; option B approved and implemented 2026-10-27)*
 
 - **Scope, verified by HTTP and by reading `audit_log` (`ISO-SUP-23…26`):** `GET /platform/tenants`, `/:id`, `/:id/admin-invitation` and `GET /platform/summary` are pure `@PlatformOnly()` control-plane routes
@@ -174,7 +187,7 @@ improvement or limitation.
   (6) requests refused by the guards (no session, expired, suspended tenant, non-GET) are, by design, not read rows; (7) `correlation_id` is the client's
   `Correlation-Id` header when it is a UUID (project-wide convention, `main.ts`), so it is traceability, not identity; (8) `ip_address` is `request.ip`,
   and the app sets no `trustProxy`: it is the socket peer (not spoofable through `X-Forwarded-For`) but behind a reverse proxy it would be the proxy's
-  address — a deployment setting to decide; (9) **retention** of these rows and **tenant access** to them are undecided (no endpoint or policy added).
+  address — a deployment setting to decide; (9) **retention** of these rows and **tenant access** to them are undecided — a proposal is drafted (see `AUDIT-RETENTION-AND-TENANT-VISIBILITY`); (10) the **Kardex PDF** under a support session is now verified by HTTP with the PDF text extracted (`ISO-SUP-29…31`): masked, tenant-bound, fail-closed.
 - **Status:** `closed-with-evidence` for the per-read audit of support GETs; the residual points above stay open.
 
 ### FINDING-VA-WRITE-SCOPE *(new, found by the 2026-10-26 HTTP isolation sweep)*

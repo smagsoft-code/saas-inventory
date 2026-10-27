@@ -22,6 +22,7 @@ allowed set and records it.
 | Surface | Cases | Result |
 | --- | --- | --- |
 | SuperAdmin support sessions (ADR-0036) | `ISO-SUP-01…14` | **Approved.** The reads-not-audited gap characterised by `SUP-14` was then fixed (`SUP-READ-NOT-AUDITED`, below). |
+| Kardex PDF under a support session — real PDF text, masking, tenant and session boundaries, fail-closed (FASE 19) | `ISO-SUP-29…31` | **Approved.** The PDF was previously verified by code reading only; now by HTTP with the PDF text extracted and a positive control. |
 | Platform read routes (`/platform/tenants`, `/:id`, `/:id/admin-invitation`, `/platform/summary`) — option B: `platform.read` for `:id` and `admin-invitation` only | `ISO-SUP-23…28` | **Approved.** Characterised first (no row for any of the four), then audited by decision; fail-closed proven over HTTP. |
 | Support downloads, fail-closed over HTTP, and the ledger under support (FASE 19) | `ISO-SUP-20…22` | **Failed on first run → fixed.** `FINDING-SUPPORT-LEDGER-401` (P3 functional): `ISO-SUP-22` and the Kardex part of `ISO-SUP-20` failed with 401 before the fix. Approved after. |
 | `inventory-summary`, `product-catalog`, transfer cancel (FASE 19, fourth pass) | `ISO-LED-19…21` | **Approved, no defect found.** |
@@ -318,6 +319,19 @@ Option B cases (`ISO-SUP-23/25/27/27b/28`; the "none" in the table above was the
 
 Refusals (SUP-26): anonymous 401 and a tenant Administrador 401/403 on all four, no tenant data in the body, no audit row. The ordinary tenant API *is* closed for an expired session and for a suspended tenant
 (SUP-25), which shows the session is honoured where it matters and ignored by these routes. The list and the summary stay unaudited by decision (`PLATFORM-READS-NOT-AUDITED` in the register).
+
+## Matrix — Kardex PDF under a support session (FASE 19, `ISO-SUP-29…31`)
+
+Route: `GET /reports/kardex/export?format=pdf&productVariantId=…&locationId=…` (`inventory.view` for a tenant user; under a support session it is served through the read-through and audited as `support.tenant_read`).
+The evidence is the **text extracted from the real PDF** (`pdfText`), never the status code or the `Content-Type` alone.
+
+| Case | Probe | Expected | Observed |
+| --- | --- | --- | --- |
+| SUP-29 | tenant Administrador downloads the PDF (control); then a read-mode and a write-mode support session | all 200, `application/pdf`, `attachment; filename="….pdf"`, `%PDF-` header, `%%EOF` trailer, > 1 000 bytes, Kardex text readable. **Control: the tenant's own PDF contains the order number.** Support PDF: SKU, a generic `venta` row and the opening stock drawn; **no order number, no `ord-` prefix, no order uuid (text or raw bytes), no tenant user id**; nothing of tenant B; exactly one `support.tenant_read` row (route template, `success`, session tenant, session id, platform admin) | ✔ |
+| SUP-30 | session on A asks for B's variant / location, an unknown id, a mixed pair, malformed ids; no session; ended session; expired session (database); anonymous | a foreign id gives an **empty placeholder PDF ("Producto ()", no rows) whose text is identical to the one for an id that exists nowhere** (so it cannot confirm that B owns it) and contains nothing of B; malformed → 400; no session / ended / expired → 401-403, JSON, **no PDF bytes**, no audit row; 5 audited attempts, all on tenant A, none on B | ✔ |
+| SUP-31 | audit write forced to fail for `support.tenant_read` | 500, a small JSON error (not a document), no `%PDF`, no SKU / order number / uuid / cause, exactly one attempt, nothing recorded; after restoring the audit the PDF downloads again, still masked, one row | ✔ |
+
+Observation (not a leak, pre-existing): with ids that do not belong to the caller's tenant the export answers **200 with an empty PDF** rather than 404 (the same contract as the xlsx, `ISO-EXP-07`). It is indistinguishable from an unknown id and echoes only the `locationId` the caller sent.
 
 ## What this does NOT prove (not verified in this sweep)
 
