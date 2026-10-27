@@ -29,6 +29,7 @@ allowed set and records it.
 | Import jobs, tracking, results, downloads | `ISO-IMP-01…06` | **Failed on first run → fixed.** `FINDING-IMP-FOREIGN-REF-500` (P3). Approved after the fix. |
 | Exports (orders, customers, transfers, payments, product catalogue, Kardex) | `ISO-EXP-xx`, `ISO-EXP-07` | **Approved.** |
 | Kardex and inventory movements (tenant isolation) | `ISO-KRD-01…04` | **Approved.** |
+| Aggregate reports (`sales-summary`, `payments`, `movements-summary`, `transfers-summary`, `imports-summary`) and transfer notes / exports | `ISO-LED-13…18` | **Approved, no defect found** (no production change). |
 | Inventory ledger — transfer / import references and typed reasons (movements, Kardex json / xlsx / pdf) | `ISO-LED-08…12` | **Approved after one fix.** `FINDING-LEDGER-IMPORT-JOB-ID` (P4): `ISO-LED-10` failed on the first run, fixed. Transfers and typed reasons: no leak, pinned. |
 | Inventory ledger — seller scope of the document references (movements, Kardex, xlsx / pdf export) | `ISO-LED-01…07` | **Failed on first run → fixed.** `FINDING-LEDGER-REFERENCE-LEAK` (P3). Approved after the fix. |
 | Seller scope on approvals and returns — follow-up: writes, **reads** and the approver / warehouse workflows | `ISO-APR-01…14`, `ISO-RET-01…16`, `ISO-APV-01…07`, `ISO-RTW-01…07` | **Writes:** failed on first run → fixed (4 findings). **Reads:** owner decision applied (approvals option B, returns option C) and verified. **`approve` / `reject` / `inspect` / `resolve`:** approved — no defect found. |
@@ -232,14 +233,39 @@ tenant that wants them private should not type commercial data there — masking
 **Read-only surface:** no state is modified by these routes, so there is nothing to read back from the database beyond the fixture.
 Not changed on purpose: the quantities and balances (inventory truth, tenant-wide by design) and transfer / import labels.
 
+## Matrix — aggregate reports and transfer notes (FASE 19, third pass)
+
+Routes found in the controllers (not guessed): `GET /reports/sales-summary` (`sales.orders.view`; scope `canViewAllSellers ? query.placedByUserId : actorId`),
+`GET /reports/payments` and `/payments/export` (`sales.orders.view`; same rule), `GET /reports/movements-summary` and `/transfers-summary`
+(`inventory.view`, tenant-wide by design), `GET /reports/imports-summary` (`import.execute`), `GET /inventory/transfers`, `/:id` and `/export`
+(`inventory.view`). Fixture: tenant A (admin, two sellers without `view_all`, one with it, Supervisor, Bodega, a no-permission role; 3 confirmed
+orders — 1 for seller 1, 2 for seller 2 —, two transfers with `notes`, one received with receive-time `notes`, one Excel import) and tenant B
+(its own order, transfer, no import). The evidence is the returned body, the parsed xlsx cells and the real PDF text; aggregates are compared
+by order count, not by status code alone.
+
+| Case | Probe | Expected | Observed |
+| --- | --- | --- | --- |
+| LED-13 | `sales-summary` as s1 / s2 / view_all / admin; s1 adds `placedByUserId`, `customerId`, `customerName`, `q`, `sellerName`, `orderNumber` of s2; groupBy customer / day / product; tenant B with A's customer / seller / location / warehouse ids; no permission; anonymous; inverted range; malformed uuid | s1 = 1 order, s2 = 2, view_all = admin = 3; no filter widens a seller; view_all can narrow; B sees only its order, A's ids give 0; 403 / 401 / 400 / 400 | ✔ |
+| LED-14 | `payments` + `payments/export` as s1 with `placedByUserId=s2` / `customerName`; view_all control; B with A's seller id | no other-seller customer or order number in JSON or xlsx; view_all sees them; B sees none of A | ✔ |
+| LED-15 | `movements-summary` (groupBy type) and `transfers-summary` as s1, s2, Supervisor, Bodega, admin; B with A's `locationId` / `productVariantId`; no permission; anonymous; malformed uuid | tenant-wide aggregate (pinned) with no order reference, no notes, no other-tenant row; A open transfers = 1, B = its own 1; B's foreign filters → empty; 403 / 401 / 400 | ✔ |
+| LED-16 | `imports-summary` as s1, Supervisor, Bodega, no permission, anonymous, A admin, B admin, invalid groupBy | 403 for every role without `import.execute`; A: its 1 job / 1 imported row; B: 0 jobs, no job id / file name / tenant id; 400 | ✔ |
+| LED-17 | transfer `notes` (create-time) and receive-time `notes` across detail, list, xlsx + pdf export (real PDF text), ledger, Kardex, both summaries; database read-back of the receipt | create-time notes are served by the transfers list / detail to every `inventory.view` holder (**pinned**) but are in no download, ledger row or aggregate; receive-time notes are persisted (row read back) and returned by **no** route | ✔ |
+| LED-18 | tenant B on A's transfer by id, list (+ A filters), xlsx / pdf export; malformed id; anonymous; no permission | 404 by id (A↔B), nothing of A (codes, notes, locations, SKU), own transfer visible as control; 400 / 401 / 403 | ✔ |
+
+Two reading notes. (1) The transfers PDF is drawn by the shared tabular exporter with column ellipsis, so the full transfer code is not always one contiguous
+string; its positive control is the readable table headers, while the xlsx control is the code itself. (2) `sales-summary` / `payments` apply the scope by
+overriding the filter in the service (`placedByUserId` is ignored for a seller without `view_all`, not rejected), so a widening attempt is a 200 with the
+seller's own data — that is the observed, intended contract.
+
 ## What this does NOT prove (not verified in this sweep)
 
 - **FASE 19 as a whole.** Threat-model re-validation, RBAC review beyond these surfaces, mass-assignment and concurrency
   regression across the whole API, dependency review, and the remaining pending-register items are not covered here.
 - **Ledger — beyond order and return references:** transfer codes, import numbers and typed reasons were attacked over HTTP (`ISO-LED-08…12`);
-  the typed reason of receipts / adjustments is shown as written **by decision** (accepted risk). Not attacked over HTTP: the
-  `movements-summary`, `transfers-summary`, `imports-summary`, payments and sales reports (code review only), the transfers export
-  files (xlsx / pdf) and the other free-text fields of the transfer lifecycle (`notes` on receive / cancel).
+  the typed reason of receipts / adjustments is shown as written **by decision** (accepted risk). Attacked over HTTP in the
+  third pass (`ISO-LED-13…18`): `sales-summary`, `payments` (+ export), `movements-summary`, `transfers-summary`, `imports-summary`, the transfers
+  list / detail / xlsx / pdf export and the create- and receive-time `notes`. Still not attacked: `GET /reports/inventory-summary` beyond the
+  existing cross-tenant case in `isolation-tenant-surfaces`, `product-catalog`, and `notes` on transfer **cancel** (the cancel route accepts no body field, by code review only).
 - Price-approval **editing** beyond the approver price edit exercised in `APV-06`, and the remaining order-derived routes (e.g. order
   PDF/print views) were not attacked cross-seller.
 - Surfaces outside the mandatory list: product images, QR management, customers CRUD beyond their export, roles/users

@@ -234,13 +234,23 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   free text: no leak. Import movements leaked the **import job uuid** through `referenceId` — `FINDING-LEDGER-IMPORT-JOB-ID` (P4, opaque id of
   an `import.execute` object), reproduced then fixed by dropping `referenceId` on `import_job` rows. The typed `reason` of receipts / adjustments
   is shown to every ledger reader **by decision** (operator audit trail; masking it would defeat the ledger) — accepted risk, pinned by `LED-11`.
-- **Still open / not verified:** `movements-summary`, `transfers-summary`, `imports-summary`, payments and sales reports (code review only, not attacked
-  over HTTP); the transfers list export files and `notes` on transfer receive / cancel were not parsed; a tenant owner may want a switch to hide typed
-  reasons from sellers (not built, no evidence it is needed).
+- **Third pass (reports and transfer notes) — `closed-with-evidence`, no defect:** `ISO-LED-13…18` attacked `sales-summary`, `payments` (+ export), `movements-summary`,
+  `transfers-summary`, `imports-summary`, the transfers list / detail / xlsx / pdf export and the transfer `notes` over HTTP with two tenants. Seller scope
+  holds on `sales-summary` and `payments` (a seller's `placedByUserId` / customer / seller filters cannot widen it); the inventory aggregates are
+  tenant-wide by design and carry no order reference or free text; `imports-summary` is `import.execute` only and tenant-isolated; create-time transfer
+  `notes` are served to `inventory.view` holders by the transfers list / detail (warehouse text, **accepted risk**, like the typed ledger reasons) and are in
+  no download or ledger row; receive-time `notes` are persisted and returned by no route.
+- **Still open / not verified:** `notes` on transfer **cancel** (the route takes no such field — code review only); `inventory-summary` and `product-catalog` beyond
+  the earlier cross-tenant cases; a tenant owner may want a switch to hide typed reasons / transfer notes from sellers (not built, no evidence it is needed).
 - **Flaky test, independent pending item:** `platform-summary.integration.test.ts` › "suspending a tenant moves it from the active bucket to the
   suspended bucket (delta assertion)" failed once in a full parallel run (`expected +0 to be -1`) and passed 8/8 alone and in the next full run (788
   tests, 0 failed). It asserts a delta over global tenant counts while other files register tenants concurrently. Not touched in this change; to be
   made concurrency-proof (e.g. assert on a tenant created by the test, or move it to the serial phase).
+- **Flaky test, independent pending item (found in the third pass):** `bulk-receipts.integration.test.ts` › "DOUBLE SUBMIT: the same Idempotency-Key loads the stock
+  once" failed once in a full parallel run (409 "clave … ya se usó con un archivo … distintos") and passed 9/9 alone and in the next full run (794 tests, 0 failed).
+  Cause (confirmed by code reading, not by reproducing it): the request hash covers the xlsx bytes and the test builds the workbook twice; ExcelJS stamps the
+  creation time (second precision) in the file, so the two uploads differ when the clock ticks between them. A test defect, not a product one (a real retry resends
+  the same bytes). Fix later: build the buffer once and send it twice. Not touched here.
 - **Status:** `closed-with-evidence` for order / return references; the points above stay pending.
 
 ### FINDING-IMP-FOREIGN-REF-500 *(new)*
