@@ -1,10 +1,9 @@
 import { Controller, Get, Query, Res } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyReply } from 'fastify';
-import type { AuthPrincipal } from '../../common/context/request-context';
 import { CurrentPermissions } from '../../common/decorators/current-permissions.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
-import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { CurrentReaderId } from '../../common/decorators/current-reader-id.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { KardexExportQueryDto } from './dto/kardex-export-query.dto';
 import { KardexQueryDto } from './dto/kardex-query.dto';
@@ -39,26 +38,26 @@ export class KardexReportController {
   @ApiOkResponse({ type: KardexResponseDto })
   async getKardex(
     @CurrentTenant() tenantId: string,
-    @CurrentUser() principal: AuthPrincipal,
+    @CurrentReaderId() readerId: string,
     @Query() query: KardexQueryDto,
     @CurrentPermissions() permissions: string[],
   ): Promise<KardexResponseDto> {
     const canViewCost = permissions.includes('pricing.cost.view');
-    return this.kardexReportService.getKardex(tenantId, query, canViewCost, { userId: principal.userId, permissions });
+    return this.kardexReportService.getKardex(tenantId, query, canViewCost, { userId: readerId, permissions });
   }
 
   @Get('kardex/export')
   @RequirePermissions('inventory.view')
   async exportKardex(
     @CurrentTenant() tenantId: string,
-    @CurrentUser() principal: AuthPrincipal,
+    @CurrentReaderId() readerId: string,
     @Query() query: KardexExportQueryDto,
     @CurrentPermissions() permissions: string[],
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<Buffer> {
     const canViewCost = permissions.includes('pricing.cost.view');
     const [data, context] = await Promise.all([
-      this.kardexReportService.getKardex(tenantId, query, canViewCost, { userId: principal.userId, permissions }),
+      this.kardexReportService.getKardex(tenantId, query, canViewCost, { userId: readerId, permissions }),
       this.kardexReportService.getExportContext(tenantId, query.productVariantId, query.locationId),
     ]);
     const exportContext = { ...context, from: query.from, to: query.to, canViewCost };

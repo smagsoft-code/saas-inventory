@@ -4,6 +4,7 @@ import type { PaginatedResult } from '@saas-inventory/types';
 import type { FastifyRequest } from 'fastify';
 import type { AuthPrincipal } from '../../common/context/request-context';
 import { CurrentPermissions } from '../../common/decorators/current-permissions.decorator';
+import { CurrentReaderId } from '../../common/decorators/current-reader-id.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
@@ -28,7 +29,7 @@ export class MovementsController {
   @ApiOkResponse({ type: MovementResponseDto, isArray: true })
   async list(
     @CurrentTenant() tenantId: string,
-    @CurrentUser() principal: AuthPrincipal,
+    @CurrentReaderId() readerId: string,
     @Query() query: ListMovementsQueryDto,
     @CurrentPermissions() permissions: string[],
   ): Promise<PaginatedResult<MovementResponseDto>> {
@@ -36,7 +37,7 @@ export class MovementsController {
     // reports/inventory's totalCostValue — a caller with only inventory.view still gets every
     // other field.
     const canViewCost = permissions.includes('pricing.cost.view');
-    return this.movementsService.list(tenantId, principal.userId, permissions, query, canViewCost);
+    return this.movementsService.list(tenantId, readerId, permissions, query, canViewCost);
   }
 
   @Post('adjustments')
