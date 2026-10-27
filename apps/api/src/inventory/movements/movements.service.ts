@@ -4,6 +4,7 @@ import { AuditLogService } from '../../common/audit/audit-log.service';
 import { withTenantTransaction, type TenantTransaction } from '../../database/tenant-context';
 import type { AuditMeta } from '../inventory-audit-meta';
 import { importLabel } from '../import-job-numbers';
+import { ledgerOrderReferenceScope, ledgerReturnReferenceScope } from '../../sales/orders/order-seller-scope';
 import { LocationAuthorizationService } from '../location-authorization.service';
 import { ProductVariantsLookupRepository } from '../repositories/product-variants-lookup.repository';
 import { LocationsRepository } from '../repositories/locations.repository';
@@ -68,7 +69,30 @@ function referenceLabelFor(movement: InventoryMovementRow, names: ReferenceNames
   }
 }
 
-function toResponse(movement: InventoryMovementRow, canViewCost: boolean, referenceLabel?: string): MovementResponseDto {
+/** The movement types whose `referenceId` is a commercial document (an order or a return line) and so falls under the seller scope. */
+const ORDER_REFERENCE_TYPES = new Set(['order', 'sales_return_item']);
+
+const GENERIC_ORDER_LABEL = (movement: InventoryMovementRow): string => (movement.referenceType === 'sales_return_item' ? 'Devolución' : movement.movementType === 'SALE' ? 'Venta' : 'Pedido');
+
+function toResponse(movement: InventoryMovementRow, canViewCost: boolean, referenceLabel?: string, masked = false): MovementResponseDto {
+  if (masked) {
+    // Another seller's order / return (ADR-0040): the row and its stock arithmetic stay, the commercial reference does not — no number,
+    // no uuid, no free-text reason (may embed either) and no actor (who rang the sale up).
+    return {
+      id: movement.id,
+      productVariantId: movement.productVariantId,
+      locationId: movement.locationId,
+      movementType: movement.movementType,
+      quantity: Number(movement.quantity),
+      balanceAfter: Number(movement.balanceAfter),
+      ...(canViewCost && movement.unitCost !== null ? { unitCost: Number(movement.unitCost) } : {}),
+      ...(movement.referenceType ? { referenceType: movement.referenceType } : {}),
+      referenceLabel: GENERIC_ORDER_LABEL(movement),
+      actorType: movement.actorType,
+      occurredAt: movement.occurredAt.toISOString(),
+      createdAt: movement.createdAt.toISOString(),
+    };
+  }
   return {
     id: movement.id,
     productVariantId: movement.productVariantId,
@@ -106,7 +130,7 @@ export class MovementsService {
     private readonly movingAverageCostService: MovingAverageCostService,
   ) {}
 
-  async list(tenantId: string, query: ListMovementsQueryDto, canViewCost: boolean): Promise<PaginatedResult<MovementResponseDto>> {
+  async list(tenantId: string, actorId: string, permissions: string[], query: ListMovementsQueryDto, canViewCost: boolean): Promise<PaginatedResult<MovementResponseDto>> {
     // [occurredFrom, occurredTo) — half-open, same convention as every FASE 18 reporting endpoint
     // (F18-03, GAP-MOVEMENTS-DATE-FILTER). `occurredFrom >= occurredTo` is a caller mistake no date
     // format check catches on its own, so it is rejected here rather than silently returning empty.
@@ -130,8 +154,8 @@ export class MovementsService {
       const idsOf = (referenceType: string): string[] => rows.filter((row) => row.referenceType === referenceType && row.referenceId).map((row) => row.referenceId!);
       const transferOutIds = idsOf('transfer');
       const [orderNumbers, returnNumbers, transferIdsByReceipt, importJobNumbers] = await Promise.all([
-        this.movementsRepository.resolveOrderNumbers(tx, tenantId, idsOf('order')),
-        this.movementsRepository.resolveReturnNumbers(tx, tenantId, idsOf('sales_return_item')),
+        this.movementsRepository.resolveOrderNumbers(tx, tenantId, idsOf('order'), ledgerOrderReferenceScope(actorId, permissions)),
+        this.movementsRepository.resolveReturnNumbers(tx, tenantId, idsOf('sales_return_item'), ledgerReturnReferenceScope(actorId, permissions)),
         this.movementsRepository.resolveReceiptTransferIds(tx, tenantId, idsOf('transfer_receipt')),
         this.movementsRepository.resolveImportJobNumbers(tx, tenantId, idsOf('import_job')),
       ]);
@@ -143,7 +167,15 @@ export class MovementsService {
       ]);
 
       return {
-        data: rows.map((row) => toResponse(row, canViewCost, referenceLabelFor(row, { orderNumbers, returnNumbers, transferIdsByReceipt, transferCodesByTransferId, importJobNumbers }))),
+        data: rows.map((row) => {
+          const names = { orderNumbers, returnNumbers, transferIdsByReceipt, transferCodesByTransferId, importJobNumbers };
+          // A commercial reference that did not resolve under the caller's seller scope is masked, never shown half-way.
+          const hidden =
+            !!row.referenceId &&
+            ORDER_REFERENCE_TYPES.has(row.referenceType ?? '') &&
+            !(row.referenceType === 'order' ? orderNumbers : returnNumbers).has(row.referenceId);
+          return toResponse(row, canViewCost, referenceLabelFor(row, names), hidden);
+        }),
         meta: {
           page: query.page,
           pageSize: query.pageSize,

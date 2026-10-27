@@ -147,23 +147,26 @@ export class InventoryMovementsRepository {
     return resolveImportJobNumbers(tx, tenantId, jobIds);
   }
 
-  async resolveOrderNumbers(tx: TenantTransaction, tenantId: string, orderIds: string[]): Promise<Map<string, string>> {
+  /** `placedBy` (ADR-0040): only the orders that user placed resolve — the rest stay unresolved, so a caller without
+   * `sales.orders.view_all` never learns another seller's order number. Omit it to resolve every order. */
+  async resolveOrderNumbers(tx: TenantTransaction, tenantId: string, orderIds: string[], placedBy?: string): Promise<Map<string, string>> {
     if (orderIds.length === 0) return new Map();
     const rows = await tx
       .select({ id: orders.id, orderNumber: orders.orderNumber })
       .from(orders)
-      .where(and(eq(orders.tenantId, tenantId), inArray(orders.id, orderIds)));
+      .where(and(eq(orders.tenantId, tenantId), inArray(orders.id, orderIds), ...(placedBy ? [eq(orders.placedByUserId, placedBy)] : [])));
     return new Map(rows.map((row) => [row.id, row.orderNumber]));
   }
 
   /** referenceType='sales_return_item' (a RETURN movement) → the return's own number ("DEV-001"). */
-  async resolveReturnNumbers(tx: TenantTransaction, tenantId: string, returnItemIds: string[]): Promise<Map<string, string>> {
+  async resolveReturnNumbers(tx: TenantTransaction, tenantId: string, returnItemIds: string[], placedBy?: string): Promise<Map<string, string>> {
     if (returnItemIds.length === 0) return new Map();
     const rows = await tx
       .select({ itemId: salesReturnItems.id, returnNumber: salesReturns.returnNumber })
       .from(salesReturnItems)
       .innerJoin(salesReturns, and(eq(salesReturns.tenantId, salesReturnItems.tenantId), eq(salesReturns.id, salesReturnItems.returnId)))
-      .where(and(eq(salesReturnItems.tenantId, tenantId), inArray(salesReturnItems.id, returnItemIds)));
+      .innerJoin(orders, and(eq(orders.tenantId, salesReturns.tenantId), eq(orders.id, salesReturns.orderId)))
+      .where(and(eq(salesReturnItems.tenantId, tenantId), inArray(salesReturnItems.id, returnItemIds), ...(placedBy ? [eq(orders.placedByUserId, placedBy)] : [])));
     return new Map(rows.map((row) => [row.itemId, row.returnNumber]));
   }
 

@@ -28,6 +28,7 @@ export class MovementsController {
   @ApiOkResponse({ type: MovementResponseDto, isArray: true })
   async list(
     @CurrentTenant() tenantId: string,
+    @CurrentUser() principal: AuthPrincipal,
     @Query() query: ListMovementsQueryDto,
     @CurrentPermissions() permissions: string[],
   ): Promise<PaginatedResult<MovementResponseDto>> {
@@ -35,7 +36,7 @@ export class MovementsController {
     // reports/inventory's totalCostValue — a caller with only inventory.view still gets every
     // other field.
     const canViewCost = permissions.includes('pricing.cost.view');
-    return this.movementsService.list(tenantId, query, canViewCost);
+    return this.movementsService.list(tenantId, principal.userId, permissions, query, canViewCost);
   }
 
   @Post('adjustments')

@@ -7,6 +7,7 @@ vi.mock('../../database/tenant-context', () => ({
 }));
 
 const TENANT_ID = 'tenant-1';
+const ACTOR = { userId: 'user-1', permissions: ['sales.orders.view_all'] };
 const VARIANT_ID = 'variant-1';
 const LOCATION_ID = 'location-1';
 const ORDER_ID = 'order-1';
@@ -47,7 +48,7 @@ describe('KardexReportService.getKardex', () => {
   it('rejects when from is not strictly before to', async () => {
     const { service } = buildService();
     await expect(
-      service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID, from: '2026-09-02T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' }, true),
+      service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID, from: '2026-09-02T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' }, true, ACTOR),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -55,7 +56,7 @@ describe('KardexReportService.getKardex', () => {
     const { service, repository } = buildService();
     repository.listMovements.mockResolvedValueOnce([movementRow()]);
 
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, ACTOR);
 
     expect(result).toMatchObject({ productId: 'product-1', productName: 'Producto X', sku: 'SKU-1' });
     expect(result.opening).toEqual({ stockUnits: 0, averageCost: 0, stockValue: 0, estimated: false });
@@ -68,7 +69,7 @@ describe('KardexReportService.getKardex', () => {
     const { service, repository } = buildService();
     repository.listMovements.mockResolvedValueOnce([movementRow()]);
 
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, false);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, false, ACTOR);
 
     expect(result.opening).toEqual({ stockUnits: 0 });
     expect(result.rows[0]).not.toHaveProperty('unitCost');
@@ -83,7 +84,7 @@ describe('KardexReportService.getKardex', () => {
       .mockResolvedValueOnce([movementRow({ quantity: '10', unitCost: '5' })]) // prior history
       .mockResolvedValueOnce([movementRow({ quantity: '10', unitCost: '7' })]); // in-range
 
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID, from: '2026-01-10T00:00:00.000Z' }, true);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID, from: '2026-01-10T00:00:00.000Z' }, true, ACTOR);
 
     expect(result.opening).toEqual({ stockUnits: 10, averageCost: 5, stockValue: 50, estimated: false });
     expect(result.rows[0]).toMatchObject({ averageCostAfter: 6, stockAfter: 20, stockValueAfter: 120 });
@@ -96,7 +97,7 @@ describe('KardexReportService.getKardex', () => {
     ]);
     repository.resolveImportJobNumbers.mockResolvedValueOnce(new Map([['job-1', 2]]));
 
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, ACTOR);
 
     expect(repository.resolveImportJobNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['job-1']);
     expect(result.rows[0]!.label).toBe('Stock inicial: Importación #2');
@@ -108,7 +109,7 @@ describe('KardexReportService.getKardex', () => {
     repository.listMovements.mockResolvedValueOnce([
       movementRow({ movementType: 'INITIAL_STOCK', quantity: '1', unitCost: '1', referenceType: 'import_job', referenceId: 'gone', reason: 'Excel import job gone-uuid' }),
     ]);
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, ACTOR);
     expect(result.rows[0]!.label).toBe('Stock inicial: Importación de Excel');
   });
 
@@ -119,7 +120,7 @@ describe('KardexReportService.getKardex', () => {
     ]);
     repository.resolveOrderNumbers.mockResolvedValueOnce(new Map([[ORDER_ID, 'ORD-000123']]));
 
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, ACTOR);
 
     expect(result.rows[0]!.label).toBe('Venta #ORD-000123');
     expect(result.rows[0]!.salida).toBe(3);
@@ -132,7 +133,7 @@ describe('KardexReportService.getKardex', () => {
     ]);
     repository.resolveTransferCodes.mockResolvedValueOnce(new Map([['transfer-1', 'SUC-PRIN-ALM-PRIN-005']]));
 
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, ACTOR);
 
     expect(repository.resolveTransferCodes).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['transfer-1']);
     expect(result.rows[0]!.label).toBe('Transferencia #SUC-PRIN-ALM-PRIN-005 (salida)');
@@ -146,7 +147,7 @@ describe('KardexReportService.getKardex', () => {
     repository.resolveReceiptTransferIds.mockResolvedValueOnce(new Map([['receipt-1', 'transfer-1']]));
     repository.resolveTransferCodes.mockResolvedValueOnce(new Map([['transfer-1', 'SUC-PRIN-ALM-PRIN-005']]));
 
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, ACTOR);
 
     expect(repository.resolveTransferCodes).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['transfer-1']);
     expect(result.rows[0]!.label).toBe('Transferencia #SUC-PRIN-ALM-PRIN-005 (entrada)');
@@ -157,7 +158,7 @@ describe('KardexReportService.getKardex', () => {
     const overflow = Array.from({ length: 2001 }, (_, index) => movementRow({ id: `mv-${index}`, quantity: '1', unitCost: '1' }));
     repository.listMovements.mockResolvedValueOnce(overflow);
 
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, ACTOR);
 
     expect(result.truncated).toBe(true);
     expect(result.rows).toHaveLength(2000);
@@ -168,9 +169,38 @@ describe('KardexReportService.getKardex', () => {
     repository.getVariantCost.mockResolvedValueOnce(9);
     repository.listMovements.mockResolvedValueOnce([movementRow({ unitCost: null })]);
 
-    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true);
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, ACTOR);
 
     expect(result.rows[0]).toMatchObject({ unitCost: 9, unitCostEstimated: true });
     expect(result.closing.estimated).toBe(true);
+  });
+
+  it('scopes the order and return numbers to the caller (ADR-0040): own orders unless view_all; every return for the warehouse', async () => {
+    const seller = { userId: 'seller-1', permissions: ['inventory.view'] };
+    const warehouse = { userId: 'bodega-1', permissions: ['inventory.view', 'inventory.returns.manage'] };
+    const rows = [
+      movementRow({ id: 'm-sale', movementType: 'SALE', quantity: '-3', unitCost: null, referenceType: 'order', referenceId: ORDER_ID, reason: null }),
+      movementRow({ id: 'm-ret', movementType: 'RETURN', quantity: '1', referenceType: 'sales_return_item', referenceId: 'item-1', reason: null }),
+    ];
+    for (const [actor, orderScope, returnScope] of [
+      [seller, 'seller-1', 'seller-1'],
+      [warehouse, 'bodega-1', undefined],
+      [ACTOR, undefined, undefined],
+    ] as const) {
+      const { service, repository } = buildService();
+      repository.listMovements.mockResolvedValueOnce(rows);
+      await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, actor);
+      expect(repository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, [ORDER_ID], orderScope);
+      expect(repository.resolveReturnOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['item-1'], returnScope);
+    }
+  });
+
+  it('shows a generic label (no number) for an order the scope did not resolve', async () => {
+    const { service, repository } = buildService();
+    repository.listMovements.mockResolvedValueOnce([movementRow({ movementType: 'SALE', quantity: '-3', unitCost: null, referenceType: 'order', referenceId: ORDER_ID, reason: null })]);
+
+    const result = await service.getKardex(TENANT_ID, { productVariantId: VARIANT_ID, locationId: LOCATION_ID }, true, { userId: 'seller-1', permissions: ['inventory.view'] });
+
+    expect(result.rows[0]!.label).toBe('Venta');
   });
 });

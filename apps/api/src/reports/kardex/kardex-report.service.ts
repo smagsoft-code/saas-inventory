@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { withTenantTransaction } from '../../database/tenant-context';
+import { ledgerOrderReferenceScope, ledgerReturnReferenceScope } from '../../sales/orders/order-seller-scope';
 import { importLabel } from '../../inventory/import-job-numbers';
 import { foldKardexLedger, isPhysicalMovementType, ZERO_BALANCE, type KardexBalanceState, type KardexSourceMovement } from '../../inventory/kardex/kardex-costing';
 import type { KardexQueryDto } from './dto/kardex-query.dto';
@@ -104,7 +105,9 @@ export class KardexReportService {
     });
   }
 
-  async getKardex(tenantId: string, query: KardexQueryDto, canViewCost: boolean): Promise<KardexResponseDto> {
+  /** `actor` scopes the order / return numbers in the labels to the caller's seller scope (ADR-0040): another seller's document shows
+   * as plain "Venta" / "Devolución de venta". The export (xlsx / pdf) is built from this response, so it inherits the scope. */
+  async getKardex(tenantId: string, query: KardexQueryDto, canViewCost: boolean, actor: { userId: string; permissions: string[] }): Promise<KardexResponseDto> {
     if (query.from && query.to && new Date(query.from).getTime() >= new Date(query.to).getTime()) {
       throw new BadRequestException('`from` must be strictly before `to`.');
     }
@@ -144,8 +147,8 @@ export class KardexReportService {
 
       const importJobIds = physicalRows.filter((row) => row.referenceType === 'import_job' && row.referenceId).map((row) => row.referenceId!);
       const [orderNumbersBySaleReference, orderNumbersByReturnItem, transferIdsByReceipt, importJobNumbers] = await Promise.all([
-        this.repository.resolveOrderNumbers(tx, tenantId, saleReferenceIds),
-        this.repository.resolveReturnOrderNumbers(tx, tenantId, returnItemIds),
+        this.repository.resolveOrderNumbers(tx, tenantId, saleReferenceIds, ledgerOrderReferenceScope(actor.userId, actor.permissions)),
+        this.repository.resolveReturnOrderNumbers(tx, tenantId, returnItemIds, ledgerReturnReferenceScope(actor.userId, actor.permissions)),
         this.repository.resolveReceiptTransferIds(tx, tenantId, receiptIds),
         this.repository.resolveImportJobNumbers(tx, tenantId, importJobIds),
       ]);

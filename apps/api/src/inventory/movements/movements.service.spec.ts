@@ -9,6 +9,7 @@ vi.mock('../../database/tenant-context', () => ({
 
 const TENANT_ID = 'tenant-1';
 const ACTOR_ID = 'actor-1';
+const VIEW_ALL = ['sales.orders.view_all'];
 const VARIANT_ID = 'variant-1';
 const LOCATION_ID = 'location-1';
 const META = { correlationId: undefined, ipAddress: undefined };
@@ -136,7 +137,7 @@ describe('MovementsService', () => {
       const { service, movementsRepository } = buildService();
       movementsRepository.listByTenant.mockResolvedValue({ rows: [EXISTING_MOVEMENT], total: 1 });
 
-      const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+      const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
       expect(result.data).toHaveLength(1);
       expect(result.meta.total).toBe(1);
@@ -151,9 +152,9 @@ describe('MovementsService', () => {
         });
         movementsRepository.resolveOrderNumbers.mockResolvedValue(new Map([['order-1', 'ORD-000123']]));
 
-        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
-        expect(movementsRepository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['order-1']);
+        expect(movementsRepository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['order-1'], undefined);
         expect(result.data[0]!.referenceLabel).toBe('Venta #ORD-000123');
       });
 
@@ -165,7 +166,7 @@ describe('MovementsService', () => {
         });
         movementsRepository.resolveImportJobNumbers.mockResolvedValue(new Map([['job-1', 3]]));
 
-        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
         expect(movementsRepository.resolveImportJobNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['job-1']);
         expect(result.data[0]!.referenceLabel).toBe('Importación #3');
@@ -179,9 +180,10 @@ describe('MovementsService', () => {
           total: 1,
         });
 
-        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
-        expect(result.data[0]!.referenceLabel).toBeUndefined();
+        // unresolved under the caller's scope = masked: a generic label, never the number
+        expect(result.data[0]!.referenceLabel).toBe('Venta');
       });
 
       it('labels a TRANSFER_OUT with its transfer code, resolved directly from its own referenceId', async () => {
@@ -192,7 +194,7 @@ describe('MovementsService', () => {
         });
         movementsRepository.resolveTransferCodes.mockResolvedValue(new Map([['transfer-1', 'SUC-PRIN-ALM-PRIN-005']]));
 
-        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
         expect(movementsRepository.resolveReceiptTransferIds).toHaveBeenCalledWith(expect.anything(), TENANT_ID, []);
         expect(movementsRepository.resolveTransferCodes).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['transfer-1']);
@@ -208,7 +210,7 @@ describe('MovementsService', () => {
         movementsRepository.resolveReceiptTransferIds.mockResolvedValue(new Map([['receipt-1', 'transfer-1']]));
         movementsRepository.resolveTransferCodes.mockResolvedValue(new Map([['transfer-1', 'SUC-PRIN-ALM-PRIN-005']]));
 
-        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
         expect(movementsRepository.resolveReceiptTransferIds).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['receipt-1']);
         expect(movementsRepository.resolveTransferCodes).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['transfer-1']);
@@ -227,9 +229,9 @@ describe('MovementsService', () => {
         });
         movementsRepository.resolveOrderNumbers.mockResolvedValue(new Map([['order-1', 'ORD-000046']]));
 
-        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
-        expect(movementsRepository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['order-1', 'order-1', 'order-1']);
+        expect(movementsRepository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['order-1', 'order-1', 'order-1'], undefined);
         expect(result.data.map((m) => m.referenceLabel)).toEqual(['Pedido #ORD-000046', 'Pedido #ORD-000046', 'Venta #ORD-000046']);
       });
 
@@ -241,9 +243,9 @@ describe('MovementsService', () => {
         });
         movementsRepository.resolveReturnNumbers.mockResolvedValue(new Map([['item-1', 'DEV-001']]));
 
-        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
-        expect(movementsRepository.resolveReturnNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['item-1']);
+        expect(movementsRepository.resolveReturnNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['item-1'], undefined);
         expect(result.data[0]!.referenceLabel).toBe('Devolución #DEV-001');
       });
 
@@ -255,7 +257,7 @@ describe('MovementsService', () => {
         });
         movementsRepository.resolveTransferCodes.mockResolvedValue(new Map([['transfer-1', 'SUC-001']]));
 
-        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
         expect(result.data[0]!.referenceLabel).toBe('Transferencia #SUC-001');
       });
@@ -264,9 +266,55 @@ describe('MovementsService', () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({ rows: [EXISTING_MOVEMENT], total: 1 });
 
-        const result = await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        const result = await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
 
         expect(result.data[0]!.referenceLabel).toBeUndefined();
+      });
+    });
+
+    describe('seller scope of the commercial references (ADR-0040, FASE 19)', () => {
+      const SALE_ROW = { ...EXISTING_MOVEMENT, movementType: 'SALE', referenceType: 'order', referenceId: 'order-9', reason: 'order order-9', actorId: 'seller-b' };
+
+      it('asks the resolvers for the caller own orders only when the caller lacks sales.orders.view_all', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({ rows: [SALE_ROW, { ...SALE_ROW, id: 'm2', movementType: 'RETURN', referenceType: 'sales_return_item', referenceId: 'item-9' }], total: 2 });
+
+        await service.list(TENANT_ID, ACTOR_ID, ['inventory.view'], { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(movementsRepository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['order-9'], ACTOR_ID);
+        expect(movementsRepository.resolveReturnNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['item-9'], ACTOR_ID);
+      });
+
+      it('lets the warehouse (inventory.returns.manage) resolve every return, but still only its own orders', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({ rows: [{ ...SALE_ROW, referenceType: 'sales_return_item', referenceId: 'item-9' }], total: 1 });
+
+        await service.list(TENANT_ID, ACTOR_ID, ['inventory.view', 'inventory.returns.manage'], { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+
+        expect(movementsRepository.resolveReturnNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, ['item-9'], undefined);
+        expect(movementsRepository.resolveOrderNumbers).toHaveBeenCalledWith(expect.anything(), TENANT_ID, [], ACTOR_ID);
+      });
+
+      it('masks a reference that did not resolve: keeps the row and the arithmetic, drops id, reason, actor and number', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({ rows: [SALE_ROW], total: 1 });
+
+        const [row] = (await service.list(TENANT_ID, ACTOR_ID, ['inventory.view'], { page: 1, pageSize: 20 }, CAN_VIEW_COST)).data;
+
+        expect(row).toMatchObject({ movementType: 'SALE', quantity: Number(SALE_ROW.quantity), balanceAfter: Number(SALE_ROW.balanceAfter), referenceType: 'order', referenceLabel: 'Venta' });
+        expect(row).not.toHaveProperty('referenceId');
+        expect(row).not.toHaveProperty('reason');
+        expect(row).not.toHaveProperty('actorId');
+      });
+
+      it('does not mask a reference the caller may see', async () => {
+        const { service, movementsRepository } = buildService();
+        movementsRepository.listByTenant.mockResolvedValue({ rows: [SALE_ROW], total: 1 });
+        movementsRepository.resolveOrderNumbers.mockResolvedValue(new Map([['order-9', 'ORD-000009']]));
+
+        const [row] = (await service.list(TENANT_ID, ACTOR_ID, ['inventory.view'], { page: 1, pageSize: 20 }, CAN_VIEW_COST)).data;
+
+        expect(row).toMatchObject({ referenceId: 'order-9', referenceLabel: 'Venta #ORD-000009', actorId: 'seller-b' });
       });
     });
 
@@ -276,6 +324,8 @@ describe('MovementsService', () => {
         await expect(
           service.list(
             TENANT_ID,
+            ACTOR_ID,
+            VIEW_ALL,
             {
               page: 1,
               pageSize: 20,
@@ -288,6 +338,8 @@ describe('MovementsService', () => {
         await expect(
           service.list(
             TENANT_ID,
+            ACTOR_ID,
+            VIEW_ALL,
             {
               page: 1,
               pageSize: 20,
@@ -302,7 +354,7 @@ describe('MovementsService', () => {
       it('applies only occurredGte when occurredTo is omitted', async () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
-        await service.list(TENANT_ID, { page: 1, pageSize: 20, occurredFrom: '2026-09-01T00:00:00.000Z' }, CAN_VIEW_COST);
+        await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20, occurredFrom: '2026-09-01T00:00:00.000Z' }, CAN_VIEW_COST);
         expect(movementsRepository.listByTenant).toHaveBeenCalledWith(
           expect.anything(),
           TENANT_ID,
@@ -315,7 +367,7 @@ describe('MovementsService', () => {
       it('applies only occurredLt when occurredFrom is omitted', async () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
-        await service.list(TENANT_ID, { page: 1, pageSize: 20, occurredTo: '2026-09-02T00:00:00.000Z' }, CAN_VIEW_COST);
+        await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20, occurredTo: '2026-09-02T00:00:00.000Z' }, CAN_VIEW_COST);
         expect(movementsRepository.listByTenant).toHaveBeenCalledWith(
           expect.anything(),
           TENANT_ID,
@@ -330,6 +382,8 @@ describe('MovementsService', () => {
         movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
         await service.list(
           TENANT_ID,
+          ACTOR_ID,
+          VIEW_ALL,
           {
             page: 1,
             pageSize: 20,
@@ -351,7 +405,7 @@ describe('MovementsService', () => {
       it('passes no occurred bounds at all when neither is given (no regression)', async () => {
         const { service, movementsRepository } = buildService();
         movementsRepository.listByTenant.mockResolvedValue({ rows: [], total: 0 });
-        await service.list(TENANT_ID, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
+        await service.list(TENANT_ID, ACTOR_ID, VIEW_ALL, { page: 1, pageSize: 20 }, CAN_VIEW_COST);
         const call = movementsRepository.listByTenant.mock.calls[0]![2] as Record<string, unknown>;
         expect(call).not.toHaveProperty('occurredGte');
         expect(call).not.toHaveProperty('occurredLt');

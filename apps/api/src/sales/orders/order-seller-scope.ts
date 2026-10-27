@@ -39,3 +39,18 @@ export function canReadAllReturns(permissions: string[]): boolean {
 export function canSeeOrderOfSeller(order: { placedByUserId: string | null }, actorId: string, permissions: string[]): boolean {
   return permissions.includes(VIEW_ALL_ORDERS_PERMISSION) || order.placedByUserId === actorId;
 }
+
+/**
+ * Seller scope of the inventory LEDGER's commercial references (ADR-0040, FASE 19). `inventory.view` is held by sellers, so the movement
+ * and Kardex reads must not label another seller's order with its number / uuid / actor. Returns the user whose orders the caller may
+ * see references of, or `undefined` when every order is visible:
+ *  - orders (`SALE`, reservation, commitment): the caller's own, unless `sales.orders.view_all`;
+ *  - returns: the caller's own orders', unless `sales.orders.view_all` or the warehouse (`inventory.returns.manage`).
+ */
+export function ledgerOrderReferenceScope(actorId: string, permissions: string[]): string | undefined {
+  return permissions.includes(VIEW_ALL_ORDERS_PERMISSION) ? undefined : actorId;
+}
+
+export function ledgerReturnReferenceScope(actorId: string, permissions: string[]): string | undefined {
+  return canReadAllReturns(permissions) ? undefined : actorId;
+}

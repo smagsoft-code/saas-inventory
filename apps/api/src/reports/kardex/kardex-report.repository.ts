@@ -113,25 +113,25 @@ export class KardexReportRepository {
   }
 
   /** referenceType='order' (SALE) → order_number, e.g. "ORD-000123". */
-  async resolveOrderNumbers(tx: TenantTransaction, tenantId: string, orderIds: string[]): Promise<Map<string, string>> {
+  async resolveOrderNumbers(tx: TenantTransaction, tenantId: string, orderIds: string[], placedBy?: string): Promise<Map<string, string>> {
     if (orderIds.length === 0) return new Map();
     const rows = await tx
       .select({ id: orders.id, orderNumber: orders.orderNumber })
       .from(orders)
-      .where(and(eq(orders.tenantId, tenantId), inArray(orders.id, orderIds)));
+      .where(and(eq(orders.tenantId, tenantId), inArray(orders.id, orderIds), ...(placedBy ? [eq(orders.placedByUserId, placedBy)] : [])));
     return new Map(rows.map((row) => [row.id, row.orderNumber]));
   }
 
   /** referenceType='sales_return_item' (RETURN) → the return line's order_number, two hops:
    * sales_return_items -> sales_returns -> orders. */
-  async resolveReturnOrderNumbers(tx: TenantTransaction, tenantId: string, returnItemIds: string[]): Promise<Map<string, string>> {
+  async resolveReturnOrderNumbers(tx: TenantTransaction, tenantId: string, returnItemIds: string[], placedBy?: string): Promise<Map<string, string>> {
     if (returnItemIds.length === 0) return new Map();
     const rows = await tx
       .select({ returnItemId: salesReturnItems.id, orderNumber: orders.orderNumber })
       .from(salesReturnItems)
       .innerJoin(salesReturns, and(eq(salesReturns.tenantId, salesReturnItems.tenantId), eq(salesReturns.id, salesReturnItems.returnId)))
       .innerJoin(orders, and(eq(orders.tenantId, salesReturns.tenantId), eq(orders.id, salesReturns.orderId)))
-      .where(and(eq(salesReturnItems.tenantId, tenantId), inArray(salesReturnItems.id, returnItemIds)));
+      .where(and(eq(salesReturnItems.tenantId, tenantId), inArray(salesReturnItems.id, returnItemIds), ...(placedBy ? [eq(orders.placedByUserId, placedBy)] : [])));
     return new Map(rows.map((row) => [row.returnItemId, row.orderNumber]));
   }
 
