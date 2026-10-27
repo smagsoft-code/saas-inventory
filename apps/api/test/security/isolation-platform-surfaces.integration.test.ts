@@ -335,17 +335,17 @@ describe.skipIf(!appPlatformIntegrationTestsEnabled)('tenant isolation over HTTP
       expectDenied(await p.inject({ method: 'GET', url: '/api/v1/warehouses', headers: p.headers(admin) }), [401, 403], 'read-through after the session ended');
     });
 
-    it('ISO-SUP-14 CHARACTERIZATION (known accountability gap): read-through GETs are NOT individually audited — only session start/end are', async () => {
+    it('ISO-SUP-14 read-through GETs ARE individually audited (support.tenant_read) — the former accountability gap SUP-READ-NOT-AUDITED, closed in FASE 19 (full contract: isolation-support-read-audit)', async () => {
       const admin = await p.newAdmin();
       const started = await start(admin, A.tenantId, 'read', 'ISO-SUP-14');
       const sessionId = (JSON.parse(started.body) as { id: string }).id;
-      const countFor = () => withDb(async (db) => (await db.select().from(schema.auditLog).where(and(eq(schema.auditLog.actorId, admin.admin.id), eq(schema.auditLog.tenantId, A.tenantId)))).length);
+      const countFor = () =>
+        withDb(async (db) => (await db.select().from(schema.auditLog).where(and(eq(schema.auditLog.actorId, admin.admin.id), eq(schema.auditLog.tenantId, A.tenantId), eq(schema.auditLog.actionCode, 'support.tenant_read')))).length);
       const before = await countFor();
       for (const url of ['/api/v1/warehouses', '/api/v1/users', '/api/v1/customers', '/api/v1/orders']) {
         await p.inject({ method: 'GET', url, headers: p.headers(admin) });
       }
-      // Documented current behaviour: reads leave no per-request trail beyond the session's own start/end rows.
-      expect(await countFor(), 'session ' + sessionId + ': tenant reads under support are not audited').toBe(before);
+      expect(await countFor(), 'session ' + sessionId + ': one read row per tenant GET under support').toBe(before + 4);
     });
 
     it('ISO-SUP-11 session start/end audit rows belong to the target tenant and name the platform admin', async () => {
