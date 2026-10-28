@@ -360,14 +360,16 @@ alongside the table in the same migration) and means the backstop is never absen
 
 ### Database roles
 
-RLS in Postgres is bypassed by the table owner (and superusers) by default. Migrations therefore run
-as a **different role** than the application, and the application itself uses more than one role so
-that "who can see across tenants" is a small, explicit, auditable set of connections rather than a
-flag inside the app:
+By default, Postgres exempts a table's owner (as well as superusers and roles with `BYPASSRLS`) from
+that table's RLS policies. `FORCE ROW LEVEL SECURITY` removes the owner's exemption: the owner is then
+subject to the policies like any other role, and only superusers and `BYPASSRLS` roles remain exempt.
+Migrations run as a **different role** than the application (so the application role never owns the
+tables), and the application itself uses more than one role so that "who can see across tenants" is a
+small, explicit, auditable set of connections rather than a flag inside the app:
 
 | Role | Used by | RLS behavior | Table access |
 | --- | --- | --- | --- |
-| `app_migrator` | Drizzle Kit (CI/deploy) | owner — RLS does not apply | DDL owner of every table |
+| `app_migrator` | Drizzle Kit (CI/deploy) | table owner, but **not exempt** from RLS: a non-superuser role without `BYPASSRLS` is subject to the policies on tables with `FORCE ROW LEVEL SECURITY` (see [below](#effect-on-app_migrator-and-migrations)) | DDL owner of every table |
 | `app_tenant` | NestJS API, all normal tenant-scoped requests | subject to RLS, `FORCE ROW LEVEL SECURITY` | every table the API needs, filtered by policy to `tenant_id = app.tenant_id` |
 | `app_platform` | NestJS API, SuperAdmin-only service methods | `BYPASSRLS` | `tenants`, `platform_admins`, `platform_admin_refresh_tokens` (FASE 11), plus explicit read access to tenant tables for cross-tenant admin aggregation (never through the `app_tenant` path — see [multi-tenancy.md#administrative--cross-tenant-queries](multi-tenancy.md#administrative--cross-tenant-queries)) and `INSERT` on `audit_log` (FASE 11/ADR-0032 — auditing platform-admin actions) |
 | `app_event_processor` | Event Processor worker | subject to RLS, but granted one **permissive, table-scoped** policy (below) | `event_outbox` only — no grants on any other table |
@@ -379,6 +381,35 @@ redundant in production (where `app_tenant` never owns the tables) but protects 
 where a single Postgres role is sloppily reused for both migrating and querying — without `FORCE`,
 that misconfiguration would silently disable the backstop exactly when it's most likely to be
 misconfigured (a dev environment).
+
+#### Effect on `app_migrator` and migrations
+
+`app_migrator` is not exempt from RLS merely because it owns the tables or is used for migrations.
+The tenant-owned tables have `FORCE ROW LEVEL SECURITY`, and `app_migrator`, as created by migration
+0000, is neither a superuser nor a `BYPASSRLS` role (attributes that could differ if the role were
+altered out-of-band), so it is subject to RLS: its row access is determined by the policies that
+apply to it, not exempted. The tenant-isolation policies are declared
+`TO app_tenant` (for example on `roles` and `role_permissions`, migrations 0002/0012); a policy
+addressed to `app_tenant` does not by itself give `app_migrator` any visibility, and this has to be
+checked table by table, since other policies may apply to other roles. When no policy applies to the
+active role, a `SELECT` over the table returns no rows (default deny). An `INSERT ... SELECT` whose
+source rows come from such a table then inserts zero rows, and that need not raise an error;
+inserting rows directly into an RLS-protected table, in contrast, is rejected if no applicable
+`WITH CHECK`/insert policy allows it. The actual outcome of a statement also depends on privileges,
+permissive versus restrictive policies, constraints and the rest of the statement. What a migration
+can read or write therefore depends on the role actually active during the operation (superusers
+and `BYPASSRLS` roles are exempt), on the policies that apply to that role, and on the table's RLS
+configuration. Data migrations that must read or write tenant-owned rows across tenants need to
+account for this when the active role is subject to RLS (several backfill migrations do so by
+switching `FORCE` off for their statements inside their transaction and restoring it before commit;
+that helps only when the active role is the table owner; superusers and `BYPASSRLS` roles are
+exempt without it).
+
+`SET ROLE app_migrator` (migrations 0000 and 0019) changes the role of the current session: it
+applies until it is reset (migration 0019 resets and re-applies it) or the transaction that issued it
+is rolled back, and it only affects that session. It does not by itself establish which role
+executed a given migration in any particular historical run: that depends on the login of the
+migration connection and on which migrations were applied in the same session.
 
 ### Policy shape
 
