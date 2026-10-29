@@ -1400,3 +1400,27 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
   surfaces outside that sweep.
 - **UI/UX spec closure (owner, option B):** `UI-UX-SPEC-001` is closed with a delivered/deferred table
   (its §0); a tokens + blue primary block is scheduled after FASE 19 and before FASE 22.
+- **Migration identity, history integrity and data migrations under RLS (ADR-0041 — Proposed, 2026-10-28).** Synthetic-cluster
+  experiments (PostgreSQL 16.15 is the reference; none against a real database, no production database exists) showed that
+  `migrate.ts` runs as whatever role `MIGRATOR_DATABASE_URL` authenticates as, that Drizzle never validates the history it reads, and
+  that a data migration run by an identity subject to RLS can succeed with zero effect. **`CREATEROLE` alone is not enough to bootstrap**
+  (the header of `0000` and the docblock of `migrate.ts` say otherwise; applied files are not edited). Approved direction: a privileged
+  bootstrap plus a limited incremental login (`SET ROLE app_migrator`, no `CREATEROLE`), `0000`/`0019` always privileged, `drizzle`
+  kept under the bootstrap owner with reduced grants, abort without repair on an inconsistent state, and a contract for `NO FORCE`
+  windows. **Implemented (delivery 2b, D-7.2):** `db:migrate` now runs through an integrity wrapper
+  (`apps/api/src/database/migrate.ts` → `migration-runner/run-migrations.ts`): the configuration, the files (journal, `history-manifest.json` version 2
+  with an **explicit `classification` and `reviewedIn` per migration**, `privileged-manifest.json`), the PostgreSQL identity and the state of Drizzle's
+  registry are all checked **before** Drizzle runs, and an inconsistent state is refused, never repaired. **`MIGRATOR_EXPECTED_DATABASE` is now
+  required**; use `MIGRATOR_BOOTSTRAP_DATABASE_URL` (superuser; a new database or a pending privileged migration, `--mode bootstrap`) or
+  `MIGRATOR_INCREMENTAL_DATABASE_URL` + `MIGRATOR_INCREMENTAL_LOGIN` (limited login, `--mode incremental`); every consumer (wrapper, seeds, `reset-demo`,
+  `bootstrap-dev-roles`) reads the bootstrap name, and `MIGRATOR_DATABASE_URL` is a deprecated **bootstrap-only** alias that cannot apply ordinary migrations to an
+  existing database. Write `db:migrate` options without `--`; unknown options are refused before anything connects. **Owner / RLS invariants (D-8B):** a hook inside Drizzle's transaction refuses (and rolls back) a batch that leaves an object of `public` not owned by `app_migrator`, an RLS table without FORCE, RLS newly disabled, or a registry that is not the journal; a post-commit audit only reports (nothing committed is undone); pre-existing deviations are warned about, not blocking. **Concurrent runs (D-8C):** a per-database session advisory lock serialises wrapper runs (second waits up to `MIGRATOR_LOCK_TIMEOUT_SECONDS`, default 60); it does not cover `drizzle-kit migrate`/`push` or a hand-written `migrate()`. **SQL/RLS linter (D-8D):** the pending migrations are linted before Drizzle runs (`libpg-query@16.8.1`, PostgreSQL 16 grammar); an ERROR (PUBLIC grants, `GRANT ALL`, ownership changes, `DISABLE`/unrestored `NO FORCE` RLS, `SECURITY DEFINER`, transaction control, SQL that does not parse, PL/pgSQL in an ordinary migration…) refuses the batch; PL/pgSQL bodies and dynamic SQL cannot be analysed and are reported as such; `sql-lint.cli.ts` runs it standalone. Reviewed exceptions live in `database/migrations/sql-lint-exceptions.json` (one exact statement per entry — rule, migration, line, file sha256, reason, review; shipped empty; an invalid file or a stale/unmatched entry stops the run; an accepted finding stays visible); a parser that cannot load refuses the run before Drizzle; exceptions are validated even with nothing pending (D-8E). CI (`.github/workflows/ci.yml`, jobs `migration-harness` and `pg-verify`) runs the harness and pg-verify on `postgres:16.15@sha256:...` with the version verified from the server; it is implemented and statically/locally validated but **no real runner execution has been observed** (see migration-integrity.md 10b). Bootstrap mode with
+  `MIGRATOR_INCREMENTAL_LOGIN`/`MIGRATOR_INCREMENTAL_PASSWORD` creates the limited login and narrows the `drizzle` grants; an existing database adopts
+  it with `--provision-only`. **Adding a migration**: declare it in `privileged-manifest.json` first if it needs privileges, then
+  `history-manifest.cli.ts --write --classify <tag>=ordinary|privileged --reviewed-in <pr:N|commit:sha|review:id:date>`; `database/migrations/**` is pinned
+  to LF by `.gitattributes`. Verified **only** on disposable PostgreSQL 16.15 clusters (harness `pnpm --filter @saas-inventory/api
+  test:migration-harness` with `MIGRATION_HARNESS_PG_BIN`; `tools/pg-verify` with `PG_VERIFY_PG_BIN`/`PG_VERIFY_PORT`). **Not complete protection:** the
+  text scan does not see `GRANT`, `DISABLE ROW LEVEL SECURITY` and others (`MIG-SQL-RLS-LINTER`, accepted risk until its own delivery). See
+  [docs/architecture/migration-integrity.md](docs/architecture/migration-integrity.md), [ADR-0041](docs/decisions/0041-migration-identity-and-history-integrity.md)
+  and the `MIG-*` entries of [docs/roadmap/pending-register.md](docs/roadmap/pending-register.md). E1-B1 (whether `0032` took effect in any
+  particular database) remains inconclusive.

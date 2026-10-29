@@ -3315,6 +3315,62 @@ with migrations rather than `database/seeds/`. `measurement_units` (Prompt 02-B)
 pattern — its initial rows ship in the Catalog migration, and new units are added the same way as new
 capabilities are: a migration `INSERT`, never tenant data.
 
+### Migration identity, history integrity and data migrations under RLS ([ADR-0041](../decisions/0041-migration-identity-and-history-integrity.md))
+
+*Proposed, 2026-10-28. Delivery 2b (D-7.2) implemented the wrapper in `apps/api/src/database/migrate.ts`: it checks configuration, files, identity
+and the Drizzle registry before Drizzle runs, with `database/migrations/history-manifest.json` (version 2, explicit classification and review per
+migration) and `privileged-manifest.json`. An SQL/RLS linter (D-8D) runs inside that flow before Drizzle: blocking rules refuse the batch, warnings stay visible, and PL/pgSQL bodies and dynamic SQL cannot be analysed and are reported as such (`MIG-SQL-RLS-LINTER`, accepted residual risk). It was exercised only on disposable PostgreSQL 16.15 clusters; paths that bypass the wrapper and historical RLS windows remain open. The "today"
+paragraph below describes the behaviour **before** the wrapper. Contracts, abort conditions, configuration and harness results:
+[migration-integrity.md](migration-integrity.md).*
+
+**Today.** `migrate.ts` opens one connection with `MIGRATOR_DATABASE_URL` and calls Drizzle's `migrate()`. It never sets a role and
+never checks `current_user`: the role that runs a migration is whatever the login is, apart from the `SET ROLE app_migrator` that
+`0000` and `0019` execute inside the batch. Drizzle reads only the registry row with the highest `created_at`, applies every journal
+entry above it in one transaction, and never compares the hash of an applied migration.
+
+**`CREATEROLE` is not enough to bootstrap.** The comment at the top of `0000` and the docblock of `migrate.ts` say the first run
+needs a login with `CREATEROLE` and ownership of the database. A non-superuser `CREATEROLE` owner failed at `0000` with
+`42501 permission denied to create role` (synthetic run, PostgreSQL 18.4 beta). The probable cause — an inference, not isolated — is
+`CREATE ROLE app_platform … BYPASSRLS` (`0000`, line 42), which PostgreSQL reserves for superusers. Those comments sit inside applied
+files and are not edited; this subsection is the correction.
+
+**Target design (S3).**
+
+| Mode | When | Login | After connecting |
+| --- | --- | --- | --- |
+| Bootstrap | new database; any pending privileged migration (`0000`, `0019`, or a later one declared in the privileged manifest) | superuser | `SET ROLE app_migrator` once the role exists |
+| Incremental | the registry is exactly a prefix of the journal and no privileged migration is pending | dedicated login: not superuser, no `BYPASSRLS`, no `CREATEROLE`, member of `app_migrator` `WITH SET TRUE` | `SET ROLE app_migrator`, then verify `current_user = 'app_migrator'` and that neither it nor the session user is superuser or `BYPASSRLS` |
+
+- The bootstrap procedure — not a migration, so no credential is ever versioned — creates the incremental login and its membership and
+  issues `GRANT CREATE ON DATABASE … TO app_migrator`. Drizzle runs `CREATE SCHEMA IF NOT EXISTS drizzle` on every execution and
+  PostgreSQL checks `CREATE` on the database even when the schema exists (observed `42501` without it).
+- `0019` is privileged for good: it `RESET ROLE`s to the login to run `CREATE ROLE`. A limited login can apply it only if
+  `app_import_worker` already exists, which is a property of the cluster (roles are cluster-wide), so it is never relied upon.
+- The `drizzle` schema, its table and its sequence stay owned by the bootstrap owner. The incremental role gets `USAGE` and `CREATE` on
+  the schema, `SELECT` and `INSERT` on the table, `USAGE` on the sequence, and nothing else (no `UPDATE`, `DELETE`, `TRUNCATE`).
+  Privileges alone do not protect the history — `INSERT` is required, and a row with a very high `created_at` makes Drizzle skip
+  migrations — so the migrator must also validate the history before running anything.
+- **History validation.** The state is classified from read-only queries and the journal, never from the registry's row count. The run
+  aborts, without repairing anything, when the journal has a gap, a duplicate tag, a non-increasing `when` or a missing `.sql`; when
+  the registry is not exactly a prefix of the journal (same `when` and same SHA-256 per position) or has a row with no journal entry;
+  when a pending entry's `when` is at or below the highest applied one; when the registry is missing or empty but tables exist; when a
+  privileged migration is unapplied while later ones are applied; or when the privileged manifest does not match its files.
+
+**Data migrations on RLS-forced tables.** `app_migrator` owns the tables but is subject to RLS (see
+[Effect on `app_migrator` and migrations](#effect-on-app_migrator-and-migrations)), so an `INSERT … SELECT` over a `FORCE` table
+inserts nothing and raises nothing. A migration may open a `NO FORCE ROW LEVEL SECURITY` window only on the tables it declares, and
+only by following this sequence inside the transaction Drizzle already opens: (1) declare tables, reason, eligible rows and expected
+effect in the file header; (2) guard `current_user` and that `row_security_active` is true for each table; (3) `NO FORCE` those
+tables; (4) guard that `row_security_active` is now false; (5) fill with an explicit filter; (6) check a set-based postcondition
+(no eligible row lacks the effect; zero eligible rows is allowed); (7) `FORCE` again; (8) verify `relforcerowsecurity` for every
+table and raise otherwise; (9) `SET LOCAL lock_timeout` at the start and `RESET lock_timeout` at the end. The window's table locks are
+held until the whole pending batch commits, not until the end of the migration file. A guard by itself only converts a silent no-op
+into a failure, and `SET LOCAL row_security = off` does not help a `FORCE`d owner (observed `42501`). There is no universal window.
+
+**Evidence level.** The behaviours above were observed in disposable, synthetic clusters (PostgreSQL 16.15 is the reference for this
+stage; 18.4 beta ran earlier). They are not a statement about any existing database, and compatibility with other versions is not
+claimed. Ownership of objects in existing databases is not corrected without a prior, expressly approved audit.
+
 **Reversibility:** consistent with the already-accepted rule (never edit an applied migration), a
 structural rollback is a new forward migration that undoes the previous one, not a hand-authored
 `down.sql` maintained per file. This document does not introduce a new reversibility mechanism beyond

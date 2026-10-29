@@ -11,7 +11,8 @@ Rules (see [CLAUDE.md](../../CLAUDE.md) §7.7):
 
 ## Contents
 
-30 migrations (`0000`–`0029`), matching the ordering fixed in
+51 migrations (`0000`–`0050`; the journal in `meta/_journal.json` is the authoritative list — the narrative below
+was written up to `0032` and is not exhaustive). The initial ordering is fixed in
 [docs/architecture/database.md#migration-strategy](../../docs/architecture/database.md#migration-strategy):
 extensions & roles; platform tables; CORE (RBAC, audit); CATALOG; QR; INVENTORY; location
 authorization; inventory transfers; the Excel import pipeline; SALES (schema only — no SALES
@@ -101,10 +102,86 @@ schema DSL does not model them.
 pnpm --filter @saas-inventory/api db:migrate
 ```
 
-Runs every pending migration, in order, as the `app_migrator` Postgres role (never as the
-application's own `app_tenant` role) — see `apps/api/src/database/migrate.ts` and migration
-`0000`'s header comment for the bootstrap requirement (the very first run needs a connection with
-`CREATEROLE` + ownership of the target database).
+Runs every pending migration, in order, over one connection (never as the application's own `app_tenant` role) through the
+integrity wrapper of ADR-0041 — see `apps/api/src/database/migrate.ts` and `migration-runner/run-migrations.ts`. The wrapper checks
+the configuration, the files (journal and both manifests), the PostgreSQL identity and the state of Drizzle's registry **before**
+Drizzle runs, and refuses an inconsistent state without repairing it. `MIGRATOR_EXPECTED_DATABASE` is now required, plus either
+`MIGRATOR_BOOTSTRAP_DATABASE_URL` (the deprecated `MIGRATOR_DATABASE_URL` is a bootstrap-only alias that cannot apply ordinary migrations to an existing database) or `MIGRATOR_INCREMENTAL_DATABASE_URL` and
+`MIGRATOR_INCREMENTAL_LOGIN`; write options without a `--` separator (`db:migrate --mode bootstrap`); unknown options are refused before anything connects; see `.env.example` and [docs/architecture/migration-integrity.md](../../docs/architecture/migration-integrity.md) §9.
+
+> **Correction (ADR-0041, 2026-10-28).** The header of `0000` and the docblock of `migrate.ts` say the
+> first run needs a login with `CREATEROLE` and ownership of the database. **`CREATEROLE` is not
+> enough**: a non-superuser `CREATEROLE` owner failed at `0000` with `42501 permission denied to create
+> role` in a synthetic run (probable cause, not isolated: `CREATE ROLE app_platform … BYPASSRLS`, line 42,
+> which PostgreSQL reserves for superusers). Use a superuser login for a new database. Those comments
+> are inside applied migration files and are not edited.
+>
+> **What runs as `app_migrator` today.** Only what follows `SET ROLE app_migrator` inside `0000` (and
+> `0019`'s `RESET ROLE` / `SET ROLE` pair) in the same batch. `migrate.ts` itself never sets a role or
+> checks the identity, so an incremental run by a superuser login creates new objects owned by that login
+> (observed on a synthetic cluster). Drizzle also does not verify the history: it only reads the registry
+> row with the highest `created_at`, never compares the hash of an applied migration, and silently skips a
+> journal entry whose `when` is at or below that value.
+
+### Design (ADR-0041 — Proposed; the wrapper is implemented and was exercised only on disposable PostgreSQL 16.15 clusters)
+
+[ADR-0041](../../docs/decisions/0041-migration-identity-and-history-integrity.md) and
+[database.md#migration-identity-history-integrity-and-data-migrations-under-rls-adr-0041](../../docs/architecture/database.md#migration-identity-history-integrity-and-data-migrations-under-rls-adr-0041)
+describe the approved direction; `migrate.ts` now runs it (D-7.2).
+
+- **Bootstrap** (superuser login) for a new database and for any pending privileged migration; **incremental**
+  (dedicated login, not superuser, no `BYPASSRLS`, no `CREATEROLE`, member of `app_migrator`) with `SET ROLE
+  app_migrator` and a `current_user` check. The incremental role needs `CREATE` on the database, because
+  Drizzle runs `CREATE SCHEMA IF NOT EXISTS drizzle` every time.
+- **Privileged migrations** — `0000` and `0019`, always; a future one must be declared in a versioned manifest.
+  A privileged migration pending in incremental mode is rejected before anything runs.
+- **History integrity** — the run aborts, with no automatic repair, on a journal gap, duplicate tag,
+  non-increasing `when`, missing `.sql`, a registry that is not exactly a prefix of the journal (same `when`
+  and SHA-256 per position), an empty or missing registry with tables present, or a manifest mismatch.
+- **`drizzle` schema** stays under the bootstrap owner; the migrator gets only `USAGE`/`CREATE` on the schema,
+  `SELECT`/`INSERT` on the table and `USAGE` on its sequence.
+- **Data migrations on `FORCE ROW LEVEL SECURITY` tables** need a declared `NO FORCE` window with identity
+  guard, window guard, set-based postcondition, explicit `FORCE` restoration and verification, and
+  `lock_timeout` — never a bare `INSERT … SELECT` (it inserts nothing and raises nothing under an identity
+  that RLS restricts). Twelve earlier migrations open such a window without these checks (`0029`, `0035`,
+  `0037`, `0041`–`0047`, `0049`, `0050`); they are applied and unchanged.
+- **Evidence:** disposable synthetic clusters on PostgreSQL 16.15 (the reference for this stage). No other
+  version is claimed, and nothing here says an existing database is affected.
+
+### Manifests (ADR-0041)
+
+Two reviewed JSON files sit next to the migrations (Drizzle ignores them; `drizzle-kit generate` still reports "No schema changes"):
+
+- `history-manifest.json` (version 2) — `idx`, `tag`, `when`, SHA-256, an **explicit `classification`** (`ordinary` | `privileged`) and
+  `reviewedIn` for **every** migration (51 entries). A migration without a valid classification and review reference blocks the run;
+  absence from the privileged manifest is never read as "reviewed and ordinary". The 51 existing entries carry
+  `retroactive-review:D-7.2:2026-10-28`: the classification was checked against the SQL text in that phase; **no historic approval is claimed**.
+- `privileged-manifest.json` — migrations that need a privileged login (`0000`, `0019`; always). Edited by hand, with a reason.
+
+**Adding a migration**: after `db:generate`, declare it in `privileged-manifest.json` first if it needs privileges, then run
+`pnpm --filter @saas-inventory/api exec tsx src/database/migration-integrity/history-manifest.cli.ts --write --classify <tag>=ordinary --reviewed-in <pr:N | commit:sha | review:id:YYYY-MM-DD>`
+and review the diff. The tool plans and validates everything first and writes nothing on any refusal; it only appends and never touches
+an entry whose migration has changed. Without `--write` it checks (exit 1 on any finding), and the unit suite
+(`migration-files.repo.spec.ts`) runs the same check. `.gitattributes` pins `database/migrations/**` to LF so every checkout is byte-identical.
+Details: [docs/architecture/migration-integrity.md](../../docs/architecture/migration-integrity.md).
+
+### Snapshots (`meta/`)
+
+`drizzle-kit generate` diffs the TypeScript schema against the **last snapshot file by name**. Snapshots
+exist for `0000`–`0046`, `0048` and `0050`; `0047` and `0049` (data-only migrations) have none, and the
+documentation does not record why (an inference: they change no schema). `0050_snapshot.json` was added on
+2026-10-28 because `0050` added `price_approvals.approval_number` by hand-written SQL while the snapshot chain
+still ended at `0048`, so the next `db:generate` would have proposed a duplicate `ADD COLUMN`. Its content is
+what `drizzle-kit generate` produced (that run named it `0051_snapshot.json`; it is stored under the index of
+the migration it reflects), with `prevId` equal to the `id` of `0048`, plus one `uniqueConstraints` entry added
+by hand (below). The unique constraint `price_approvals_tenant_approval_number_key (tenant_id,
+approval_number)`, created by the SQL of `0050`, is **modelled in the TypeScript schema**
+(`apps/api/src/database/schema/09-sales.ts`, like its siblings `orders_tenant_id_order_number_key` and
+`sales_returns_tenant_return_number_key`) **and in `0050_snapshot.json`**, in the same format as those siblings.
+Both must stay together: adding it to the TypeScript schema without the snapshot entry would make `db:generate`
+propose a duplicate `ADD CONSTRAINT`. Checked on a temporary copy (2026-10-28): no duplicated snapshot `id`, no
+other file changed, and `drizzle-kit generate` reports "No schema changes, nothing to migrate" and creates no
+file.
 
 ## Regenerating (for a new schema change)
 

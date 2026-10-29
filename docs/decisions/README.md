@@ -74,6 +74,7 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0038](0038-order-pdf-export.md) | Order PDF Export — Browser Print Now, Server-Side Generation Deferred | Accepted |
 | [0039](0039-mvp-scope-serialized-lot-sales.md) | MVP Scope — Serialized and Lot-Tracked Variants Are Not Sellable | Accepted |
 | [0040](0040-seller-scope-for-order-derived-operations.md) | Seller Scope for Order-Derived Operations and Reads | Accepted |
+| [0041](0041-migration-identity-and-history-integrity.md) | Migration Identity, History Integrity and Data Migrations under RLS | Proposed (snapshot, pure checks, the migration wrapper and the SQL/RLS linter implemented; verified on disposable 16.15 clusters only; wrapper-bypass paths and PL/pgSQL analysis limits remain open) |
 
 ADRs 0001–0015 were produced in Prompt 01 (architecture phase) alongside
 [docs/architecture/](../architecture/) and [docs/security/threat-model.md](../security/threat-model.md).
@@ -119,3 +120,8 @@ TENANT ONBOARDING + TENANT SUPPORT block, closing `GAP-SA-CREATE-TENANT` and res
 Inventario/Kardex block, resolving `GAP-COST`
 ([data-gaps.md](../architecture/reporting/data-gaps.md)) — a weighted-average costing engine
 (`apps/api/src/inventory/kardex/kardex-costing.ts`) feeding the new `GET /reports/kardex` endpoint.
+ADR-0041 (**Proposed**) was produced by the 2026-10-28 migration-safety analysis: which database role runs a migration, how the
+Drizzle history is validated before it is trusted, and how data migrations behave under row-level security. Its snapshot
+reconciliation, the pure checks (delivery 2a) and the migration wrapper in `migrate.ts` (delivery 2b, D-7.2) are implemented and were exercised
+only on disposable PostgreSQL 16.15 clusters. The SQL/RLS linter (D-8D) is also implemented, within the documented limits (PL/pgSQL and dynamic SQL cannot be analysed; paths that bypass the wrapper and historical RLS windows remain open) — see
+[migration-integrity.md](../architecture/migration-integrity.md).

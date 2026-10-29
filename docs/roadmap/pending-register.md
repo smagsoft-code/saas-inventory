@@ -5,6 +5,9 @@ time of the first version (the documentation commit `7ca9b94` followed), clean w
 commits, **no upstream configured (nothing has ever been pushed)**. Updated the same day after the
 owner's decisions on six items; each affected entry carries a *decided* banner.
 
+*Note (2026-10-28):* the `MIG-*` entries of section D were added later, on top of HEAD `2734363` (`develop`, 155 commits, still no
+upstream); the baseline above is the 2026-10-26 one and was not re-verified.
+
 This register separates *implemented* work from *validated* work. An item is never closed here
 without evidence a reader can re-run. It is the starting point for the FASE 19 audit; it does not
 replace per-phase reports.
@@ -619,6 +622,174 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   regression was never executed, and the FASE 18 reports were validated by jsdom tests only.
 - **Evidence:** *notes* (5S, `5S-UI-05` in UI-UX-SPEC-001). **Phase:** FASE 23.
 - **Status:** `open`.
+
+### MIG-IDENTITY-HISTORY *(new, 2026-10-28 — S3 adopted; deliveries 2a and 2b implemented and run on disposable 16.15 clusters)*
+
+- **Description:** `migrate.ts` runs as whatever role `MIGRATOR_DATABASE_URL` authenticates as (the compose files use the image's
+  superuser), never sets a role or checks `current_user`, and relies on Drizzle, which reads only the registry row with the highest
+  `created_at` and never compares the hash of an applied migration. Consequences observed on synthetic clusters: an incremental run
+  by a superuser login creates objects owned by that login; a missing/reordered/altered history ends in a silent no-op "success".
+  [ADR-0041](../decisions/0041-migration-identity-and-history-integrity.md) records the approved direction (privileged bootstrap +
+  limited incremental login with `SET ROLE`, manifest of privileged migrations `0000`/`0019`, no `CREATEROLE` on the incremental
+  login, `drizzle` kept under the bootstrap owner with reduced grants, abort without repair on an inconsistent state).
+- **Evidence:** *static* — `migrate.ts`, `0000` (l.42, 78, 83, 98–108), `0019`, `drizzle-orm@0.45.2` `dialect.js` l.44–71.
+  *runtime (synthetic, not in the repository)* — PostgreSQL 16.15 disposable clusters: 39 scenarios passed (identity, `RESET ROLE`,
+  `0019` with the role missing/existing, 11 inconsistent-history states, `drizzle` grants, RLS contract, `lock_timeout`), plus the
+  repository's own `migrate.ts` and three integration files (56 tests) on a fresh 16.15 cluster.
+- **Severity / risk:** P2 (integrity of the deployment path; no cross-tenant exposure is claimed).
+- **Dependencies:** owner approval of each delivery; a way to run PostgreSQL 16.15 from the repository (see `MIG-PG16-HARNESS`); a
+  configuration change for development setups whose migrator login is a superuser (names and compatibility rules documented in
+  [migration-integrity.md](../architecture/migration-integrity.md) §9, not implemented). The permanent `GRANT CREATE ON DATABASE` to
+  `app_migrator` is approved only as an implementation proposal, applied exclusively by the bootstrap procedure; scope and risk are in
+  §8 of that document, and it is applied nowhere. No production database exists.
+- **Acceptance:** a fresh install and an incremental update both leave every `public` object owned by `app_migrator`; a wrong
+  identity, a pending privileged migration and each inconsistent state abort before any statement that changes anything and leave
+  the catalog identical; a limited session cannot escalate with `RESET ROLE`; the narrowed `drizzle` grants complete an update and
+  forbid `UPDATE`/`DELETE`/`TRUNCATE` of the history; all of it reproducible from the repository on 16.15.
+- **Progress (delivery 2a, 2026-10-28):** pure checks of the journal, the registry-vs-journal state (exact prefix, forged `created_at`,
+  skipped/unrecorded privileged migrations), the mode and the identity facts; `history-manifest.json` and `privileged-manifest.json` (`0000`,
+  `0019`); a generator/check CLI that only appends.
+- **Progress (delivery 2b, D-7.2, 2026-10-28):** the wrapper is wired into `migrate.ts` (`migration-runner/`): configuration contract
+  (`MIGRATOR_*` variables, `--mode`, `--provision-only`), read-only fact gathering, `SET ROLE app_migrator`, Drizzle runs only after every check,
+  final verification, and the bootstrap procedure for the incremental login (`NOINHERIT`, `SET`-only membership, `CREATE ON DATABASE`, narrowed
+  `drizzle` grants). The history manifest is version 2 with an explicit `classification` and `reviewedIn` per migration (existing entries:
+  `retroactive-review:D-7.2:2026-10-28`, no historic approval claimed); the generator plans and validates before writing; `.gitattributes` pins
+  migrations to LF; `rls-window.ts` provides the checked `NO FORCE`/`FORCE` window for new data migrations. Verified on PostgreSQL **16.15**
+  disposable clusters only: the harness `test:migration-harness` (37 tests, exit 0, cluster removed) and `tools/pg-verify` on a 16.15 server built with `initdb`/`pg_ctl` (bootstrap from empty, bootstrap again, incremental as the limited login: all exit 0; then the existing integration suite, 784 + 31 serial tests, 0 failed; "All checks PASSED", exit 0). Unit suite 1021 tests / 83 files,
+  `tsc` and `eslint` pass. Details and observed behaviour: [migration-integrity.md](../architecture/migration-integrity.md) §6b, §8, §10.
+- **Progress (D-8A, 2026-10-28):** audit findings H1, H2, H8, H9, H10 addressed. One contract for every consumer (`MIGRATOR_BOOTSTRAP_DATABASE_URL`, shared rule in
+  `@saas-inventory/config`; `.env.example` copyable as it is, checked by `env-contract.spec.ts`); the deprecated `MIGRATOR_DATABASE_URL` documented as bootstrap-only with its exact
+  scope (it cannot apply ordinary migrations to an existing database); strict argument parsing before any read or connection (pnpm 9.15 delivery of `--` measured); explicit
+  `--provision-only` preconditions (`PROVISION_PRECONDITION_FAILED`); an actionable `TEMPLATE`/adoption diagnostic; and a new refusal found by the harness: bootstrap mode on a
+  never-provisioned existing database. H3 (post-run owner/RLS invariants), H6 (concurrency lock), the linter and CI remain open (D-8B…E). H5 stays a separate analysis.
+- **Progress (D-8B, 2026-10-28) — H3:** owner and RLS invariants. A pre-commit hook runs inside Drizzle's own transaction (`current_user`, registry = journal, owners of `public` objects,
+  RLS enabled ⇒ FORCEd, RLS not disabled, history not owned by `app_migrator`) and rolls the whole batch back; a post-commit audit re-checks and reports what cannot be undone. Limits, stated
+  once: (1) only violations the batch introduces are blocking — pre-existing ones are warned about; (2) after a post-commit finding the violation is committed and becomes baseline, only a
+  corrective migration fixes it; (3) Drizzle's pre-transaction `CREATE SCHEMA/TABLE IF NOT EXISTS drizzle` and the provisioning step are outside the guarded transaction; (4) the hook relies on
+  `drizzle-orm@0.45.2` calling `client.begin` once (`INVARIANT_GUARD_NOT_INVOKED` otherwise); (5) privileges, policies and function bodies are not audited. H5 stays separate.
+- **Progress (D-8C, 2026-10-28) — H6:** mutual exclusion. A session-level advisory lock (`pg_try_advisory_lock`, key `(0x53494d47, 1)`, per database) is taken after the connection and database check and held through the
+  identity re-read, the history/baseline evaluation, the batch, the final checks, the post-commit audit and the provisioning transaction; configurable timeout (`MIGRATOR_LOCK_TIMEOUT_SECONDS`, default 60) with the stable
+  `LOCK_NOT_ACQUIRED`. Proven on 16.15 with two independent OS processes (second waits and then sees `pending=0`; timeout; zero; provision-only; release after success and failure; SIGKILL of the holder). Limits:
+  runs outside the wrapper (`drizzle-kit migrate`/`push`, hand-written `migrate()`, the test globalSetup, `psql`) do not take it; untested through a pooler; after a client crash the server keeps the lock until its
+  current statement ends; waiters are not ordered.
+- **Progress (D-8D.1, 2026-10-29):** the parser-unavailable path is tested (refuses before Drizzle, lock released, next run succeeds); the exceptions file is defined (schema v1), loaded by the wrapper before Drizzle and validated in two layers, shipped empty — no
+  exception for the 51 historical migrations; the PL/pgSQL policy (ordinary = ERROR, privileged = WARNING, never "validated", low certainty reported apart) is documented in ADR-0041 decision 14 and pinned by tests. Still open: PL/pgSQL and dynamic SQL remain unanalysable;
+  the paths that bypass the wrapper (`drizzle-kit migrate`/`push`, hand-written `migrate()`, the test globalSetup, `psql`); H5; CI (D-8E: implemented, awaiting a first real run).
+- **Progress (D-8E, 2026-10-29):** an obsolete exception is no longer ignored when nothing is pending or under `--provision-only` (found by new harness tests, fixed in `run-migrations.ts`); CI added (see `MIG-PG16-HARNESS`).
+- **Progress (D-8D, 2026-10-28):** the SQL/RLS linter (see `MIG-SQL-RLS-LINTER`), wired as step 6b of the wrapper. New runtime dependency: `libpg-query@16.8.1` (+ `@pgsql/types`, types only). Open decisions: the exceptions file
+  format; whether a PL/pgSQL-aware tool (none exists in this ecosystem as WebAssembly) is worth adding; whether new migrations may use PL/pgSQL at all (today: only if declared privileged).
+- **Status:** `open` (P2) — **implemented, not closed**. Remaining: the SQL/RLS linter (`MIG-SQL-RLS-LINTER`); the ownership audit
+  (`MIG-OWNERSHIP-AUDIT`, independent); the Docker/CI path pinned to 16.15; moving `bootstrap-dev-roles`, the seeds and `reset-demo` off the legacy
+  variable; the `ALTER ROLE … SET role` experiment (not run); validation against any database that really exists (none was touched).
+  Developers must add `MIGRATOR_EXPECTED_DATABASE` to their environment (a clear `CONFIG_VARIABLE_MISSING` otherwise).
+
+### MIG-SQL-RLS-LINTER *(new, D-7.2 — implemented in D-8D with documented limits)*
+
+- **Description:** the wrapper does not understand the SQL it runs. Its text scan only finds `CREATE/ALTER/DROP ROLE`, `CREATE EXTENSION`,
+  `RESET ROLE`, `SET [LOCAL|SESSION] ROLE` and `SET SESSION AUTHORIZATION`, and an explicit `ordinary` classification only records who decided.
+  Observed in the harness: a migration with `GRANT ALL ON ALL TABLES IN SCHEMA public TO app_tenant` and another with `ALTER TABLE warehouses
+  DISABLE ROW LEVEL SECURITY`, both classified `ordinary`, are executed by an incremental run, and RLS is left disabled.
+- **After D-8B:** `DISABLE ROW LEVEL SECURITY` on a table that had RLS enabled, an unforced RLS table and a wrong owner are now refused before the commit by the owner / RLS invariants (a catalogue check of the RESULT, not of the SQL). `GRANT`/`REVOKE`, `SECURITY DEFINER`, `ALTER DEFAULT PRIVILEGES`, `CREATE DATABASE`, `COPY … PROGRAM`, dynamic SQL and the rest are still not seen; the harness still shows a `GRANT ALL … TO app_tenant` being executed.
+- **D-8D (2026-10-28):** implemented — a linter over the PostgreSQL 16 grammar (`libpg-query@16.8.1`, WebAssembly, pinned), 45 rules with stable ids and severities by migration context, run by the wrapper on pending
+  migrations before Drizzle and as a CLI. On the 51 existing migrations: 0 ERROR, 181 WARNING, 168 INFO, every file parses. **Not closed**: the parser has no PL/pgSQL support, so DO blocks and function bodies are reported as
+  unanalysed (ERROR if ordinary, WARNING if declared privileged), dynamic SQL cannot be analysed at all, and a GRANT to a project role is only a WARNING. The exceptions file (`database/migrations/sql-lint-exceptions.json`, schema version 1) is now loaded and strictly validated by the wrapper and ships EMPTY (D-8D.1); the PL/pgSQL policy is fixed and tested. Details: [migration-integrity.md](../architecture/migration-integrity.md) §6e.
+- **Owner decision (D-7.2):** this risk is accepted temporarily; the wrapper must not be presented as complete protection against privileged or
+  RLS-affecting SQL.
+- **Acceptance (minimum scope of the linter delivery):** it evaluates `GRANT`, `REVOKE`, `ALTER … OWNER`, `DISABLE ROW LEVEL SECURITY`, `NO FORCE ROW
+  LEVEL SECURITY` (unrestored), `SECURITY DEFINER`, `ALTER DEFAULT PRIVILEGES`, `CREATE DATABASE` and `COPY … PROGRAM`, with a parser rather than a text
+  scan, an explicit exception list for the twelve existing migrations with windows, and tests that fail on each of the nine; it runs in the
+  history-manifest check and in `assessExecution`.
+- **Status:** `open`.
+
+### MIG-RLS-CONTRACT-NOT-ENFORCED *(new)*
+
+- **Description:** a data migration run by an identity subject to RLS over `FORCE ROW LEVEL SECURITY` tables changes nothing and
+  raises nothing, and is recorded as applied (observed; also described in `database.md`). Twelve applied migrations open a
+  `NO FORCE` window (`0029`, `0035`, `0037`, `0041`–`0047`, `0049`, `0050`); none uses `row_security_active` or a raising guard.
+  `0032` has no window. The contract in ADR-0041 (declared window, guards, set-based postcondition, explicit `FORCE`
+  restoration and verification, `lock_timeout` with `RESET`) is documented only; no linter or test enforces it in the repository.
+- **Evidence:** *static* — grep of `database/migrations/*.sql`. *runtime (synthetic, 16.15)* — contract scenarios R1–R10 and two
+  controls (a naive migration is recorded with zero effect; an unrestored `FORCE` is committed).
+- **Severity / risk:** P2 for future data migrations; the earlier twelve are applied and are not rewritten.
+- **Acceptance:** a linter flags `NO FORCE` without a verified `FORCE`, `DISABLE ROW LEVEL SECURITY`, `row_security` changes,
+  `SET SESSION AUTHORIZATION`, `SET/RESET ROLE` outside the manifest, top-level `BEGIN`/`COMMIT`, ownership changes, undeclared
+  privileged statements and DML on forced tables outside a declared window, with an explicit exception list for the twelve; R1–R10
+  run as integration tests.
+- **Progress (D-7.2):** `migration-runner/rls-window.ts` implements the checked window (identity, initial `FORCE` state, `row_security_active`, caller's
+  DML, independent postcondition, `FORCE` restored and verified, rollback on any failure) and is tested on 16.15, including the zero-effect trap. It is
+  not applied to any existing migration, and no linter enforces its use.
+- **Status:** `open`.
+
+### MIG-0032-HISTORY-INCONCLUSIVE *(new)*
+
+- **Description:** whether `0032_core_roles_manage_permission` (two `INSERT`s, no window) took effect in any particular existing
+  database was never verified. A synthetic run shows that, under an identity subject to RLS, it inserts zero `role_permissions`
+  rows without error; that observation does not show it happened anywhere real, and no existing database was inspected.
+- **Evidence:** *runtime (synthetic)* only. No claim about any real environment is made or implied.
+- **Status:** `to-verify` — would need an expressly approved, read-only inspection of the target database. Nothing is corrected.
+
+### MIG-OWNERSHIP-AUDIT *(new)*
+
+- **Description:** in a synthetic incremental run by a superuser login, four tables (`order_payments`,
+  `platform_support_sessions`, `tenant_admin_invitations`, `tenant_logos`) ended up owned by that login instead of `app_migrator`.
+  Whether any existing database has mixed owners is unknown. ADR-0041 forbids correcting ownership of an existing database before
+  an expressly approved audit; any fix would be a **new** migration, never an edit of an applied one.
+- **Audit scope (specification, not run):** owner of every relation, function, type and schema in `public`; the `drizzle` schema,
+  its table and sequence; extension objects excluded; expected owner `app_migrator` (and the bootstrap owner for `drizzle`).
+- **Independence:** a separate activity that does **not** block defining or building the new environment. It needs the owner's express
+  authorisation naming a concrete database, read-only access (catalog queries only, no tenant data) and its result is a report; no
+  existing database is marked as audited today, and none is connected to.
+- **Status:** `to-verify`.
+
+### MIG-EOL-HASH *(new)*
+
+- **Description:** the repository has no `.gitattributes` and a Windows clone with `core.autocrlf=true` (set on the development
+  machine) checks migrations out with CRLF line endings. That changes the raw SHA-256 Drizzle registers for each migration, and feeds
+  Drizzle different text (for example newlines inside dollar-quoted function bodies). The migration-integrity manifests hold
+  CRLF-normalised hashes and the registry is compared against raw/LF/CRLF variants, so the *checks* do not depend on the checkout; the
+  text Drizzle executes still can.
+- **Evidence:** *static* — no `.gitattributes`; `git ls-files --eol` shows the index and the working copy as LF on this machine;
+  `git config core.autocrlf` is `true`.
+- **Decision and change (D-7.2):** `database/migrations/** text eol=lf` added to a new `.gitattributes` (owner decision). It rewrites no history
+  and changed no existing file here (100 tracked files already `i/lf w/lf`).
+- **Severity / risk:** P3.
+- **Status:** `resolved-pending-verification` — not yet checked on a Linux checkout or a fresh Windows clone with `core.autocrlf=true`; the
+  canonical hash and the raw/LF/CRLF candidate set stay, because files can still travel outside git.
+
+### MIG-PG16-HARNESS *(new — decision pending)*
+
+- **Description:** the repository's real-PostgreSQL harness (`tools/pg-verify`) starts `embedded-postgres` **18.4.0-beta.17** on a
+  fixed default port, while the compose files pin `postgres:16-alpine`. ADR-0041 takes 16.15 as the reference; the repository has no
+  supported way to run its integration suite on 16.15. The 16.15 binaries used so far came from the EDB zip; their executables are
+  not Authenticode-signed (they are byte-identical to those installed by the signed, hash-matched EDB installer).
+- **Recommendation approved for design (2026-10-28):** two disposable paths kept **apart** from `tools/pg-verify` until parity is shown —
+  local `initdb`/`pg_ctl` from a configurable 16.15 `bin` directory, and a Docker image pinned to 16.15 for CI (the compose files use
+  the floating `postgres:16-alpine`). `embedded-postgres` is not a 16.15 source: the npm registry lists only betas for 16.x (newest
+  seen `16.14.0-beta.17`). Docker is not installed on the development machine. Nothing is built yet.
+- **Progress (D-7.2):** the local path exists: `apps/api/test/migration-harness/` (`MIGRATION_HARNESS_PG_BIN`) and `tools/pg-verify`
+  (`PG_VERIFY_PG_BIN` + `PG_VERIFY_PORT`) build a disposable cluster with `initdb`/`pg_ctl` in a new temp directory (found and fixed: `pg_ctl start`
+  with piped stdio never returns on Windows). The Docker image pinned to 16.15 for CI is **not** built.
+- **Progress (D-8E, 2026-10-29):** `.github/workflows/ci.yml` has two new jobs (`migration-harness`, `pg-verify`), each with its own container `postgres:16.15@sha256:1beaa308...c61c` on 127.0.0.1, a per-run masked password and a mandatory `server_version_num = 160015` check; the harness and pg-verify attach to it by URL (`MIGRATION_HARNESS_SERVER_URL`, `PG_VERIFY_SERVER_URL`) after proving it fresh and loopback. Validated locally against a disposable 16.15 server (harness 141/141, pg-verify 59 checks and 815 integration tests). **Not observed:** a real GitHub Actions run, Docker, Node 20. See migration-integrity.md 10b.
+- **Status:** `open` — implemented and statically/locally validated, **not yet observed on a real runner**; `tools/pg-verify` still defaults to the embedded 18.x beta when neither `PG_VERIFY_PG_BIN` nor `PG_VERIFY_SERVER_URL` is set.
+
+### MIG-R1-SNAPSHOT *(new — closed 2026-10-28)*
+
+- **Description:** the snapshot chain ended at `0048` while the schema (`price_approvals.approval_number`) had moved on with the
+  hand-written `0050`, so `db:generate` would have proposed a duplicate `ADD COLUMN`.
+- **Resolution:** (1) `database/migrations/meta/0050_snapshot.json` added (content generated by `drizzle-kit`, which named it
+  `0051_snapshot.json`; `prevId` = `id` of `0048`). (2) The unique constraint `price_approvals_tenant_approval_number_key
+  (tenant_id, approval_number)`, which the SQL of `0050` creates but neither the TypeScript schema nor the snapshots modelled
+  (unlike its siblings `orders_tenant_id_order_number_key` and `sales_returns_tenant_return_number_key`), was added to
+  `apps/api/src/database/schema/09-sales.ts` and to `0050_snapshot.json` **together** (a TypeScript-only change would make
+  `db:generate` propose a duplicate `ADD CONSTRAINT`). Journal, SQL files (including `0050`) and other snapshots untouched.
+- **Evidence:** *runtime* — on a temporary copy of the resulting state: the previous files unchanged by hash, no duplicated
+  snapshot `id`, `drizzle-kit generate` reports "No schema changes, nothing to migrate" and creates no file; `git diff --check`
+  clean. No database was involved.
+- **Application checks (2026-10-28, no database):** with the changed `09-sales.ts` in place, the full API unit suite passes (951 tests
+  in 80 files), `tsc --noEmit` (src and test projects) passes and `eslint .` is clean. Integration tests were **not** run for this
+  change.
+- **Status:** `closed-with-evidence` — **schema/snapshot synchronisation only**. Not covered by this closure: the integration suite
+  against a real database for the changed schema file, and everything under `MIG-IDENTITY-HISTORY`, which is unrelated to this item.
 
 ## E. UI/UX redesign — declared finished, not matched to the written spec
 
