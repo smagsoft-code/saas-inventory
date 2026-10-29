@@ -21,7 +21,8 @@
  * Usage: pnpm --filter @saas-inventory/pg-verify verify
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import EmbeddedPostgres from 'embedded-postgres';
 import postgres from 'postgres';
@@ -29,13 +30,28 @@ import postgres from 'postgres';
 // The disposable instance's port. Default 55432 (the original, unchanged); set PG_VERIFY_PORT to run
 // beside a live development database that already holds 55432 (never point this at it: the run
 // drops and recreates the database it starts).
-const PORT = Number(process.env['PG_VERIFY_PORT'] ?? 55432);
+// D-8E: PG_VERIFY_SERVER_URL attaches to a server somebody else started for THIS run (CI: a postgres:16.15@sha256:… container on
+// 127.0.0.1 with a random password). Then host/port/user/password come from that URL, nothing is started, stopped or deleted here, and
+// the server must be fresh (see startAttached).
+const SERVER_URL = process.env['PG_VERIFY_SERVER_URL'] ?? '';
+const ATTACHED = SERVER_URL !== '';
+const attachedUrl = ATTACHED ? new URL(SERVER_URL) : undefined;
+const PORT = attachedUrl !== undefined ? Number(attachedUrl.port === '' ? 5432 : attachedUrl.port) : Number(process.env['PG_VERIFY_PORT'] ?? 55432);
 // Optional space-separated vitest file filters (e.g. "test/http test/sales/sales-customers") so one
 // area can be verified without the whole suite. Unset = the complete suite (the default).
 const TEST_FILTER = (process.env['PG_VERIFY_TEST_FILTER'] ?? '').split(/\s+/).filter(Boolean);
-const SUPERUSER = 'postgres';
-const SUPERUSER_PASSWORD = 'verify-only-ephemeral-instance';
+const SUPERUSER = attachedUrl !== undefined ? decodeURIComponent(attachedUrl.username) : 'postgres';
+const SUPERUSER_PASSWORD = attachedUrl !== undefined ? decodeURIComponent(attachedUrl.password) : 'verify-only-ephemeral-instance';
 const DB_NAME = 'saas_inventory_verify';
+// ADR-0041: the migration wrapper runs here exactly as it would elsewhere — bootstrap first (it also
+// creates this limited login), then an incremental run as that login.
+const INCREMENTAL_LOGIN = 'pgverify_migrator';
+const INCREMENTAL_PASSWORD = 'verify-incremental-ephemeral-instance';
+// Optional: the `bin` directory of a PostgreSQL install (initdb/pg_ctl). When set, the disposable server is
+// built from it in a NEW temp directory (e.g. the 16.15 reference) instead of the embedded 18.x beta. PG_VERIFY_PORT
+// is then mandatory and must not be a protected port.
+const EXTERNAL_PG_BIN = process.env['PG_VERIFY_PG_BIN'] ?? '';
+const PROTECTED_PORTS = [5432, 55432, 55433, 55440];
 const APP_TENANT_PASSWORD = 'verify-app-tenant-ephemeral';
 const APP_PLATFORM_PASSWORD = 'verify-app-platform-ephemeral';
 const APP_PUBLIC_RESOLVER_PASSWORD = 'verify-app-public-resolver-ephemeral';
@@ -51,12 +67,107 @@ const APP_EVENT_PROCESSOR_PASSWORD = 'verify-app-event-processor-ephemeral';
 const DATA_DIR = path.resolve(process.cwd(), '.verify-pgdata');
 const API_DIR = path.resolve(process.cwd(), '../../apps/api');
 
-const MIGRATOR_URL = `postgresql://${SUPERUSER}:${SUPERUSER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
+const WRAPPER_BOOTSTRAP_ENV = {} as Record<string, string>; // filled below, after MIGRATOR_URL exists
+const WRAPPER_INCREMENTAL_ENV = {} as Record<string, string>;
+const MIGRATOR_URL = `postgresql://${encodeURIComponent(SUPERUSER)}:${encodeURIComponent(SUPERUSER_PASSWORD)}@127.0.0.1:${PORT}/${DB_NAME}`;
+const INCREMENTAL_URL = `postgresql://${INCREMENTAL_LOGIN}:${INCREMENTAL_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_TENANT_URL = `postgresql://app_tenant:${APP_TENANT_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_PLATFORM_URL = `postgresql://app_platform:${APP_PLATFORM_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_PUBLIC_RESOLVER_URL = `postgresql://app_public_resolver:${APP_PUBLIC_RESOLVER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_IMPORT_WORKER_URL = `postgresql://app_import_worker:${APP_IMPORT_WORKER_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
 const APP_EVENT_PROCESSOR_URL = `postgresql://app_event_processor:${APP_EVENT_PROCESSOR_PASSWORD}@127.0.0.1:${PORT}/${DB_NAME}`;
+
+Object.assign(WRAPPER_BOOTSTRAP_ENV, {
+  MIGRATOR_BOOTSTRAP_DATABASE_URL: MIGRATOR_URL,
+  MIGRATOR_EXPECTED_DATABASE: DB_NAME,
+  MIGRATOR_INCREMENTAL_LOGIN: INCREMENTAL_LOGIN,
+  MIGRATOR_INCREMENTAL_PASSWORD: INCREMENTAL_PASSWORD,
+});
+Object.assign(WRAPPER_INCREMENTAL_ENV, {
+  MIGRATOR_INCREMENTAL_DATABASE_URL: INCREMENTAL_URL,
+  MIGRATOR_INCREMENTAL_LOGIN: INCREMENTAL_LOGIN,
+  MIGRATOR_EXPECTED_DATABASE: DB_NAME,
+});
+
+interface DisposableServer {
+  stop(): Promise<void>;
+}
+
+async function startEmbedded(): Promise<DisposableServer> {
+  const embedded = new EmbeddedPostgres({
+    databaseDir: DATA_DIR,
+    port: PORT,
+    user: SUPERUSER,
+    password: SUPERUSER_PASSWORD,
+    persistent: false,
+  });
+  await embedded.initialise();
+  await embedded.start();
+  await embedded.createDatabase(DB_NAME);
+  return { stop: () => embedded.stop() };
+}
+
+/** initdb/pg_ctl from a named PostgreSQL install, in a new temp directory; stops and deletes only that. */
+async function startExternal(bin: string): Promise<DisposableServer> {
+  if (process.env['PG_VERIFY_PORT'] === undefined || PROTECTED_PORTS.includes(PORT)) {
+    throw new Error('PG_VERIFY_PG_BIN needs PG_VERIFY_PORT set to a free port that is not 5432, 55432, 55433 or 55440.');
+  }
+  const exe = (name: string) => path.join(bin, `${name}${process.platform === 'win32' ? '.exe' : ''}`);
+  const clean: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) if (!key.startsWith('PG') && value !== undefined) clean[key] = value;
+  const call = (name: string, args: string[]) => {
+    // pg_ctl start leaves the server holding inherited pipes: ignore stdio there (the server logs to -l).
+    const r = spawnSync(exe(name), args, { env: clean, encoding: 'utf8', windowsHide: true, ...(name === 'pg_ctl' ? { stdio: 'ignore' as const } : {}) });
+    if (r.status !== 0) throw new Error(`${name} failed: ${`${r.stdout ?? ''}${r.stderr ?? ''}`.slice(-400)}`);
+  };
+  const root = mkdtempSync(path.join(tmpdir(), 'saas-pgverify-'));
+  const data = path.join(root, 'data');
+  const pwFile = path.join(root, 'su.pw');
+  writeFileSync(pwFile, SUPERUSER_PASSWORD);
+  try {
+    call('initdb', ['-D', data, '-U', SUPERUSER, '-A', 'scram-sha-256', `--pwfile=${pwFile}`, '-E', 'UTF8', '--locale=C', '--no-sync']);
+  } finally {
+    rmSync(pwFile, { force: true });
+  }
+  call('pg_ctl', ['-D', data, '-o', `-p ${PORT} -c listen_addresses=127.0.0.1 -c fsync=off -c max_connections=100`, '-l', path.join(root, 'server.log'), '-w', '-t', '60', 'start']);
+  const admin = postgres(`postgresql://${SUPERUSER}:${SUPERUSER_PASSWORD}@127.0.0.1:${PORT}/postgres`, { max: 1 });
+  try {
+    await admin.unsafe(`CREATE DATABASE ${DB_NAME}`);
+  } finally {
+    await admin.end();
+  }
+  return {
+    stop: async () => {
+      spawnSync(exe('pg_ctl'), ['-D', data, '-m', 'immediate', '-w', '-t', '60', 'stop'], { env: clean, windowsHide: true });
+      rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+    },
+  };
+}
+
+/** An already-running server, accepted only if it is loopback, not a protected port, a superuser login and completely fresh. */
+async function startAttached(): Promise<DisposableServer> {
+  if (attachedUrl === undefined) throw new Error('PG_VERIFY_SERVER_URL is not set.');
+  if (!['postgres:', 'postgresql:'].includes(attachedUrl.protocol) || !['127.0.0.1', 'localhost'].includes(attachedUrl.hostname)) {
+    throw new Error('PG_VERIFY_SERVER_URL must be a postgres:// URL on 127.0.0.1/localhost.');
+  }
+  if (!Number.isInteger(PORT) || PROTECTED_PORTS.includes(PORT)) throw new Error('PG_VERIFY_SERVER_URL uses a protected or invalid port; refusing.');
+  if (SUPERUSER === '' || SUPERUSER_PASSWORD === '') throw new Error('PG_VERIFY_SERVER_URL needs a user and a password.');
+  const admin = postgres(`postgresql://${encodeURIComponent(SUPERUSER)}:${encodeURIComponent(SUPERUSER_PASSWORD)}@127.0.0.1:${PORT}/postgres`, { max: 1 });
+  try {
+    const su = await admin.unsafe<{ rolsuper: boolean }[]>('SELECT rolsuper FROM pg_roles WHERE rolname = current_user');
+    const dbs = await admin.unsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres'`);
+    const roles = await admin.unsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM pg_roles WHERE rolname !~ '^pg_' AND rolname <> current_user`);
+    const tables = await admin.unsafe<{ n: number }[]>(`SELECT count(*)::int AS n FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')`);
+    if (su[0]?.rolsuper !== true) throw new Error('The attached server login must be a superuser.');
+    if ((dbs[0]?.n ?? 1) !== 0 || (roles[0]?.n ?? 1) !== 0 || (tables[0]?.n ?? 1) !== 0) {
+      throw new Error('Refusing to run: the attached server is not fresh (it already has databases, roles or tables). pg-verify drops and creates databases and roles.');
+    }
+    await admin.unsafe(`CREATE DATABASE ${DB_NAME}`);
+  } finally {
+    await admin.end();
+  }
+  return { stop: async () => undefined };
+}
 
 let failures = 0;
 
@@ -101,19 +212,10 @@ function run(label: string, args: string[], env: Record<string, string>): void {
 }
 
 async function main(): Promise<void> {
-  if (existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true, force: true });
+  if (!ATTACHED && existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true, force: true });
 
-  section('1. Starting a REAL PostgreSQL instance (embedded-postgres, no Docker/mocks)');
-  const pg = new EmbeddedPostgres({
-    databaseDir: DATA_DIR,
-    port: PORT,
-    user: SUPERUSER,
-    password: SUPERUSER_PASSWORD,
-    persistent: false,
-  });
-  await pg.initialise();
-  await pg.start();
-  await pg.createDatabase(DB_NAME);
+  section(ATTACHED ? '1. Attaching to a REAL PostgreSQL server started for this run (fresh, loopback only)' : '1. Starting a REAL PostgreSQL instance (embedded-postgres, no Docker/mocks)');
+  const pg = ATTACHED ? await startAttached() : EXTERNAL_PG_BIN === '' ? await startEmbedded() : await startExternal(EXTERNAL_PG_BIN);
 
   try {
     {
@@ -131,20 +233,29 @@ async function main(): Promise<void> {
       console.log(`  current_database: ${db}`);
       console.log(`  current_user:     ${user}`);
       check('version() responded', version.includes('PostgreSQL'));
+      // D-8E: the exact version comes from the server itself (CI sets PG_VERIFY_EXPECTED_SERVER_VERSION_NUM=160015 for 16.15).
+      const expectedNum = process.env['PG_VERIFY_EXPECTED_SERVER_VERSION_NUM'];
+      if (expectedNum !== undefined && expectedNum !== '') {
+        const { server_version_num: num } = firstRowOrThrow(await sql<{ server_version_num: string }[]>`select current_setting('server_version_num') as server_version_num`, 'server_version_num');
+        console.log(`  server_version_num: ${num}`);
+        check(`server_version_num is exactly ${expectedNum}`, num === expectedNum);
+      }
       check('current_database() matches target db', db === DB_NAME);
       check('current_user is the bootstrap superuser', user === SUPERUSER);
       await sql.end();
     }
 
     section('2. Migrations from an EMPTY database');
-    run('db:migrate (from empty)', ['run', 'db:migrate'], { MIGRATOR_DATABASE_URL: MIGRATOR_URL });
+    // Bootstrap run: a new database; also creates the incremental login and narrows the Drizzle grants.
+    run('db:migrate (bootstrap, from empty)', ['run', 'db:migrate'], WRAPPER_BOOTSTRAP_ENV);
 
     section('3. Re-running migrations (must be a safe no-op, not corrupt/duplicate anything)');
-    run('db:migrate (second run)', ['run', 'db:migrate'], { MIGRATOR_DATABASE_URL: MIGRATOR_URL });
+    run('db:migrate (bootstrap, second run)', ['run', 'db:migrate'], WRAPPER_BOOTSTRAP_ENV);
+    run('db:migrate (incremental, as the limited login)', ['run', 'db:migrate'], WRAPPER_INCREMENTAL_ENV);
 
     section('4. Bootstrapping app_tenant / app_platform / app_public_resolver / app_import_worker / app_event_processor role passwords');
     run('db:bootstrap-dev-roles', ['run', 'db:bootstrap-dev-roles'], {
-      MIGRATOR_DATABASE_URL: MIGRATOR_URL,
+      MIGRATOR_BOOTSTRAP_DATABASE_URL: MIGRATOR_URL,
       APP_TENANT_PASSWORD,
       APP_PLATFORM_PASSWORD,
       APP_PUBLIC_RESOLVER_PASSWORD,
@@ -160,14 +271,14 @@ async function main(): Promise<void> {
 
     section('9. Running the demo seed against the real database (exercises app_tenant + RLS end to end)');
     run('db:seed', ['run', 'db:seed'], {
-      MIGRATOR_DATABASE_URL: MIGRATOR_URL,
+      MIGRATOR_BOOTSTRAP_DATABASE_URL: MIGRATOR_URL,
       DATABASE_URL: APP_TENANT_URL,
     });
     await verifySeedResult();
 
     section('10. Resetting and re-seeding the demo tenant (exercises the RLS-scoped DELETE path)');
     run('db:reset-demo', ['run', 'db:reset-demo'], {
-      MIGRATOR_DATABASE_URL: MIGRATOR_URL,
+      MIGRATOR_BOOTSTRAP_DATABASE_URL: MIGRATOR_URL,
       DATABASE_URL: APP_TENANT_URL,
     });
     await verifySeedResult();

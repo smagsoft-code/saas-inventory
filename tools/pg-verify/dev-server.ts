@@ -148,11 +148,23 @@ async function main(): Promise<void> {
   const fileEnv = parseEnvFile(envPath);
   const childEnv: NodeJS.ProcessEnv = { ...process.env, ...fileEnv };
 
-  const migratorUrl = new URL(fileEnv['MIGRATOR_DATABASE_URL'] ?? '');
+  // One contract for every migrator consumer: MIGRATOR_BOOTSTRAP_DATABASE_URL, or the deprecated MIGRATOR_DATABASE_URL; both is an error.
+  const bootstrapText = fileEnv['MIGRATOR_BOOTSTRAP_DATABASE_URL'] ?? '';
+  const legacyText = fileEnv['MIGRATOR_DATABASE_URL'] ?? '';
+  if (bootstrapText !== '' && legacyText !== '') {
+    throw new Error('Set MIGRATOR_BOOTSTRAP_DATABASE_URL or the deprecated MIGRATOR_DATABASE_URL in .env, not both.');
+  }
+  if (bootstrapText === '' && legacyText === '') {
+    throw new Error('Missing MIGRATOR_BOOTSTRAP_DATABASE_URL in .env (copy it from .env.example).');
+  }
+  const migratorUrl = new URL(bootstrapText !== '' ? bootstrapText : legacyText);
   const port = Number(migratorUrl.port);
   const superuser = decodeURIComponent(migratorUrl.username);
   const superuserPassword = decodeURIComponent(migratorUrl.password);
   const dbName = migratorUrl.pathname.replace(/^\//, '');
+  // This tool creates the database named in that URL itself, so it is the one safe place to default the wrapper's
+  // required MIGRATOR_EXPECTED_DATABASE to it; an explicit value in .env still wins (and is still checked).
+  if ((childEnv['MIGRATOR_EXPECTED_DATABASE'] ?? '') === '') childEnv['MIGRATOR_EXPECTED_DATABASE'] = dbName;
 
   section(`1. Starting a REAL PostgreSQL instance (embedded-postgres, no Docker) on port ${port}`);
   if (existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true, force: true });

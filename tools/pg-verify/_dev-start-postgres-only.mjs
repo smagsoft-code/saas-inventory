@@ -14,7 +14,8 @@ for (const line of readFileSync(path.join(ROOT, '.env'), 'utf8').split(/\r?\n/))
   const i = t.indexOf('=');
   if (i > 0) env[t.slice(0, i).trim()] = t.slice(i + 1).trim();
 }
-const u = new URL(env.MIGRATOR_DATABASE_URL);
+if (env.MIGRATOR_BOOTSTRAP_DATABASE_URL && env.MIGRATOR_DATABASE_URL) throw new Error('Set MIGRATOR_BOOTSTRAP_DATABASE_URL or the deprecated MIGRATOR_DATABASE_URL, not both.');
+const u = new URL(env.MIGRATOR_BOOTSTRAP_DATABASE_URL || env.MIGRATOR_DATABASE_URL);
 const pg = new EmbeddedPostgres({
   databaseDir: path.join(ROOT, 'scratchpad', '.dev-pgdata'),
   port: Number(u.port),
