@@ -4,9 +4,10 @@ import { DEFAULT_ROLE_TEMPLATE_NAMES, DEFAULT_ROLE_TEMPLATES } from './default-r
 /** The exact set inserted by database/migrations/0001_platform_tables.sql, 0014_core_admin_permissions.sql,
  * 0015_catalog_permissions.sql, 0016_inventory_locations_permissions.sql,
  * 0017_inventory_movements_permissions.sql, 0023_administration_permissions.sql,
- * 0026_sales_permissions.sql, 0027_sales_returns_permissions.sql, and 0032 (core.roles.manage) —
+ * 0026_sales_permissions.sql, 0027_sales_returns_permissions.sql, 0032 (core.roles.manage), and
+ * 0044_sales_orders_view_all_permission.sql (sales.orders.view_all) —
  * kept in sync by hand since migrations are the authoritative source and are never edited after
- * being applied. */
+ * being applied. Add every new permission code inserted by a later migration here. */
 const KNOWN_PERMISSION_CODES = new Set([
   'catalog.attributes.manage',
   'catalog.qr.manage',
@@ -48,6 +49,7 @@ const KNOWN_PERMISSION_CODES = new Set([
   'sales.orders.view',
   'sales.orders.create',
   'sales.orders.cancel',
+  'sales.orders.view_all',
   'sales.returns.view',
   'sales.returns.create',
 ]);

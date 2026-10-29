@@ -159,7 +159,8 @@ describe('ProductsMobileList', () => {
     expect(screen.queryByText('Vino')).not.toBeInTheDocument();
   });
 
-  it('offers "Generar QR" when the variant has none, and "Editar producto" to a manager', () => {
+  it('offers "Generar QR" when the variant has none, and "Editar producto" to a manager', async () => {
+    mockedFetch.mockResolvedValueOnce({ data: [] });
     renderList([row()], { canManage: true });
     fireEvent.click(screen.getByRole('button', { name: /APA-001/ }));
     expect(screen.getByRole('link', { name: 'Generar QR' })).toHaveAttribute('href', '/qr/new?productId=p1&variantId=v1');
