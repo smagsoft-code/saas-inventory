@@ -331,6 +331,8 @@ describe('ProductCartModal', () => {
       expect(mockedFetch).toHaveBeenCalledWith('/api/v1/cart/items/ci-1', { method: 'PATCH', body: { quantity: 3 } }),
     );
 
+    // The buttons stay disabled while the first PATCH is in flight (`busy`); wait for them before the second click.
+    await waitFor(() => expect(screen.getByRole('button', { name: /disminuir cantidad de sku-1/i })).toBeEnabled());
     mockedFetch.mockResolvedValueOnce({ ...CART_WITH_LINE, items: [{ ...CART_WITH_LINE.items[0]!, quantity: 1 }] });
     fireEvent.click(screen.getByRole('button', { name: /disminuir cantidad de sku-1/i }));
     await waitFor(() =>

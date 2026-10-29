@@ -104,7 +104,7 @@ describe('KardexExplorer', () => {
     await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith('/api/v1/inventory/movements', { query: { page: 1, pageSize: 20 } }));
     await waitFor(() => expect(mockedGetKardex).toHaveBeenCalledWith({ productVariantId: 'v1', locationId: 'loc-1' }));
     expect(await screen.findByText('Todos los movimientos')).toBeInTheDocument();
-    expect(screen.getByText('Ingreso de stock: Restock')).toBeInTheDocument(); // the Kardex row's own (richer) label
+    expect(await screen.findByText('Ingreso de stock: Restock')).toBeInTheDocument(); // the Kardex row's own (richer) label
     expect(screen.getByText('Producto')).toBeInTheDocument();
     expect(screen.getByText('Almacén')).toBeInTheDocument();
     expect(screen.getAllByText('Silla de Comedor').length).toBeGreaterThan(0); // the row's own Producto cell
@@ -135,7 +135,7 @@ describe('KardexExplorer', () => {
     renderExplorer(twoLocations);
     fireEvent.click(screen.getByRole('button', { name: 'Ver todos' }));
     await screen.findByText('Todos los movimientos');
-    const row = screen.getByText('Ingreso de stock: Restock').closest('tr')!;
+    const row = (await screen.findByText('Ingreso de stock: Restock')).closest('tr')!;
 
     // The variant has stock in both locations, but the clicked row already carries its own —
     // no "elige un almacén" prompt should ever appear.
