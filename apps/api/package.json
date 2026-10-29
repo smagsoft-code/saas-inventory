@@ -57,6 +57,7 @@
     "@saas-inventory/eslint-config": "workspace:*",
     "@saas-inventory/tsconfig": "workspace:*",
     "@swc/core": "^1.16.1",
+    "@types/node": "^22.10.0",
     "@types/pdfkit": "^0.17.6",
     "drizzle-kit": "^0.31.10",
     "tsx": "^4.23.12",

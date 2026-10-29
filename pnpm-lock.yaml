@@ -111,6 +111,9 @@ importers:
       '@swc/core':
         specifier: ^1.16.1
         version: 1.16.1
+      '@types/node':
+        specifier: ^22.10.0
+        version: 22.20.1
       '@types/pdfkit':
         specifier: ^0.17.6
         version: 0.17.6
@@ -125,10 +128,10 @@ importers:
         version: 5.9.3
       unplugin-swc:
         specifier: ^1.5.11
-        version: 1.5.11(@swc/core@1.16.1)(esbuild@0.28.2)(rollup@4.62.4)(vite@5.4.21(@types/node@26.2.0)(terser@5.50.0))(webpack@5.97.1(@swc/core@1.16.1)(esbuild@0.28.2))
+        version: 1.5.11(@swc/core@1.16.1)(esbuild@0.28.2)(rollup@4.62.4)(vite@5.4.21(@types/node@22.20.1)(terser@5.50.0))(webpack@5.97.1(@swc/core@1.16.1)(esbuild@0.28.2))
       vitest:
         specifier: ^2.1.0
-        version: 2.1.9(@types/node@26.2.0)(jsdom@25.0.1)(terser@5.50.0)
+        version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)(terser@5.50.0)
 
   apps/web:
     dependencies:
@@ -8903,12 +8906,12 @@ snapshots:
 
   universalify@2.0.1: {}
 
-  unplugin-swc@1.5.11(@swc/core@1.16.1)(esbuild@0.28.2)(rollup@4.62.4)(vite@5.4.21(@types/node@26.2.0)(terser@5.50.0))(webpack@5.97.1(@swc/core@1.16.1)(esbuild@0.28.2)):
+  unplugin-swc@1.5.11(@swc/core@1.16.1)(esbuild@0.28.2)(rollup@4.62.4)(vite@5.4.21(@types/node@22.20.1)(terser@5.50.0))(webpack@5.97.1(@swc/core@1.16.1)(esbuild@0.28.2)):
     dependencies:
       '@rollup/pluginutils': 5.4.0(rollup@4.62.4)
       '@swc/core': 1.16.1
       load-tsconfig: 0.2.5
-      unplugin: 3.3.0(esbuild@0.28.2)(rollup@4.62.4)(vite@5.4.21(@types/node@26.2.0)(terser@5.50.0))(webpack@5.97.1(@swc/core@1.16.1)(esbuild@0.28.2))
+      unplugin: 3.3.0(esbuild@0.28.2)(rollup@4.62.4)(vite@5.4.21(@types/node@22.20.1)(terser@5.50.0))(webpack@5.97.1(@swc/core@1.16.1)(esbuild@0.28.2))
     transitivePeerDependencies:
       - '@farmfe/core'
       - '@rspack/core'
@@ -8920,7 +8923,7 @@ snapshots:
       - vite
       - webpack
 
-  unplugin@3.3.0(esbuild@0.28.2)(rollup@4.62.4)(vite@5.4.21(@types/node@26.2.0)(terser@5.50.0))(webpack@5.97.1(@swc/core@1.16.1)(esbuild@0.28.2)):
+  unplugin@3.3.0(esbuild@0.28.2)(rollup@4.62.4)(vite@5.4.21(@types/node@22.20.1)(terser@5.50.0))(webpack@5.97.1(@swc/core@1.16.1)(esbuild@0.28.2)):
     dependencies:
       '@jridgewell/remapping': 2.3.5
       picomatch: 4.0.5
@@ -8928,7 +8931,7 @@ snapshots:
     optionalDependencies:
       esbuild: 0.28.2
       rollup: 4.62.4
-      vite: 5.4.21(@types/node@26.2.0)(terser@5.50.0)
+      vite: 5.4.21(@types/node@22.20.1)(terser@5.50.0)
       webpack: 5.97.1(@swc/core@1.16.1)(esbuild@0.28.2)
 
   unzipper@0.10.14:
