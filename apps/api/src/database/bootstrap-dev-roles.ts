@@ -1,4 +1,4 @@
-import { getOptionalEnvVar, getRequiredEnvVar } from '@saas-inventory/config';
+import { getBootstrapDatabaseUrl, getOptionalEnvVar, getRequiredEnvVar } from '@saas-inventory/config';
 import postgres from 'postgres';
 
 /**
@@ -18,7 +18,8 @@ import postgres from 'postgres';
  * this script doesn't fail on a fresh dev checkout that hasn't configured them yet.
  */
 async function main(): Promise<void> {
-  const migratorUrl = getRequiredEnvVar('MIGRATOR_DATABASE_URL');
+  // MIGRATOR_BOOTSTRAP_DATABASE_URL; the deprecated MIGRATOR_DATABASE_URL is still accepted (see getBootstrapDatabaseUrl).
+  const migratorUrl = getBootstrapDatabaseUrl();
   const sql = postgres(migratorUrl, { max: 1 });
 
   const rolePasswords: Array<[role: string, password: string]> = [

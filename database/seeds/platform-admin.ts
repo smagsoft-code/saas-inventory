@@ -13,7 +13,7 @@
  *
  * Usage:
  *   PLATFORM_ADMIN_EMAIL=root@example.com PLATFORM_ADMIN_PASSWORD=... \
- *     MIGRATOR_DATABASE_URL=... pnpm --filter @saas-inventory/database seed:platform-admin
+ *     APP_PLATFORM_DATABASE_URL=... pnpm --filter @saas-inventory/database seed:platform-admin
  */
 import * as argon2 from 'argon2';
 import { getOptionalEnvVar, getRequiredEnvVar } from '@saas-inventory/config';

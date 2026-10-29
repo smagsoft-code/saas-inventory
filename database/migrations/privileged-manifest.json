@@ -1,0 +1,15 @@
+{
+  "manifestVersion": 1,
+  "entries": [
+    {
+      "tag": "0000_extensions_and_roles",
+      "sha256": "85caa58f6ee0ae560dfe4273ab2cd36f00a27a06147f167f513a904ce6323eec",
+      "reason": "Creates the application roles (including the BYPASSRLS role app_platform), the pgcrypto extension and the grants on the drizzle schema, then SET ROLE app_migrator. Needs a superuser login."
+    },
+    {
+      "tag": "0019_import_worker_role",
+      "sha256": "3bedffe29812ff790d8216cfb3dc11a02406b7ba8e889e061f47f715fd768968",
+      "reason": "RESET ROLE to the session login to CREATE ROLE app_import_worker (when missing), then SET ROLE app_migrator. Needs CREATEROLE on the session login, which the incremental login must not have."
+    }
+  ]
+}

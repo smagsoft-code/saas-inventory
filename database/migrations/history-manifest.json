@@ -1,0 +1,415 @@
+{
+  "manifestVersion": 2,
+  "hashAlgorithm": "sha256",
+  "hashInput": "SHA-256 (hex) of the .sql file text with CRLF normalised to LF (so it does not depend on the git checkout line endings); for LF files it equals the hash drizzle-orm registers in drizzle.__drizzle_migrations",
+  "entries": [
+    {
+      "idx": 0,
+      "tag": "0000_extensions_and_roles",
+      "when": 1787172914344,
+      "sha256": "85caa58f6ee0ae560dfe4273ab2cd36f00a27a06147f167f513a904ce6323eec",
+      "classification": "privileged",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 1,
+      "tag": "0001_platform_tables",
+      "when": 1787173012119,
+      "sha256": "1448510f6b7029ccb0ad7b414ac5c38c2b144aa20c65fc2fc39b3fe1b921e65c",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 2,
+      "tag": "0002_core_rbac_audit",
+      "when": 1787173072687,
+      "sha256": "e553c8af9a279392ad8b5f98d366ceeb66cd7475a606a47a796be835847d7656",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 3,
+      "tag": "0003_catalog",
+      "when": 1787173178651,
+      "sha256": "b45e04dffdb8a4b24b0287c81dc8864f929d67bf5f12e5b867b5f8113edf7ca7",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 4,
+      "tag": "0004_qr_codes",
+      "when": 1787173228894,
+      "sha256": "42f75418a27871021d9ed0d5c9499950d98db29ce77ded0ab737bd0d6a6c6005",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 5,
+      "tag": "0005_inventory",
+      "when": 1787173249793,
+      "sha256": "f6f70cf8146f6056d7f5ba6bd14435503b871af2eecb59200706d75eaa3eba34",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 6,
+      "tag": "0006_location_authorization",
+      "when": 1787173280441,
+      "sha256": "800077457eddb4bdf70181d049c246f6528be28e6f40063d813e2366bee4d918",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 7,
+      "tag": "0007_inventory_transfers",
+      "when": 1787173300476,
+      "sha256": "c44c867b2a95b5e59bdfc6f91a4e14bd57ccee474f85cd84fe2a2f4bfa69f7c0",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 8,
+      "tag": "0008_import_pipeline",
+      "when": 1787173327218,
+      "sha256": "4c000852bbda96c6986553d59d7202d567ca08d2ee244182bcaa9f8273174dd2",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 9,
+      "tag": "0009_sales",
+      "when": 1787173350485,
+      "sha256": "940c111038ba1a2f187a1267f233fd4293d951f52bfa2d1b2d035b262d157ec8",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 10,
+      "tag": "0010_notifications_outbox",
+      "when": 1787173382984,
+      "sha256": "8a14eb4145f55366fcaeb413b6e822b2f9386e3e844be951ef550c815f82b023",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 11,
+      "tag": "0011_idempotency",
+      "when": 1787173402900,
+      "sha256": "7f326436631cb6430738a1f9e1c97b2a895480045b33fc216e95ec8544ab5e5e",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 12,
+      "tag": "0012_fix_tenant_isolation_nullif",
+      "when": 1787177033474,
+      "sha256": "2ff7802fe95da2769fe3010f52a9207a88312986170dbb81e28293d8b89fa9ce",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 13,
+      "tag": "0013_auth_refresh_tokens",
+      "when": 1787235931892,
+      "sha256": "f6edd4fe673970072c3d8c64efcd904dd99d7c30b910ca14fa9ff32386de7005",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 14,
+      "tag": "0014_core_admin_permissions",
+      "when": 1787242342325,
+      "sha256": "264fd2e9d26248bbae87d9bcb7a0b1b3cc96dca517b225d375764eb5ff17f070",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 15,
+      "tag": "0015_catalog_permissions",
+      "when": 1787256486559,
+      "sha256": "a450d4eec00b39610e22031309cd6f6417f1c799bdf3a14ab829a750eb87d3f4",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 16,
+      "tag": "0016_inventory_locations_permissions",
+      "when": 1787262140925,
+      "sha256": "650fdc3555159f020b09a95bdf3f83981bc483ba3a4e0a0d913e89ff682f1a34",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 17,
+      "tag": "0017_inventory_movements_permissions",
+      "when": 1787270000000,
+      "sha256": "4276033a8f470144cdcd0a8199bed49c65550453b8aa5903ce997710c14c146d",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 18,
+      "tag": "0018_qr_public_resolver_rls",
+      "when": 1787621101704,
+      "sha256": "a6a104270cb8c24fce0315809e0016447fef382512b11c6e0e32ebe5b094cca8",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 19,
+      "tag": "0019_import_worker_role",
+      "when": 1787664006277,
+      "sha256": "3bedffe29812ff790d8216cfb3dc11a02406b7ba8e889e061f47f715fd768968",
+      "classification": "privileged",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 20,
+      "tag": "0020_import_worker_claim_columns",
+      "when": 1787667637573,
+      "sha256": "d2e8f954ec8ef00c11b7ee51dad2fc66a495ca4c223bfea3b5e0ce47e11eba3d",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 21,
+      "tag": "0021_import_jobs_claimable_index",
+      "when": 1787667660047,
+      "sha256": "41af80d7799e4de9e24c5d80b31988136d9089fa6ea943240fbbb3db243e6eea",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 22,
+      "tag": "0022_administration_tenant_settings",
+      "when": 1787692635395,
+      "sha256": "8aafb6aa14c73a2e51a4d255b4106e8bee00b30352378d6b12366678c12ef57a",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 23,
+      "tag": "0023_administration_permissions",
+      "when": 1787692689959,
+      "sha256": "dcb057344004f24356b8ba29a82351e6b95bc567a22604845a38a9ac4181468d",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 24,
+      "tag": "0024_tenant_settings_composite_key",
+      "when": 1787693683879,
+      "sha256": "f94bca7b048c3a7152310a2b38d4ba2f21a192f0085e463aff9d4912b6e59fb2",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 25,
+      "tag": "0025_import_worker_tenant_status_grant",
+      "when": 1787701008313,
+      "sha256": "e02c6f3584696bf17284aa72a06e6bd07700afc56c82508079b35c3d76fd003c",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 26,
+      "tag": "0026_sales_permissions",
+      "when": 1787708767037,
+      "sha256": "0f19232fb4988daf5ed7762f2a14e5f66e97782dda4c898eea8f50701ac0283e",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 27,
+      "tag": "0027_sales_returns_permissions",
+      "when": 1787754604206,
+      "sha256": "f03617257e687067992d4b8efeba51aebc23f259427338b4179259154ec4631d",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 28,
+      "tag": "0028_global_identity_memberships",
+      "when": 1788277159423,
+      "sha256": "763cc0b6165c3e94bcd2dad3a6b55398f9b5488c97e767eb4ba4cb4e2f2be23a",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 29,
+      "tag": "0029_backfill_identities",
+      "when": 1788277220116,
+      "sha256": "5eabf191dd956a1317e35a37f4f8d7ccc1c13d19ae08be7942b1dab4649b677a",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 30,
+      "tag": "0030_inventory_movements_occurred_at_index",
+      "when": 1788555667143,
+      "sha256": "635108e311bbca3b044123f892410996e926c47cdc3249c889e76cc773a5b7c6",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 31,
+      "tag": "0031_dapper_overlord",
+      "when": 1789529434979,
+      "sha256": "58d096da5d6a74f78f2792d175f4493b0d51eaa8ee6d1e8c872916abb6c52930",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 32,
+      "tag": "0032_core_roles_manage_permission",
+      "when": 1790006292917,
+      "sha256": "d09d6ffbd2daf4514a56d84015f597717c126cf77de0ef5bec8daecb324cca4e",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 33,
+      "tag": "0033_platform_support_onboarding",
+      "when": 1790043211329,
+      "sha256": "92fca1fc463a7bfe28293d21fb0f90152ae567b63a092c4206462f0a6c770271",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 34,
+      "tag": "0034_inventory_movements_unit_cost",
+      "when": 1790125661832,
+      "sha256": "d1aae29ba30a85259f2943e00239ec0b22c81461cb5b729564d3fb9e0b6cda20",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 35,
+      "tag": "0035_inventory_transfers_code",
+      "when": 1790210297609,
+      "sha256": "234d275821b53c7f87874ab4b354d2d8b7d111e71d96316eb24ce6b4c0c0f72a",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 36,
+      "tag": "0036_tenant_settings_transfer_workflow",
+      "when": 1790213928853,
+      "sha256": "0c77bcc411e955d04b5eb8bf342b64378e003aa1413b3ade865fe4b0c2da5631",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 37,
+      "tag": "0037_customers_redesign",
+      "when": 1790865572647,
+      "sha256": "21c8e7b495c06703e0dd1922ecb338bd905e9aba165a01a4fe5a11932d60eb62",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 38,
+      "tag": "0038_price_approvals_base_price_at_request",
+      "when": 1791253729731,
+      "sha256": "88e3a8ede60bd7b41ccbaab0db84853013998f7afebec9b4ec2775d6f3c53ac6",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 39,
+      "tag": "0039_order_payments",
+      "when": 1791427838098,
+      "sha256": "334024643085773ae358b1a18998409850d0cf5b7daa7d7113ba219d6ef6c2c6",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 40,
+      "tag": "0040_order_items_price_edit_grant",
+      "when": 1791490045742,
+      "sha256": "e309c3fa654532f84d21f3fc5f0a014f72c5757f262254c4cf92fe26b115c1d2",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 41,
+      "tag": "0041_sales_returns_return_number",
+      "when": 1791953637686,
+      "sha256": "9bdcc82a090f764947cd1fd7216dbe289a1b38e437f9bf06f38964b1e6b4db4a",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 42,
+      "tag": "0042_categories_code",
+      "when": 1792030296700,
+      "sha256": "444396c7b4352c0da423f4e7b7e061ba2e271834b891ad9a1f114fa07344242a",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 43,
+      "tag": "0043_uppercase_product_category_names",
+      "when": 1792032813412,
+      "sha256": "41cd149683a437c738a06e1d41979f53f2c946693919bc7ee84628816bb567ff",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 44,
+      "tag": "0044_sales_orders_view_all_permission",
+      "when": 1792705598314,
+      "sha256": "77a573240b9e0be1abb96b8fc3d10969082532ec8d68bb383a8c4396f4f0fb47",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 45,
+      "tag": "0045_activate_imported_draft_products",
+      "when": 1792724131174,
+      "sha256": "cf6c8f35c0dd7c5f91325922679a4f68d222a213b6faa6866d9ba8ca710a06b2",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 46,
+      "tag": "0046_remove_product_draft_status",
+      "when": 1792724744479,
+      "sha256": "bcfd6b8af7b8b531e02588477a7c5a960242a538ee3d13b12382f94c0eb72431",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 47,
+      "tag": "0047_backfill_confirmed_order_dates",
+      "when": 1792800000000,
+      "sha256": "c549825aa63a7d5acb2902d89d620a62b0018ed185e30bab5f4d12fcf76c229a",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 48,
+      "tag": "0048_tenant_logos",
+      "when": 1792800100000,
+      "sha256": "d2e2aca1d65711f3e168dee138751ae8e2850ad1571c4e49aa692014ae4db434",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 49,
+      "tag": "0049_backfill_admin_pricing_permissions",
+      "when": 1792800200000,
+      "sha256": "5aef36fdfcaaa78719f6ae87cbf093c3002d427cb92728e3d7eb00dfffb4d7a3",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 50,
+      "tag": "0050_price_approval_number",
+      "when": 1792800300000,
+      "sha256": "3169b316c1c9895e9e3111ffd117435084d7dee595c14a6a6d44fc821a121e2c",
+      "classification": "ordinary",
+      "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    }
+  ]
+}

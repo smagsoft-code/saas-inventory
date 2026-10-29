@@ -277,6 +277,7 @@ export const priceApprovals = pgTable('price_approvals', {
     foreignColumns: [users.tenantId, users.id],
   }).onDelete('restrict'),
   unique('price_approvals_tenant_id_id_key').on(t.tenantId, t.id),
+  unique('price_approvals_tenant_approval_number_key').on(t.tenantId, t.approvalNumber),
   uniqueIndex('price_approvals_tenant_pending_item_key').on(t.tenantId, t.orderItemId).where(sql`${t.status} = 'pending'`),
   check('price_approvals_requested_price_check', sql`${t.requestedPrice} >= 0`),
   check('price_approvals_min_price_at_request_check', sql`${t.minPriceAtRequest} >= 0`),

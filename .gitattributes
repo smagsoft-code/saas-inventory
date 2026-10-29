@@ -1,0 +1,3 @@
+# Migration SQL must be byte-identical on every checkout: Drizzle hashes the file text (ADR-0041).
+# The repository history is not rewritten; this only governs how git writes these files from now on.
+database/migrations/** text eol=lf

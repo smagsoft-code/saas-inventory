@@ -32,7 +32,7 @@
  *       narrow, and consciously accepted trade-off, not a silent one.
  */
 import { eq } from 'drizzle-orm';
-import { getRequiredEnvVar } from '@saas-inventory/config';
+import { getBootstrapDatabaseUrl } from '@saas-inventory/config';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { closePostgresClient } from '../../apps/api/src/database/client';
@@ -46,7 +46,7 @@ import { seedDemoTenant } from '../seeds/demo-tenant';
 const DEMO_TENANT_SLUG = 'demo';
 
 async function resolveDemoTenantId(): Promise<string | undefined> {
-  const migratorClient = postgres(getRequiredEnvVar('MIGRATOR_DATABASE_URL'), { max: 1 });
+  const migratorClient = postgres(getBootstrapDatabaseUrl(), { max: 1 });
   try {
     const db = drizzle(migratorClient);
     const [row] = await db.select({ id: tenants.id }).from(tenants).where(eq(tenants.slug, DEMO_TENANT_SLUG));
@@ -56,11 +56,11 @@ async function resolveDemoTenantId(): Promise<string | undefined> {
   }
 }
 
-/** See the file header for why this runs as app_migrator (MIGRATOR_DATABASE_URL) rather than
+/** See the file header for why this runs as app_migrator (MIGRATOR_BOOTSTRAP_DATABASE_URL) rather than
  * app_tenant + withTenantTransaction() — app_tenant lacks DELETE on several tables in this list
  * by design. Every statement stays explicitly `WHERE tenant_id = tenantId` regardless. */
 async function deleteAllTenantRows(tenantId: string): Promise<void> {
-  const migratorClient = postgres(getRequiredEnvVar('MIGRATOR_DATABASE_URL'), { max: 1 });
+  const migratorClient = postgres(getBootstrapDatabaseUrl(), { max: 1 });
   try {
     const db = drizzle(migratorClient);
     await db.transaction(async (tx) => {

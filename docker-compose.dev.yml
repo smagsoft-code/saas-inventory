@@ -76,9 +76,13 @@ services:
       # by the one-time `pnpm --filter @saas-inventory/api db:bootstrap-dev-roles` step (see
       # database/migrations/README.md), never by a migration file — see CLAUDE.md §7.4.
       DATABASE_URL: postgresql://app_tenant:${APP_TENANT_PASSWORD:?set APP_TENANT_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-saas_inventory}
-      # Bootstrap/superuser connection — used only by `db:generate`/`db:migrate`/`db:bootstrap-dev-roles`,
+      # Bootstrap/superuser connection — used only by `db:migrate`/`db:bootstrap-dev-roles` and the seeds,
       # never by the running API process (database.md#migration-strategy).
-      MIGRATOR_DATABASE_URL: postgresql://${POSTGRES_USER:-saas_inventory}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-saas_inventory}
+      MIGRATOR_BOOTSTRAP_DATABASE_URL: postgresql://${POSTGRES_USER:-saas_inventory}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-saas_inventory}
+      # Required by the migration wrapper (ADR-0041): the database a run must be connected to. Every migrator
+      # consumer reads MIGRATOR_BOOTSTRAP_DATABASE_URL; the old name MIGRATOR_DATABASE_URL is a deprecated,
+      # bootstrap-only alias and must not be set together with it.
+      MIGRATOR_EXPECTED_DATABASE: ${POSTGRES_DB:-saas_inventory}
       # app_platform — BYPASSRLS, used only for the narrow administrative operations documented in
       # apps/api/src/database/platform-client.ts (Prompt 04). Password set by the same
       # db:bootstrap-dev-roles step as app_tenant's, from APP_PLATFORM_PASSWORD.

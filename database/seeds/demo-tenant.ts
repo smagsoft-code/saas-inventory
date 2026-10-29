@@ -18,7 +18,7 @@
  * database.md#seed-and-demo-tenant).
  */
 import { randomBytes } from 'node:crypto';
-import { getRequiredEnvVar } from '@saas-inventory/config';
+import { getBootstrapDatabaseUrl } from '@saas-inventory/config';
 import { generateId } from '@saas-inventory/shared';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/postgres-js';
@@ -81,7 +81,7 @@ const schema = {
 const DEMO_TENANT_SLUG = 'demo';
 
 async function upsertDemoTenant(): Promise<string> {
-  const migratorClient = postgres(getRequiredEnvVar('MIGRATOR_DATABASE_URL'), { max: 1 });
+  const migratorClient = postgres(getBootstrapDatabaseUrl(), { max: 1 });
   try {
     const db = drizzle(migratorClient, { schema });
     const [existing] = await db

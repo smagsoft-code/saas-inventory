@@ -34,7 +34,9 @@ export default defineConfig({
   ],
   out: '../../database/migrations',
   dbCredentials: {
-    url: getOptionalEnvVar('MIGRATOR_DATABASE_URL', 'postgresql://unused:unused@localhost:5432/unused'),
+    // `generate` never connects; this is a placeholder. `drizzle-kit migrate`/`push` must NOT be used to apply
+    // migrations: they would bypass the integrity wrapper (ADR-0041). Use `pnpm --filter @saas-inventory/api db:migrate`.
+    url: getOptionalEnvVar('MIGRATOR_BOOTSTRAP_DATABASE_URL', getOptionalEnvVar('MIGRATOR_DATABASE_URL', 'postgresql://unused:unused@localhost:5432/unused')),
   },
   verbose: true,
   strict: true,

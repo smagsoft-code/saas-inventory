@@ -80,6 +80,9 @@ importers:
       fastify:
         specifier: ^4.28.1
         version: 4.28.1
+      libpg-query:
+        specifier: 16.8.1
+        version: 16.8.1
       pdfkit:
         specifier: ^0.20.2
         version: 0.20.2
@@ -1672,6 +1675,9 @@ packages:
     resolution: {integrity: sha512-um0xL3fO7Mf4fDxcqx9KryrB7zgRM5JSlvGN5AGkP6JLM5XEKyjeAiPbNxdXVXQ16isuAhYpvP88NgL2BGd6aA==}
     engines: {node: '>=8.0.0', npm: '>=5.0.0'}
     hasBin: true
+
+  '@pgsql/types@16.1.2':
+    resolution: {integrity: sha512-mrZjHMCUEm3x6dEPImmTG8cKYEpdXEh2eUvJuXCX3GuRvrINnFvzUaeL2u2FRTPUpxwUEjUEhg2dooC650FeNQ==}
 
   '@phc/format@1.0.0':
     resolution: {integrity: sha512-m7X9U6BG2+J+R1lSOdCiITLLrxm+cWlNI3HUFA92oLO77ObGNzaKdh8pMLqdZcshtkKuV84olNNXDfMc4FezBQ==}
@@ -3409,6 +3415,9 @@ packages:
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
     engines: {node: '>= 0.8.0'}
+
+  libpg-query@16.8.1:
+    resolution: {integrity: sha512-EEbNAA2PLiG/uiUDRvKtDfMSNxiHHDC8cYm8yh7TBxPd6QEPeBWiMIIRJN7VdO+OOOdPlTcsMCmWOQP8JFkjLQ==}
 
   libphonenumber-js@1.13.11:
     resolution: {integrity: sha512-ETER2kMaIFTI/Nh1a8Gk03dUF/SL0VZqtI+CcVHZxp5WIHYwNS7S+uiYZDYCvLy3lOR4/DAD5jf0h5WkePPpqg==}
@@ -5981,6 +5990,8 @@ snapshots:
     transitivePeerDependencies:
       - encoding
 
+  '@pgsql/types@16.1.2': {}
+
   '@phc/format@1.0.0': {}
 
   '@pinojs/redact@0.4.0': {}
@@ -7833,6 +7844,10 @@ snapshots:
     dependencies:
       prelude-ls: 1.2.1
       type-check: 0.4.0
+
+  libpg-query@16.8.1:
+    dependencies:
+      '@pgsql/types': 16.1.2
 
   libphonenumber-js@1.13.11: {}
 
