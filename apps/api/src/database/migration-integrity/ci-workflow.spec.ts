@@ -105,7 +105,9 @@ describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
   it('uploads diagnostics only on failure and only the container log and state (no environment, no URL)', () => {
     for (const name of ['migration-harness', 'pg-verify']) {
       const text = job(name);
-      expect(text).toMatch(/if: failure\(\)\n\s+uses: actions\/upload-artifact@v4/);
+      // `|| cancelled()`: a hung step that is cancelled or timed out must still leave its diagnostics (D-8E.14).
+      expect(text).toMatch(/if: failure\(\) \|\| cancelled\(\)\n\s+uses: actions\/upload-artifact@v4/);
+      expect(text).toMatch(/- name: Collect secret-free diagnostics\n\s+if: failure\(\) \|\| cancelled\(\)/);
       expect(text).toContain('docker logs');
       expect(text).not.toMatch(/\benv\b\s*>|printenv|set \+x|\$\{URL\}.*diagnostics/);
     }

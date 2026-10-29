@@ -195,14 +195,28 @@ function check(label: string, condition: boolean, detail?: string): void {
   }
 }
 
-function run(label: string, args: string[], env: Record<string, string>): void {
+/** A step that does not return within its time budget is a FAILURE that aborts the run (D-8E.14). Without it a hung child (seen in CI
+ * after `db:reset-demo` printed its last line) stalls the whole job until the CI timeout cancels it, and cancelled jobs skip the
+ * failure-only diagnostics. Override the default with PG_VERIFY_STEP_TIMEOUT_MINUTES. */
+const STEP_TIMEOUT_MINUTES = Number(process.env['PG_VERIFY_STEP_TIMEOUT_MINUTES'] ?? '15');
+const INTEGRATION_TIMEOUT_MINUTES = Number(process.env['PG_VERIFY_INTEGRATION_TIMEOUT_MINUTES'] ?? '60');
+
+function run(label: string, args: string[], env: Record<string, string>, timeoutMinutes: number = STEP_TIMEOUT_MINUTES): void {
   console.log(`\n--- ${label} ---`);
   const result = spawnSync('pnpm', args, {
     cwd: API_DIR,
     stdio: 'inherit',
     env: { ...process.env, ...env },
     shell: true,
+    timeout: timeoutMinutes * 60_000,
+    killSignal: 'SIGKILL',
   });
+  const timedOut = (result.error as NodeJS.ErrnoException | undefined)?.code === 'ETIMEDOUT';
+  if (timedOut) {
+    failures += 1;
+    console.log(`  [FAIL] "${label}" did not finish within ${String(timeoutMinutes)} minutes and was killed (the step hangs; later steps are skipped)`);
+    throw new Error(`Step "${label}" timed out after ${String(timeoutMinutes)} minutes.`);
+  }
   if (result.status !== 0) {
     failures += 1;
     console.log(`  [FAIL] "${label}" exited with status ${String(result.status)}`);
@@ -280,6 +294,8 @@ async function main(): Promise<void> {
     run('db:reset-demo', ['run', 'db:reset-demo'], {
       MIGRATOR_BOOTSTRAP_DATABASE_URL: MIGRATOR_URL,
       DATABASE_URL: APP_TENANT_URL,
+      // Diagnostic (D-8E.14): if the script is still alive after it finished, it prints Node's active resources.
+      RESET_DEMO_DEBUG_ACTIVE_RESOURCES: '1',
     });
     await verifySeedResult();
 
@@ -311,8 +327,8 @@ async function main(): Promise<void> {
     // migration SQL over the whole shared database and deadlock with parallel files) one at a time.
     // With a filter, a phase with no matching file is not an error.
     const noTests = TEST_FILTER.length > 0 ? ['--passWithNoTests'] : [];
-    run('test:integration', ['run', 'test:integration', ...TEST_FILTER, ...noTests], integrationEnv);
-    run('test:integration:serial', ['run', 'test:integration:serial', ...TEST_FILTER, ...noTests], integrationEnv);
+    run('test:integration', ['run', 'test:integration', ...TEST_FILTER, ...noTests], integrationEnv, INTEGRATION_TIMEOUT_MINUTES);
+    run('test:integration:serial', ['run', 'test:integration:serial', ...TEST_FILTER, ...noTests], integrationEnv, INTEGRATION_TIMEOUT_MINUTES);
   } finally {
     section('Stopping PostgreSQL (data directory is wiped — persistent: false)');
     await pg.stop();

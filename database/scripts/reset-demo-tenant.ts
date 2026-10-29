@@ -95,4 +95,14 @@ resetDemoTenant()
     console.error('Demo tenant reset failed:', error);
     process.exitCode = 1;
   })
-  .finally(() => closePostgresClient());
+  .finally(() => {
+    // Diagnostic (D-8E.14, set by tools/pg-verify only): the process was seen to stay alive in CI after printing its last line.
+    // The timer is unref'd, so it fires only if something else is still keeping the process alive; the first line proves whether
+    // closePostgresClient() was reached and the second whether it returned.
+    if (process.env['RESET_DEMO_DEBUG_ACTIVE_RESOURCES'] === '1') {
+      console.error('[debug] reset-demo: closing the app_tenant client');
+      setTimeout(() => console.error('[debug] reset-demo: still alive 15 s later; active resources:', process.getActiveResourcesInfo()), 15_000).unref();
+      return closePostgresClient().then(() => console.error('[debug] reset-demo: closePostgresClient() returned'));
+    }
+    return closePostgresClient();
+  });

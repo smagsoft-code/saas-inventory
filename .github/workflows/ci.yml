@@ -133,14 +133,14 @@ jobs:
         run: git diff --check HEAD~1 HEAD
 
       - name: Collect secret-free diagnostics
-        if: failure()
+        if: failure() || cancelled()
         run: |
           mkdir -p diagnostics
           docker logs "${CONTAINER_NAME}" 2>&1 | tail -n 300 > diagnostics/postgres-container.log || true
           docker inspect --format '{{.Config.Image}} {{.State.Status}}' "${CONTAINER_NAME}" > diagnostics/container-state.txt 2>&1 || true
 
       - name: Upload diagnostics
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: migration-harness-diagnostics
@@ -210,13 +210,13 @@ jobs:
         run: pnpm --filter @saas-inventory/pg-verify verify
 
       - name: Collect secret-free diagnostics
-        if: failure()
+        if: failure() || cancelled()
         run: |
           mkdir -p diagnostics
           docker logs "${CONTAINER_NAME}" 2>&1 | tail -n 300 > diagnostics/postgres-container.log || true
 
       - name: Upload diagnostics
-        if: failure()
+        if: failure() || cancelled()
         uses: actions/upload-artifact@v4
         with:
           name: pg-verify-diagnostics
