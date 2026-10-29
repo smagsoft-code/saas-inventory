@@ -5,6 +5,12 @@ on:
   push:
     branches: [main, develop]
 
+permissions:
+  contents: read
+
+# D-8E (ADR-0041): the migration-integrity jobs below run against PostgreSQL 16.15, pinned by digest. The image is the OCI index digest of
+# `postgres:16.15`; whichever platform manifest the runner pulls, the job checks `server_version_num = 160015` on the running server itself.
+# To bump: change POSTGRES_IMAGE in BOTH jobs and docs/architecture/migration-integrity.md (a spec test fails if they differ or use a tag alone).
 jobs:
   ci:
     runs-on: ubuntu-latest
@@ -35,3 +41,189 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  # Static checks, unit tests (migration integrity + SQL/RLS linter) and the full wrapper harness on PostgreSQL 16.15.
+  migration-harness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      POSTGRES_IMAGE: postgres:16.15@sha256:1beaa3084eee2676f20a9cd9928f0bf2c5bf674f8e49f81017912183d377c61c
+      EXPECTED_SERVER_VERSION_NUM: '160015'
+      CONTAINER_NAME: saas-mig-harness-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      # 1. reproducible install
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Tool versions
+        run: |
+          echo "node $(node --version)"
+          echo "pnpm $(pnpm --version)"
+          node -e "console.log('libpg-query ' + require(require.resolve('libpg-query/package.json', { paths: ['apps/api'] })).version)"
+
+      # 2. the PostgreSQL server: fresh container, random CI-only password, loopback only, ephemeral host port
+      - name: Start PostgreSQL 16.15 (disposable container)
+        run: |
+          PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::${PASSWORD}"
+          docker run -d --rm --name "${CONTAINER_NAME}" \
+            -e POSTGRES_PASSWORD="${PASSWORD}" \
+            -p 127.0.0.1::5432 \
+            "${POSTGRES_IMAGE}" -c fsync=off -c max_connections=100 >/dev/null
+          for i in $(seq 1 60); do
+            docker exec "${CONTAINER_NAME}" pg_isready -U postgres -h 127.0.0.1 >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec "${CONTAINER_NAME}" pg_isready -U postgres -h 127.0.0.1
+          PORT="$(docker port "${CONTAINER_NAME}" 5432/tcp | head -n1 | sed 's/.*://')"
+          case "${PORT}" in 5432|55432|55433|55440) echo "refusing protected port ${PORT}"; exit 1;; esac
+          URL="postgresql://postgres:${PASSWORD}@127.0.0.1:${PORT}/postgres"
+          echo "::add-mask::${URL}"
+          echo "MIGRATION_HARNESS_SERVER_URL=${URL}" >> "${GITHUB_ENV}"
+
+      - name: Verify the server version (from the running server, not from the image name)
+        run: |
+          NUM="$(docker exec "${CONTAINER_NAME}" psql -U postgres -h 127.0.0.1 -tA -c 'SHOW server_version_num')"
+          echo "server_version_num=${NUM}"
+          docker exec "${CONTAINER_NAME}" psql -U postgres -h 127.0.0.1 -tA -c 'SELECT version()'
+          test "${NUM}" = "${EXPECTED_SERVER_VERSION_NUM}"
+
+      # 3. API typecheck and lint
+      - name: API typecheck
+        working-directory: apps/api
+        run: pnpm typecheck
+
+      - name: API lint
+        working-directory: apps/api
+        run: pnpm lint
+
+      # 4. API unit tests (migration integrity, SQL/RLS linter, wrapper units)
+      - name: API unit tests
+        working-directory: apps/api
+        run: pnpm test
+
+      # the real parser must load here: the linter CLI fails safe (exit 2) if libpg-query cannot be loaded
+      - name: SQL/RLS linter on the real migrations (parser must load)
+        working-directory: apps/api
+        run: pnpm exec tsx src/database/migration-integrity/sql-lint.cli.ts --quiet-info
+
+      # 5. the full wrapper harness against the pinned server
+      - name: Migration wrapper harness (PostgreSQL 16.15)
+        working-directory: apps/api
+        env:
+          MIGRATION_HARNESS_EXPECTED_SERVER_VERSION_NUM: ${{ env.EXPECTED_SERVER_VERSION_NUM }}
+        run: pnpm test:migration-harness
+
+      # 8. whitespace / conflict-marker check on what this run checked out
+      - name: git diff --check
+        run: git diff --check HEAD~1 HEAD
+
+      - name: Collect secret-free diagnostics
+        if: failure()
+        run: |
+          mkdir -p diagnostics
+          docker logs "${CONTAINER_NAME}" 2>&1 | tail -n 300 > diagnostics/postgres-container.log || true
+          docker inspect --format '{{.Config.Image}} {{.State.Status}}' "${CONTAINER_NAME}" > diagnostics/container-state.txt 2>&1 || true
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: migration-harness-diagnostics
+          path: diagnostics/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # only the container this job started
+      - name: Remove the PostgreSQL container
+        if: always()
+        run: docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+
+  # The CI-compatible pg-verify flow: wrapper bootstrap, wrapper incremental, role checks, seeds, then the integration suites.
+  # NOTE: the integration suites' globalSetup migrates with Drizzle directly (it does NOT go through the wrapper); the wrapper is
+  # exercised by pg-verify's own three wrapper steps and by the harness job above.
+  pg-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      POSTGRES_IMAGE: postgres:16.15@sha256:1beaa3084eee2676f20a9cd9928f0bf2c5bf674f8e49f81017912183d377c61c
+      EXPECTED_SERVER_VERSION_NUM: '160015'
+      CONTAINER_NAME: saas-pgverify-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Start PostgreSQL 16.15 (disposable container)
+        run: |
+          PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::${PASSWORD}"
+          docker run -d --rm --name "${CONTAINER_NAME}" \
+            -e POSTGRES_PASSWORD="${PASSWORD}" \
+            -p 127.0.0.1::5432 \
+            "${POSTGRES_IMAGE}" -c fsync=off -c max_connections=200 >/dev/null
+          for i in $(seq 1 60); do
+            docker exec "${CONTAINER_NAME}" pg_isready -U postgres -h 127.0.0.1 >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec "${CONTAINER_NAME}" pg_isready -U postgres -h 127.0.0.1
+          PORT="$(docker port "${CONTAINER_NAME}" 5432/tcp | head -n1 | sed 's/.*://')"
+          case "${PORT}" in 5432|55432|55433|55440) echo "refusing protected port ${PORT}"; exit 1;; esac
+          URL="postgresql://postgres:${PASSWORD}@127.0.0.1:${PORT}/postgres"
+          echo "::add-mask::${URL}"
+          echo "PG_VERIFY_SERVER_URL=${URL}" >> "${GITHUB_ENV}"
+
+      - name: Verify the server version (from the running server, not from the image name)
+        run: |
+          NUM="$(docker exec "${CONTAINER_NAME}" psql -U postgres -h 127.0.0.1 -tA -c 'SHOW server_version_num')"
+          echo "server_version_num=${NUM}"
+          test "${NUM}" = "${EXPECTED_SERVER_VERSION_NUM}"
+
+      - name: pg-verify (wrapper bootstrap + incremental, role checks, seeds, integration suites)
+        env:
+          PG_VERIFY_EXPECTED_SERVER_VERSION_NUM: ${{ env.EXPECTED_SERVER_VERSION_NUM }}
+        run: pnpm --filter @saas-inventory/pg-verify verify
+
+      - name: Collect secret-free diagnostics
+        if: failure()
+        run: |
+          mkdir -p diagnostics
+          docker logs "${CONTAINER_NAME}" 2>&1 | tail -n 300 > diagnostics/postgres-container.log || true
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pg-verify-diagnostics
+          path: diagnostics/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Remove the PostgreSQL container
+        if: always()
+        run: docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
