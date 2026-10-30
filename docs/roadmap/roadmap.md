@@ -375,12 +375,15 @@ explicit review/commit.
 
 - **Repository:** branch `develop`, HEAD `2215f5d`, clean working tree, 119 commits,
   **no upstream configured — nothing has been pushed**. Migrations `0000`–`0050` (51 files); ADRs `0001`–`0039`.
+  *(Snapshot of 2026-10-26. Since then, 2026-10-29: `develop` was pushed to `origin` on GitHub and the repository made public;
+  HEAD is `9a53cc5`; ADR `0041` exists as **Proposed**. GitHub Actions has run — first completely green run `40975871156`, a single
+  run, see `pending-register.md` `MIG-PG16-HARNESS` and `MIG-CI-PGVERIFY-HANG`.)*
 - **Numbered phases:** FASE 0–18 implemented and committed. FASE 19–24 **not started**.
 - **Work after FASE 18** (roles, onboarding/support, Kardex, sales rework, UI/UX redesign, …) is
   implemented and committed but **not formally validated** — see "Work after FASE 18" above.
 - **Tests (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 819 passed (72 files);
   `apps/web` unit 1010 passed (138 files) with **1 unhandled error that makes `pnpm test` exit non-zero**
-  (`DEFECT-WEB-TEST-UNHANDLED`, open). **Full real-PostgreSQL run of the current tree: green** — isolated
+  (`DEFECT-WEB-TEST-UNHANDLED`, open at that date; fixed 2026-10-29 in the test itself — `apps/web` 138 files / 1010 tests, exit 0). **Full real-PostgreSQL run of the current tree: green** — isolated
   instance, port 55433, development database untouched: **812 tests (781 parallel + 31 serial), 0 failed** (run after the support-read-audit fix and the ledger-under-support fix),
   all structural/RLS catalog checks passed; 126 of those are the new HTTP isolation cases
   (`apps/api/test/security/`: 47 platform/tenant surfaces + 43 seller-scope on approvals/returns: writes, reads, approver and warehouse workflows; 7 on the inventory ledger's document references, which leaked another seller's order numbers and were fixed — ADR-0040 point 5; 5 more on its transfer / import references and typed reasons, which leaked the import job uuid — P4, fixed; 6 more on the aggregate reports and transfer notes, no defect; 5 more on the support read audit — `SUP-READ-NOT-AUDITED`, fixed; 3 on `inventory-summary` / `product-catalog` / transfer cancel, no defect; 3 on support downloads and fail-closed over HTTP, which found and fixed `FINDING-SUPPORT-LEDGER-401`; 7 on the platform read routes — `PLATFORM-READS-NOT-AUDITED`, option B: `platform.read` on tenant detail and invitation). Earlier in the day the same suite was not green (45 outdated tests; deadlocks from
@@ -393,7 +396,8 @@ explicit review/commit.
   this documentation pass. Retry from the UI does not exist (`GAP-NOTIF-RETRY-BACKEND`).
 - **Open items:** every pending security item, defect, limitation, verification gap and owner
   decision is in [pending-register.md](pending-register.md). Headline open items:
-  `DEFECT-WEB-TEST-UNHANDLED`,
+  `DEFECT-WEB-TEST-UNHANDLED` (closed 2026-10-29; the open CI items are now `MIG-CI-PGVERIFY-HANG` and
+  `CI-WEB-INTERMITTENT-TESTS`),
   `GAP-NOTIF-RETRY-BACKEND`, `QA-EVIDENCE-PERSISTENCE`, and the unverified remainder of the isolation sweep
   (`POST /price-approvals` and `POST /sales-returns` against another seller's order, PDF exports, surfaces outside the
   mandatory list). **HTTP tenant isolation:** the mandatory post-5S surfaces (support sessions, onboarding / invitations /

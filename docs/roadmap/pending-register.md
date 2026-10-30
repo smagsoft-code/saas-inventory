@@ -5,6 +5,10 @@ time of the first version (the documentation commit `7ca9b94` followed), clean w
 commits, **no upstream configured (nothing has ever been pushed)**. Updated the same day after the
 owner's decisions on six items; each affected entry carries a *decided* banner.
 
+*Note (2026-10-29) — the sentence "nothing has ever been pushed" above is historical and **no longer true**:* `develop` was pushed to
+`origin` (GitHub) on 2026-10-29 with its whole history and the repository was then made public by the owner. HEAD is now `9a53cc5`.
+Consequence for the credential recorded in `OBS-DEV-CREDENTIAL-IN-SPEC`: see its update.
+
 *Note (2026-10-28):* the `MIG-*` entries of section D were added later, on top of HEAD `2734363` (`develop`, 155 commits, still no
 upstream); the baseline above is the 2026-10-26 one and was not re-verified.
 
@@ -488,7 +492,8 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   returns `undefined`; not confirmed.
 - **Severity / risk:** P2 for CI (a red `test` job), P3 for runtime.
 - **Phase:** before FASE 19. **Acceptance:** `pnpm --filter @saas-inventory/web test` exits 0.
-- **Status:** `open`.
+- **Resolution (D-8E.3, 2026-10-29):** confirmed by reproducing it for the single file; the cause was the test, not production code — the "Generar QR" test clicked a card with inventory access enabled while the `apiFetch` mock returned `undefined`, so `.then` ran on `undefined`. Fixed with `mockResolvedValueOnce({ data: [] })` in that test. Local: `products-mobile.test.tsx` 15/15 with no unhandled error; full `apps/web` suite 138 files / 1010 tests, exit 0 (D-8E.15). Not separately observed in CI beyond the green run `40975871156`.
+- **Status:** `closed` (locally verified; see `CI-WEB-INTERMITTENT-TESTS` for the other web test issues).
 
 ## D. Verification gaps
 
@@ -591,6 +596,12 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   Residual risk: the value still exists in Git history (`1283de8` and later) and, if that password
   was reused for anything real, it must be treated as exposed and **rotated**. If the local QA account
   is kept, rotate its password anyway.
+- **Update 2026-10-29 — the exposure assessment above is outdated.** The repository has since been pushed to GitHub with its whole
+  history and made public by the owner, so the literal in `1283de8` and later commits is now **publicly readable**, not
+  confined to this machine. It is still unknown whether that password was ever used for anything real (it was not tested).
+  Treat it as exposed: rotate it if it was reused anywhere, and rotate the local QA account's password regardless. The
+  history was **not** rewritten and rewriting a now-public history needs an explicit decision (it would not un-publish what
+  was already fetched). Other secrets in history were not searched for in this pass.
 - Not rewritten: Git history (needs explicit authorization). Informational: `tools/pg-verify` seeds
   use fixed, documented dev-only passwords for throwaway instances (`DevPassword123!` in
   `seed-qa-data.ts` / `dev-server.ts`) — not changed.
@@ -601,7 +612,7 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
 | Suite | Result |
 | --- | --- |
 | `apps/api` unit | 72 files, **790 passed**, exit 0 (was 70 / 778; +12 = UUID guard, filter, DTO) |
-| `apps/web` unit | 138 files, **1010 passed**, 1 unhandled error, exit non-zero (`DEFECT-WEB-TEST-UNHANDLED`, still open) |
+| `apps/web` unit | 138 files, **1010 passed**, 1 unhandled error, exit non-zero (`DEFECT-WEB-TEST-UNHANDLED`, still open **at that date** — fixed on 2026-10-29, D-8E.3: 138 files / 1010 tests, exit 0) |
 | `apps/api` typecheck (src + `test/tsconfig.json`) / eslint | pass / pass (2026-10-26, after the fixes) |
 | `apps/web` typecheck / eslint | pass / pass |
 | Web build | not run (known Windows `EPERM` at the trace step, unchanged) |
@@ -770,7 +781,31 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   (`PG_VERIFY_PG_BIN` + `PG_VERIFY_PORT`) build a disposable cluster with `initdb`/`pg_ctl` in a new temp directory (found and fixed: `pg_ctl start`
   with piped stdio never returns on Windows). The Docker image pinned to 16.15 for CI is **not** built.
 - **Progress (D-8E, 2026-10-29):** `.github/workflows/ci.yml` has two new jobs (`migration-harness`, `pg-verify`), each with its own container `postgres:16.15@sha256:1beaa308...c61c` on 127.0.0.1, a per-run masked password and a mandatory `server_version_num = 160015` check; the harness and pg-verify attach to it by URL (`MIGRATION_HARNESS_SERVER_URL`, `PG_VERIFY_SERVER_URL`) after proving it fresh and loopback. Validated locally against a disposable 16.15 server (harness 141/141, pg-verify 59 checks and 815 integration tests). **Not observed:** a real GitHub Actions run, Docker, Node 20. See migration-integrity.md 10b.
-- **Status:** `open` — implemented and statically/locally validated, **not yet observed on a real runner**; `tools/pg-verify` still defaults to the embedded 18.x beta when neither `PG_VERIFY_PG_BIN` nor `PG_VERIFY_SERVER_URL` is set.
+- **Progress (2026-10-29, run finished 2026-10-30 00:06 UTC):** first completely green run on GitHub Actions — run `40975871156`, commit `9a53cc5`, push to `develop`: `ci` PASS (lint, typecheck, `Test` and, for the first time in CI, `Build`), `migration-harness` PASS, `pg-verify` PASS. This validates the container steps, the `server_version_num = 160015` check, the harness and `pg-verify` on a real Linux runner with Node 20. It is a **single** run (job/step statuses only; the logs were not readable, HTTP 403). The earlier runs of `2734363`, `1eec094` and `5d3ca26` failed or were cancelled for the reasons in `CI-TYPES-NODE`, `CI-WEB-INTERMITTENT-TESTS` and `MIG-CI-PGVERIFY-HANG`. See migration-integrity.md 10b.
+- **Status:** `open` — implemented, locally validated and observed **once** fully green on a real runner; stability over several runs is not established. `tools/pg-verify` still defaults to the embedded 18.x beta when neither `PG_VERIFY_PG_BIN` nor `PG_VERIFY_SERVER_URL` is set.
+
+### CI-TYPES-NODE *(new — fixed, 2026-10-29)*
+
+- **Description:** `tsc` in `apps/api` failed on the first CI runs with TS2345 in `common/export/tabular-export.service.ts`, `reports/kardex/kardex-export.service.ts` and `reports/payments/payments-export.service.ts` (`doc.on('data'|'end'|'error', …)` "not assignable to parameter of type `'limit'`"). The failure pre-dates D-8E (the run of `2734363` failed at `Typecheck`).
+- **Evidence:** *reproduced locally* in a clean clone by pointing the hoisted `.pnpm/node_modules/@types/node` at 20.17.6 (9 errors, identical message; 22.20.1 and 26.2.0 give 0). `apps/api` declared no `@types/node`; `@fastify/busboy` declares the only `'limit'` overload on `stream.Readable`. **Not observed:** the hoisting that the original runner really used (the logs were not readable), so that part is an inference.
+- **Fix:** D-8E.11, commit `5d3ca26` — `@types/node@^22.10.0` declared in `apps/api` (lockfile 22.20.1, the clone typechecks even with the 20.17.6 link). Confirmed green in run `40975871156` (one run).
+- **Status:** `closed` for the observed failure; watch the typecheck in later runs.
+
+### CI-WEB-INTERMITTENT-TESTS *(new — fixed, stability not demonstrated)*
+
+- **Description:** the `ci` job's `Test` step failed with a different `apps/web` test in two consecutive runs: `product-cart-modal.test.tsx › increments/decrements quantity via PATCH` (run of `5d3ca26`) and `kardex-explorer.test.tsx › clicking a row in "Ver todos" jumps…` (run of `8d55547`).
+- **Evidence:** cause **from code analysis, not reproduced** (13 sequential and 16 parallel local runs of the two files, all passing, before the fix). Kardex: the heading "Todos los movimientos" renders at once while the rows arrive after two awaited calls, but the test read the row synchronously. Cart: the quantity buttons are `disabled` while a PATCH is in flight (`busy`), but the test clicked again as soon as the PATCH had been *called*.
+- **Fix:** D-8E.15, commit `9a53cc5` — `findByText` / `waitFor(…toBeEnabled())`; tests only, no production code. Local: full `apps/web` suite 138 files / 1010 tests green. CI: green in run `40975871156`.
+- **Status:** `open` (monitoring) — **one** green run does not show the flakiness is gone. Other tests with the same "wait for the heading, read the content synchronously" pattern were not searched for.
+
+### MIG-CI-PGVERIFY-HANG *(new — open, root cause unknown)*
+
+- **Description:** the `pg-verify` job stalled in step 10 (`db:reset-demo`), after the script printed `Demo tenant reset complete`, so `[PASS] "db:reset-demo" exited 0` never appeared. It happened in the runs of `1eec094` and `5d3ca26` (both ended `cancelled`, after about 46 minutes and 1 h 18 min). The runs of `8d55547` and `9a53cc5` finished (about 16 minutes each).
+- **Evidence:** job/step statuses and a log excerpt pasted by the owner; the job logs themselves were not readable (HTTP 403). In local runs on Windows/Node 24 the same step always returned. **Cause not determined**: it could be a client or handle that does not close on Linux/Node 20, an intermittent condition, or something in PostgreSQL; none was shown.
+- **Done (commit `8d55547`):** a time budget per `pg-verify` step (`PG_VERIFY_STEP_TIMEOUT_MINUTES`, default 15; `PG_VERIFY_INTEGRATION_TIMEOUT_MINUTES`, default 60) — a timeout is a FAIL that aborts the run; the diagnostic steps also run on `cancelled()`; temporary `[debug]` lines in `database/scripts/reset-demo-tenant.ts` activated by `RESET_DEMO_DEBUG_ACTIVE_RESOURCES=1` (`closing`, `returned`, and `process.getActiveResourcesInfo()` if the process is still alive 15 s later).
+- **Open:** the `[debug]` output of the green runs was **not checked** (no log access), so it is unknown whether `closing` and `returned` appeared. **Do not remove the instrumentation yet** and do not declare the hang resolved: two stalls and two completions do not establish a cause or a fix.
+- **Follow-up needed:** more runs of `pg-verify`, and the `[debug]` lines from the step log (readable in the browser), before deciding whether to remove the instrumentation or fix a real defect.
+- **Status:** `open`.
 
 ### MIG-R1-SNAPSHOT *(new — closed 2026-10-28)*
 
