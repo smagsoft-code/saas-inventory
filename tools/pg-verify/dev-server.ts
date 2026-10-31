@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import type EmbeddedPostgres from 'embedded-postgres';
 import { decideStart, inspectDevDir, parseStartFlags, prepareDevCluster } from './dev-init';
 import { resolveDevDataDir } from './env-guard';
+import { buildChildEnv, scrubParentOnlyVariables, withChildProcessEnv, type ChildProcessName } from './child-env';
 import { loadQaAdmin, parseEnvText, type QaAdmin } from './qa-credentials';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -122,7 +123,9 @@ async function main(): Promise<void> {
     throw new Error(`Missing ${envPath} — copy .env.example to .env first.`);
   }
   const fileEnv = parseEnvFile(envPath);
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, ...fileEnv };
+  // `available` is only LOOKED UP, never passed on: each child gets its own explicit allow-list from child-env.ts (B4.11.5.8). QA_ADMIN_PASSWORD is on no list; it stays in THIS
+  // process (loadQaAdmin below reads it from fileEnv/process.env). The environment of a child is built right before that child starts, so a missing variable fails at that step.
+  const available: Record<string, string | undefined> = { ...process.env, ...fileEnv };
 
   // One contract for every migrator consumer: MIGRATOR_BOOTSTRAP_DATABASE_URL, or the deprecated MIGRATOR_DATABASE_URL; both is an error.
   const bootstrapText = fileEnv['MIGRATOR_BOOTSTRAP_DATABASE_URL'] ?? '';
@@ -140,29 +143,35 @@ async function main(): Promise<void> {
   const dbName = migratorUrl.pathname.replace(/^\//, '');
   // This tool creates the database named in that URL itself, so it is the one safe place to default the wrapper's
   // required MIGRATOR_EXPECTED_DATABASE to it; an explicit value in .env still wins (and is still checked).
-  if ((childEnv['MIGRATOR_EXPECTED_DATABASE'] ?? '') === '') childEnv['MIGRATOR_EXPECTED_DATABASE'] = dbName;
+  const expectedDatabase: Record<string, string> = (available['MIGRATOR_EXPECTED_DATABASE'] ?? '') === '' ? { MIGRATOR_EXPECTED_DATABASE: dbName } : {};
+  const childEnv = (child: ChildProcessName): NodeJS.ProcessEnv => buildChildEnv(child, available, child === 'migrate' ? expectedDatabase : {});
 
   // Everything that can refuse runs BEFORE anything is created or started, and none of it deletes anything (see dev-init.ts).
   const flags = parseStartFlags(process.argv.slice(2));
   const action = decideStart(inspectDevDir(DATA_DIR), flags, DATA_DIR);
   const qaAdmin = action === 'initialize' ? loadQaAdmin({ ...fileEnv, ...process.env }) : undefined;
+  // The parent has read what it needs (`qaAdmin` holds it in memory): remove the parent-only variables from process.env so that nothing started from here on — by us or by a library, e.g. the
+  // embedded-postgres processes and its shutdown helper — can inherit them (B4.11.5.10). `available` still has them, and is never passed to anything.
+  scrubParentOnlyVariables();
 
   section(`1. Development PostgreSQL (embedded-postgres, no Docker) on port ${port}: ${action}`);
   console.log(`  data directory: ${DATA_DIR}`);
-  const cluster = await prepareDevCluster({ dataDir: DATA_DIR, port, user: superuser, password: superuserPassword, dbName, flags });
+  // embedded-postgres starts initdb and postgres with { ...process.env } and has no option for it, so for exactly this call process.env holds only the operating-system essentials
+  // (the 'postgres' profile of child-env.ts); everything is restored afterwards.
+  const cluster = await withChildProcessEnv('postgres', available, () => prepareDevCluster({ dataDir: DATA_DIR, port, user: superuser, password: superuserPassword, dbName, flags }));
   pg = cluster.pg;
   console.log(`  postgres up on 127.0.0.1:${port}, database "${dbName}" ${cluster.created ? 'created' : 'in use'} (verified).`);
 
   section('2. Running migrations');
-  runOrThrow('db:migrate', ['--filter', '@saas-inventory/api', 'run', 'db:migrate'], childEnv);
+  runOrThrow('db:migrate', ['--filter', '@saas-inventory/api', 'run', 'db:migrate'], childEnv('migrate'));
 
   section('3. Bootstrapping app_tenant / app_platform / app_public_resolver / app_event_processor role passwords');
-  runOrThrow('db:bootstrap-dev-roles', ['--filter', '@saas-inventory/api', 'run', 'db:bootstrap-dev-roles'], childEnv);
+  runOrThrow('db:bootstrap-dev-roles', ['--filter', '@saas-inventory/api', 'run', 'db:bootstrap-dev-roles'], childEnv('bootstrap-roles'));
 
   section('4. Starting the dev S3 shim, the API, and the Web dev servers');
-  spawnChild('dev-s3-shim (:9000)', 'node', [path.join(REPO_ROOT, 'scratchpad', 'dev-s3-shim.mjs')], childEnv);
-  spawnChild('api (:4000)', 'pnpm', ['--filter', '@saas-inventory/api', 'dev'], childEnv);
-  spawnChild('web (:3000)', 'pnpm', ['--filter', '@saas-inventory/web', 'dev'], childEnv);
+  spawnChild('dev-s3-shim (:9000)', 'node', [path.join(REPO_ROOT, 'scratchpad', 'dev-s3-shim.mjs')], childEnv('s3-shim'));
+  spawnChild('api (:4000)', 'pnpm', ['--filter', '@saas-inventory/api', 'dev'], childEnv('api'));
+  spawnChild('web (:3000)', 'pnpm', ['--filter', '@saas-inventory/web', 'dev'], childEnv('web'));
 
   section('5. Waiting for the API to come up (GET /health)');
   const healthy = await waitForHealth('http://127.0.0.1:4000/health', 90_000);
