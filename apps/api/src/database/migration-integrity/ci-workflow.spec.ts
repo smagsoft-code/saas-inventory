@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 
 const ROOT = join(__dirname, '..', '..', '..', '..', '..');
 const yml = readFileSync(join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8').replace(/\r\n/g, '\n');
+const PG_JOBS = ['migration-harness', 'pg-verify', 'qa-readonly-isolation'];
 const DIGEST = /^postgres:16\.15@sha256:[0-9a-f]{64}$/;
 
 /** The text of one top-level job (from `  name:` to the next two-space-indented key). */
@@ -24,8 +25,8 @@ function job(name: string): string {
 describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
   const images = [...yml.matchAll(/^\s+POSTGRES_IMAGE:\s*(\S+)\s*$/gm)].map((m) => m[1] as string);
 
-  it('declares the image in both jobs, pinned to 16.15 by digest, identical in both, never latest or another major', () => {
-    expect(images).toHaveLength(2);
+  it('declares the image in all three jobs, pinned to 16.15 by digest, identical in all, never latest or another major', () => {
+    expect(images).toHaveLength(3);
     for (const image of images) expect(image).toMatch(DIGEST);
     expect(new Set(images).size).toBe(1);
     expect(yml).not.toMatch(/postgres:(latest|1[0-57-9]|[2-9]\d)\b/);
@@ -33,8 +34,8 @@ describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
   });
 
   it('expects server_version_num 160015 and checks it on the RUNNING server in both jobs', () => {
-    expect(yml.match(/EXPECTED_SERVER_VERSION_NUM: '160015'/g)).toHaveLength(2);
-    for (const name of ['migration-harness', 'pg-verify']) {
+    expect(yml.match(/EXPECTED_SERVER_VERSION_NUM: '160015'/g)).toHaveLength(3);
+    for (const name of PG_JOBS) {
       const text = job(name);
       expect(text).toContain('SHOW server_version_num');
       expect(text).toContain('test "${NUM}" = "${EXPECTED_SERVER_VERSION_NUM}"');
@@ -42,7 +43,7 @@ describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
   });
 
   it('publishes the container on 127.0.0.1 with an ephemeral host port and refuses protected ports', () => {
-    for (const name of ['migration-harness', 'pg-verify']) {
+    for (const name of PG_JOBS) {
       const text = job(name);
       expect(text).toContain('-p 127.0.0.1::5432');
       expect(text).not.toMatch(/-p\s+5432:/);
@@ -52,7 +53,7 @@ describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
   });
 
   it('generates the password at run time and masks it, never writing a literal one', () => {
-    for (const name of ['migration-harness', 'pg-verify']) {
+    for (const name of PG_JOBS) {
       const text = job(name);
       expect(text).toContain('openssl rand');
       expect(text).toContain('::add-mask::${PASSWORD}');
@@ -64,17 +65,18 @@ describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
   it('uses a unique container per job and removes only that container, even on failure', () => {
     expect(job('migration-harness')).toContain('CONTAINER_NAME: saas-mig-harness-${{ github.run_id }}-${{ github.run_attempt }}');
     expect(job('pg-verify')).toContain('CONTAINER_NAME: saas-pgverify-${{ github.run_id }}-${{ github.run_attempt }}');
-    for (const name of ['migration-harness', 'pg-verify']) {
+    expect(job('qa-readonly-isolation')).toContain('CONTAINER_NAME: saas-qaro-${{ github.run_id }}-${{ github.run_attempt }}');
+    for (const name of PG_JOBS) {
       const text = job(name);
-      expect(text).toMatch(/if: always\(\)\n\s+run: docker rm -f "\$\{CONTAINER_NAME\}"/);
+      expect(text).toMatch(/if: always\(\)\n\s+run: (\|\n\s+)?docker rm -f "\$\{CONTAINER_NAME\}"/);
     }
     expect(yml).not.toMatch(/docker (system|container|volume|image) prune/);
     expect(yml).not.toMatch(/docker rm -f \$\(/);
   });
 
   it('installs with the frozen lockfile in every job and on the same Node major as the existing job', () => {
-    expect(yml.match(/pnpm install --frozen-lockfile/g)).toHaveLength(3);
-    expect(yml.match(/node-version: 20/g)).toHaveLength(3);
+    expect(yml.match(/pnpm install --frozen-lockfile/g)).toHaveLength(4);
+    expect(yml.match(/node-version: 20/g)).toHaveLength(4);
     expect(yml).not.toMatch(/pnpm install(?! --frozen-lockfile)/);
   });
 
@@ -103,7 +105,7 @@ describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
   });
 
   it('uploads diagnostics only on failure and only the container log and state (no environment, no URL)', () => {
-    for (const name of ['migration-harness', 'pg-verify']) {
+    for (const name of PG_JOBS) {
       const text = job(name);
       // `|| cancelled()`: a hung step that is cancelled or timed out must still leave its diagnostics (D-8E.14).
       expect(text).toMatch(/if: failure\(\) \|\| cancelled\(\)\n\s+uses: actions\/upload-artifact@v4/);
@@ -119,5 +121,18 @@ describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
     expect(yml).not.toMatch(/:\s*write\b/);
     expect(yml).not.toContain('secrets.');
     expect(yml).not.toMatch(/deploy|environment:/i);
+  });
+
+  it('B4.11.5: qa-readonly-isolation runs the role tests against its own fresh 16.15 server, after the version check, and reports a failing cleanup', () => {
+    const text = job('qa-readonly-isolation');
+    expect(text).toContain('QA_RO_SERVER_URL=');
+    expect(text).toContain('QA_RO_EXPECTED_SERVER_VERSION_NUM');
+    expect(text).toContain('pnpm test:qa-readonly');
+    expect(text).toContain('set -o pipefail');
+    expect(text).toContain('GITHUB_STEP_SUMMARY');
+    expect(text.indexOf('SHOW server_version_num')).toBeLessThan(text.indexOf('pnpm test:qa-readonly'));
+    expect(text).not.toContain('2>&1 || true\n          if docker ps');
+    expect(text).toContain('still exists'); // a cleanup failure fails the job
+    expect(text).not.toMatch(/\.env\b|taskkill|pkill|killall|rm -rf/);
   });
 });

@@ -227,3 +227,95 @@ jobs:
       - name: Remove the PostgreSQL container
         if: always()
         run: docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+
+  # D-8E.26-B4.11.5: the isolation tests of the read-only QA role (migrations 0051 + 0052) against PostgreSQL 16.15, in a container of its own. Its server must be FRESH
+  # (the migrations create cluster-wide roles), which is why it does not share the migration-harness or pg-verify server. The bootstrap -> incremental 0051 -> 0052
+  # scenario is covered by the migration-harness job (section 12); this job runs the 51 behavioural tests (qa-readonly-role.embedded.test.ts) on the full real folder.
+  qa-readonly-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_IMAGE: postgres:16.15@sha256:1beaa3084eee2676f20a9cd9928f0bf2c5bf674f8e49f81017912183d377c61c
+      EXPECTED_SERVER_VERSION_NUM: '160015'
+      CONTAINER_NAME: saas-qaro-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Start PostgreSQL 16.15 (disposable container)
+        run: |
+          PASSWORD="$(openssl rand -hex 24)"
+          echo "::add-mask::${PASSWORD}"
+          docker run -d --rm --name "${CONTAINER_NAME}" \
+            -e POSTGRES_PASSWORD="${PASSWORD}" \
+            -p 127.0.0.1::5432 \
+            "${POSTGRES_IMAGE}" -c fsync=off -c max_connections=100 >/dev/null
+          for i in $(seq 1 60); do
+            docker exec "${CONTAINER_NAME}" pg_isready -U postgres -h 127.0.0.1 >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec "${CONTAINER_NAME}" pg_isready -U postgres -h 127.0.0.1
+          PORT="$(docker port "${CONTAINER_NAME}" 5432/tcp | head -n1 | sed 's/.*://')"
+          case "${PORT}" in 5432|55432|55433|55440) echo "refusing protected port ${PORT}"; exit 1;; esac
+          URL="postgresql://postgres:${PASSWORD}@127.0.0.1:${PORT}/postgres"
+          echo "::add-mask::${URL}"
+          echo "QA_RO_SERVER_URL=${URL}" >> "${GITHUB_ENV}"
+
+      - name: Verify the server version (from the running server, not from the image name)
+        run: |
+          NUM="$(docker exec "${CONTAINER_NAME}" psql -U postgres -h 127.0.0.1 -tA -c 'SHOW server_version_num')"
+          echo "server_version_num=${NUM}"
+          test "${NUM}" = "${EXPECTED_SERVER_VERSION_NUM}"
+
+      - name: app_qa_readonly isolation tests (PostgreSQL 16.15)
+        working-directory: tools/pg-verify
+        env:
+          QA_RO_EXPECTED_SERVER_VERSION_NUM: ${{ env.EXPECTED_SERVER_VERSION_NUM }}
+        run: |
+          set -o pipefail
+          pnpm test:qa-readonly 2>&1 | tee "${RUNNER_TEMP}/qa-readonly.log"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### app_qa_readonly isolation (PostgreSQL 16.15)"
+            grep -E '^# (server under test|migrations applied)' "${RUNNER_TEMP}/qa-readonly.log" | sed 's/, port [0-9]*, temporary directory.*//' || true
+            grep -E '^(ℹ|#) (tests|pass|fail|skipped|duration_ms)' "${RUNNER_TEMP}/qa-readonly.log" || true
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Collect secret-free diagnostics
+        if: failure() || cancelled()
+        run: |
+          mkdir -p diagnostics
+          docker logs "${CONTAINER_NAME}" 2>&1 | tail -n 300 > diagnostics/postgres-container.log || true
+          grep -vi 'password' "${RUNNER_TEMP}/qa-readonly.log" 2>/dev/null | tail -n 300 > diagnostics/qa-readonly-test.log || true
+
+      - name: Upload diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-readonly-isolation-diagnostics
+          path: diagnostics/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # only the container this job started; a failure to remove it is reported, not hidden
+      - name: Remove the PostgreSQL container
+        if: always()
+        run: |
+          docker rm -f "${CONTAINER_NAME}" >/dev/null
+          if docker ps -aq --filter "name=^${CONTAINER_NAME}$" | grep -q .; then echo "container ${CONTAINER_NAME} still exists"; exit 1; fi
+          echo "cleanup: container ${CONTAINER_NAME} removed"
