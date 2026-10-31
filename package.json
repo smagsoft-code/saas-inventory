@@ -15,6 +15,10 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
+    "secret-scan": "node tools/secret-scan/cli.mjs --mode working-tree",
+    "secret-scan:staged": "node tools/secret-scan/cli.mjs --mode staged",
+    "test:secret-scan": "node --test --test-reporter=spec tools/secret-scan/secret-scan.test.mjs tools/secret-scan/repo.test.mjs",
+    "hooks:install": "git config core.hooksPath .githooks",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore",
     "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\" --ignore-path .gitignore",
     "clean": "turbo run clean"

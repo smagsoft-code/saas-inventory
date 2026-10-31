@@ -1,0 +1,11 @@
+#!/bin/sh
+# Pre-commit secret scan (B4.11.5.7). Scans the content STAGED in the index (not the working tree), prints path:line/rule only, never a value.
+# It does not touch the index and adds no files. Enable once per clone:   pnpm hooks:install     (git config core.hooksPath .githooks)
+# Bypass is Git's own `git commit --no-verify`; this script adds no other switch.
+root="$(git rev-parse --show-toplevel)" || exit 2
+scanner="$root/tools/secret-scan/cli.mjs"
+if [ ! -f "$scanner" ]; then
+  echo "secret-scan: scanner not found at tools/secret-scan/cli.mjs; refusing to commit without it (use --no-verify to bypass deliberately)." >&2
+  exit 2
+fi
+exec node "$scanner" --mode staged --root "$root" --quiet

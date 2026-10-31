@@ -76,7 +76,7 @@ describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
 
   it('installs with the frozen lockfile in every job and on the same Node major as the existing job', () => {
     expect(yml.match(/pnpm install --frozen-lockfile/g)).toHaveLength(4);
-    expect(yml.match(/node-version: 20/g)).toHaveLength(4);
+    expect(yml.match(/node-version: 20/g)).toHaveLength(5); // + the secret-scan job, which needs Node but installs nothing
     expect(yml).not.toMatch(/pnpm install(?! --frozen-lockfile)/);
   });
 
@@ -121,6 +121,21 @@ describe('ci.yml — PostgreSQL 16.15 migration jobs', () => {
     expect(yml).not.toMatch(/:\s*write\b/);
     expect(yml).not.toContain('secrets.');
     expect(yml).not.toMatch(/deploy|environment:/i);
+  });
+
+  it('B4.11.5.7: secret-scan scans every commit of the range and the tree, installs nothing, needs no secret, uploads nothing, and never ignores a failure', () => {
+    const text = job('secret-scan');
+    expect(text).toMatch(/uses: actions\/checkout@v4\n\s+with:\n\s+fetch-depth: 0/); // the whole history: every commit of the range must exist
+    expect(text).toContain('tools/secret-scan/secret-scan.test.mjs');
+    expect(text).toContain('--mode range --from "${FROM}" --to "${TO}"');
+    expect(text).toContain('--mode working-tree');
+    expect(text).toContain('github.event.pull_request.base.sha');
+    expect(text).toContain('github.event.before');
+    expect(text).toContain('SKIPPED'); // a missing base is announced, not silently passed
+    expect(text).not.toMatch(/pnpm|npm |docker|upload-artifact|continue-on-error|\|\| true|--no-verify/);
+    expect(text).not.toMatch(/\.env\b|secrets\./);
+    // the scan runs after the scanner's own tests
+    expect(text.indexOf('secret-scan.test.mjs')).toBeLessThan(text.indexOf('--mode range'));
   });
 
   it('B4.11.5: qa-readonly-isolation runs the role tests against its own fresh 16.15 server, after the version check, and reports a failing cleanup', () => {

@@ -319,3 +319,49 @@ jobs:
           docker rm -f "${CONTAINER_NAME}" >/dev/null
           if docker ps -aq --filter "name=^${CONTAINER_NAME}$" | grep -q .; then echo "container ${CONTAINER_NAME} still exists"; exit 1; fi
           echo "cleanup: container ${CONTAINER_NAME} removed"
+
+  # D-8E.26-B4.11.5.7: credential scan. No PostgreSQL, no install, no network beyond the checkout; it needs nothing but Node and Git. Two scans:
+  #  1. RANGE: every line ADDED by every commit under review (a pull request: base..head; a push: before..after), so a credential introduced by an early commit and
+  #     removed by a later one is still seen. If no usable base exists (a new branch, a rewritten history) this scan is reported and skipped, never silently passed.
+  #  2. TREE: the files of the checked-out tree.
+  # The report holds path, line, rule and severity only; a matched value is never printed. A confirmed finding fails the job. See docs/security/secret-scanning.md.
+  secret-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      PR_BASE: ${{ github.event.pull_request.base.sha }}
+      PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      PUSH_BEFORE: ${{ github.event.before }}
+      PUSH_SHA: ${{ github.sha }}
+    steps:
+      - name: Checkout (full history, so every commit of the range exists)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Scanner tests
+        run: node --test --test-reporter=spec tools/secret-scan/secret-scan.test.mjs tools/secret-scan/repo.test.mjs
+
+      - name: Scan the lines added by the commits under review
+        run: |
+          set -eu
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            FROM="${PR_BASE}"; TO="${PR_HEAD}"
+          else
+            FROM="${PUSH_BEFORE}"; TO="${PUSH_SHA}"
+          fi
+          case "${FROM}" in 0000000000000000000000000000000000000000) FROM="";; esac
+          if [ -n "${FROM}" ] && git cat-file -e "${FROM}^{commit}" 2>/dev/null && git cat-file -e "${TO}^{commit}" 2>/dev/null; then
+            node tools/secret-scan/cli.mjs --mode range --from "${FROM}" --to "${TO}"
+          else
+            echo "::warning::No usable base commit (new branch or rewritten history): the range scan was SKIPPED; only the tree scan runs."
+          fi
+
+      - name: Scan the checked-out tree
+        run: node tools/secret-scan/cli.mjs --mode working-tree --quiet
