@@ -7,7 +7,7 @@
   "scripts": {
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test env-guard.test.ts qa-credentials.test.ts dev-init.test.ts",
+    "test": "node --import tsx --test env-guard.test.ts qa-credentials.test.ts dev-init.test.ts qa-seed.test.ts qa-http-client.test.ts",
     "test:embedded": "node --import tsx --test dev-init.embedded.test.ts",
     "verify": "tsx verify-real-postgres.ts",
     "test:db:reset": "tsx reset-testing.ts",

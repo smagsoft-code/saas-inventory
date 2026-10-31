@@ -4,7 +4,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
+    "experimentalDecorators": true,
     "types": ["node"]
   },
-  "include": ["."]
+  "include": [".", "../../apps/api/src/**/dto/*.dto.ts"]
 }
