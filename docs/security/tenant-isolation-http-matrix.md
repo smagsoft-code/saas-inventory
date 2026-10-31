@@ -4,10 +4,10 @@
 complete — this sweep is one requirement of it (see "What this does NOT prove").
 
 All cases live in `apps/api/test/security/` and run through the real `buildApp()` over HTTP against real PostgreSQL
-(isolated disposable instance on port 55433 via `tools/pg-verify`; the development database on 55432 was not used). Reproduce:
+(isolated disposable instance via `tools/pg-verify`; the development database was not used). Since D-8E.25 the testing default port is **55450** and 55432/55433 are refused by `tools/pg-verify/env-guard.ts`; the runs recorded here used 55433 before that change. Reproduce:
 
 ```bash
-PG_VERIFY_PORT=55433 PG_VERIFY_TEST_FILTER="test/security" pnpm --filter @saas-inventory/pg-verify verify
+PG_VERIFY_TEST_FILTER="test/security" pnpm --filter @saas-inventory/pg-verify verify   # default port 55450
 ```
 
 **Method (per surface):** two isolated tenants A and B with known users/roles → legitimate access for each tenant (a

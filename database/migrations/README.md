@@ -11,8 +11,8 @@ Rules (see [CLAUDE.md](../../CLAUDE.md) §7.7):
 
 ## Contents
 
-51 migrations (`0000`–`0050`; the journal in `meta/_journal.json` is the authoritative list — the narrative below
-was written up to `0032` and is not exhaustive). The initial ordering is fixed in
+53 migrations (`0000`–`0052`; the journal in `meta/_journal.json` is the authoritative list — the narrative below
+was written up to `0032` and is not exhaustive). `0051_qa_readonly_role` (privileged) and `0052_qa_readonly_tenant_config` (ordinary; D-8E.26-B4.11.3: the empty-by-default table that pins `app_qa_readonly` to a tenant UUID) are prepared and not applied to any real database — see [docs/security/qa-readonly-role.md](../../docs/security/qa-readonly-role.md). The initial ordering is fixed in
 [docs/architecture/database.md#migration-strategy](../../docs/architecture/database.md#migration-strategy):
 extensions & roles; platform tables; CORE (RBAC, audit); CATALOG; QR; INVENTORY; location
 authorization; inventory transfers; the Excel import pipeline; SALES (schema only — no SALES
@@ -156,7 +156,7 @@ Two reviewed JSON files sit next to the migrations (Drizzle ignores them; `drizz
   `reviewedIn` for **every** migration (51 entries). A migration without a valid classification and review reference blocks the run;
   absence from the privileged manifest is never read as "reviewed and ordinary". The 51 existing entries carry
   `retroactive-review:D-7.2:2026-10-28`: the classification was checked against the SQL text in that phase; **no historic approval is claimed**.
-- `privileged-manifest.json` — migrations that need a privileged login (`0000`, `0019`; always). Edited by hand, with a reason.
+- `privileged-manifest.json` — migrations that need a privileged login (`0000`, `0019`, `0051`; always). Edited by hand, with a reason.
 
 **Adding a migration**: after `db:generate`, declare it in `privileged-manifest.json` first if it needs privileges, then run
 `pnpm --filter @saas-inventory/api exec tsx src/database/migration-integrity/history-manifest.cli.ts --write --classify <tag>=ordinary --reviewed-in <pr:N | commit:sha | review:id:YYYY-MM-DD>`

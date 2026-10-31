@@ -591,11 +591,21 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
 - **Action 2026-10-26:** the literals were replaced by the placeholders `<QA_ADMIN_EMAIL>` /
   `<QA_ADMIN_PASSWORD>`; `git grep` finds no remaining occurrence in the working tree.
 - **Exposure assessment:** the account belongs to the ephemeral local database `saas_inventory_dev`
-  (`qa-tenant`, a non-routable `@dev.local` address); the repository has **no remote and was never
+  (`qa-dev-tenant`, a non-routable `@dev.local` address); the repository has **no remote and was never
   pushed**, so the value has not left this machine through Git. It was **not** tested by logging in.
   Residual risk: the value still exists in Git history (`1283de8` and later) and, if that password
   was reused for anything real, it must be treated as exposed and **rotated**. If the local QA account
   is kept, rotate its password anyway.
+- **Correction 2026-10-30 (D-8E.26-B4) — identity of the QA tenant.** The entry above (written 2026-10-26) named the tenant `qa-tenant`. In the
+  restored copy of `saas_inventory_dev` (validated 2026-10-29, D-8E.26-B) there is **no tenant with that slug**: the active QA tenant is
+  **`qa-dev-tenant`** (name "QA Dev Tenant", active; account `qa-admin@dev.local`, 1 identity, 5 users, 58 products, 60 variants, 2 warehouses, 4 locations,
+  47 balances, 298 movements, 54 orders, 4 customers, 28 images). A second tenant of the same name, `qa-dev-tenant-3d3920`, is **suspended**, its
+  membership is disabled and it holds no operational data — it most likely comes from a second registration of the same email by the earlier
+  `dev-server.ts` (which registered the QA admin on every start; `register` reuses the identity and creates a new tenant). `muebleria-elegante`
+  ("MUEBLERIA ELEGANTE", active) is a separate tenant whose identities are not shared with QA. Also inaccurate in the 2026-10-26 text: "the ephemeral local
+  database" (the file-level data is persistent) and "`git grep` finds no remaining occurrence in the working tree" (`dev-server.ts` and `seed-qa-data.ts` still
+  carried the literal until D-8E.24). The older mentions of `qa-tenant` / `qa-tenant-2` elsewhere (`roadmap.md` QA campaign 5A–5S, `UI-UX-SPEC-001.md`) are kept as
+  history of the September campaign; they are not the tenant of the current database.
 - **Update 2026-10-29 — the exposure assessment above is outdated.** The repository has since been pushed to GitHub with its whole
   history and made public by the owner, so the literal in `1283de8` and later commits is now **publicly readable**, not
   confined to this machine. It is still unknown whether that password was ever used for anything real (it was not tested).
@@ -603,7 +613,7 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   history was **not** rewritten and rewriting a now-public history needs an explicit decision (it would not un-publish what
   was already fetched). Other secrets in history were not searched for in this pass.
 - Not rewritten: Git history (needs explicit authorization). Informational: `tools/pg-verify` seeds
-  use fixed, documented dev-only passwords for throwaway instances (`DevPassword123!` in
+  use fixed, documented dev-only passwords for throwaway instances (`<redacted — was a fixed dev literal; removed from the code in D-8E.24, still in Git history>` in
   `seed-qa-data.ts` / `dev-server.ts`) — not changed.
 - **Status:** `fixed-pending-validation` (working tree clean of the literal; history untouched).
 

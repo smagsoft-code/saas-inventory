@@ -1383,7 +1383,7 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
 - **Verification baseline (2026-10-26, after the HTTP isolation sweep):** `apps/api` unit 819/819 (72 files);
   `apps/web` unit 1010 passed (138 files) plus 1 unhandled error → non-zero exit
   (`DEFECT-WEB-TEST-UNHANDLED`, open at that date — fixed afterwards in the test itself, D-8E.3: `apps/web` now 138 files / 1010 tests, exit 0); typecheck (incl. `test/tsconfig.json`) and eslint pass on both apps.
-  Real PostgreSQL, `tools/pg-verify` on an isolated instance (`PG_VERIFY_PORT=55433`; the development
+  Real PostgreSQL, `tools/pg-verify` on an isolated instance (`PG_VERIFY_PORT=55433` at that date — since D-8E.25 the testing default is 55450 and 55432/55433 are refused by `env-guard.ts`; the development
   database on :55432 untouched): **812 tests, 0 failed** (781 in the parallel phase + 31 in the serial phase; `platform-summary` moved to the serial phase) and all
   catalog checks passed. **Test-suite rules:** a file that replays migration SQL or does DDL on shared tables must be
   named `*.serial.integration.test.ts` (`pnpm test:integration:all`; the earlier "flaky under contention" runs were
@@ -1424,3 +1424,14 @@ run for the current tree (see `PG-VERIFY-FULL-RUN` in the pending register). Mig
   [docs/architecture/migration-integrity.md](docs/architecture/migration-integrity.md), [ADR-0041](docs/decisions/0041-migration-identity-and-history-integrity.md)
   and the `MIG-*` entries of [docs/roadmap/pending-register.md](docs/roadmap/pending-register.md). E1-B1 (whether `0032` took effect in any
   particular database) remains inconclusive.
+- **Local development vs testing environments (D-8E.24 / D-8E.25 — implemented in the working tree, verified only by unit tests and by
+  temporary-directory runs of a real embedded server; the live development database was not touched).** `tools/pg-verify` serves two
+  separate environments ([docs/architecture/environments.md](docs/architecture/environments.md), [tools/pg-verify/README.md](tools/pg-verify/README.md)):
+  **development** is persistent (`scratchpad/.dev-pgdata` or `DEV_PGDATA_DIR`; `pnpm --filter @saas-inventory/pg-verify dev`) and no script deletes it —
+  it is created only when missing/empty, recorded by sibling markers `<dir>.initializing` / `<dir>.initialized`, and a half-initialised or unmarked
+  directory is refused until `dev --finish-init` / `dev --adopt` verifies it; **testing** is disposable (`tools/pg-verify/.verify-pgdata`, database
+  `saas_inventory_verify`, default port **55450**; `verify`, `test:db:reset`). `env-guard.ts` rejects protected ports (5432, 55432, 55433, 55440),
+  non-testing database names, any directory not named `.verify-pgdata`, overlap with the development directory, and any directory a development
+  marker points to. The QA admin password is never in the repository: `QA_ADMIN_PASSWORD` (required, no default). The literal that earlier lived in
+  `dev-server.ts` / `seed-qa-data.ts` remains in the public Git history and must be treated as exposed (`OBS-DEV-CREDENTIAL-IN-SPEC`).
+- **Read-only QA diagnostic role (D-8E.26-B4.11, ADR-0042 — Proposed; PREPARED, NOT APPLIED).** Migration `0051_qa_readonly_role` (privileged, like `0019`) creates `app_qa_readonly`: `NOLOGIN`, no `BYPASSRLS`, no memberships, `SELECT` only on an explicit list of tables/columns (no credentials, QR tokens or customer contact data), with policies pinned through a `security_barrier` view to the tenant **UUID** held in the empty-by-default, privileged-only table `qa_readonly_tenant_config` (migration `0052`, B4.11.3 — no longer the slug `qa-dev-tenant`; unconfigured → the role reads nothing; configuring it is a separate, explicit, privileged operation, qa-readonly-role.md §11.4) instead of the session variable `app.tenant_id`, so the role cannot switch tenant. Proved on disposable PostgreSQL 16.15 and 18.4 (`tools/pg-verify/qa-readonly-role.embedded.test.ts`, 38 tests; `QA_RO_PG16_BIN` selects the 16.15 binaries), never on a real database; no cost / minimum-price column is granted; `tenant_memberships` (no RLS) is deliberately not granted; the migration refuses to adopt a privileged, entangled or object-owning role of that name. Being the first privileged migration after 0019 it changed the CI migration-harness (historical scenarios run on a frozen copy of the first 51 migrations; new section 12 covers 0051). See [docs/security/qa-readonly-role.md](docs/security/qa-readonly-role.md). Applying it, enabling its login and reading real data each need a separate explicit authorization.

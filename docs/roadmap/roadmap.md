@@ -442,7 +442,7 @@ only schema change, commits `c79d93a`…`1a50133` (HEAD).
 
 **Fase 5 QA campaign** (5A–5S) is a functional-QA pass over the completed system — not a
 development phase, and not a source of functional commits. Run against `develop` HEAD `1a50133`
-with an ephemeral local Postgres and a persistent QA tenant (`qa-tenant`). 5L–5R covered returns,
+with an ephemeral local Postgres and a persistent QA tenant (`qa-tenant`) *[historical name of the September campaign; the active QA tenant of the current development database is `qa-dev-tenant` — see `pending-register.md`, `OBS-DEV-CREDENTIAL-IN-SPEC`, correction of 2026-10-30]*. 5L–5R covered returns,
 exceptional pricing, import, administration, reports, platform lifecycle and the notification
 path; **5R/5R-A** validated `event_outbox → Event Processor → n8n → Telegram` end to end
 (2-layer idempotency, retry, dead-letter, replay); **5S** added a second tenant (`qa-tenant-2`)

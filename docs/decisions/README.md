@@ -75,6 +75,7 @@ Each ADR lives in this directory as `NNNN-short-title.md` (four-digit sequence n
 | [0039](0039-mvp-scope-serialized-lot-sales.md) | MVP Scope — Serialized and Lot-Tracked Variants Are Not Sellable | Accepted |
 | [0040](0040-seller-scope-for-order-derived-operations.md) | Seller Scope for Order-Derived Operations and Reads | Accepted |
 | [0041](0041-migration-identity-and-history-integrity.md) | Migration Identity, History Integrity and Data Migrations under RLS | Proposed (snapshot, pure checks, the migration wrapper and the SQL/RLS linter implemented; verified on disposable 16.15 clusters only; wrapper-bypass paths and PL/pgSQL analysis limits remain open) |
+| [0042](0042-readonly-qa-diagnostic-role.md) | A read-only, tenant-pinned PostgreSQL role for diagnosing the QA tenant | Proposed (migration `0051` prepared and tested on a disposable PostgreSQL; **not applied** anywhere) |
 
 ADRs 0001–0015 were produced in Prompt 01 (architecture phase) alongside
 [docs/architecture/](../architecture/) and [docs/security/threat-model.md](../security/threat-model.md).

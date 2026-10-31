@@ -21,7 +21,7 @@
 > | Working tree | limpio |
 > | Fases previas | F17 (43/43 pantallas) · F18 (10/10 bloques) · QA 5A–5S · todas cerradas, no pusheadas |
 > | Herramienta de navegador / screenshots (lado del auditor) | **no disponible en este entorno** — la verificación responsive de §12 se hace por inspección de código (breakpoints Tailwind reales) + `responsive-guidelines.md` |
-> | Entorno local en vivo (lado del owner) | **RESTAURADO Y CORRIENDO** (2026-09-10) — web http://localhost:3000, API :4000, Postgres efímero :55432 (`saas_inventory_dev`). Tenant `qa-tenant` con datos reales en todos los módulos. Login: `<QA_ADMIN_EMAIL>` / `<QA_ADMIN_PASSWORD>` (admin total; valores solo locales, fuera del repositorio) + roles supervisor/vendedor/bodega. El owner verifica visualmente cada solicitud contra este entorno. |
+> | Entorno local en vivo (lado del owner) | **RESTAURADO Y CORRIENDO** (2026-09-10) — web http://localhost:3000, API :4000, Postgres efímero :55432 (`saas_inventory_dev`). Tenant `qa-tenant` con datos reales en todos los módulos *[nota 2026-10-30, D-8E.26-B4: se conserva como registro de esa fecha; en la base de desarrollo actual no existe ese slug y el tenant QA activo es `qa-dev-tenant`]*. Login: `<QA_ADMIN_EMAIL>` / `<QA_ADMIN_PASSWORD>` (admin total; valores solo locales, fuera del repositorio) + roles supervisor/vendedor/bodega. El owner verifica visualmente cada solicitud contra este entorno. |
 
 ### Progreso por lotes
 
