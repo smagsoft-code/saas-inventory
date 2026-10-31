@@ -1810,6 +1810,130 @@ describe.skipIf(SKIP)('migration wrapper on a disposable PostgreSQL cluster', ()
     });
   });
 
+  // D-8E.26-B4.11.5.2 — the isolation suite of app_qa_readonly (tools/pg-verify/qa-readonly-role.embedded.test.ts, 51 tests) run against databases that THIS FILE's wrapper
+  // produced, not against SQL applied by hand. The suite itself is not copied: it is started as a child process in "wrapper mode" (QA_RO_PREMIGRATED_DATABASE), where it applies no
+  // migration and runs the same assertions — including verifyQaPolicies() (the 27 policies, one by one, from the catalogs) — on the database it is given. The database must carry
+  // a random per-run token as its COMMENT, so the suite refuses to touch anything this file did not create. Tests that need the migration TEXT applied to a pristine cluster
+  // (the three pre-existing-role adoption scenarios) cannot run on a finished database: they stay in the direct-mode run (qa-readonly-isolation job) and are reported as skipped here.
+  // Cluster-wide note: by now the cluster already holds app_qa_readonly (section 12 created it), so these two databases meet an existing, NOLOGIN, password-less role; the creation path
+  // is asserted by section 12 and by the direct-mode suite.
+  describe('13. app_qa_readonly: the isolation suite against databases migrated BY THE WRAPPER (bootstrap, and incremental 0051 -> 0052)', () => {
+    const PGV_DIR = join(__dirname, '..', '..', '..', '..', 'tools', 'pg-verify');
+    const FULL_TOTAL = (JSON.parse(readFileSync(join(REAL_FULL, 'meta', '_journal.json'), 'utf8')) as { entries: unknown[] }).entries.length;
+    const token = randomBytes(18).toString('hex');
+    const secrets = (): string[] => [token, INC_PASSWORD];
+    /** The caller's environment without anything that could steer the child to another server (PG*, MIGRATOR_*, MIGRATION_HARNESS_*, QA_RO_*). */
+    const cleanEnv = (): NodeJS.ProcessEnv => {
+      const env: NodeJS.ProcessEnv = {};
+      for (const [k, v] of Object.entries(process.env)) {
+        if (v !== undefined && !/^(PG|MIGRATOR_|MIGRATION_HARNESS_|QA_RO_)/.test(k)) env[k] = v;
+      }
+      return env;
+    };
+
+    async function markAsThisRun(db: string): Promise<void> {
+      const sql = cluster.admin();
+      try {
+        await sql.unsafe(`COMMENT ON DATABASE ${db} IS '${token}'`);
+      } finally {
+        await sql.end({ timeout: 5 });
+      }
+    }
+
+    function isolationSuite(db: string, extra: Record<string, string> = {}) {
+      const started = Date.now();
+      // `pnpm exec node --import tsx …` only adds node_modules/.bin to PATH; `node --import tsx` resolves tsx from the cwd (tools/pg-verify, where it is a declared devDependency),
+      // so the SAME node binary that runs this file is started directly: no shell and no pnpm wrapper between the harness and the child, which means a timeout kills the child
+      // itself (not just a shell) and a failure carries the child's own exit code. The spec reporter is explicit: Node 20 would use TAP when stdout is not a TTY.
+      const r = spawnSync(process.execPath, ['--import', 'tsx', '--test', '--test-reporter=spec', 'qa-readonly-role.embedded.test.ts'], {
+        cwd: PGV_DIR,
+        encoding: 'utf8',
+        timeout: 400_000,
+        killSignal: 'SIGKILL',
+        env: {
+          ...cleanEnv(),
+          QA_RO_PG16_BIN: '',
+          QA_RO_SERVER_URL: cluster.superuserUrl('postgres'),
+          QA_RO_PREMIGRATED_DATABASE: db,
+          QA_RO_HARNESS_TOKEN: token,
+          QA_RO_EXPECTED_SERVER_VERSION_NUM: String(process.env['MIGRATION_HARNESS_EXPECTED_SERVER_VERSION_NUM'] ?? '160015'),
+          ...extra,
+        },
+      });
+      const out = `${r.stdout}${r.stderr}${r.error !== undefined ? `\n[spawn error: ${r.error.message}] signal=${String(r.signal)}` : ''}`;
+      // the spec reporter prints "ℹ tests 51"; the TAP reporter "# tests 51" — both are understood
+      const n = (label: string): number => Number(new RegExp(`^(?:ℹ|#) ${label} (\\d+)`, 'm').exec(out)?.[1] ?? Number.NaN);
+      for (const secret of secrets()) expect(out).not.toContain(secret);
+      expect(out).not.toMatch(/postgres(ql)?:\/\//i);
+      const failing = out.split('\n').filter((l) => l.includes('✖') || l.startsWith('not ok')).slice(0, 12).join('\n');
+      return { status: r.status, out, tests: n('tests'), pass: n('pass'), fail: n('fail'), skipped: n('skipped'), seconds: Math.round((Date.now() - started) / 1000), failing };
+    }
+
+    // whatever happens (a failure, a timeout that killed the child before its own cleanup), the cluster-wide role is put back: no login, no password
+    afterAll(async () => {
+      const sql = cluster.admin();
+      try {
+        await sql.unsafe('ALTER ROLE app_qa_readonly WITH NOLOGIN PASSWORD NULL');
+      } finally {
+        await sql.end({ timeout: 5 });
+      }
+    });
+
+    const roleState = async (): Promise<string> =>
+      String(await scalar('postgres', `SELECT rolcanlogin::text || '/' || (rolpassword IS NULL)::text || '/' || (rolvaliduntil IS NULL)::text || '/' || rolsuper::text || rolcreatedb::text || rolcreaterole::text || rolreplication::text || rolbypassrls::text FROM pg_authid WHERE rolname = 'app_qa_readonly'`));
+
+    it('A. bootstrap of the full folder by the wrapper (53 migrations) -> the 51-test suite, incl. verifyQaPolicies, on the database the wrapper made', async () => {
+      expect(FULL_TOTAL).toBe(53);
+      await cluster.createDatabase('qa_ro_wrap_full');
+      await markAsThisRun('qa_ro_wrap_full');
+      const run = await wrap(bootstrapEnv('qa_ro_wrap_full'), { migrationsDir: REAL_FULL });
+      expect([run.exitCode, run.stage, run.applied.length], run.text).toEqual([0, 'done', FULL_TOTAL]);
+      expect(await registryCount('qa_ro_wrap_full')).toBe(FULL_TOTAL);
+      expect(await scalar('qa_ro_wrap_full', `SELECT count(*) FROM qa_readonly_tenant_config`)).toBe('0');
+      expect(await roleState()).toBe('false/true/true/falsefalsefalsefalsefalse');
+
+      const result = isolationSuite('qa_ro_wrap_full');
+      console.info(`[B4.11.5.2 A] PostgreSQL ${await cluster.serverVersion()} (${await cluster.serverVersionNum()}), wrapper bootstrap, ${run.applied.length} migrations, isolation suite: tests=${result.tests} pass=${result.pass} fail=${result.fail} skipped=${result.skipped}, ${result.seconds}s, exit=${result.status}`);
+      expect(result.failing, result.out.slice(-1500)).toBe('');
+      expect([result.status, result.tests, result.fail, result.pass + result.skipped], result.out.slice(-2500)).toEqual([0, 51, 0, 51]);
+      expect(result.skipped).toBe(4); // 3 pre-existing-role adoption scenarios + the "view REPLACED" OID test (incremental scenario B covers it)
+      expect(result.out).toContain('WRAPPER MODE');
+      expect(result.out).toContain('# verifyQaPolicies: 27 policies verified individually, 0 problems');
+      expect(await roleState()).toBe('false/true/true/falsefalsefalsefalsefalse'); // the suite put the role back: no login, no password
+    });
+
+    it('B. wrapper bootstrap up to 0051, OIDs captured, wrapper INCREMENTAL login applies 0052, OIDs unchanged, then the 51-test suite on the result', async () => {
+      const upTo0051 = frozenPrefix(REAL_FULL, FROZEN_COUNT + 1);
+      await cluster.createDatabase('qa_ro_wrap_inc');
+      await markAsThisRun('qa_ro_wrap_inc');
+      const first = await wrap(bootstrapEnv('qa_ro_wrap_inc'), { migrationsDir: upTo0051 });
+      expect([first.exitCode, first.applied.length], first.text).toEqual([0, FROZEN_COUNT + 1]);
+      const snapshot = async (): Promise<{ scope: string; tenant: string; policies: string }> => ({
+        scope: String(await scalar('qa_ro_wrap_inc', `SELECT 'qa_readonly_scope'::regclass::oid::text`)),
+        tenant: String(await scalar('qa_ro_wrap_inc', `SELECT 'qa_readonly_tenant'::regclass::oid::text`)),
+        policies: String(await scalar('qa_ro_wrap_inc', `SELECT string_agg(p.oid::text, ',' ORDER BY p.polname) FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid WHERE c.relname = ANY (SELECT tablename FROM pg_policies WHERE 'app_qa_readonly' = ANY (roles))`)),
+      });
+      expect(await scalar('qa_ro_wrap_inc', `SELECT to_regclass('public.qa_readonly_tenant_config') IS NULL`)).toBe(true); // 0052 not applied yet
+      const before = await snapshot();
+
+      const inc = await wrap(incrementalEnv('qa_ro_wrap_inc'), { migrationsDir: REAL_FULL });
+      expect([inc.exitCode, inc.stage, inc.applied.length], inc.text).toEqual([0, 'done', 1]);
+      expect(await registryCount('qa_ro_wrap_inc')).toBe(FULL_TOTAL);
+      const after = await snapshot();
+      expect(after).toEqual(before); // both views were REPLACED (same OID) and the policies (same OIDs) were not touched
+      expect(await scalar('qa_ro_wrap_inc', `SELECT count(*) FROM qa_readonly_tenant_config`)).toBe('0');
+      expect(await roleState()).toBe('false/true/true/falsefalsefalsefalsefalse');
+
+      const result = isolationSuite('qa_ro_wrap_inc', { QA_RO_SCOPE_VIEW_OID_AFTER_0051: before.scope });
+      console.info(`[B4.11.5.2 B] PostgreSQL ${await cluster.serverVersion()} (${await cluster.serverVersionNum()}), wrapper bootstrap to 0051 then incremental 0052; OIDs scope=${before.scope} tenant-view=${before.tenant} (unchanged), ${before.policies.split(',').length} policy OIDs unchanged; isolation suite: tests=${result.tests} pass=${result.pass} fail=${result.fail} skipped=${result.skipped}, ${result.seconds}s, exit=${result.status}`);
+      expect(result.failing, result.out.slice(-1500)).toBe('');
+      expect([result.status, result.tests, result.fail, result.pass + result.skipped], result.out.slice(-2500)).toEqual([0, 51, 0, 51]);
+      expect(result.skipped).toBe(3); // the 3 pre-existing-role adoption scenarios only
+      expect(result.out).toContain('# verifyQaPolicies: 27 policies verified individually, 0 problems');
+      expect(await roleState()).toBe('false/true/true/falsefalsefalsefalsefalse');
+    });
+  });
+
   describe('output hygiene and teardown', () => {
     it('no captured output contains a password or a connection string', () => {
       const text = allLines.join('\n');
