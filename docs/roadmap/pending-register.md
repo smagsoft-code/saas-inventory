@@ -618,17 +618,31 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
     but that clean-up is **uncommitted** and does not alter the history.
   - **Visibility of the GitHub repository:** the 2026-10-29 update above records that the owner made it public; that statement was **not verified from the local repository**
     (no network access was used) and is kept as a documentary fact attributed to that update. **Vigency** of A and B, and whether either was reused elsewhere, are **unknown**
-    (neither was tested by logging in). **No rotation has been performed.**
+    (neither was tested by logging in). *(As written in B4.11.5.6: **no rotation had been performed**; it was completed on 2026-10-30 — see the Status below.)*
   - **Rotation constraint found in B4.11.5.6:** the application has **no change-password or reset-password endpoint** for an existing active identity (`UpdateUserDto` excludes the
     password by design; a credential is only set at registration or through an invitation). "Rotate through the normal application flow" therefore needs one of the options in
     [docs/security/qa-credential-rotation.md](../security/qa-credential-rotation.md); it is **not** a single action today.
-  - The exposure stays **open** until the QA account(s) are rotated (and anything that reused A or B), and the owner decides on the history question (history is preserved by decision;
-    no rewrite is authorised).
+  - *(As written in B4.11.5.6)* the exposure stays open until the QA account is rotated and the owner decides on the history question. The rotation was completed (Status below); the
+    history question is unchanged: history is preserved by decision and no rewrite is authorised.
 - Not rewritten: Git history (needs explicit authorization). Informational: `tools/pg-verify` seeds
   use fixed, documented dev-only passwords for throwaway instances (`<redacted — was a fixed dev literal; removed from the code in D-8E.24, still in Git history>` in
   `seed-qa-data.ts` / `dev-server.ts`) — not changed.
-- **Status (2026-10-30):** `open — rotation pending`. The working tree is clean of both literals (uncommitted); the history is untouched and publicly exposed per the owner's statement; no
-  rotation done; preventive controls implemented in B4.11.5.7–B4.11.5.10 (scanner, CI job, opt-in pre-commit hook, tests; `QA_ADMIN_PASSWORD` is on no child list — each of the five processes `dev-server.ts` starts gets its own explicit allow-list, the `embedded-postgres` server gets only operating-system essentials, and the variable is removed from `process.env` once read; it stays in the parent's memory until exit and in the shell that defined it; `_dev-start-postgres-only.mjs`, `verify-real-postgres.ts` and the embedded tests still start PostgreSQL with the shell environment — see `docs/security/secret-scanning.md`; the CI job has not run on GitHub, the hook is opt-in). **This does not close the item:** it needs the rotation (`docs/security/qa-credential-rotation.md`).
+- **Status (2026-10-30, B4.11.5.14/B4.11.5.15): `closed-with-evidence` for the rotation of the QA administrator's access to `qa-dev-tenant` — NOT for the historical exposure.**
+  - **Done** (procedure and detail: [qa-credential-rotation.md §8](../security/qa-credential-rotation.md)): a new administrator was created through the application (Usuarios → Nuevo, Option 1) with an
+    identifier that had never been used and a new password chosen by the owner; the previous tenant user was then disabled by the new administrator; the git-ignored local `.env` now holds the new
+    `QA_ADMIN_EMAIL` / `QA_ADMIN_PASSWORD`. No hash was edited, no SQL was run, no history was rewritten, and no credential value appears in the repository or in this register.
+  - **Evidence (runtime, 2026-10-30):** `seed:qa --check` with the new configuration logged in and verified that the session and `GET /tenant` both report `qa-dev-tenant`, active (the tenant the
+    seed was told to act on); the same run read the business totals unchanged (58 products, 298 movements, 54 orders). The login updated `last_login_at` and created a session (stated by the tool);
+    it wrote no business data. **Reported by the owner, not independently verified by a tool:** the new user is active with the **Administrador** role, and the previous user is **disabled** in the
+    tenant. The retired credential was deliberately never used to log in.
+  - **Still true, and still open — do not read the status above as "the exposure is gone":**
+    - Both historical literals remain in commits that were **already published** to `origin/develop` (the repository was made public per the owner); rotation reduces their usefulness against this
+      tenant, it does not remove them from Git, forks, caches or clones. History was not rewritten and no rewrite is authorised.
+    - The old identity and its password hash still exist in the database and in every backup. **Restoring an earlier backup brings the old tenant user back as active**: repeat the disabling after any restore.
+    - If either historical password was **reused for anything else**, change it there. Whether that happened is unknown.
+    - Preventive controls (scanner, CI job, opt-in pre-commit hook, tests, per-process environments — `docs/security/secret-scanning.md`) are implemented locally; the CI job has not run on GitHub, the
+      hook is opt-in per clone, and `_dev-start-postgres-only.mjs`, `verify-real-postgres.ts` and the embedded tests still start PostgreSQL with the shell environment.
+    - The twelve local commits that carry these corrections are **not published**.
 
 ### Unit-test baseline (verified 2026-10-26)
 
@@ -969,4 +983,4 @@ declared fully validated.
 **Open risks after this pass:** `GAP-F19-RLS-IDOR-DEPTH` (new surface unprobed); `DEFECT-WEB-TEST-UNHANDLED`;
 `GAP-NOTIF-RETRY-BACKEND`; `FINDING-N8N-RESPOND-INVALID` and `GAP-NOTIF-COVERAGE` (n8n side, unverifiable from the repo);
 `QA-EVIDENCE-PERSISTENCE` / `QA-VISUAL-REGRESSION`; `UIUX-SPEC-VS-IMPLEMENTATION`; the credential still present in Git
-history (`OBS-DEV-CREDENTIAL-IN-SPEC`, rotation advised); repeated-run stability of the integration suite not demonstrated.
+history (`OBS-DEV-CREDENTIAL-IN-SPEC`: QA access rotated on 2026-10-30; the exposure in published history remains); repeated-run stability of the integration suite not demonstrated.

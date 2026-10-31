@@ -1,6 +1,7 @@
-# QA credentials: rotation plan and prevention (B4.11.5.6 — PREPARED, NOT EXECUTED)
+# QA credentials: rotation (COMPLETED 2026-10-30) and prevention
 
-**Status (2026-10-30): nothing in this document has been carried out. No password was rotated, no hash was touched, no service was contacted, no secret was read.**
+**Status (2026-10-30): the rotation of the QA administrator's access was COMPLETED (Option 1) and verified as far as stated in §8. The exposure of the historical literals in published Git history is NOT resolved.**
+The plan of §§1–7 was written in B4.11.5.6, before anything was executed; §8 records what was actually done, how it was verified and what was not. No password, hash or token appears in this document.
 Decision of the owner behind it: keep the Git history (no `git filter-repo`/BFG), rotate through the application, never edit hashes in PostgreSQL by hand, keep
 `app_qa_readonly` `NOLOGIN` without a password, and keep this separate from migrations `0051`/`0052`. Context and evidence:
 [pending-register.md `OBS-DEV-CREDENTIAL-IN-SPEC`](../roadmap/pending-register.md). No credential value, fragment or derived value appears here.
@@ -36,12 +37,12 @@ endpoint to disable an *identity* (only the tenant-level user, `PATCH /users/:id
 
 | Option | What it is | Verdict |
 |---|---|---|
-| **1. Replace the QA admin (recommended)** | With the current admin create a **new** administrator user (`POST /users`: new e-mail, new strong password, role Administrador). Log in as the new one, and have it **disable** the old user (`PATCH /users/:id` → `disabled`; the old admin cannot change its own status). Point `QA_ADMIN_EMAIL`/`QA_ADMIN_PASSWORD` at the new account | Uses only existing application flows; reversible; no hash edited; the old credential can no longer enter the tenant (login and every request re-check the user's status). The old identity row and its hash remain in the database and in backups |
+| **1. Replace the QA admin (recommended) — USED** | With the current admin create a **new** administrator user (`POST /users`: new e-mail, new strong password, role Administrador). Log in as the new one, and have it **disable** the old user (`PATCH /users/:id` → `disabled`; the old admin cannot change its own status). Point `QA_ADMIN_EMAIL`/`QA_ADMIN_PASSWORD` at the new account | Uses only existing application flows; reversible; no hash edited; the old credential can no longer enter the tenant (login and every request re-check the user's status). The old identity row and its hash remain in the database and in backups |
 | 2. Fresh development database | New empty data directory; `dev-server` registers the admin with a new `QA_ADMIN_PASSWORD`; re-seed | Cleanest for the credential, but destroys the QA dataset (or needs the old one kept as a backup); heavy |
 | 3. Build a change-password feature | A new endpoint (own phase, probably an ADR, tests, security review) | The proper fix, outside this block's scope |
 | 4. Edit the hash in PostgreSQL | — | **Excluded** by the owner's decision; no procedure is designed |
 
-## 4. Procedure for Option 1 (owner executes; every step needs separate authorization)
+## 4. Procedure for Option 1 (owner executes; every step needs separate authorization) — executed on 2026-10-30, see §8
 
 **Before**
 1. Back up the development database first (verified restore). A restored backup brings the old user back as active: after any restore, repeat step 6.
@@ -86,10 +87,37 @@ password); the working tree no longer contains either literal.
 
 ## 6. Publication
 
-Rotation does not have to precede the push of the 53 local files: the working tree contains no literal and the new documents contain none, so publishing them does not add exposure. It also
-does not remove any: only rotation reduces it. This document and the corrected register entry belong to the documentation commit. Remaining risks with the history preserved: the public history
-keeps both literals; anything that reused them stays exposed until rotated; backups keep the old hash.
+Publishing the local commits does not depend on the rotation: the working tree and the new documents contain no literal, so publishing them adds no exposure. It also removes none: the rotation (§8) lowers
+what the literals can be used for in the QA tenant, but they stay in the already published history. Remaining risks with the history preserved: the public history keeps both literals; anything that reused them
+stays exposed until it is changed; backups keep the old hash and a restore reactivates the old tenant user. This document and the corrected register entry belong to the documentation commit.
 
 ## 7. Authorizations (each independent)
 
-1. Commit this documentation correction. 2. Implement the secret scanning / hook / tests of §5. 3. Execute the rotation of §4 (or choose Option 2/3). 4. Publish commits. 5. Any rewrite of history.
+1. Commit this documentation correction. 2. Implement the secret scanning / hook / tests of §5 *(implemented locally in B4.11.5.7–.10)*. 3. Execute the rotation of §4 *(executed by the owner on 2026-10-30; §8)*. 4. Publish commits *(not authorised yet)*. 5. Any rewrite of history *(not authorised)*.
+
+## 8. Result of the rotation (B4.11.5.14 / B4.11.5.15, 2026-10-30)
+
+**What was done** (by the owner through the web application, following §4 — Option 1; the assistant had no credentials and read no `.env`):
+1. A new administrator was created with **Usuarios → Nuevo**: an identifier that had never been used, a new password generated and held only by the owner, and the **Administrador** role, in `qa-dev-tenant` only (no SuperAdmin, no other tenant).
+2. The owner logged in as the new administrator and checked that it worked.
+3. The git-ignored local `.env` was updated with the new `QA_ADMIN_EMAIL` and `QA_ADMIN_PASSWORD` (names only here; nothing was read, copied or printed by the assistant).
+4. The **previous tenant user was disabled** by the new administrator (reversible; not deleted). Its global identity and any other membership were left alone.
+
+**How it was verified**
+- `seed:qa --check` (run with `QA_SEED_TENANT_SLUG=qa-dev-tenant`) authenticated with the new configuration and confirmed that the session and `GET /tenant` both report `qa-dev-tenant`, active. It performs the login and
+  GET requests only. **The login updated `last_login_at` of the new identity and created a session** (the tool says so itself). **No business data was modified**: the totals read afterwards were unchanged
+  (58 products, 298 movements, 54 orders).
+- That run also listed 9 records of the tenant that match the seed's categories/products/customer by name or code but are not the seed's; this is the seed's own refusal rule for a *writing* run and is unrelated to the
+  rotation. Nothing was changed.
+- **Reported by the owner and not independently verified by a tool:** the new user is active with the Administrador role, and the previous user appears as disabled in the Users list. Per the rules of the exercise the
+  retired credential was **never used** to log in (to test whether it "still works"), so the disabled state rests on the owner's confirmation and on the login rule documented in §3/§4 (the tenant rejects a user that is not active).
+
+**A mistake worth keeping:** the first `--check` failed locally with `QA_ADMIN_EMAIL is not a valid address` before any request was made. The application accepts any identifier of 10 or more characters as the login ("Usuario"),
+but `tools/pg-verify/qa-credentials.ts` requires one that **contains an `@`** and no whitespace. The identifier configured for the seed has to satisfy both; once corrected, the check authenticated. (Relaxing the tool's rule would
+be a separate code change; it was not made.)
+
+**What this does NOT change — keep reading these as open risks**
+- Both historical literals remain in commits already published to `origin/develop`; rotation lowers what they can be used for in this tenant, it does not remove them from Git history, forks, caches or clones. The history was not rewritten.
+- The old identity and its hash still exist in the database and in every backup. **A restore of a backup taken before the rotation reactivates the old tenant user**: disable it again (step 6 of §4) after any restore.
+- If either historical password was reused elsewhere, change it there; whether that happened is unknown.
+- The CI job and the pre-commit hook that guard against new leaks are implemented locally only (not run on GitHub; the hook is opt-in per clone); the twelve local commits are not published.
