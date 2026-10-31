@@ -22,7 +22,7 @@ import postgres, { type Sql } from 'postgres';
  */
 
 /** Ports that belong to other work and must never be used or touched. */
-export const PROTECTED_PORTS: readonly number[] = [5432, 55432, 55433, 55440];
+export const PROTECTED_PORTS: readonly number[] = [5432, 55432, 55433, 55440, 55450, 55470];
 const PORT_RANGE = { from: 55461, to: 55499 };
 
 export const PG_BIN = process.env['MIGRATION_HARNESS_PG_BIN'];
@@ -91,7 +91,7 @@ export function parseExternalEndpoint(raw: string): Endpoint {
   }
   const port = Number(url.port === '' ? 5432 : url.port);
   if (!Number.isInteger(port) || PROTECTED_PORTS.includes(port)) {
-    throw new Error('MIGRATION_HARNESS_SERVER_URL uses a protected port (5432, 55432, 55433, 55440) or an invalid one; refusing.');
+    throw new Error('MIGRATION_HARNESS_SERVER_URL uses a protected port (5432, 55432, 55433, 55440, 55450, 55470) or an invalid one; refusing.');
   }
   const user = decodeURIComponent(url.username);
   if (user === '' || url.password === '') throw new Error('MIGRATION_HARNESS_SERVER_URL needs a user and a password.');

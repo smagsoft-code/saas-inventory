@@ -1,66 +1,43 @@
 /**
- * Local dev bring-up — NOT the CI verification harness (`verify-real-postgres.ts`, kept separate
- * and unmodified). Reuses this package's `embedded-postgres` dependency to start a REAL,
- * Docker-free local PostgreSQL matching the values already committed to the repo root `.env` (see
- * that file's own header comment — this is the "wrapper" it refers to), then brings up the dev S3
- * shim (`scratchpad/dev-s3-shim.mjs`), the API, and the Web dev servers as child processes, and
- * finally provisions one fresh admin login via the real `POST /api/v1/auth/register` endpoint so
- * there's something to log into immediately.
+ * Local DEVELOPMENT bring-up (D-8E.24) — NOT the CI verification harness (`verify-real-postgres.ts`, which uses its own
+ * disposable database). Starts a REAL, Docker-free local PostgreSQL (embedded-postgres) matching the values of the repo root
+ * `.env`, then the dev S3 shim, the API and the Web dev servers as child processes.
  *
- * Ctrl+C (SIGINT/SIGTERM) tears every child process down and wipes the ephemeral Postgres data
- * directory — nothing here is meant to persist, exactly like `.env`'s header says. That's the
- * ONLY sanctioned way this data disappears, though: it's a live, file-locked Postgres cluster
- * while running, not just "some scratch files."
+ * The database is PERSISTENT. This script never deletes it:
+ *   - the data directory (`scratchpad/.dev-pgdata`, or DEV_PGDATA_DIR) is initialised only if it is missing or empty;
+ *   - a directory with a completed initialisation (marker `<dir>.initialized`) is started as it is and verified (migrations run on top;
+ *     nothing is re-seeded);
+ *   - a half-initialised directory, an older one with no marker, or one that is not PostgreSQL makes the script stop without touching
+ *     it; recovery is explicit and non-destructive: `dev --finish-init` / `dev --adopt` (see dev-init.ts and the README);
+ *   - if the port is already in use (e.g. the database is already running, started by _dev-start-postgres-only.mjs) the
+ *     script stops without touching anything;
+ *   - Ctrl+C stops every child process and PostgreSQL; the data stays on disk. The dev S3 shim data
+ *     (`scratchpad/s3data`, product images) is kept too.
  *
- * POSTMORTEM (in-session incident, no ticket — logged here since it cost a full QA dataset):
- * `git stash push -u` (and `git clean -fd`, and anything else that sweeps up "untracked" paths)
- * does NOT know or care that `scratchpad/.dev-pgdata/` is an active database's data directory —
- * it just deletes untracked files, mid-write, while Postgres has them open. Postgres crashed
- * instantly; every row created during that dev session was gone, and the working directory kept
- * running against a half-deleted data directory until it was manually torn down and rebuilt from
- * this script + `seed-qa-data.ts`. `scratchpad/` is now in the repo root `.gitignore` specifically
- * so `git stash -u` / `git clean` skip it by default (they only sweep untracked-but-NOT-ignored
- * paths) — never remove that `.gitignore` entry, and never run a git command that can delete
- * untracked files while this dev server (or any embedded-Postgres instance) is running. If you
- * need to isolate a subset of changes for a commit, use `git add -p` / a scratch worktree with the
- * files copied in, not a stash/clean against the live working directory.
+ * The QA admin is registered ONLY on the first start of a new, empty data directory, and its password comes from
+ * QA_ADMIN_PASSWORD (environment or the git-ignored .env) — it is required before anything is created, has no default and is
+ * never printed. To rotate or recreate it, see tools/pg-verify/README.md.
  *
- * Usage: pnpm --filter @saas-inventory/pg-verify dev
+ * To throw the development data away you must delete the directory yourself, on purpose, after a backup.
+ *
+ * Usage: pnpm --filter @saas-inventory/pg-verify dev [--finish-init | --adopt]
  */
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import EmbeddedPostgres from 'embedded-postgres';
+import type EmbeddedPostgres from 'embedded-postgres';
+import { decideStart, inspectDevDir, parseStartFlags, prepareDevCluster } from './dev-init';
+import { resolveDevDataDir } from './env-guard';
+import { loadQaAdmin, parseEnvText, type QaAdmin } from './qa-credentials';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '../..');
-const DATA_DIR = path.resolve(REPO_ROOT, 'scratchpad', '.dev-pgdata');
-const S3_DATA_DIR = path.resolve(REPO_ROOT, 'scratchpad', 's3data');
+const DATA_DIR = resolveDevDataDir(REPO_ROOT, process.env);
 
-const QA_ADMIN = {
-  companyName: 'QA Dev Tenant',
-  email: 'qa-admin@dev.local',
-  password: 'DevPassword123!',
-  fullName: 'QA Admin',
-};
-
-/** A minimal `.env` parser — `KEY=VALUE` lines, `#` comments, blank lines skipped. No quoting/
- * multiline support: this repo's own `.env` (checked at the top of this file's own header) never
- * needs either. */
+/** `KEY=VALUE` lines of the root `.env` (same minimal format as `qa-credentials.ts`). */
 function parseEnvFile(filePath: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  const lines = readFileSync(filePath, 'utf8').split(/\r?\n/);
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (trimmed === '' || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const value = trimmed.slice(eq + 1).trim();
-    result[key] = value;
-  }
-  return result;
+  return parseEnvText(readFileSync(filePath, 'utf8'));
 }
 
 function section(title: string): void {
@@ -100,23 +77,22 @@ async function waitForHealth(url: string, timeoutMs: number): Promise<boolean> {
   return false;
 }
 
-async function registerQaAdmin(apiUrl: string): Promise<void> {
-  section('Provisioning a fresh QA admin login (real POST /api/v1/auth/register)');
+async function registerQaAdmin(apiUrl: string, qaAdmin: QaAdmin): Promise<void> {
+  section('Provisioning the QA admin login of a NEW development database (real POST /api/v1/auth/register)');
   try {
     const response = await fetch(`${apiUrl}/api/v1/auth/register`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(QA_ADMIN),
+      body: JSON.stringify(qaAdmin),
     });
     if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      console.log(`  [WARN] register returned ${response.status}: ${body}`);
+      // The response body is not echoed: it could repeat what was sent.
+      console.log(`  [WARN] register returned ${response.status}.`);
       console.log('  You can still register manually at http://localhost:3000/register');
       return;
     }
-    console.log('  QA admin ready — log in at http://localhost:3000/login with:');
-    console.log(`    email:    ${QA_ADMIN.email}`);
-    console.log(`    password: ${QA_ADMIN.password}`);
+    // The password is never printed: it is the one you set in QA_ADMIN_PASSWORD.
+    console.log(`  QA admin ready — log in at http://localhost:3000/login as ${qaAdmin.email} (password: your QA_ADMIN_PASSWORD).`);
   } catch (error) {
     console.log(`  [WARN] could not reach the API to register a QA admin: ${String(error)}`);
     console.log('  You can still register manually at http://localhost:3000/register');
@@ -129,14 +105,14 @@ let pg: EmbeddedPostgres | undefined;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  section('Shutting down (Ctrl+C) — stopping every child process and wiping the ephemeral DB');
+  section('Shutting down — stopping every child process and PostgreSQL; the development data stays on disk');
   for (const child of children) {
     if (!child.killed) child.kill();
   }
   if (pg) {
     await pg.stop().catch((error: unknown) => console.error('  postgres stop failed:', error));
   }
-  if (existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true, force: true });
+  // Deliberately no deletion of any directory here (D-8E.24): this also runs after a failed start.
   process.exit(0);
 }
 
@@ -166,13 +142,16 @@ async function main(): Promise<void> {
   // required MIGRATOR_EXPECTED_DATABASE to it; an explicit value in .env still wins (and is still checked).
   if ((childEnv['MIGRATOR_EXPECTED_DATABASE'] ?? '') === '') childEnv['MIGRATOR_EXPECTED_DATABASE'] = dbName;
 
-  section(`1. Starting a REAL PostgreSQL instance (embedded-postgres, no Docker) on port ${port}`);
-  if (existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true, force: true });
-  pg = new EmbeddedPostgres({ databaseDir: DATA_DIR, port, user: superuser, password: superuserPassword, persistent: false });
-  await pg.initialise();
-  await pg.start();
-  await pg.createDatabase(dbName);
-  console.log(`  postgres up on 127.0.0.1:${port}, database "${dbName}" created.`);
+  // Everything that can refuse runs BEFORE anything is created or started, and none of it deletes anything (see dev-init.ts).
+  const flags = parseStartFlags(process.argv.slice(2));
+  const action = decideStart(inspectDevDir(DATA_DIR), flags, DATA_DIR);
+  const qaAdmin = action === 'initialize' ? loadQaAdmin({ ...fileEnv, ...process.env }) : undefined;
+
+  section(`1. Development PostgreSQL (embedded-postgres, no Docker) on port ${port}: ${action}`);
+  console.log(`  data directory: ${DATA_DIR}`);
+  const cluster = await prepareDevCluster({ dataDir: DATA_DIR, port, user: superuser, password: superuserPassword, dbName, flags });
+  pg = cluster.pg;
+  console.log(`  postgres up on 127.0.0.1:${port}, database "${dbName}" ${cluster.created ? 'created' : 'in use'} (verified).`);
 
   section('2. Running migrations');
   runOrThrow('db:migrate', ['--filter', '@saas-inventory/api', 'run', 'db:migrate'], childEnv);
@@ -181,7 +160,6 @@ async function main(): Promise<void> {
   runOrThrow('db:bootstrap-dev-roles', ['--filter', '@saas-inventory/api', 'run', 'db:bootstrap-dev-roles'], childEnv);
 
   section('4. Starting the dev S3 shim, the API, and the Web dev servers');
-  rmSync(S3_DATA_DIR, { recursive: true, force: true });
   spawnChild('dev-s3-shim (:9000)', 'node', [path.join(REPO_ROOT, 'scratchpad', 'dev-s3-shim.mjs')], childEnv);
   spawnChild('api (:4000)', 'pnpm', ['--filter', '@saas-inventory/api', 'dev'], childEnv);
   spawnChild('web (:3000)', 'pnpm', ['--filter', '@saas-inventory/web', 'dev'], childEnv);
@@ -192,15 +170,15 @@ async function main(): Promise<void> {
     console.log('  [WARN] API did not report healthy within 90s — check its logs above.');
   } else {
     console.log('  API is healthy.');
-    await registerQaAdmin('http://127.0.0.1:4000');
+    if (cluster.created && qaAdmin) await registerQaAdmin('http://127.0.0.1:4000', qaAdmin);
   }
 
   section('READY');
   console.log('  Web:  http://localhost:3000');
   console.log('  API:  http://localhost:4000  (docs: http://localhost:4000/docs)');
   console.log('  S3:   http://localhost:9000  (dev shim)');
-  console.log('  Postgres: 127.0.0.1:55432 / saas_inventory_dev');
-  console.log('\n  Press Ctrl+C to stop everything and wipe the ephemeral database.\n');
+  console.log(`  Postgres: 127.0.0.1:${port} / ${dbName}  (persistent: ${DATA_DIR})`);
+  console.log('\n  Press Ctrl+C to stop everything. The database and its data stay on disk.\n');
 }
 
 process.on('SIGINT', () => void shutdown());

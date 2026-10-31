@@ -15,28 +15,31 @@
  * which previously caused a cross-package drizzle-orm peer-variant mismatch when colocated with
  * schema-importing code (see git history / PROMPT 03-A investigation notes).
  *
- * Safe to delete/re-run at any time: the data directory is wiped on every run
- * (`persistent: false`) so every invocation starts from a genuinely empty database.
+ * TESTING environment (D-8E.24): disposable by design. Its data directory is `tools/pg-verify/.verify-pgdata` (anchored to this
+ * file, not to the working directory), its database `saas_inventory_verify`, its default port 55450. It is wiped on every run
+ * (`persistent: false`), and only through `env-guard.ts`, which refuses anything that is not provably this disposable target —
+ * never the development database (`scratchpad/.dev-pgdata`, port 55432). `pnpm test:db:reset` rebuilds it explicitly.
  *
  * Usage: pnpm --filter @saas-inventory/pg-verify verify
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import EmbeddedPostgres from 'embedded-postgres';
 import postgres from 'postgres';
+import { assertServerDataDirectory, assertTestingTarget, DEFAULT_TESTING_PORT, PROTECTED_PORTS, removeDisposableDir, resolveDevDataDir } from './env-guard';
 
-// The disposable instance's port. Default 55432 (the original, unchanged); set PG_VERIFY_PORT to run
-// beside a live development database that already holds 55432 (never point this at it: the run
-// drops and recreates the database it starts).
+// The disposable instance's port. Default 55450 (DEFAULT_TESTING_PORT); 55432 belongs to the persistent development database and is
+// refused by env-guard.ts, as are the other protected ports. Set PG_VERIFY_PORT to use another free, unprotected port.
 // D-8E: PG_VERIFY_SERVER_URL attaches to a server somebody else started for THIS run (CI: a postgres:16.15@sha256:… container on
 // 127.0.0.1 with a random password). Then host/port/user/password come from that URL, nothing is started, stopped or deleted here, and
 // the server must be fresh (see startAttached).
 const SERVER_URL = process.env['PG_VERIFY_SERVER_URL'] ?? '';
 const ATTACHED = SERVER_URL !== '';
 const attachedUrl = ATTACHED ? new URL(SERVER_URL) : undefined;
-const PORT = attachedUrl !== undefined ? Number(attachedUrl.port === '' ? 5432 : attachedUrl.port) : Number(process.env['PG_VERIFY_PORT'] ?? 55432);
+const PORT = attachedUrl !== undefined ? Number(attachedUrl.port === '' ? 5432 : attachedUrl.port) : Number(process.env['PG_VERIFY_PORT'] ?? DEFAULT_TESTING_PORT);
 // Optional space-separated vitest file filters (e.g. "test/http test/sales/sales-customers") so one
 // area can be verified without the whole suite. Unset = the complete suite (the default).
 const TEST_FILTER = (process.env['PG_VERIFY_TEST_FILTER'] ?? '').split(/\s+/).filter(Boolean);
@@ -51,7 +54,6 @@ const INCREMENTAL_PASSWORD = 'verify-incremental-ephemeral-instance';
 // built from it in a NEW temp directory (e.g. the 16.15 reference) instead of the embedded 18.x beta. PG_VERIFY_PORT
 // is then mandatory and must not be a protected port.
 const EXTERNAL_PG_BIN = process.env['PG_VERIFY_PG_BIN'] ?? '';
-const PROTECTED_PORTS = [5432, 55432, 55433, 55440];
 const APP_TENANT_PASSWORD = 'verify-app-tenant-ephemeral';
 const APP_PLATFORM_PASSWORD = 'verify-app-platform-ephemeral';
 const APP_PUBLIC_RESOLVER_PASSWORD = 'verify-app-public-resolver-ephemeral';
@@ -64,8 +66,11 @@ const APP_IMPORT_WORKER_PASSWORD = 'verify-app-import-worker-ephemeral';
 // test/events/event-processor.integration.test.ts's real-PostgreSQL claim/retry/stale suite runs
 // as part of the standard verify pass (0 skipped, §127/§177), never a separate manual run.
 const APP_EVENT_PROCESSOR_PASSWORD = 'verify-app-event-processor-ephemeral';
-const DATA_DIR = path.resolve(process.cwd(), '.verify-pgdata');
-const API_DIR = path.resolve(process.cwd(), '../../apps/api');
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = path.resolve(HERE, '../..');
+const DATA_DIR = path.resolve(HERE, '.verify-pgdata');
+const DEV_DATA_DIR = resolveDevDataDir(REPO_ROOT, process.env);
+const API_DIR = path.resolve(REPO_ROOT, 'apps/api');
 
 const WRAPPER_BOOTSTRAP_ENV = {} as Record<string, string>; // filled below, after MIGRATOR_URL exists
 const WRAPPER_INCREMENTAL_ENV = {} as Record<string, string>;
@@ -226,7 +231,9 @@ function run(label: string, args: string[], env: Record<string, string>, timeout
 }
 
 async function main(): Promise<void> {
-  if (!ATTACHED && existsSync(DATA_DIR)) rmSync(DATA_DIR, { recursive: true, force: true });
+  // The testing target must be provably disposable before anything is created or deleted (D-8E.24).
+  assertTestingTarget({ port: PORT, dataDir: DATA_DIR, dbName: DB_NAME }, DEV_DATA_DIR);
+  if (!ATTACHED) removeDisposableDir(DATA_DIR, DEV_DATA_DIR);
 
   section(ATTACHED ? '1. Attaching to a REAL PostgreSQL server started for this run (fresh, loopback only)' : '1. Starting a REAL PostgreSQL instance (embedded-postgres, no Docker/mocks)');
   const pg = ATTACHED ? await startAttached() : EXTERNAL_PG_BIN === '' ? await startEmbedded() : await startExternal(EXTERNAL_PG_BIN);
@@ -255,6 +262,12 @@ async function main(): Promise<void> {
         check(`server_version_num is exactly ${expectedNum}`, num === expectedNum);
       }
       check('current_database() matches target db', db === DB_NAME);
+      // D-8E.25: the REAL destination, not just the declared one — the embedded server that answered must own the disposable data directory.
+      if (!ATTACHED && EXTERNAL_PG_BIN === '') {
+        const { d: dataDirectory } = firstRowOrThrow(await sql<{ d: string }[]>`select current_setting('data_directory') as d`, 'data_directory');
+        assertServerDataDirectory(dataDirectory, DATA_DIR);
+        check('the server that answered owns the disposable testing data directory', true);
+      }
       check('current_user is the bootstrap superuser', user === SUPERUSER);
       await sql.end();
     }
