@@ -39,6 +39,8 @@ pnpm --filter @saas-inventory/pg-verify seed:qa --check   # inspect the QA tenan
 - The QA administrator is registered **only on the first start of a new, empty directory**. `QA_ADMIN_PASSWORD` (12–128 characters) is
   required in the environment or in the git-ignored root `.env`; there is no default, and it is never printed. `QA_ADMIN_EMAIL`
   defaults to `qa-admin@dev.local`. `seed:qa` reads the same variables and only logs in; it does not create or change the account.
+  `dev-server.ts` keeps `QA_ADMIN_PASSWORD` to itself: the migrations, role bootstrap, S3 shim, API and Web processes it starts each receive **only the variables on their own allow-list**
+  (`child-env.ts`, B4.11.5.7/B4.11.5.8; nothing is inherited, a variable on no list does not arrive; the lists and how to extend them are in docs/security/secret-scanning.md). The PostgreSQL server that `embedded-postgres` starts (`initdb`, `postgres`) is covered too (B4.11.5.10): the library inherits `process.env` and has no option for it, so `dev-server.ts` removes `QA_ADMIN_PASSWORD` from `process.env` right after reading it and runs the cluster preparation with only the operating-system essentials in `process.env` (`withChildProcessEnv`); `_dev-start-postgres-only.mjs`, `verify-real-postgres.ts` and the embedded tests still inherit the shell environment unchanged. Credential scanning of the repository: [docs/security/secret-scanning.md](../../docs/security/secret-scanning.md).
 - To start from scratch you delete the directory yourself. Never run `git clean -x`/`git stash -u` while the database is running.
 
 ### `seed:qa` — the QA seed (hardened in D-8E.26-B4.1)

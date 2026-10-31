@@ -6,7 +6,7 @@ commits, **no upstream configured (nothing has ever been pushed)**. Updated the 
 owner's decisions on six items; each affected entry carries a *decided* banner.
 
 *Note (2026-10-29) — the sentence "nothing has ever been pushed" above is historical and **no longer true**:* `develop` was pushed to
-`origin` (GitHub) on 2026-10-29 with its whole history and the repository was then made public by the owner. HEAD is now `9a53cc5`.
+`origin` (GitHub) on 2026-10-29 with its whole history and the repository was then made public by the owner. HEAD was `9a53cc5` when this note was written; on 2026-10-30 (B4.11.5.10) it is `2db993f`, equal to `origin/develop`.
 Consequence for the credential recorded in `OBS-DEV-CREDENTIAL-IN-SPEC`: see its update.
 
 *Note (2026-10-28):* the `MIG-*` entries of section D were added later, on top of HEAD `2734363` (`develop`, 155 commits, still no
@@ -590,12 +590,9 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   credentials.
 - **Action 2026-10-26:** the literals were replaced by the placeholders `<QA_ADMIN_EMAIL>` /
   `<QA_ADMIN_PASSWORD>`; `git grep` finds no remaining occurrence in the working tree.
-- **Exposure assessment:** the account belongs to the ephemeral local database `saas_inventory_dev`
-  (`qa-dev-tenant`, a non-routable `@dev.local` address); the repository has **no remote and was never
-  pushed**, so the value has not left this machine through Git. It was **not** tested by logging in.
-  Residual risk: the value still exists in Git history (`1283de8` and later) and, if that password
-  was reused for anything real, it must be treated as exposed and **rotated**. If the local QA account
-  is kept, rotate its password anyway.
+- **Exposure assessment (written 2026-10-26; SUPERSEDED — see the 2026-10-29 update and the B4.11.5.5/B4.11.5.6 corrections below):** the account
+  belongs to the local development database `saas_inventory_dev` (`qa-dev-tenant`, a non-routable `@dev.local` address). When this was written the
+  repository had no remote; that stopped being true on 2026-10-29. The value was **not** tested by logging in.
 - **Correction 2026-10-30 (D-8E.26-B4) — identity of the QA tenant.** The entry above (written 2026-10-26) named the tenant `qa-tenant`. In the
   restored copy of `saas_inventory_dev` (validated 2026-10-29, D-8E.26-B) there is **no tenant with that slug**: the active QA tenant is
   **`qa-dev-tenant`** (name "QA Dev Tenant", active; account `qa-admin@dev.local`, 1 identity, 5 users, 58 products, 60 variants, 2 warehouses, 4 locations,
@@ -612,10 +609,26 @@ granted `sales.orders.view_all` (same consequence as order confirm/cancel); appr
   Treat it as exposed: rotate it if it was reused anywhere, and rotate the local QA account's password regardless. The
   history was **not** rewritten and rewriting a now-public history needs an explicit decision (it would not un-publish what
   was already fetched). Other secrets in history were not searched for in this pass.
+- **Correction 2026-10-30 (D-8E.26-B4.11.5.5, local Git audit; refined in B4.11.5.6).** Findings from the local history (no value reproduced here):
+  - There is a remote, `origin` (GitHub). The local reflog of `origin/develop` records six pushes on 2026-10-29 (first recorded tip `2734363`, pushed 14:47 -05, 155 commits;
+    the last, `2db993f`). Earlier pushes, if any, are not visible in that reflog. Every commit named below is an ancestor of `origin/develop`.
+  - **Two distinct dev-only password literals** are in the history, not one: **A** in `docs/ui-ux/UI-UX-SPEC-001.md` (added in `1283de8`, 2026-09-23; replaced by placeholders in
+    `2ccdd1b`, 2026-10-26; not in HEAD) and **B** in `tools/pg-verify/dev-server.ts` and `tools/pg-verify/seed-qa-data.ts` (added in `4c1e31a`, 2026-10-01; still in those files at
+    HEAD, last committed in `b6b83e7` and `57d5963`; also transcribed in the text of this register since `2ccdd1b`, which still shows it in HEAD). The local working tree contains neither,
+    but that clean-up is **uncommitted** and does not alter the history.
+  - **Visibility of the GitHub repository:** the 2026-10-29 update above records that the owner made it public; that statement was **not verified from the local repository**
+    (no network access was used) and is kept as a documentary fact attributed to that update. **Vigency** of A and B, and whether either was reused elsewhere, are **unknown**
+    (neither was tested by logging in). **No rotation has been performed.**
+  - **Rotation constraint found in B4.11.5.6:** the application has **no change-password or reset-password endpoint** for an existing active identity (`UpdateUserDto` excludes the
+    password by design; a credential is only set at registration or through an invitation). "Rotate through the normal application flow" therefore needs one of the options in
+    [docs/security/qa-credential-rotation.md](../security/qa-credential-rotation.md); it is **not** a single action today.
+  - The exposure stays **open** until the QA account(s) are rotated (and anything that reused A or B), and the owner decides on the history question (history is preserved by decision;
+    no rewrite is authorised).
 - Not rewritten: Git history (needs explicit authorization). Informational: `tools/pg-verify` seeds
   use fixed, documented dev-only passwords for throwaway instances (`<redacted — was a fixed dev literal; removed from the code in D-8E.24, still in Git history>` in
   `seed-qa-data.ts` / `dev-server.ts`) — not changed.
-- **Status:** `fixed-pending-validation` (working tree clean of the literal; history untouched).
+- **Status (2026-10-30):** `open — rotation pending`. The working tree is clean of both literals (uncommitted); the history is untouched and publicly exposed per the owner's statement; no
+  rotation done; preventive controls implemented in B4.11.5.7–B4.11.5.10 (scanner, CI job, opt-in pre-commit hook, tests; `QA_ADMIN_PASSWORD` is on no child list — each of the five processes `dev-server.ts` starts gets its own explicit allow-list, the `embedded-postgres` server gets only operating-system essentials, and the variable is removed from `process.env` once read; it stays in the parent's memory until exit and in the shell that defined it; `_dev-start-postgres-only.mjs`, `verify-real-postgres.ts` and the embedded tests still start PostgreSQL with the shell environment — see `docs/security/secret-scanning.md`; the CI job has not run on GitHub, the hook is opt-in). **This does not close the item:** it needs the rotation (`docs/security/qa-credential-rotation.md`).
 
 ### Unit-test baseline (verified 2026-10-26)
 
