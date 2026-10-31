@@ -113,7 +113,7 @@ export function severityOf(ruleId: string, context: MigrationContext): LintSever
   return context === 'privileged' ? info.privileged : info.ordinary;
 }
 
-/** The roles the project defines (migration 0000 and 0019); a GRANT to anything else is not "a project role". */
+/** The roles the project defines (migrations 0000, 0019 and 0051); a GRANT to anything else is not "a project role". */
 export const PROJECT_ROLES: ReadonlySet<string> = new Set([
   'app_migrator',
   'app_tenant',
@@ -121,6 +121,7 @@ export const PROJECT_ROLES: ReadonlySet<string> = new Set([
   'app_event_processor',
   'app_public_resolver',
   'app_import_worker',
+  'app_qa_readonly',
 ]);
 
 /** Triggers that enforce tenant isolation (database.md): disabling or dropping one is never routine. */

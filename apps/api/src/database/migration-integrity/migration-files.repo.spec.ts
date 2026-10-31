@@ -36,10 +36,10 @@ describe('database/migrations (real files)', () => {
     expect(must(folder.historyManifest ?? undefined).entries).toHaveLength(folder.journal.length);
   });
 
-  it('the privileged manifest lists 0000 and 0019 and matches the files', () => {
+  it('the privileged manifest lists 0000, 0019 and 0051 and matches the files', () => {
     const manifest = must(folder.privilegedManifest ?? undefined);
     expect(validatePrivilegedManifest(manifest, folder.journal, folder.fileHashes)).toEqual([]);
-    expect(manifest.entries.map((e) => e.tag)).toEqual(['0000_extensions_and_roles', '0019_import_worker_role']);
+    expect(manifest.entries.map((e) => e.tag)).toEqual(['0000_extensions_and_roles', '0019_import_worker_role', '0051_qa_readonly_role']);
   });
 
   it('no other migration contains an undeclared privileged statement', () => {

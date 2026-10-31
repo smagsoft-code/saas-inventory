@@ -358,6 +358,20 @@
       "when": 1792800300000,
       "tag": "0050_price_approval_number",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1792886700000,
+      "tag": "0051_qa_readonly_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1792973100000,
+      "tag": "0052_qa_readonly_tenant_config",
+      "breakpoints": true
     }
   ]
 }

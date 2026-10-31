@@ -410,6 +410,22 @@
       "sha256": "3169b316c1c9895e9e3111ffd117435084d7dee595c14a6a6d44fc821a121e2c",
       "classification": "ordinary",
       "reviewedIn": "retroactive-review:D-7.2:2026-10-28"
+    },
+    {
+      "idx": 51,
+      "tag": "0051_qa_readonly_role",
+      "when": 1792886700000,
+      "sha256": "23cd22992cf3824a00bf2a30e09ad733bebeb563640f33b9062203cf3a84bc7e",
+      "classification": "privileged",
+      "reviewedIn": "review:D-8E.26-B4.11.1:2026-10-30"
+    },
+    {
+      "idx": 52,
+      "tag": "0052_qa_readonly_tenant_config",
+      "when": 1792973100000,
+      "sha256": "2363c478e6ba21d1ee2230596534bc854ba424f7465fa92263d83d479f65d137",
+      "classification": "ordinary",
+      "reviewedIn": "review:D-8E.26-B4.11.3:2026-10-30"
     }
   ]
 }

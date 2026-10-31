@@ -26,12 +26,44 @@ import { Pg16Cluster, PROTECTED_PORTS, harnessEnabled } from './cluster';
  */
 
 const API_DIR = join(__dirname, '..', '..');
-const REAL = join(__dirname, '..', '..', '..', '..', 'database', 'migrations');
+const REAL_FULL = join(__dirname, '..', '..', '..', '..', 'database', 'migrations');
+/**
+ * The historical scenarios below count migrations ("all 51", "the 11 remaining after 40", "the 32 after 19") and run the INCREMENTAL login over whatever remains,
+ * which is only possible while every remaining migration is ordinary. 0051 is the first privileged migration after 0019, so those scenarios run on a frozen copy
+ * of the first FROZEN_COUNT migrations of the real folder (byte-identical files, journal and manifests cut at that point) — exactly what they always meant.
+ * Migrations after the frozen prefix are covered by their own scenario (section 12) on the full real folder.
+ */
+const FROZEN_COUNT = 51;
 const INC_LOGIN = 'migrator_inc';
 const INC_PASSWORD = randomBytes(18).toString('base64url');
 const BOOT_LOGIN = 'postgres';
 const scratch: string[] = [];
 const allLines: string[] = [];
+
+function frozenPrefix(source: string, count: number): string {
+  const dir = mkdtempSync(join(tmpdir(), 'saas-mig-frozen-'));
+  scratch.push(dir);
+  cpSync(source, dir, { recursive: true });
+  const journalPath = join(dir, 'meta', '_journal.json');
+  const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as { entries: { tag: string }[] };
+  const dropped = journal.entries.slice(count).map((e) => e.tag);
+  journal.entries = journal.entries.slice(0, count);
+  writeFileSync(journalPath, `${JSON.stringify(journal, null, 2)}
+`);
+  for (const tag of dropped) {
+    rmSync(join(dir, `${tag}.sql`), { force: true });
+    rmSync(join(dir, 'meta', `${tag.slice(0, 4)}_snapshot.json`), { force: true });
+  }
+  for (const name of ['history-manifest.json', 'privileged-manifest.json']) {
+    const path = join(dir, name);
+    const manifest = JSON.parse(readFileSync(path, 'utf8')) as { entries: { tag: string }[] };
+    manifest.entries = manifest.entries.filter((e) => !dropped.includes(e.tag));
+    writeFileSync(path, `${JSON.stringify(manifest, null, 2)}
+`);
+  }
+  return dir;
+}
+const REAL = harnessEnabled ? frozenPrefix(REAL_FULL, FROZEN_COUNT) : REAL_FULL;
 let cluster: Pg16Cluster;
 let bootPassword = '';
 
@@ -778,6 +810,10 @@ describe.skipIf(SKIP)('migration wrapper on a disposable PostgreSQL cluster', ()
 
     it('exits 0 on success and 1 on refusal; the deprecated alias works with a warning that does not echo the URL', async () => {
       await fromTemplate('cli_ok', 'golden');
+      // 'golden' holds the frozen first 51 migrations; the real process reads the REAL folder, which has more (0051 is privileged: bootstrap mode applies it).
+      const catchUp = cli({ MIGRATOR_BOOTSTRAP_DATABASE_URL: cluster.superuserUrl('cli_ok'), MIGRATOR_EXPECTED_DATABASE: 'cli_ok' });
+      expect(catchUp.status, catchUp.text).toBe(0);
+      expect(catchUp.text).toContain('Migrations applied successfully');
       const ok = cli({ MIGRATOR_BOOTSTRAP_DATABASE_URL: cluster.superuserUrl('cli_ok'), MIGRATOR_EXPECTED_DATABASE: 'cli_ok' });
       expect(ok.status).toBe(0);
       expect(ok.text).toContain('Nothing to apply');
@@ -1690,6 +1726,87 @@ describe.skipIf(SKIP)('migration wrapper on a disposable PostgreSQL cluster', ()
       const r = await wrap({ ...bootstrapEnv('golden'), MIGRATOR_DATABASE_URL: cluster.superuserUrl('golden') });
       expect(r.stage).toBe('config');
       expect(codes(r)).toContain('CONFIG_VARIABLE_CONFLICT');
+    });
+  });
+
+  describe('12. 0051 (the read-only QA role) on the FULL real folder — the first privileged migration after 0019', () => {
+    const FULL_COUNT = (JSON.parse(readFileSync(join(REAL_FULL, 'meta', '_journal.json'), 'utf8')) as { entries: unknown[] }).entries.length;
+
+    it('a fresh bootstrap applies every migration including 0051; the role exists NOLOGIN with SELECT only, 27 pinned policies, views owned by app_migrator, every RLS table still FORCEd', async () => {
+      expect(FULL_COUNT).toBeGreaterThan(FROZEN_COUNT);
+      await cluster.createDatabase('full0051');
+      const run = await wrap(bootstrapEnv('full0051'), { migrationsDir: REAL_FULL });
+      expect([run.exitCode, run.applied.length], run.text).toEqual([0, FULL_COUNT]);
+      expect(await scalar('full0051', `SELECT rolcanlogin::text || rolsuper::text || rolbypassrls::text || rolcreaterole::text FROM pg_roles WHERE rolname = 'app_qa_readonly'`)).toBe('falsefalsefalsefalse');
+      expect(await scalar('full0051', `SELECT count(*) FROM pg_policies WHERE 'app_qa_readonly' = ANY (roles)`)).toBe('27');
+      expect(await scalar('full0051', `SELECT count(*) FROM information_schema.table_privileges WHERE grantee = 'app_qa_readonly' AND privilege_type <> 'SELECT'`)).toBe('0');
+      expect(await scalar('full0051', `SELECT count(*) FROM pg_views WHERE viewname LIKE 'qa_readonly_%' AND viewowner = 'app_migrator'`)).toBe('2');
+      expect(await scalar('full0051', `SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tableowner <> 'app_migrator'`)).toBe('0');
+      expect(
+        await scalar('full0051', `SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' AND c.relrowsecurity AND NOT c.relforcerowsecurity`),
+      ).toBe('0');
+      const again = await wrap(bootstrapEnv('full0051'), { migrationsDir: REAL_FULL });
+      expect([again.exitCode, again.applied.length]).toEqual([0, 0]);
+    });
+
+    // D-8E.26-B4.11.3 — 0052 (ordinary): the scope is an immutable tenant UUID in a protected configuration that is EMPTY after the migrations.
+    const ROLE_PRIVILEGES = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'TRUNCATE', 'REFERENCES', 'TRIGGER'];
+    const assertEmptyProtectedConfig = async (db: string): Promise<void> => {
+      expect(await scalar(db, `SELECT count(*) FROM qa_readonly_tenant_config`)).toBe('0'); // empty by default: 0052 inserts nothing and looks nothing up
+      expect(await scalar(db, `SELECT count(*) FROM qa_readonly_scope`)).toBe('0'); // fail closed
+      expect(await scalar(db, `SELECT count(*) FROM qa_readonly_tenant`)).toBe('0');
+      expect(await scalar(db, `SELECT pg_get_userbyid(relowner)::text FROM pg_class WHERE relname = 'qa_readonly_tenant_config'`)).toBe('app_migrator');
+      expect(await scalar(db, `SELECT relrowsecurity::text FROM pg_class WHERE relname = 'qa_readonly_tenant_config'`)).toBe('false');
+      expect(await scalar(db, `SELECT count(*) FROM pg_policies WHERE 'app_qa_readonly' = ANY (roles)`)).toBe('27'); // the 27 policies are untouched
+      expect(await scalar(db, `SELECT count(*) FROM pg_views WHERE viewname LIKE 'qa_readonly_%' AND viewowner = 'app_migrator'`)).toBe('2');
+      for (const role of ['app_tenant', 'app_platform', 'app_event_processor', 'app_public_resolver', 'app_import_worker', 'app_qa_readonly']) {
+        for (const privilege of ROLE_PRIVILEGES) {
+          expect(await scalar(db, `SELECT has_table_privilege('${role}', 'public.qa_readonly_tenant_config', '${privilege}')::text`), `${role} ${privilege}`).toBe('false');
+        }
+      }
+      for (const privilege of ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']) {
+        expect(await scalar(db, `SELECT has_table_privilege('app_migrator', 'public.qa_readonly_tenant_config', '${privilege}')::text`), `app_migrator ${privilege}`).toBe('false');
+      }
+      expect(await scalar(db, `SELECT rolcanlogin::text FROM pg_roles WHERE rolname = 'app_qa_readonly'`)).toBe('false'); // still NOLOGIN, still no password
+      expect(await scalar(db, `SELECT rolpassword IS NULL FROM pg_authid WHERE rolname = 'app_qa_readonly'`)).toBe(true);
+    };
+
+    it('the FULL real folder leaves the protected configuration empty: both scope views return no row, nobody but the owner can read it, and nobody can write it', async () => {
+      await assertEmptyProtectedConfig('full0051');
+    });
+
+    it('0052 is ORDINARY: the limited incremental login applies it on top of a database that already has 0051', async () => {
+      const upTo0051 = frozenPrefix(REAL_FULL, FROZEN_COUNT + 1);
+      await cluster.createDatabase('inc0052');
+      const first = await wrap(bootstrapEnv('inc0052'), { migrationsDir: upTo0051 });
+      expect([first.exitCode, first.applied.length], first.text).toEqual([0, FROZEN_COUNT + 1]);
+      const oidBefore = await scalar('inc0052', `SELECT 'qa_readonly_scope'::regclass::oid::text`);
+
+      const inc = await wrap(incrementalEnv('inc0052'), { migrationsDir: REAL_FULL });
+      expect([inc.exitCode, inc.applied.length], inc.text).toEqual([0, FULL_COUNT - FROZEN_COUNT - 1]);
+      expect(await registryCount('inc0052')).toBe(FULL_COUNT);
+      expect(await scalar('inc0052', `SELECT 'qa_readonly_scope'::regclass::oid::text`)).toBe(oidBefore); // REPLACED, not recreated: the policies keep depending on it
+      await assertEmptyProtectedConfig('inc0052');
+      const nothing = await wrap(incrementalEnv('inc0052'), { migrationsDir: REAL_FULL });
+      expect([nothing.exitCode, nothing.applied.length]).toEqual([0, 0]);
+    });
+
+    it('a pending privileged migration is refused for the incremental login before anything is applied; the bootstrap run then applies it', async () => {
+      await cluster.createDatabase('pend0051', 'tpl_legacy_full');
+      const adopt = await wrap(bootstrapEnv('pend0051'), { provisionOnly: true, migrationsDir: REAL_FULL });
+      expect([adopt.exitCode, adopt.applied.length]).toEqual([0, 0]);
+      expect(await registryCount('pend0051')).toBe(FROZEN_COUNT);
+
+      const refused = await wrap(incrementalEnv('pend0051'), { migrationsDir: REAL_FULL });
+      expect(refused.exitCode, refused.text).toBe(1);
+      expect(refused.applied).toEqual([]);
+      expect(await registryCount('pend0051')).toBe(FROZEN_COUNT);
+      expect(await scalar('pend0051', `SELECT count(*) FROM pg_policies WHERE 'app_qa_readonly' = ANY (roles)`)).toBe('0'); // the role itself is cluster-wide, its policies are per database
+
+      const done = await wrap(bootstrapEnv('pend0051'), { migrationsDir: REAL_FULL });
+      expect([done.exitCode, done.applied.length], done.text).toEqual([0, FULL_COUNT - FROZEN_COUNT]);
+      expect(await registryCount('pend0051')).toBe(FULL_COUNT);
+      expect(await scalar('pend0051', `SELECT count(*) FROM pg_policies WHERE 'app_qa_readonly' = ANY (roles)`)).toBe('27');
     });
   });
 

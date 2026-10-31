@@ -63,9 +63,9 @@ describe('the linter on the 51 historical migrations (diagnostic mode, no except
     });
   });
 
-  it('PL/pgSQL the parser cannot read exists ONLY in the two migrations declared privileged (otherwise it would be an ERROR)', () => {
+  it('PL/pgSQL the parser cannot read exists ONLY in the migrations declared privileged (0000, 0019, 0051) (otherwise it would be an ERROR)', () => {
     const tags = new Set(all.filter((f) => f.ruleId === 'PLPGSQL-UNANALYZED').map((f) => f.tag));
-    expect([...tags].sort()).toEqual(['0000_extensions_and_roles', '0019_import_worker_role']);
+    expect([...tags].sort()).toEqual(['0000_extensions_and_roles', '0019_import_worker_role', '0051_qa_readonly_role']);
     for (const tag of tags) expect(contextOf(folder.historyManifest, tag)).toBe('privileged');
     expect(all.filter((f) => f.ruleId === 'PLPGSQL-UNANALYZED').every((f) => f.severity === 'WARNING' && f.certainty === 'low')).toBe(true);
   });

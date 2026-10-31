@@ -10,6 +10,11 @@
       "tag": "0019_import_worker_role",
       "sha256": "3bedffe29812ff790d8216cfb3dc11a02406b7ba8e889e061f47f715fd768968",
       "reason": "RESET ROLE to the session login to CREATE ROLE app_import_worker (when missing), then SET ROLE app_migrator. Needs CREATEROLE on the session login, which the incremental login must not have."
+    },
+    {
+      "tag": "0051_qa_readonly_role",
+      "sha256": "23cd22992cf3824a00bf2a30e09ad733bebeb563640f33b9062203cf3a84bc7e",
+      "reason": "RESET ROLE to the session login to CREATE (or safely normalise, refusing a privileged or member/owner role) ROLE app_qa_readonly (NOLOGIN, no privileges of its own) and ALTER ROLE … SET its safety settings, then SET ROLE app_migrator. Needs CREATEROLE on the session login, which the incremental login must not have."
     }
   ]
 }
